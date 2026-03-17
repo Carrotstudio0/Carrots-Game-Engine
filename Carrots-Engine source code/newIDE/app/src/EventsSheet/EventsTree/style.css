@@ -1,0 +1,232 @@
+/* This overwrite the default react-sortable-tree css to display events list */
+
+/**
+ * Remove the outline visible on the events sheet (contrary to most
+ * controls on screen, we don't want a visible focus there).
+ */
+.gd-events-sheet:focus { outline: none; }
+
+/**
+ * Draggable handle on the left of an event
+ */
+.gd-events-sheet .move-handle {
+    width: 10px;
+    margin: 0.5px;
+    flex-grow: 0;
+    flex-shrink: 0;
+    cursor: move;
+}
+
+@media only screen and (max-width: 750px) {
+    /**
+     * Slightly reduce the size of the handle on small screens
+     * and phones (where drag'n'drop is not supported anyway).
+     */
+    .gd-events-sheet .move-handle {
+        width: 4px;
+    }
+}
+
+.gd-events-sheet .events-tree {
+    height: 100%;
+    --events-sheet-icon-size: 20px;
+}
+
+/**
+ * Container of an event line (including the scaffolding lines and the event).
+ */
+.gd-events-sheet .rst__node {
+    display: flex;
+}
+
+.gd-events-sheet .rst__nodeContent {
+    /* Ensure the event take all the space after the scaffolding lines */
+    flex: 1;
+    right: 0;
+
+    min-width: 0; /* But don't shrink scaffolding lines */
+    margin-bottom: 2px; /* Margin after an event */
+}
+
+.gd-events-sheet .rst__row {
+    /* The "landing pad" highlight box is done with position: absolute.
+     * Ensure it will cover all the event row but not the scaffolding lines.
+     */
+    position: relative;
+}
+
+/**
+ * Container of the content of an event
+ */
+.gd-events-sheet .rst__rowContents {
+    display: flex;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    flex: 1;
+
+    /*
+     * Align the renderered event to the top, so that it does not move
+     * if the container is too large and resized down (for exemple, when deleting
+     * an action or a condition.
+     */
+    align-items: flex-start;
+}
+
+.gd-events-sheet .rst__rowWrapper {
+    padding: 0;
+}
+
+.gd-events-sheet .rst__rowLabel {
+    padding: 0;
+    flex: 1;
+    min-width: 0;
+}
+
+.gd-events-sheet .rst__rowTitle {
+    font-weight: normal;
+}
+
+/**
+ * Unset font family of Material UI textfields (for comment and group events)
+ * so that they get the same font family as the rest of the event sheet.
+ */
+.gd-events-sheet .rst__rowTitle .MuiInputBase-root {
+    font-family: unset;
+}
+
+/**
+ * Remove default style of multiline textfield (for comment events) to remove
+ * the height change occurring when starting to edit the comment.
+ */
+.gd-events-sheet .rst__rowTitle .MuiInput-multiline,
+.gd-events-sheet .rst__rowTitle .MuiInputBase-input {
+    padding-bottom: 0;
+}
+
+/**
+ * Add transparent border around Material UI textfields (for comment and group events)
+ * to avoid a slight shift due to the border added by the class "selectable" applied
+ * to those events.
+ */
+.gd-events-sheet .rst__rowTitle .MuiInputBase-root{
+    box-sizing: border-box;
+    border: 1px solid transparent;
+}
+
+/**
+ * Expand/collapse buttons
+ */
+.gd-events-sheet .rst__collapseButton,
+.gd-events-sheet .rst__expandButton {
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    background-repeat: no-repeat;
+    background-color: transparent;
+    height: var(--icon-size); /*Keep the height of a single-line event, more-or-less*/
+    width: 16px; /*Leave space for the line to be visible between the button and the handle*/
+    background-color: var(--event-sheet-event-tree-background-color);
+    border-radius: 4px;
+}
+
+.gd-events-sheet .rst__collapseButton:hover:not(:active), .rst__expandButton:hover:not(:active) {
+    background-size: initial !important; /*Avoid buttons size to change*/
+    height: var(--icon-size) !important; /*Avoid buttons size to change*/
+    width: 16px !important; /*Avoid buttons size to change*/
+}
+
+.gd-events-sheet .rst__expandButton {
+    background-image: url('./Chevron-right.svg');
+}
+.gd-events-sheet .light-theme .rst__expandButton {
+    background-image: url('./Chevron-right_black.svg');
+}
+
+.gd-events-sheet .rst__collapseButton {
+    background-image: url('./Chevron-down.svg');
+}
+.gd-events-sheet .light-theme .rst__collapseButton {
+    background-image: url('./Chevron-down_black.svg');
+}
+
+/**
+ * Lines between events
+ */
+.gd-events-sheet .rst__lineHalfHorizontalRight::before, .rst__lineFullVertical::after, .rst__lineHalfVerticalTop::after, .rst__lineHalfVerticalBottom::after {
+  opacity: 0.3;
+}
+
+/**
+ * Links to add a condition or an action
+ */
+.gd-events-sheet .add-link {
+    background:none!important;
+    color:inherit;
+    border:none;
+    padding:0!important;
+    font: inherit;
+    cursor: pointer;
+    opacity: 0.6;
+
+    /** Ensure the links are not growing outside of their parents on small screens. */
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: break-word;
+}
+.gd-events-sheet .add-link:hover {
+    opacity: 0.9;
+}
+
+/**
+ * Selectable area (instructions)
+ */
+.gd-events-sheet .selectable {
+    box-sizing: border-box;
+    border: 1px solid transparent;
+}
+
+/**
+ * Large selectable area (events)
+ */
+.gd-events-sheet .large-selectable {
+    box-sizing: border-box;
+    border: 1px solid transparent;
+}
+
+/**
+ * Disabled text
+ */
+.gd-events-sheet .disabled-text {
+    text-decoration: line-through;
+    opacity: 0.6;
+}
+
+/**
+ * Icon (variable, object icon...)
+ */
+.gd-events-sheet .icon {
+    display: inline-block;
+    vertical-align: middle;
+    object-fit: contain;
+    width: var(--events-sheet-icon-size);
+    height: var(--events-sheet-icon-size);
+    min-width: var(--events-sheet-icon-size);
+    min-height: var(--events-sheet-icon-size);
+}
+
+.gd-events-sheet .rst__nodeContent .MuiIconButton-root {
+    font-size: inherit;
+}
+
+/**
+ * Container having an icon next to the associated name.
+ * No rules to be set, we used to have a nowrap but it creates issues
+ * with overflowing long object/variable names (that can contain expressions).
+ */
+/*
+.gd-events-sheet .name-and-icon-container {
+    white-space: nowrap;
+}
+*/

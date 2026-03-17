@@ -1,0 +1,31 @@
+{
+  "gdevelop": {
+    "color": {
+      "light-blue": {
+        "value": "#4ab0e4"
+      },
+      "blue": {
+        "value": "#2c6bf5"
+      },
+      "dark-blue": {
+        "value": "#3c4698"
+      },
+      "purple": {
+        "value": "#9100ce"
+      },
+      "contrast-text": {
+        "value": "#fff"
+      },
+      "selection": {
+        "value": "#4c92ff",
+        "comment": "OS X selection"
+      }
+    },
+    "classic-font-family": {
+      "value": "'Fira Sans', 'Segoe UI', 'Ubuntu', 'Noto Sans', 'Trebuchet MS', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'"
+    },
+    "modern-font-family": {
+      "value": "'Fira Sans', 'Segoe UI', 'Ubuntu', 'Noto Sans', 'Trebuchet MS', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'"
+    }
+  }
+}

@@ -1,0 +1,189 @@
+// @flow
+import * as React from 'react';
+import EventsSheet, { type EventsSheetInterface } from '../../EventsSheet';
+import { sendEventsExtractedAsFunction } from '../../Utils/Analytics/EventSender';
+import {
+  type RenderEditorContainerProps,
+  type RenderEditorContainerPropsWithRef,
+  type SceneEventsOutsideEditorChanges,
+  type InstancesOutsideEditorChanges,
+  type ObjectsOutsideEditorChanges,
+  type ObjectGroupsOutsideEditorChanges,
+} from './BaseEditor';
+import { ProjectScopedContainersAccessor } from '../../InstructionOrExpression/EventsScope';
+import { type ObjectWithContext } from '../../ObjectsList/EnumerateObjects';
+import {
+  setEditorHotReloadNeeded,
+  type HotReloadSteps,
+} from '../../EmbeddedGame/EmbeddedGameFrame';
+
+export class EventsEditorContainer extends React.Component<RenderEditorContainerProps> {
+  editor: ?EventsSheetInterface;
+
+  shouldComponentUpdate(nextProps: RenderEditorContainerProps): any {
+    // We stop updates when the component is inactive.
+    // If it's active, was active or becoming active again we let update propagate.
+    // Especially important to note that when becoming inactive, a "last" update is allowed.
+    return this.props.isActive || nextProps.isActive;
+  }
+
+  componentDidMount() {
+    if (this.props.isActive) {
+      this._setPreviewedLayout();
+    }
+  }
+
+  componentDidUpdate(prevProps: RenderEditorContainerProps) {
+    if (!prevProps.isActive && this.props.isActive) {
+      this._setPreviewedLayout();
+    }
+  }
+
+  _setPreviewedLayout() {
+    const layout = this.getLayout();
+    this.props.setPreviewedLayout({
+      layoutName: layout ? layout.getName() : null,
+      externalLayoutName: null,
+      eventsBasedObjectType: null,
+      eventsBasedObjectVariantName: null,
+    });
+  }
+
+  getProject(): ?gdProject {
+    return this.props.project;
+  }
+
+  updateToolbar() {
+    if (this.editor) {
+      this.editor.updateToolbar();
+    } else {
+      // Clear the toolbar if the editor is not ready yet to avoid showing stale toolbar
+      // from the previous editor (e.g., HomePage)
+      this.props.setToolbar(null);
+    }
+  }
+
+  scrollToEventPath(eventPath: Array<number>) {
+    if (this.editor) this.editor.scrollToEventPath(eventPath);
+  }
+
+  forceUpdateEditor() {
+    // No updates to be done.
+  }
+
+  onEventsBasedObjectChildrenEdited() {
+    // No thing to be done.
+  }
+
+  onSceneObjectEdited(scene: gdLayout, objectWithContext: ObjectWithContext) {
+    // No thing to be done.
+  }
+
+  onSceneObjectsDeleted(scene: gdLayout) {
+    // No thing to be done.
+  }
+
+  onSceneEventsModifiedOutsideEditor(changes: SceneEventsOutsideEditorChanges) {
+    if (this.getLayout() === changes.scene) {
+      if (this.editor)
+        this.editor.onEventsModifiedOutsideEditor({
+          newOrChangedAiGeneratedEventIds:
+            changes.newOrChangedAiGeneratedEventIds,
+        });
+    }
+  }
+
+  notifyChangesToInGameEditor(hotReloadSteps: HotReloadSteps) {
+    setEditorHotReloadNeeded(hotReloadSteps);
+  }
+
+  switchInGameEditorIfNoHotReloadIsNeeded() {}
+
+  onInstancesModifiedOutsideEditor(changes: InstancesOutsideEditorChanges) {
+    // No thing to be done.
+  }
+
+  onObjectsModifiedOutsideEditor(changes: ObjectsOutsideEditorChanges) {
+    // No thing to be done.
+  }
+
+  onObjectGroupsModifiedOutsideEditor(
+    changes: ObjectGroupsOutsideEditorChanges
+  ) {
+    // No thing to be done.
+  }
+
+  getLayout(): ?gdLayout {
+    const { project, projectItemName } = this.props;
+    if (
+      !project ||
+      !projectItemName ||
+      !project.hasLayoutNamed(projectItemName)
+    )
+      return null;
+
+    return project.getLayout(projectItemName);
+  }
+
+  onBeginCreateEventsFunction = () => {
+    sendEventsExtractedAsFunction({
+      step: 'begin',
+      parentEditor: 'scene-events-editor',
+    });
+  };
+
+  onCreateEventsFunction = (extensionName: any, eventsFunction: any) => {
+    this.props.onCreateEventsFunction(
+      extensionName,
+      eventsFunction,
+      'scene-events-editor'
+    );
+  };
+
+  render(): any {
+    const { project, projectItemName } = this.props;
+    const layout = this.getLayout();
+    if (!layout || !project) {
+      //TODO: Error component
+      return <div>No layout called {projectItemName} found!</div>;
+    }
+
+    const scope = {
+      project,
+      layout,
+    };
+    const projectScopedContainersAccessor = new ProjectScopedContainersAccessor(
+      // $FlowFixMe[incompatible-type]
+      scope
+    );
+
+    return (
+      <EventsSheet
+        ref={editor => (this.editor = editor)}
+        setToolbar={this.props.setToolbar}
+        onOpenLayout={this.props.onOpenLayout}
+        resourceManagementProps={this.props.resourceManagementProps}
+        openInstructionOrExpression={this.props.openInstructionOrExpression}
+        onCreateEventsFunction={this.onCreateEventsFunction}
+        onBeginCreateEventsFunction={this.onBeginCreateEventsFunction}
+        unsavedChanges={this.props.unsavedChanges}
+        project={project}
+        // $FlowFixMe[incompatible-type]
+        scope={scope}
+        globalObjectsContainer={project.getObjects()}
+        objectsContainer={layout.getObjects()}
+        projectScopedContainersAccessor={projectScopedContainersAccessor}
+        events={layout.getEvents()}
+        onOpenExternalEvents={this.props.onOpenExternalEvents}
+        isActive={this.props.isActive}
+        hotReloadPreviewButtonProps={this.props.hotReloadPreviewButtonProps}
+        onWillInstallExtension={this.props.onWillInstallExtension}
+        onExtensionInstalled={this.props.onExtensionInstalled}
+      />
+    );
+  }
+}
+
+export const renderEventsEditorContainer = (
+  props: RenderEditorContainerPropsWithRef
+): React.Node => <EventsEditorContainer {...props} />;

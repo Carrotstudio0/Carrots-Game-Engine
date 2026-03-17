@@ -1,0 +1,66 @@
+// @flow
+
+import * as React from 'react';
+import InAppTutorialOrchestrator from './InAppTutorialOrchestrator';
+import { type EditorIdentifier } from '../Utils/GDevelopServices/InAppTutorial';
+import {
+  getCurrentTabForPane,
+  type EditorTabsState,
+} from '../MainFrame/EditorTabs/EditorTabsHandler';
+
+type Props = {|
+  editorTabs: EditorTabsState,
+|};
+
+const useInAppTutorialOrchestrator = ({
+  editorTabs,
+}: Props): {
+  InAppTutorialOrchestrator: any,
+  orchestratorProps: {
+    currentEditor: EditorIdentifier | null,
+    currentSceneName: string | null,
+  },
+} => {
+  const [
+    currentEditor,
+    setCurrentEditor,
+  ] = React.useState<EditorIdentifier | null>(null);
+  const [currentSceneName, setCurrentSceneName] = React.useState<string | null>(
+    null
+  );
+
+  React.useEffect(
+    () => {
+      const currentTab = getCurrentTabForPane(editorTabs, 'center');
+      if (!currentTab) {
+        setCurrentEditor(null);
+        return;
+      }
+      const editorIdentifier = currentTab.key.startsWith('start page')
+        ? 'Home'
+        : currentTab.key.startsWith('layout event')
+        ? 'EventsSheet'
+        : currentTab.key.startsWith('external events')
+        ? 'ExternalEvents'
+        : currentTab.key.startsWith('external layout')
+        ? 'ExternalLayout'
+        : currentTab.key.startsWith('events functions extension')
+        ? 'Extension'
+        : currentTab.key.startsWith('resources')
+        ? 'Resources'
+        : 'Scene';
+      setCurrentEditor(editorIdentifier);
+      if (currentTab.key.startsWith('layout') && currentTab.projectItemName) {
+        setCurrentSceneName(currentTab.projectItemName);
+      }
+    },
+    [editorTabs]
+  );
+
+  return {
+    InAppTutorialOrchestrator,
+    orchestratorProps: { currentEditor, currentSceneName },
+  };
+};
+
+export default useInAppTutorialOrchestrator;

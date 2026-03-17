@@ -1,0 +1,79 @@
+// @flow
+import * as React from 'react';
+import { action } from '@storybook/addon-actions';
+import TextBasedCourseChapterView from '../../../Course/TextBasedCourseChapterView';
+
+import paperDecorator from '../../PaperDecorator';
+import {
+  premiumCourse,
+  textBasedCourseChapter,
+  textBasedCourseChapterWithCode,
+  textBasedCourseChapterWithTables,
+  textBasedCourseChapterWithCallout,
+} from '../../../fixtures/GDevelopServicesTestData';
+
+export default {
+  title: 'Course/TextBasedCourseChapterView',
+  component: TextBasedCourseChapterView,
+  decorators: [paperDecorator],
+};
+
+export const Chapter1 = (): React.Node => {
+  return (
+    <TextBasedCourseChapterView
+      course={premiumCourse}
+      courseChapter={textBasedCourseChapter}
+      onOpenTemplate={action('open template')}
+      onCompleteTask={action('onCompleteTask')}
+      isTaskCompleted={action('isTaskCompleted')}
+      getChapterCompletion={action('getChapterCompletion')}
+      chapterIndex={0}
+      onClickUnlock={() => action('onClickUnlock')()}
+    />
+  );
+};
+
+export const Chapter2 = (): React.Node => {
+  return (
+    <TextBasedCourseChapterView
+      course={premiumCourse}
+      courseChapter={textBasedCourseChapterWithCode}
+      onOpenTemplate={action('open template')}
+      onCompleteTask={action('onCompleteTask')}
+      isTaskCompleted={action('isTaskCompleted')}
+      getChapterCompletion={action('getChapterCompletion')}
+      chapterIndex={1}
+      onClickUnlock={() => action('onClickUnlock')()}
+    />
+  );
+};
+
+export const Chapter3 = (): React.Node => {
+  return (
+    <TextBasedCourseChapterView
+      course={premiumCourse}
+      courseChapter={textBasedCourseChapterWithTables}
+      onOpenTemplate={action('open template')}
+      onCompleteTask={action('onCompleteTask')}
+      isTaskCompleted={action('isTaskCompleted')}
+      getChapterCompletion={action('getChapterCompletion')}
+      chapterIndex={2}
+      onClickUnlock={() => action('onClickUnlock')()}
+    />
+  );
+};
+
+export const Chapter4 = (): React.Node => {
+  return (
+    <TextBasedCourseChapterView
+      course={premiumCourse}
+      courseChapter={textBasedCourseChapterWithCallout}
+      onOpenTemplate={action('open template')}
+      onCompleteTask={action('onCompleteTask')}
+      isTaskCompleted={action('isTaskCompleted')}
+      getChapterCompletion={action('getChapterCompletion')}
+      chapterIndex={3}
+      onClickUnlock={() => action('onClickUnlock')()}
+    />
+  );
+};

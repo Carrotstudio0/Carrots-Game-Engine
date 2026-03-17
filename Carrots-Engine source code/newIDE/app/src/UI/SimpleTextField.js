@@ -1,0 +1,155 @@
+// @flow
+import * as React from 'react';
+import { shouldValidate } from './KeyboardShortcuts/InteractionKeys';
+import classes from './SimpleTextField.module.css';
+import classNames from 'classnames';
+
+type SimpleTextFieldProps = {|
+  disabled: boolean,
+  type: 'number' | 'text',
+  onChange: (newValue: string, context: any, reason: 'change' | 'blur') => void,
+  value: string,
+  hint?: string,
+  id: string,
+  additionalContext?: any,
+  italic?: boolean,
+
+  /**
+   * Only to be used in the exceptional case where any change
+   * must be immediately communicated to the parent.
+   */
+  directlyStoreValueChangesWhileEditing?: boolean,
+|};
+
+type FocusOptions = {|
+  selectAll?: boolean,
+  caretPosition?: number,
+|};
+
+export type SimpleTextFieldInterface = {|
+  focus: (options: ?FocusOptions) => void,
+  forceSetSelection: (selectionStart: number, selectionEnd: number) => void,
+  getCaretPosition: () => number,
+|};
+
+const styles = {
+  italic: {
+    fontStyle: 'italic',
+  },
+};
+
+// $FlowFixMe[missing-local-annot]
+const stopPropagation = e => e.stopPropagation();
+
+/**
+ * A text field, inspired from Material UI, but lightweight
+ * and faster to render (2 DOM elements, uncontrolled, pure CSS styling).
+ */
+export const SimpleTextField: React.ComponentType<{
+  ...SimpleTextFieldProps,
+  +ref?: React.RefSetter<SimpleTextFieldInterface>,
+  // $FlowFixMe[incompatible-type]
+}> = React.memo<SimpleTextFieldProps, SimpleTextFieldInterface>(
+  // $FlowFixMe[incompatible-type]
+  // $FlowFixMe[incompatible-exact]
+  React.forwardRef<SimpleTextFieldProps, SimpleTextFieldInterface>(
+    (props, ref) => {
+      const inputRef = React.useRef<?HTMLInputElement>(null);
+
+      React.useEffect(
+        () => {
+          // If the value passed changed, update the input. Otherwise,
+          // keep the input uncontrolled.
+          if (inputRef.current) inputRef.current.value = props.value;
+        },
+        [props.value]
+      );
+
+      const focus = React.useCallback((options: ?FocusOptions) => {
+        const input = inputRef.current;
+        if (input) {
+          input.focus();
+
+          if (options && options.selectAll) {
+            input.select();
+          }
+
+          if (options && Number.isInteger(options.caretPosition)) {
+            const position = Number(options.caretPosition);
+            input.setSelectionRange(position, position);
+          }
+        }
+      }, []);
+
+      const forceSetSelection = React.useCallback(
+        (selectionStart: number, selectionEnd: number) => {
+          if (inputRef.current) {
+            inputRef.current.selectionStart = selectionStart;
+            inputRef.current.selectionEnd = selectionEnd;
+          }
+        },
+        []
+      );
+
+      const getCaretPosition = React.useCallback(() => {
+        // Returns null for inputs of type number (See https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/selectionStart)
+        if (inputRef.current) return inputRef.current.selectionStart;
+        return 0;
+      }, []);
+
+      React.useImperativeHandle(ref, () => ({
+        focus,
+        forceSetSelection,
+        getCaretPosition,
+      }));
+
+      return (
+        <div
+          className={classNames({
+            [classes.simpleTextField]: true,
+            [classes.disabled]: props.disabled,
+          })}
+        >
+          <input
+            id={props.id}
+            disabled={props.disabled}
+            ref={inputRef}
+            type={props.type}
+            defaultValue={props.value}
+            placeholder={props.hint || ''}
+            onClick={stopPropagation}
+            onDoubleClick={stopPropagation}
+            onBlur={e => {
+              props.onChange(
+                e.currentTarget.value,
+                props.additionalContext,
+                'blur'
+              );
+            }}
+            onChange={
+              props.directlyStoreValueChangesWhileEditing
+                ? e => {
+                    props.onChange(
+                      e.currentTarget.value,
+                      props.additionalContext,
+                      'change'
+                    );
+                  }
+                : undefined
+            }
+            onKeyUp={e => {
+              if (shouldValidate(e)) {
+                props.onChange(
+                  e.currentTarget.value,
+                  props.additionalContext,
+                  'blur'
+                );
+              }
+            }}
+            style={props.italic ? styles.italic : undefined}
+          />
+        </div>
+      );
+    }
+  )
+);

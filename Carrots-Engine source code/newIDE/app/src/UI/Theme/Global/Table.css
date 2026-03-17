@@ -1,0 +1,43 @@
+/* This is the styling applied to large tables (like the one used for InstancesList).
+ * It mimics the Material UI Tables style. */
+
+.gd-table {
+  font-family: var(--gdevelop-classic-font-family);
+  color: var(--table-text-color);
+}
+
+.gd-table .tableHeaderRow {
+  /* react-virtualized adds a padding right directly on the header row element
+   * so the !important is needed to override it. It is set to 0 to avoid having
+   * a gap between the right part of the screen/container and the scroll bar. */
+  padding-right: 0px !important;
+}
+
+.gd-table .tableHeaderRow,
+.gd-table .tableEvenRow,
+.gd-table .tableSelectedRow,
+.gd-table .tableOddRow {
+  font-size: 13px;
+  border-bottom: 1px solid var(--table-border-color);
+}
+.gd-table .tableOddRow {
+  background-color: var(--table-row-odd-background-color);
+}
+.gd-table .tableEvenRow {
+  background-color: var(--table-row-even-background-color);
+}
+.gd-table .tableSelectedRow {
+  background-color: var(--table-row-selected-background-color); /*OS X selection*/
+  color: var(--table-row-selected-color);
+}
+.gd-table .tableHeaderColumn {
+  text-transform: none;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--table-text-color-header);
+}
+.gd-table .tableColumn {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

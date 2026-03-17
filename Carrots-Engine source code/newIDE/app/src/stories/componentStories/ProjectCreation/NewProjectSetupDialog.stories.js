@@ -1,0 +1,313 @@
+// @flow
+import * as React from 'react';
+import { action } from '@storybook/addon-actions';
+
+import paperDecorator from '../../PaperDecorator';
+import NewProjectSetupDialog from '../../../ProjectCreation/NewProjectSetupDialog';
+import CloudStorageProvider from '../../../ProjectsStorage/CloudStorageProvider';
+import UrlStorageProvider from '../../../ProjectsStorage/UrlStorageProvider';
+import DownloadFileStorageProvider from '../../../ProjectsStorage/DownloadFileStorageProvider';
+import {
+  fakeSilverAuthenticatedUser,
+  fakeAuthenticatedUserWithNoSubscriptionAndTooManyCloudProjects,
+  fakeNotAuthenticatedUser,
+  geometryMonsterExampleShortHeader,
+  fakePrivateGameTemplateListingData,
+} from '../../../fixtures/GDevelopServicesTestData';
+import AuthenticatedUserContext from '../../../Profile/AuthenticatedUserContext';
+import fakeResourceManagementProps from '../../FakeResourceManagement';
+
+export default {
+  title: 'Project Creation/NewProjectSetupDialog',
+  component: NewProjectSetupDialog,
+  decorators: [paperDecorator],
+};
+
+export const OpenAndNotAuthenticated = (): React.Node => {
+  return (
+    <AuthenticatedUserContext.Provider value={fakeNotAuthenticatedUser}>
+      <NewProjectSetupDialog
+        project={null}
+        fileMetadata={null}
+        storageProviders={[
+          UrlStorageProvider,
+          CloudStorageProvider,
+          DownloadFileStorageProvider,
+        ]}
+        storageProvider={UrlStorageProvider}
+        resourceManagementProps={fakeResourceManagementProps}
+        onClose={() => action('click on close')()}
+        onCreateEmptyProject={() => action('create empty')()}
+        onCreateFromExample={() => action('create from example')()}
+        onCloseAskAi={() => action('close ask AI')()}
+        onOpenLayout={() => action('open layout')()}
+        onWillInstallExtension={action('extension will be installed')}
+        onExtensionInstalled={action('extension installed')}
+        onCreateProjectFromPrivateGameTemplate={() =>
+          action('create project from private game template')()
+        }
+        selectedExampleShortHeader={null}
+        selectedPrivateGameTemplateListingData={null}
+        onSelectExampleShortHeader={() => action('select example')()}
+        onSelectPrivateGameTemplateListingData={() =>
+          action('select private game template')()
+        }
+        privateGameTemplateListingDatasFromSameCreator={[]}
+      />
+    </AuthenticatedUserContext.Provider>
+  );
+};
+
+export const OpenAndAuthenticated = (): React.Node => {
+  return (
+    <AuthenticatedUserContext.Provider value={fakeSilverAuthenticatedUser}>
+      <NewProjectSetupDialog
+        project={null}
+        fileMetadata={null}
+        storageProviders={[
+          UrlStorageProvider,
+          CloudStorageProvider,
+          DownloadFileStorageProvider,
+        ]}
+        onClose={() => action('click on close')()}
+        storageProvider={UrlStorageProvider}
+        resourceManagementProps={fakeResourceManagementProps}
+        onCreateEmptyProject={() => action('create empty')()}
+        onCreateFromExample={() => action('create from example')()}
+        onCloseAskAi={() => action('close ask AI')()}
+        onOpenLayout={() => action('open layout')()}
+        onWillInstallExtension={action('extension will be installed')}
+        onExtensionInstalled={action('extension installed')}
+        onCreateProjectFromPrivateGameTemplate={() =>
+          action('create project from private game template')()
+        }
+        selectedExampleShortHeader={null}
+        selectedPrivateGameTemplateListingData={null}
+        onSelectExampleShortHeader={() => action('select example')()}
+        onSelectPrivateGameTemplateListingData={() =>
+          action('select private game template')()
+        }
+        privateGameTemplateListingDatasFromSameCreator={[]}
+      />
+    </AuthenticatedUserContext.Provider>
+  );
+};
+
+export const Opening = (): React.Node => {
+  return (
+    <AuthenticatedUserContext.Provider value={fakeSilverAuthenticatedUser}>
+      <NewProjectSetupDialog
+        project={null}
+        fileMetadata={null}
+        isProjectOpening
+        storageProviders={[
+          UrlStorageProvider,
+          CloudStorageProvider,
+          DownloadFileStorageProvider,
+        ]}
+        onClose={() => action('click on close')()}
+        storageProvider={UrlStorageProvider}
+        resourceManagementProps={fakeResourceManagementProps}
+        onCreateEmptyProject={() => action('create empty')()}
+        onCreateFromExample={() => action('create from example')()}
+        onCloseAskAi={() => action('close ask AI')()}
+        onOpenLayout={() => action('open layout')()}
+        onWillInstallExtension={action('extension will be installed')}
+        onExtensionInstalled={action('extension installed')}
+        onCreateProjectFromPrivateGameTemplate={() =>
+          action('create project from private game template')()
+        }
+        selectedExampleShortHeader={null}
+        selectedPrivateGameTemplateListingData={null}
+        onSelectExampleShortHeader={() => action('select example')()}
+        onSelectPrivateGameTemplateListingData={() =>
+          action('select private game template')()
+        }
+        privateGameTemplateListingDatasFromSameCreator={[]}
+      />
+    </AuthenticatedUserContext.Provider>
+  );
+};
+
+export const LimitsReached = (): React.Node => {
+  return (
+    <AuthenticatedUserContext.Provider
+      value={fakeAuthenticatedUserWithNoSubscriptionAndTooManyCloudProjects}
+    >
+      <NewProjectSetupDialog
+        project={null}
+        fileMetadata={null}
+        storageProviders={[
+          CloudStorageProvider,
+          UrlStorageProvider,
+          DownloadFileStorageProvider,
+        ]}
+        onClose={() => action('click on close')()}
+        storageProvider={UrlStorageProvider}
+        resourceManagementProps={fakeResourceManagementProps}
+        onCreateEmptyProject={() => action('create empty')()}
+        onCreateFromExample={() => action('create from example')()}
+        onCloseAskAi={() => action('close ask AI')()}
+        onOpenLayout={() => action('open layout')()}
+        onWillInstallExtension={action('extension will be installed')}
+        onExtensionInstalled={action('extension installed')}
+        onCreateProjectFromPrivateGameTemplate={() =>
+          action('create project from private game template')()
+        }
+        selectedExampleShortHeader={null}
+        selectedPrivateGameTemplateListingData={null}
+        onSelectExampleShortHeader={() => action('select example')()}
+        onSelectPrivateGameTemplateListingData={() =>
+          action('select private game template')()
+        }
+        privateGameTemplateListingDatasFromSameCreator={[]}
+      />
+    </AuthenticatedUserContext.Provider>
+  );
+};
+
+export const FromExample = (): React.Node => {
+  return (
+    <AuthenticatedUserContext.Provider value={fakeSilverAuthenticatedUser}>
+      <NewProjectSetupDialog
+        project={null}
+        fileMetadata={null}
+        storageProviders={[
+          UrlStorageProvider,
+          CloudStorageProvider,
+          DownloadFileStorageProvider,
+        ]}
+        onClose={() => action('click on close')()}
+        storageProvider={UrlStorageProvider}
+        resourceManagementProps={fakeResourceManagementProps}
+        onCreateEmptyProject={() => action('create empty')()}
+        onCreateFromExample={() => action('create from example')()}
+        onCloseAskAi={() => action('close ask AI')()}
+        onOpenLayout={() => action('open layout')()}
+        onWillInstallExtension={action('extension will be installed')}
+        onExtensionInstalled={action('extension installed')}
+        selectedExampleShortHeader={geometryMonsterExampleShortHeader}
+        onCreateProjectFromPrivateGameTemplate={() =>
+          action('create project from private game template')()
+        }
+        selectedPrivateGameTemplateListingData={null}
+        onSelectExampleShortHeader={() => action('select example')()}
+        onSelectPrivateGameTemplateListingData={() =>
+          action('select private game template')()
+        }
+        privateGameTemplateListingDatasFromSameCreator={[]}
+      />
+    </AuthenticatedUserContext.Provider>
+  );
+};
+
+export const FromExampleWithoutGoingBack = (): React.Node => {
+  return (
+    <AuthenticatedUserContext.Provider value={fakeSilverAuthenticatedUser}>
+      <NewProjectSetupDialog
+        project={null}
+        fileMetadata={null}
+        storageProviders={[
+          UrlStorageProvider,
+          CloudStorageProvider,
+          DownloadFileStorageProvider,
+        ]}
+        onClose={() => action('click on close')()}
+        storageProvider={UrlStorageProvider}
+        resourceManagementProps={fakeResourceManagementProps}
+        onCreateEmptyProject={() => action('create empty')()}
+        onCreateFromExample={() => action('create from example')()}
+        onCloseAskAi={() => action('close ask AI')()}
+        onOpenLayout={() => action('open layout')()}
+        onWillInstallExtension={action('extension will be installed')}
+        onExtensionInstalled={action('extension installed')}
+        selectedExampleShortHeader={geometryMonsterExampleShortHeader}
+        onCreateProjectFromPrivateGameTemplate={() =>
+          action('create project from private game template')()
+        }
+        selectedPrivateGameTemplateListingData={null}
+        onSelectExampleShortHeader={() => action('select example')()}
+        onSelectPrivateGameTemplateListingData={() =>
+          action('select private game template')()
+        }
+        privateGameTemplateListingDatasFromSameCreator={[]}
+        preventBackHome
+      />
+    </AuthenticatedUserContext.Provider>
+  );
+};
+
+export const FromPrivateGameTemplate = (): React.Node => {
+  return (
+    <AuthenticatedUserContext.Provider value={fakeSilverAuthenticatedUser}>
+      <NewProjectSetupDialog
+        project={null}
+        fileMetadata={null}
+        storageProviders={[
+          UrlStorageProvider,
+          CloudStorageProvider,
+          DownloadFileStorageProvider,
+        ]}
+        onClose={() => action('click on close')()}
+        storageProvider={UrlStorageProvider}
+        resourceManagementProps={fakeResourceManagementProps}
+        onCreateEmptyProject={() => action('create empty')()}
+        onCreateFromExample={() => action('create from example')()}
+        onCloseAskAi={() => action('close ask AI')()}
+        onOpenLayout={() => action('open layout')()}
+        onWillInstallExtension={action('extension will be installed')}
+        onExtensionInstalled={action('extension installed')}
+        selectedExampleShortHeader={null}
+        onCreateProjectFromPrivateGameTemplate={() =>
+          action('create project from private game template')()
+        }
+        selectedPrivateGameTemplateListingData={
+          fakePrivateGameTemplateListingData
+        }
+        onSelectExampleShortHeader={() => action('select example')()}
+        onSelectPrivateGameTemplateListingData={() =>
+          action('select private game template')()
+        }
+        privateGameTemplateListingDatasFromSameCreator={[]}
+      />
+    </AuthenticatedUserContext.Provider>
+  );
+};
+
+export const FromPrivateGameTemplateWithoutGoingBack = (): React.Node => {
+  return (
+    <AuthenticatedUserContext.Provider value={fakeSilverAuthenticatedUser}>
+      <NewProjectSetupDialog
+        project={null}
+        fileMetadata={null}
+        storageProviders={[
+          UrlStorageProvider,
+          CloudStorageProvider,
+          DownloadFileStorageProvider,
+        ]}
+        onClose={() => action('click on close')()}
+        storageProvider={UrlStorageProvider}
+        resourceManagementProps={fakeResourceManagementProps}
+        onCreateEmptyProject={() => action('create empty')()}
+        onCreateFromExample={() => action('create from example')()}
+        onCloseAskAi={() => action('close ask AI')()}
+        onOpenLayout={() => action('open layout')()}
+        onWillInstallExtension={action('extension will be installed')}
+        onExtensionInstalled={action('extension installed')}
+        selectedExampleShortHeader={null}
+        onCreateProjectFromPrivateGameTemplate={() =>
+          action('create project from private game template')()
+        }
+        selectedPrivateGameTemplateListingData={
+          fakePrivateGameTemplateListingData
+        }
+        onSelectExampleShortHeader={() => action('select example')()}
+        onSelectPrivateGameTemplateListingData={() =>
+          action('select private game template')()
+        }
+        privateGameTemplateListingDatasFromSameCreator={[]}
+        preventBackHome
+      />
+    </AuthenticatedUserContext.Provider>
+  );
+};

@@ -1,0 +1,785 @@
+// @flow
+import { Trans } from '@lingui/macro';
+import { I18n } from '@lingui/react';
+import { type I18n as I18nType } from '@lingui/core';
+import * as React from 'react';
+import SemiControlledTextField from '../UI/SemiControlledTextField';
+import InlineCheckbox from '../UI/InlineCheckbox';
+import ResourceSelectorWithThumbnail from '../ResourcesList/ResourceSelectorWithThumbnail';
+import Subheader from '../UI/Subheader';
+import SelectField from '../UI/SelectField';
+import SelectOption from '../UI/SelectOption';
+import ColorField from '../UI/ColorField';
+import { MarkdownText } from '../UI/MarkdownText';
+import { rgbOrHexToRGBString } from '../Utils/ColorTransformer';
+import FormHelperText from '@material-ui/core/FormHelperText';
+import InputAdornment from '@material-ui/core/InputAdornment';
+import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
+import {
+  TextFieldWithButtonLayout,
+  ResponsiveLineStackLayout,
+  ColumnStackLayout,
+} from '../UI/Layout';
+import RaisedButton from '../UI/RaisedButton';
+import UnsavedChangesContext, {
+  type UnsavedChanges,
+} from '../MainFrame/UnsavedChangesContext';
+import { Column, Line } from '../UI/Grid';
+import Text from '../UI/Text';
+import useForceUpdate from '../Utils/UseForceUpdate';
+import RaisedButtonWithSplitMenu from '../UI/RaisedButtonWithSplitMenu';
+import Tooltip from '@material-ui/core/Tooltip';
+import Edit from '../UI/CustomSvgIcons/Edit';
+import {
+  type Schema,
+  type ValueField,
+  type ActionButton,
+  type SectionTitle,
+  type Title,
+  type ResourceField,
+  type LeaderboardIdField,
+  type Instances,
+} from './PropertiesEditorSchema';
+import LeaderboardIdPropertyField from './LeaderboardIdPropertyField';
+import SemiControlledAutoComplete from '../UI/SemiControlledAutoComplete';
+import { ProjectScopedContainersAccessor } from '../InstructionOrExpression/EventsScope';
+
+type Props = {|
+  onInstancesModified?: Instances => void,
+  instances: Instances,
+  schema: Schema,
+  mode?: 'column' | 'row',
+
+  // If set, render the "extra" description content from fields
+  // (see getExtraDescription).
+  renderExtraDescriptionText?: (extraDescription: string) => string,
+  unsavedChanges?: ?UnsavedChanges,
+
+  // Optional context:
+  project?: ?gdProject,
+  projectScopedContainersAccessor?: ProjectScopedContainersAccessor,
+  resourceManagementProps?: ?ResourceManagementProps,
+|};
+
+const styles = {
+  columnContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  fieldContainer: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  field: {
+    flex: 1,
+    width: 'auto',
+  },
+  subHeader: {
+    paddingLeft: 0,
+  },
+};
+
+const normalizeLabel = (i18n: I18nType, label: any): any => {
+  if (label === null || label === undefined) return label;
+  if (typeof label === 'string' || typeof label === 'number') return label;
+  if (React.isValidElement(label)) return label;
+  if (typeof label === 'object' && label.id) return i18n._(label);
+  return label;
+};
+
+const normalizeText = (i18n: I18nType, text: any): any => {
+  if (text === null || text === undefined) return text;
+  if (typeof text === 'string') return text;
+  if (typeof text === 'number') return String(text);
+  if (typeof text === 'object' && text.id) return i18n._(text);
+  return text;
+};
+
+const getDisabled = ({
+  instances,
+  field,
+}: {|
+  instances: Instances,
+  field: ValueField,
+|}): boolean => {
+  return typeof field.disabled === 'boolean'
+    ? field.disabled
+    : typeof field.disabled === 'function'
+    ? field.disabled(instances)
+    : false;
+};
+
+export const hasMixedValues = ({
+  instances,
+  field,
+}: {|
+  instances: Instances,
+  field: ValueField | Title | ActionButton,
+|}): boolean => {
+  if (!instances[0]) {
+    console.log(
+      'hasMixedValues was called with an empty list of instances (or containing undefined). This is a bug that should be fixed'
+    );
+    return true;
+  }
+  const { getValue } = field;
+  if (!getValue) return false;
+
+  const value = getValue(instances[0]);
+  for (var i = 1; i < instances.length; ++i) {
+    if (value !== getValue(instances[i])) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/**
+ * Get the value for the given field across all instances.
+ * If one of the instances doesn't share the same value, returns the default value.
+ * If there is no instances, returns the default value.
+ * If the field does not have a `getValue` method, returns `null`.
+ */
+export const getFieldValue = ({
+  instances,
+  field,
+  mixedValueFallback,
+}: {|
+  instances: Instances,
+  field: ValueField | Title,
+  mixedValueFallback?: any,
+|}): any => {
+  if (!instances[0]) {
+    console.log(
+      'getFieldValue was called with an empty list of instances (or containing undefined). This is a bug that should be fixed'
+    );
+    return mixedValueFallback;
+  }
+  const { getValue, defaultValue } = field;
+  if (!getValue) return null;
+
+  if (
+    typeof mixedValueFallback !== 'undefined' &&
+    hasMixedValues({ instances, field })
+  ) {
+    return mixedValueFallback;
+  }
+  let value = getValue(instances[0]);
+  if (value === null) {
+    value = defaultValue;
+  }
+  if (value === null) {
+    value = '';
+  }
+  return value;
+};
+
+const getFieldLabel = ({
+  instances,
+  field,
+}: {|
+  instances: Instances,
+  field: ValueField,
+|}): any => {
+  if (!instances[0]) {
+    console.log(
+      'PropertiesEditor._getFieldLabel was called with an empty list of instances (or containing undefined). This is a bug that should be fixed'
+    );
+    return field.name;
+  }
+
+  if (field.getLabel) return field.getLabel(instances[0]);
+
+  return field.name;
+};
+
+const PropertiesEditor = ({
+  onInstancesModified,
+  instances,
+  schema,
+  mode,
+  renderExtraDescriptionText,
+  unsavedChanges,
+  project,
+  projectScopedContainersAccessor,
+  resourceManagementProps,
+}: Props): React.Node => {
+  const forceUpdate = useForceUpdate();
+
+  const _onInstancesModified = React.useCallback(
+    (instances: Instances) => {
+      // This properties editor is dealing with fields that are
+      // responsible to update their state (see field.setValue).
+
+      if (unsavedChanges) unsavedChanges.triggerUnsavedChanges();
+      if (onInstancesModified) onInstancesModified(instances);
+      forceUpdate();
+    },
+    [unsavedChanges, onInstancesModified, forceUpdate]
+  );
+
+  const getFieldDescription = React.useCallback(
+    (field: ValueField): ?string => {
+      if (!instances[0]) {
+        console.log(
+          'PropertiesEditor._getFieldDescription was called with an empty list of instances (or containing undefined). This is a bug that should be fixed'
+        );
+        return undefined;
+      }
+
+      const descriptions: Array<string> = [];
+      if (field.getDescription)
+        descriptions.push(field.getDescription(instances[0]));
+      if (renderExtraDescriptionText && field.getExtraDescription)
+        descriptions.push(
+          renderExtraDescriptionText(field.getExtraDescription(instances[0]))
+        );
+
+      return descriptions.join('\n') || undefined;
+    },
+    [instances, renderExtraDescriptionText]
+  );
+
+  const renderInputField = React.useCallback(
+    (field: ValueField, i18n: I18nType) => {
+      if (field.name === 'PLEASE_ALSO_SHOW_EDIT_BUTTON_THANKS') return null; // This special property was used in GDevelop 4 IDE to ask for a Edit button to be shown, ignore it.
+
+      if (field.valueType === 'boolean') {
+        const { setValue } = field;
+        const description = normalizeText(i18n, getFieldDescription(field));
+        const fieldLabel = normalizeLabel(
+          i18n,
+          getFieldLabel({ instances, field })
+        );
+
+        return (
+          <InlineCheckbox
+            label={
+              !description ? (
+                fieldLabel
+              ) : (
+                <React.Fragment>
+                  <Line noMargin>{fieldLabel}</Line>
+                  <FormHelperText style={{ display: 'inline' }}>
+                    <MarkdownText source={description} />
+                  </FormHelperText>
+                </React.Fragment>
+              )
+            }
+            key={field.name}
+            id={field.name}
+            checked={getFieldValue({ instances, field })}
+            onCheck={(event, newValue) => {
+              instances.forEach(i => setValue(i, !!newValue));
+              _onInstancesModified(instances);
+            }}
+            disabled={getDisabled({ instances, field })}
+          />
+        );
+      } else if (field.valueType === 'number') {
+        const { setValue, getEndAdornment } = field;
+        const endAdornment = getEndAdornment && getEndAdornment(instances[0]);
+        return (
+          <SemiControlledTextField
+            value={getFieldValue({ instances, field })}
+            key={field.name}
+            id={field.name}
+            floatingLabelText={normalizeLabel(
+              i18n,
+              getFieldLabel({ instances, field })
+            )}
+            floatingLabelFixed
+            helperMarkdownText={normalizeText(
+              i18n,
+              getFieldDescription(field)
+            )}
+            onChange={newValue => {
+              const newNumberValue = parseFloat(newValue);
+              // If the value is not a number, the user is probably still typing, adding a dot or a comma.
+              // So don't update the value, it will be reverted if they leave the field.
+              if (isNaN(newNumberValue)) return;
+              instances.forEach(i => setValue(i, newNumberValue));
+              _onInstancesModified(instances);
+            }}
+            type="number"
+            style={styles.field}
+            disabled={getDisabled({ instances, field })}
+            endAdornment={
+              endAdornment && (
+                <Tooltip
+                  title={normalizeLabel(i18n, endAdornment.tooltipContent)}
+                >
+                  <InputAdornment position="end">
+                    {normalizeLabel(i18n, endAdornment.label)}
+                  </InputAdornment>
+                </Tooltip>
+              )
+            }
+          />
+        );
+      } else if (field.valueType === 'color') {
+        const { setValue } = field;
+        return (
+          <Column key={field.name} expand noMargin>
+            <ColorField
+              id={field.name}
+              floatingLabelText={normalizeLabel(
+                i18n,
+                getFieldLabel({ instances, field })
+              )}
+              helperMarkdownText={normalizeText(
+                i18n,
+                getFieldDescription(field)
+              )}
+              disableAlpha
+              fullWidth
+              color={getFieldValue({ instances, field })}
+              onChange={color => {
+                const rgbString =
+                  color.length === 0 ? '' : rgbOrHexToRGBString(color);
+                instances.forEach(i => setValue(i, rgbString));
+                _onInstancesModified(instances);
+              }}
+            />
+          </Column>
+        );
+      } else if (field.valueType === 'multilinestring') {
+        const { setValue } = field;
+        return (
+          <SemiControlledTextField
+            key={field.name}
+            id={field.name}
+            onChange={text => {
+              instances.forEach(i => setValue(i, text || ''));
+              _onInstancesModified(instances);
+            }}
+            value={getFieldValue({ instances, field })}
+            floatingLabelText={normalizeLabel(
+              i18n,
+              getFieldLabel({ instances, field })
+            )}
+            floatingLabelFixed
+            helperMarkdownText={normalizeText(
+              i18n,
+              getFieldDescription(field)
+            )}
+            multiline
+            style={styles.field}
+          />
+        );
+      } else {
+        const {
+          onEditButtonBuildMenuTemplate,
+          onEditButtonClick,
+          setValue,
+        } = field;
+        return (
+          <TextFieldWithButtonLayout
+            key={field.name}
+            renderTextField={() => (
+              <SemiControlledTextField
+                value={getFieldValue({
+                  instances,
+                  field,
+                  mixedValueFallback: '(Multiple values)',
+                })}
+                id={field.name}
+                floatingLabelText={normalizeLabel(
+                  i18n,
+                  getFieldLabel({ instances, field })
+                )}
+                floatingLabelFixed
+                helperMarkdownText={normalizeText(
+                  i18n,
+                  getFieldDescription(field)
+                )}
+                onChange={newValue => {
+                  instances.forEach(i => setValue(i, newValue || ''));
+                  _onInstancesModified(instances);
+                }}
+                style={styles.field}
+                disabled={getDisabled({ instances, field })}
+              />
+            )}
+            renderButton={style =>
+              onEditButtonClick && !onEditButtonBuildMenuTemplate ? (
+                <RaisedButton
+                  style={style}
+                  primary
+                  disabled={instances.length !== 1}
+                  icon={<Edit />}
+                  label={<Trans>Edit</Trans>}
+                  onClick={onEditButtonClick}
+                />
+              ) : onEditButtonBuildMenuTemplate ? (
+                <RaisedButtonWithSplitMenu
+                  style={style}
+                  primary
+                  disabled={instances.length !== 1}
+                  icon={<Edit />}
+                  label={<Trans>Edit</Trans>}
+                  onClick={onEditButtonClick}
+                  buildMenuTemplate={onEditButtonBuildMenuTemplate}
+                />
+              ) : null
+            }
+          />
+        );
+      }
+    },
+    [instances, getFieldDescription, _onInstancesModified]
+  );
+
+  const renderSelectField = React.useCallback(
+    (field: ValueField, i18n: I18nType) => {
+      if (!field.getChoices || !field.getValue) return;
+
+      const choices = field.getChoices();
+      if (choices.length < 2 && field.isHiddenWhenOnlyOneChoice) {
+        return;
+      }
+
+      const children = choices.map(({ value, label, labelIsUserDefined }) => (
+        <SelectOption
+          key={value}
+          value={value}
+          label={
+            labelIsUserDefined ? normalizeLabel(i18n, label) : label
+          }
+          shouldNotTranslate={labelIsUserDefined}
+        />
+      ));
+
+      if (field.valueType === 'number') {
+        const { setValue } = field;
+        return (
+          <SelectField
+            value={'' + getFieldValue({ instances, field })}
+            key={field.name}
+            id={field.name}
+            floatingLabelText={normalizeLabel(
+              i18n,
+              getFieldLabel({ instances, field })
+            )}
+            helperMarkdownText={normalizeText(
+              i18n,
+              getFieldDescription(field)
+            )}
+            onChange={(event, index, newValue: string) => {
+              instances.forEach(i => setValue(i, parseFloat(newValue) || 0));
+              _onInstancesModified(instances);
+            }}
+            // $FlowFixMe[incompatible-type]
+            style={styles.field}
+            disabled={getDisabled({ instances, field })}
+          >
+            {children}
+          </SelectField>
+        );
+      } else if (field.valueType === 'string') {
+        const { setValue } = field;
+        return (
+          <SelectField
+            value={getFieldValue({
+              instances,
+              field,
+              mixedValueFallback: '(Multiple values)',
+            })}
+            key={field.name}
+            id={field.name}
+            floatingLabelText={normalizeLabel(
+              i18n,
+              getFieldLabel({ instances, field })
+            )}
+            helperMarkdownText={normalizeText(
+              i18n,
+              getFieldDescription(field)
+            )}
+            onChange={(event, index, newValue: string) => {
+              instances.forEach(i => setValue(i, newValue || ''));
+              _onInstancesModified(instances);
+            }}
+            // $FlowFixMe[incompatible-type]
+            style={styles.field}
+            disabled={getDisabled({ instances, field })}
+          >
+            {children}
+          </SelectField>
+        );
+      }
+    },
+    [instances, _onInstancesModified, getFieldDescription]
+  );
+
+  const renderAutocompletionField = React.useCallback(
+    (field: ValueField, i18n: I18nType) => {
+      if (!field.getChoices || !field.getValue || field.valueType !== 'string')
+        return;
+
+      const choices = field.getChoices();
+      const { setValue } = field;
+      const value = getFieldValue({
+        instances,
+        field,
+        mixedValueFallback: '(Multiple values)',
+      });
+
+      return (
+        <SemiControlledAutoComplete
+          value={value}
+          key={field.name}
+          id={field.name}
+          floatingLabelText={normalizeLabel(
+            i18n,
+            getFieldLabel({ instances, field })
+          )}
+          helperMarkdownText={normalizeText(
+            i18n,
+            getFieldDescription(field)
+          )}
+          onChange={(newValue: string) => {
+            instances.forEach(i => setValue(i, newValue || ''));
+            _onInstancesModified(instances);
+          }}
+          dataSource={choices.map(({ value }) => ({
+            value: value,
+            text: value,
+          }))}
+          fullWidth
+          errorText={
+            field.isAllowingAnyValue ||
+            value === '(Multiple values)' ||
+            choices.some(data => data.value === value) ? (
+              undefined
+            ) : !value ? (
+              <Trans>You must select a value.</Trans>
+            ) : (
+              <Trans>
+                You must select a valid value. "{value}" is not valid.
+              </Trans>
+            )
+          }
+        />
+      );
+    },
+    [instances, _onInstancesModified, getFieldDescription]
+  );
+
+  const renderButton = React.useCallback(
+    (field: ActionButton, i18n: I18nType) => {
+      let disabled = false;
+      if (field.disabled === 'onValuesDifferent') {
+        disabled = hasMixedValues({
+          instances,
+          field,
+        });
+      }
+      return (
+        <RaisedButton
+          key={`button-${field.label}`}
+          fullWidth
+          primary
+          icon={<Edit />}
+          disabled={disabled}
+          label={normalizeLabel(i18n, field.label)}
+          onClick={() => {
+            field.onClick(instances[0]);
+          }}
+        />
+      );
+    },
+    [instances]
+  );
+
+  const renderResourceField = (field: ResourceField, i18n: I18nType) => {
+    if (
+      !project ||
+      !resourceManagementProps ||
+      !projectScopedContainersAccessor
+    ) {
+      console.error(
+        'You tried to display a resource field in a PropertiesEditor that does not support display resources. If you need to display resources, pass additional props (project, resourceManagementProps).'
+      );
+      return null;
+    }
+
+    const { setValue } = field;
+    return (
+      <ResourceSelectorWithThumbnail
+        key={field.name}
+        project={project}
+        projectScopedContainersAccessor={projectScopedContainersAccessor}
+        resourceManagementProps={resourceManagementProps}
+        resourceKind={field.resourceKind}
+        resourceName={getFieldValue({
+          instances,
+          field,
+          mixedValueFallback: '(Multiple values)', //TODO
+        })}
+        onChange={newValue => {
+          instances.forEach(i => setValue(i, newValue));
+          _onInstancesModified(instances);
+        }}
+        floatingLabelText={normalizeLabel(
+          i18n,
+          getFieldLabel({ instances, field })
+        )}
+        helperMarkdownText={normalizeText(
+          i18n,
+          getFieldDescription(field)
+        )}
+      />
+    );
+  };
+
+  const renderLeaderboardField = (
+    field: LeaderboardIdField,
+    i18n: I18nType
+  ) => {
+    if (!project) {
+      return null;
+    }
+
+    const { setValue } = field;
+    return (
+      <LeaderboardIdPropertyField
+        key={field.name}
+        project={project}
+        value={getFieldValue({
+          instances,
+          field,
+          mixedValueFallback: '(Multiple values)', //TODO
+        })}
+        onChange={newValue => {
+          instances.forEach(i => setValue(i, newValue));
+          _onInstancesModified(instances);
+        }}
+        floatingLabelText={normalizeLabel(
+          i18n,
+          getFieldLabel({ instances, field })
+        )}
+        helperMarkdownText={normalizeText(
+          i18n,
+          getFieldDescription(field)
+        )}
+        fieldStyle={styles.field}
+      />
+    );
+  };
+
+  const renderContainer =
+    mode === 'row'
+      ? (fields: React.Node) => (
+          <ResponsiveLineStackLayout
+            noMargin
+            noResponsiveLandscape={Array.isArray(fields) && fields.length <= 3}
+          >
+            {fields}
+          </ResponsiveLineStackLayout>
+        )
+      : (fields: React.Node) => (
+          <ColumnStackLayout noMargin>{fields}</ColumnStackLayout>
+        );
+
+  const renderSectionTitle = React.useCallback(
+    (field: SectionTitle, i18n: I18nType) => {
+      return (
+        <Line key={`section-title-${field.name}`}>
+          <Text displayInlineAsSpan>
+            {normalizeLabel(i18n, field.name)}
+          </Text>
+        </Line>
+      );
+    },
+    []
+  );
+
+  return (
+    <I18n>
+      {({ i18n }) =>
+        renderContainer(
+          schema.map(field => {
+            if (!!field.nonFieldType) {
+              if (field.nonFieldType === 'sectionTitle') {
+                return renderSectionTitle(field, i18n);
+              } else if (field.nonFieldType === 'button') {
+                return renderButton(field, i18n);
+              }
+              return null;
+            } else if (field.children) {
+              if (field.type === 'row') {
+                const contentView = (
+                  <UnsavedChangesContext.Consumer key={field.name}>
+                    {unsavedChanges => (
+                      <PropertiesEditor
+                        project={project}
+                        resourceManagementProps={resourceManagementProps}
+                        projectScopedContainersAccessor={
+                          projectScopedContainersAccessor
+                        }
+                        schema={field.children}
+                        instances={instances}
+                        mode="row"
+                        unsavedChanges={unsavedChanges}
+                        onInstancesModified={onInstancesModified}
+                      />
+                    )}
+                  </UnsavedChangesContext.Consumer>
+                );
+                if (field.title) {
+                  return [
+                    <Text key={field.name + '-title'} size="block-title">
+                      {normalizeLabel(i18n, field.title)}
+                    </Text>,
+                    contentView,
+                  ];
+                }
+                return contentView;
+              }
+
+              return (
+                <div key={field.name}>
+                  <Subheader>{normalizeLabel(i18n, field.name)}</Subheader>
+                  <UnsavedChangesContext.Consumer key={field.name}>
+                    {unsavedChanges => (
+                      <PropertiesEditor
+                        project={project}
+                        resourceManagementProps={resourceManagementProps}
+                        projectScopedContainersAccessor={
+                          projectScopedContainersAccessor
+                        }
+                        schema={field.children}
+                        instances={instances}
+                        mode="column"
+                        unsavedChanges={unsavedChanges}
+                        onInstancesModified={onInstancesModified}
+                      />
+                    )}
+                  </UnsavedChangesContext.Consumer>
+                </div>
+              );
+            } else if (field.valueType === 'resource') {
+              return renderResourceField(field, i18n);
+            } else if (field.valueType === 'leaderboardId') {
+              return renderLeaderboardField(field, i18n);
+            } else {
+              if (field.getChoices && field.getValue) {
+                if (field.isAutocompleted) {
+                  return renderAutocompletionField(field, i18n);
+                } else {
+                  return renderSelectField(field, i18n);
+                }
+              }
+              if (field.getValue) return renderInputField(field, i18n);
+            }
+            return null;
+          })
+        )
+      }
+    </I18n>
+  );
+};
+
+export default PropertiesEditor;

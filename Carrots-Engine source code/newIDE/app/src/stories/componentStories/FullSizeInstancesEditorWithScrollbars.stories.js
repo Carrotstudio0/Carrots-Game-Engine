@@ -1,0 +1,86 @@
+// @flow
+import * as React from 'react';
+import paperDecorator from '../PaperDecorator';
+import GDevelopJsInitializerDecorator, {
+  testProject,
+} from '../GDevelopJsInitializerDecorator';
+
+import FullSizeInstancesEditorWithScrollbars from '../../InstancesEditor/FullSizeInstancesEditorWithScrollbars';
+import InstancesSelection from '../../InstancesEditor/InstancesSelection';
+import { type InstancesEditorSettings } from '../../InstancesEditor/InstancesEditorSettings';
+import DragAndDropContextProvider from '../../UI/DragAndDrop/DragAndDropContextProvider';
+import FixedHeightFlexContainer from '../FixedHeightFlexContainer';
+
+const instancesSelection = new InstancesSelection();
+const instancesEditorSettings: InstancesEditorSettings = {
+  grid: false,
+  gridType: 'isometric',
+  gridWidth: 1200,
+  gridHeight: 600,
+  gridDepth: 200,
+  gridOffsetX: 0,
+  gridOffsetY: 0,
+  gridOffsetZ: 0,
+  gridColor: 0,
+  gridAlpha: 0,
+  snap: false,
+  zoomFactor: 1,
+  windowMask: false,
+  selectedLayer: '',
+  gameEditorMode: 'instances-editor',
+};
+
+export default {
+  title: 'Editor/FullSizeInstancesEditorWithScrollbars',
+  component: FullSizeInstancesEditorWithScrollbars,
+  decorators: [paperDecorator, GDevelopJsInitializerDecorator],
+};
+
+export const Default = (): React.Node => (
+  <FixedHeightFlexContainer height={600}>
+    <DragAndDropContextProvider>
+      <FullSizeInstancesEditorWithScrollbars
+        project={testProject.project}
+        layout={testProject.testLayout}
+        eventsBasedObject={null}
+        eventsBasedObjectVariant={null}
+        layersContainer={testProject.testLayout.getLayers()}
+        globalObjectsContainer={testProject.project.getObjects()}
+        objectsContainer={testProject.testLayout.getObjects()}
+        chosenLayer={''}
+        initialInstances={testProject.testLayout.getInitialInstances()}
+        instancesEditorSettings={instancesEditorSettings}
+        onInstancesEditorSettingsMutated={() => {}}
+        isInstanceOf3DObject={() => false}
+        instancesSelection={instancesSelection}
+        onInstancesAdded={() => {}}
+        onInstancesSelected={() => {}}
+        onInstanceDoubleClicked={() => {}}
+        onInstancesMoved={() => {}}
+        onInstancesResized={() => {}}
+        onInstancesRotated={() => {}}
+        selectedObjectNames={[]}
+        onContextMenu={() => {}}
+        instancesEditorShortcutsCallbacks={{
+          onCopy: () => {},
+          onCut: () => {},
+          onPaste: () => {},
+          onDuplicate: () => {},
+          onDelete: () => {},
+          onUndo: () => {},
+          onRedo: () => {},
+          onZoomOut: () => {},
+          onZoomIn: () => {},
+          onShift1: () => {},
+          onShift2: () => {},
+          onShift3: () => {},
+        }}
+        wrappedEditorRef={() => {}}
+        pauseRendering={false}
+        tileMapTileSelection={null}
+        onSelectTileMapTile={() => {}}
+        editorViewPosition2D={{ viewX: null, viewY: null }}
+      />
+    </DragAndDropContextProvider>
+  </FixedHeightFlexContainer>
+);

@@ -1,0 +1,46 @@
+# Generated files
+src/Version/VersionMetadata.js
+public/service-worker.js
+
+# dependencies
+node_modules
+
+# testing
+coverage
+flow-coverage
+
+# Storybook
+build-storybook
+
+# production
+build
+
+# misc
+.DS_Store
+.env.local
+npm-debug.log
+.npm-cache
+
+# GD library
+public/libGD.js
+public/libGD.wasm
+
+# Third party editors
+public/external/piskel/piskel-editor
+public/external/piskel/piskel-editor.zip
+public/external/monaco-editor-min/*
+public/external/jfxr/jfxr-editor/*
+public/external/yarn/yarn-editor/*
+public/external/yarn/__MACOSX/
+public/external/zip.js/*
+public/external/zlib-asm/*
+public/external/__MACOSX/
+
+# Resources
+resources/GDJS
+resources/preview_node_modules
+
+# locales build files
+src/locales/_build
+src/locales/**/*.po
+src/locales/**/*.pot

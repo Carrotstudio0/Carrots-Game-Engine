@@ -1,0 +1,70 @@
+// @flow
+import * as React from 'react';
+import { mapFor } from '../../Utils/MapFor';
+import { type VariableDeclarationContext } from '../SelectionHandler';
+import { type ScreenType } from '../../UI/Responsive/ScreenTypeMeasurer';
+import { type WindowSizeType } from '../../UI/Responsive/ResponsiveWindowMeasurer';
+import { VariableDeclaration } from './VariableDeclaration';
+
+type Props = {|
+  variablesContainer: gdVariablesContainer,
+  loopIndexVariableName?: ?string,
+  onVariableDeclarationClick: VariableDeclarationContext => void,
+  onVariableDeclarationDoubleClick: VariableDeclarationContext => void,
+  className?: string,
+  style?: Object,
+  disabled: boolean,
+
+  screenType: ScreenType,
+  windowSize: WindowSizeType,
+
+  idPrefix: string,
+|};
+
+export default function VariableDeclarationsList({
+  variablesContainer,
+  loopIndexVariableName,
+  onVariableDeclarationClick,
+  onVariableDeclarationDoubleClick,
+  className,
+  style,
+  disabled,
+  screenType,
+  windowSize,
+  idPrefix,
+}: Props): React.MixedElement {
+  const instructions = mapFor(0, variablesContainer.count(), i => {
+    const variable = variablesContainer.getAt(i);
+    const variableName = variablesContainer.getNameAt(i);
+    const variableDeclarationContext = {
+      variablesContainer,
+      variableName,
+    };
+    const isLoopIndexVariable =
+      !!loopIndexVariableName && variableName === loopIndexVariableName;
+
+    return (
+      <VariableDeclaration
+        variableName={variableName}
+        variable={variable}
+        isLoopIndexVariable={isLoopIndexVariable}
+        key={variable.ptr}
+        onClick={() => onVariableDeclarationClick(variableDeclarationContext)}
+        onDoubleClick={() =>
+          onVariableDeclarationDoubleClick(variableDeclarationContext)
+        }
+        selected={false}
+        disabled={disabled}
+        screenType={screenType}
+        windowSize={windowSize}
+        id={`${idPrefix}-variable-${i}`}
+      />
+    );
+  });
+
+  return (
+    <div className={className} style={style} id={`${idPrefix}-variables`}>
+      {instructions}
+    </div>
+  );
+}

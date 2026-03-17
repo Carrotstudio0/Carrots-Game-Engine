@@ -1,0 +1,53 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "GDevelop.js Jest tests (all)",
+      "program": "${workspaceFolder}/GDevelop.js/node_modules/.bin/jest",
+      "args": ["--runInBand"],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "disableOptimisticBPs": true,
+      "cwd": "${workspaceFolder}/GDevelop.js"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "newIDE/app Jest tests (current file)",
+      "program": "${workspaceFolder}/newIDE/app/node_modules/.bin/react-scripts",
+      "args": [
+        "test", "--env=node",
+        "${fileBasenameNoExtension}"
+      ],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "disableOptimisticBPs": true,
+      "cwd": "${workspaceFolder}/newIDE/app"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "GDevelop.js Jest tests (current file)",
+      "program": "${workspaceFolder}/GDevelop.js/node_modules/.bin/jest",
+      "args": [
+        "${fileBasenameNoExtension}"
+      ],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "disableOptimisticBPs": true,
+      "cwd": "${workspaceFolder}/GDevelop.js"
+    },
+    {
+      "type": "pwa-chrome",
+      "request": "launch",
+      "name": "Debug with Chrome (web-app, local development server)",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}"
+    }
+  ]
+}

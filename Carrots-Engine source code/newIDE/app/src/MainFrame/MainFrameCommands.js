@@ -1,0 +1,220 @@
+// @flow
+import * as React from 'react';
+import { type I18n } from '@lingui/core';
+import {
+  useCommand,
+  useCommandWithOptions,
+} from '../CommandPalette/CommandHooks';
+import {
+  enumerateLayouts,
+  enumerateExternalEvents,
+  enumerateExternalLayouts,
+  enumerateEventsFunctionsExtensions,
+} from '../ProjectManager/EnumerateProjectItems';
+import { type FileMetadata } from '../ProjectsStorage';
+
+type Item =
+  | gdLayout
+  | gdExternalEvents
+  | gdExternalLayout
+  | gdEventsFunctionsExtension;
+
+/**
+ * Helper function to generate options list
+ * for each kind of project item
+ */
+const generateProjectItemOptions = <T: Item>(
+  project: ?gdProject,
+  enumerate: (project: gdProject) => Array<T>,
+  onOpen: string => void
+  // $FlowFixMe[missing-local-annot]
+) => {
+  if (!project) return [];
+  return enumerate(project).map(item => ({
+    text: item.getName(),
+    handler: () => onOpen(item.getName()),
+  }));
+};
+
+type CommandHandlers = {|
+  i18n: I18n,
+  project: ?gdProject,
+  previewEnabled: boolean,
+  hasPreviewsRunning: boolean,
+  onOpenProjectManager: () => void,
+  onLaunchPreview: () => void | Promise<void>,
+  onLaunchDebugPreview: () => void,
+  onLaunchNetworkPreview: () => void,
+  onHotReloadPreview: () => void,
+  onLaunchNetworkPreview: () => Promise<void>,
+  onHotReloadPreview: () => Promise<void>,
+  onLaunchPreviewWithDiagnosticReport: () => Promise<void>,
+  onOpenDiagnosticReport: () => void,
+  allowNetworkPreview: boolean,
+  onOpenHomePage: () => void,
+  onCreateProject: () => void,
+  onOpenProject: () => void,
+  onSaveProject: () => Promise<?FileMetadata>,
+  onSaveProjectAs: () => void,
+  onCloseApp: () => void,
+  onCloseProject: () => Promise<void>,
+  onExportGame: () => void,
+  onInviteCollaborators: () => void,
+  onOpenLayout: string => void,
+  onOpenExternalEvents: string => void,
+  onOpenExternalLayout: string => void,
+  onOpenEventsFunctionsExtension: string => void,
+  onOpenCommandPalette: () => void,
+  onOpenProfile: () => void,
+  onRestartInGameEditor: (reason: string) => void,
+|};
+
+const useMainFrameCommands = (handlers: CommandHandlers) => {
+  useCommand('QUIT_APP', true, {
+    handler: handlers.onCloseApp,
+  });
+
+  useCommand('OPEN_PROFILE', true, {
+    handler: handlers.onOpenProfile,
+  });
+
+  useCommand('OPEN_PROJECT_MANAGER', true, {
+    handler: handlers.onOpenProjectManager,
+  });
+
+  useCommand('LAUNCH_NEW_PREVIEW', handlers.previewEnabled, {
+    handler: handlers.onLaunchPreview,
+  });
+
+  useCommand('HOT_RELOAD_PREVIEW', handlers.hasPreviewsRunning, {
+    handler: handlers.onHotReloadPreview,
+  });
+
+  useCommand(
+    'LAUNCH_DEBUG_PREVIEW',
+    handlers.previewEnabled && handlers.allowNetworkPreview,
+    {
+      handler: handlers.onLaunchDebugPreview,
+    }
+  );
+
+  useCommand(
+    'LAUNCH_NETWORK_PREVIEW',
+    handlers.previewEnabled && handlers.allowNetworkPreview,
+    {
+      handler: handlers.onLaunchNetworkPreview,
+    }
+  );
+
+  useCommand(
+    'LAUNCH_PREVIEW_WITH_DIAGNOSTIC_REPORT',
+    handlers.previewEnabled && !handlers.hasPreviewsRunning,
+    {
+      handler: handlers.onLaunchPreviewWithDiagnosticReport,
+    }
+  );
+
+  useCommand('OPEN_DIAGNOSTIC_REPORT', !!handlers.project, {
+    handler: handlers.onOpenDiagnosticReport,
+  });
+
+  useCommand('OPEN_HOME_PAGE', true, {
+    handler: handlers.onOpenHomePage,
+  });
+
+  useCommand('CREATE_NEW_PROJECT', true, {
+    handler: handlers.onCreateProject,
+  });
+
+  useCommand('OPEN_PROJECT', true, {
+    handler: handlers.onOpenProject,
+  });
+
+  const onSaveProject = handlers.onSaveProject;
+  useCommand('SAVE_PROJECT', !!handlers.project, {
+    handler: React.useCallback(
+      () => {
+        onSaveProject();
+      },
+      [onSaveProject]
+    ),
+  });
+
+  useCommand('SAVE_PROJECT_AS', !!handlers.project, {
+    handler: handlers.onSaveProjectAs,
+  });
+
+  useCommand('CLOSE_PROJECT', !!handlers.project, {
+    handler: handlers.onCloseProject,
+  });
+
+  useCommand('EXPORT_GAME', !!handlers.project, {
+    handler: handlers.onExportGame,
+  });
+
+  useCommand('INVITE_COLLABORATORS', !!handlers.project, {
+    handler: handlers.onInviteCollaborators,
+  });
+
+  useCommand('OPEN_COMMAND_PALETTE', true, {
+    handler: handlers.onOpenCommandPalette,
+  });
+
+  const onRestartInGameEditor = handlers.onRestartInGameEditor;
+  useCommand('RESTART_IN_GAME_EDITOR', true, {
+    handler: React.useCallback(
+      () => onRestartInGameEditor('relaunched-manually'),
+      [onRestartInGameEditor]
+    ),
+  });
+
+  useCommandWithOptions('OPEN_LAYOUT', !!handlers.project, {
+    generateOptions: React.useCallback(
+      () =>
+        generateProjectItemOptions(
+          handlers.project,
+          enumerateLayouts,
+          handlers.onOpenLayout
+        ),
+      [handlers.project, handlers.onOpenLayout]
+    ),
+  });
+
+  useCommandWithOptions('OPEN_EXTERNAL_EVENTS', !!handlers.project, {
+    generateOptions: React.useCallback(
+      () =>
+        generateProjectItemOptions(
+          handlers.project,
+          enumerateExternalEvents,
+          handlers.onOpenExternalEvents
+        ),
+      [handlers.project, handlers.onOpenExternalEvents]
+    ),
+  });
+
+  useCommandWithOptions('OPEN_EXTERNAL_LAYOUT', !!handlers.project, {
+    generateOptions: React.useCallback(
+      () =>
+        generateProjectItemOptions(
+          handlers.project,
+          enumerateExternalLayouts,
+          handlers.onOpenExternalLayout
+        ),
+      [handlers.project, handlers.onOpenExternalLayout]
+    ),
+  });
+
+  useCommandWithOptions('OPEN_EXTENSION', !!handlers.project, {
+    generateOptions: React.useCallback(
+      () =>
+        generateProjectItemOptions(
+          handlers.project,
+          enumerateEventsFunctionsExtensions,
+          handlers.onOpenEventsFunctionsExtension
+        ),
+      [handlers.project, handlers.onOpenEventsFunctionsExtension]
+    ),
+  });
+};
+
+export default useMainFrameCommands;

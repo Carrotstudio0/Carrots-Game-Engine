@@ -1,0 +1,112 @@
+// @flow
+import RenderedInstance from './RenderedInstance';
+import PixiResourcesLoader from '../../ObjectsRendering/PixiResourcesLoader';
+import ResourcesLoader from '../../ResourcesLoader';
+import * as PIXI from 'pixi.js-legacy';
+import { rgbOrHexToHexNumber } from '../../Utils/ColorTransformer';
+const gd: libGDevelop = global.gd;
+
+/**
+ * Renderer for an ParticleEmitter object.
+ */
+export default class RenderedParticleEmitterInstance extends RenderedInstance {
+  constructor(
+    project: gdProject,
+    instance: gdInitialInstance,
+    associatedObjectConfiguration: gdObjectConfiguration,
+    // $FlowFixMe[value-as-type]
+    pixiContainer: PIXI.Container,
+    pixiResourcesLoader: Class<PixiResourcesLoader>
+  ) {
+    super(
+      project,
+      instance,
+      associatedObjectConfiguration,
+      pixiContainer,
+      pixiResourcesLoader
+    );
+
+    this._pixiObject = new PIXI.Graphics();
+    this._pixiContainer.addChild(this._pixiObject);
+    this.updateGraphics();
+  }
+
+  /**
+   * Return a URL for thumbnail of the specified object.
+   */
+  static getThumbnail(
+    project: gdProject,
+    resourcesLoader: Class<ResourcesLoader>,
+    objectConfiguration: gdObjectConfiguration
+  ): any {
+    return 'CppPlatform/Extensions/particleSystemicon.png';
+  }
+
+  update() {
+    this._pixiObject.position.x = this._instance.getX();
+    this._pixiObject.position.y = this._instance.getY();
+    // Do not hide completely an object so it can still be manipulated
+    const alphaForDisplay = Math.max(this._instance.getOpacity() / 255, 0.5);
+    this._pixiObject.alpha = alphaForDisplay;
+
+    this.updateGraphics();
+  }
+
+  /**
+   * Render the preview of the particle emitter according to the setup of the object
+   */
+  updateGraphics() {
+    const particleEmitterConfiguration = gd.asParticleEmitterConfiguration(
+      this._associatedObjectConfiguration
+    );
+
+    this._pixiObject.clear();
+
+    const emitterAngle = (this._instance.getAngle() / 180) * 3.14159;
+    const sprayConeAngle = particleEmitterConfiguration.getConeSprayAngle();
+    const line1Angle = emitterAngle - (sprayConeAngle / 2.0 / 180.0) * 3.14159;
+    const line2Angle = emitterAngle + (sprayConeAngle / 2.0 / 180.0) * 3.14159;
+    const length = 64;
+
+    this._pixiObject.beginFill(0, 0);
+    this._pixiObject.lineStyle(
+      3,
+      rgbOrHexToHexNumber(particleEmitterConfiguration.getParticleColor2()),
+      1
+    );
+    this._pixiObject.moveTo(0, 0);
+    this._pixiObject.lineTo(
+      Math.cos(line1Angle) * length,
+      Math.sin(line1Angle) * length
+    );
+    this._pixiObject.moveTo(0, 0);
+    this._pixiObject.lineTo(
+      Math.cos(line2Angle) * length,
+      Math.sin(line2Angle) * length
+    );
+    this._pixiObject.endFill();
+
+    this._pixiObject.lineStyle(0, 0x000000, 1);
+    this._pixiObject.beginFill(
+      rgbOrHexToHexNumber(particleEmitterConfiguration.getParticleColor1())
+    );
+    this._pixiObject.drawCircle(0, 0, 8);
+    this._pixiObject.endFill();
+  }
+
+  getDefaultWidth(): any {
+    return 128;
+  }
+
+  getDefaultHeight(): any {
+    return 128;
+  }
+
+  getOriginX(): any {
+    return 64;
+  }
+
+  getOriginY(): any {
+    return 64;
+  }
+}

@@ -1,0 +1,17 @@
+-DGDJS_EXPORTS
+-DGD_API=
+-DGD_CORE_API=
+-DGD_EXTENSION_API=
+-DGD_IDE_ONLY
+-DMACOS
+-DRELEASE
+-D_FILE_OFFSET_BITS=64
+-D_WCHAR_H_CPLUSPLUS_98_CONFORMANCE_
+-Wno-potentially-evaluated-expression
+-std=gnu++11
+-DNDEBUG
+-fPIC
+-I./ExtLibs/SFML/include
+-I./Core
+-I./GDJS/.
+-F./ExtLibs/SFML/extlibs/libs-osx/Frameworks

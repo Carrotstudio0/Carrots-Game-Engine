@@ -1,0 +1,92 @@
+/* Mosaic layout */
+.mosaic-gd-theme.mosaic {
+  background-color: transparent !important;
+}
+
+.mosaic-gd-theme.mosaic.opaque {
+  background-color: var(--mosaic-layout-background-color) !important;
+  pointer-events: all;
+}
+
+.mosaic-drop-target .drop-target-container {
+  pointer-events: all;
+}
+
+/* Mosaic window and tile */
+.mosaic-gd-theme .mosaic-window-toolbar {
+  background: var(--mosaic-toolbar-background-color) !important;
+  box-shadow: none !important;
+}
+
+.mosaic-gd-theme .mosaic-window-toolbar {
+  border-top-right-radius: 4px !important;
+  border-top-left-radius: 4px !important;
+}
+
+.mosaic-gd-theme .mosaic-window-body {
+  background: var(--mosaic-layout-background-color) !important;
+  border-bottom-left-radius: 4px !important;
+  border-bottom-right-radius: 4px !important;
+}
+
+.mosaic-gd-theme .mosaic-window .mosaic-window-title {
+  padding-left: 8px; /* Follow same spacing as in the rest of the app. */
+  color: var(--mosaic-title-color) !important;
+  font-weight: 400 !important;
+  font-family: var(--gdevelop-modern-font-family);
+  font-size: 15px; /* Same as ClosableTabs font size */
+}
+
+/* Hovered titlebar background */
+.mosaic-gd-theme.mosaic-blueprint-theme .mosaic-window .mosaic-window-toolbar.draggable:hover,
+.mosaic-gd-theme.mosaic.mosaic-blueprint-theme .mosaic-preview .mosaic-window-toolbar.draggable:hover {
+  background: var(--mosaic-toolbar-background-color) !important;
+}
+
+.mosaic-gd-theme .mosaic-window {
+  pointer-events: all;
+}
+
+.mosaic-gd-theme .mosaic-split {
+  pointer-events: all;
+}
+
+/* Separator draggable background (horizontal split) */
+.mosaic-gd-theme .mosaic-split.-column .mosaic-split-line {
+  height: 2px;
+  background-color: var(--mosaic-toolbar-border-color-hover);
+  opacity: 0;
+  border-radius: 2px;
+  width: 50px;
+  margin: auto;
+  top: 2px;
+  transition: opacity 0.1s ease-in-out;
+}
+
+.mosaic-gd-theme .mosaic-split.-column:hover .mosaic-split-line {
+  background-color: var(--mosaic-toolbar-border-color-hover);
+  opacity: 1;
+  box-shadow: none !important;
+  cursor: ns-resize;
+  z-index: 5;
+}
+
+/* Separator draggable background (vertical split) */
+.mosaic-gd-theme .mosaic-split.-row .mosaic-split-line {
+  width: 2px;
+  background-color: var(--mosaic-toolbar-border-color-hover);
+  opacity: 0;
+  border-radius: 2px;
+  height: 50px;
+  margin: auto;
+  left: 2px;
+  transition: opacity 0.1s ease-in-out;
+}
+
+.mosaic-gd-theme .mosaic-split.-row:hover .mosaic-split-line {
+  background-color: var(--mosaic-toolbar-border-color-hover);
+  opacity: 1;
+  box-shadow: none !important;
+  cursor: ew-resize;
+  z-index: 5;
+}

@@ -1,0 +1,827 @@
+// @flow
+import * as React from 'react';
+import { mapFor, mapVector } from '../Utils/MapFor';
+import {
+  type Schema,
+  type Instance,
+  type FieldVisibility,
+  type Field,
+} from './PropertiesEditorSchema';
+import { type ResourceKind } from '../ResourcesList/ResourceSource';
+import MeasurementUnitDocumentation from '../PropertiesEditor/MeasurementUnitDocumentation';
+import { keyNames } from '../Utils/KeyboardKeyNames';
+import Restore from '../UI/CustomSvgIcons/Restore';
+
+const gd: libGDevelop = global.gd;
+
+const createField = (
+  name: string,
+  property: gdPropertyDescriptor,
+  getNumberValue: (instance: Instance, propertyName: string) => number,
+  getStringValue: (instance: Instance, propertyName: string) => string,
+  getBooleanValue: (instance: Instance, propertyName: string) => boolean,
+  setNumberValue: (
+    instance: Instance,
+    propertyName: string,
+    value: number
+  ) => void,
+  setStringValue: (
+    instance: Instance,
+    propertyName: string,
+    value: string
+  ) => void,
+  setBooleanValue: (
+    instance: Instance,
+    propertyName: string,
+    value: boolean
+  ) => void,
+  defaultValue: string | null,
+  object: ?gdObject,
+  showcaseNonDefaultValues: boolean
+): ?Field => {
+  const propertyName = property.getLabel();
+  const getLabel = (instance: Instance) => {
+    if (propertyName) return propertyName;
+    return (
+      name.charAt(0).toUpperCase() +
+      name
+        .slice(1)
+        .split(/(?=[A-Z])/)
+        .join(' ')
+    );
+  };
+  const propertyDescription = property.getDescription();
+  const getDescription = () => propertyDescription;
+
+  const measurementUnit = property.getMeasurementUnit();
+  // TODO Pass this object in the schema instead of building an UI element here.
+  // It will allow to use these data to make a different component for the
+  // compact and regular UI.
+  const enumeratedMeasurementUnit = {
+    shortLabel: getMeasurementUnitShortLabel(measurementUnit),
+    label: measurementUnit.getLabel(),
+    description: measurementUnit.getDescription(),
+    elementsWithWords: measurementUnit.getElementsWithWords(),
+  };
+  const getEndAdornment = (instance: Instance) => {
+    return {
+      label: enumeratedMeasurementUnit.shortLabel,
+      tooltipContent: (
+        <MeasurementUnitDocumentation
+          label={enumeratedMeasurementUnit.label}
+          description={enumeratedMeasurementUnit.description}
+          elementsWithWords={enumeratedMeasurementUnit.elementsWithWords}
+        />
+      ),
+    };
+  };
+  const visibility: FieldVisibility = property.isDeprecated()
+    ? 'deprecated'
+    : property.isAdvanced()
+    ? 'advanced'
+    : 'basic';
+
+  const getValueForString = (instance: Instance): string =>
+    getStringValue(instance, name);
+  const getValueForNumber = (instance: Instance): number =>
+    getNumberValue(instance, name);
+  const defaultValueNumber =
+    defaultValue !== null ? parseFloat(defaultValue) || 0 : null;
+  const isHighlightedForNumber = (instance: gdInitialInstance) => {
+    return (
+      showcaseNonDefaultValues &&
+      getValueForNumber(instance) !== defaultValueNumber
+    );
+  };
+  const isHighlightedForString = (instance: gdInitialInstance) => {
+    return (
+      showcaseNonDefaultValues && getValueForString(instance) !== defaultValue
+    );
+  };
+
+  const valueType = property.getType().toLowerCase();
+  if (valueType === 'number') {
+    const getEndAdornmentIcon =
+      defaultValueNumber !== null
+        ? (instance: gdInitialInstance) => {
+            return getValueForNumber(instance) === defaultValueNumber
+              ? null
+              : // $FlowFixMe[missing-local-annot]
+                className => <Restore className={className} />;
+          }
+        : undefined;
+    const setValue = (instance: Instance, newValue: number) => {
+      setNumberValue(instance, name, newValue);
+    };
+    const onClickEndAdornment =
+      defaultValueNumber !== null
+        ? (instance: gdInitialInstance) => {
+            setValue(instance, defaultValueNumber);
+          }
+        : undefined;
+    // $FlowFixMe[incompatible-type]
+    return {
+      name,
+      valueType,
+      getValue: getValueForNumber,
+      setValue,
+      defaultValue: defaultValueNumber,
+      getLabel,
+      getDescription,
+      hasImpactOnAllOtherFields: property.hasImpactOnOtherProperties(),
+      canBeUnlimitedUsingMinus1: property
+        .getExtraInfo()
+        .toJSArray()
+        .includes('canBeUnlimitedUsingMinus1'),
+      getEndAdornment,
+      getEndAdornmentIcon,
+      onClickEndAdornment,
+      visibility,
+      isHighlighted: isHighlightedForNumber,
+    };
+  } else if (valueType === 'string' || valueType === '') {
+    return {
+      name,
+      valueType: 'string',
+      getValue: getValueForString,
+      setValue: (instance: Instance, newValue: string) => {
+        setStringValue(instance, name, newValue);
+      },
+      defaultValue,
+      getLabel,
+      getDescription,
+      hasImpactOnAllOtherFields: property.hasImpactOnOtherProperties(),
+      visibility,
+      isHighlighted: isHighlightedForString,
+    };
+  } else if (valueType === 'boolean') {
+    const defaultValueBoolean = defaultValue ? defaultValue === 'true' : null;
+    const getValue = (instance: Instance): boolean =>
+      getBooleanValue(instance, name);
+    return {
+      name,
+      valueType,
+      getValue,
+      setValue: (instance: Instance, newValue: boolean) => {
+        setBooleanValue(instance, name, newValue);
+      },
+      defaultValue: defaultValueBoolean,
+      getLabel,
+      getDescription,
+      hasImpactOnAllOtherFields: property.hasImpactOnOtherProperties(),
+      visibility,
+      isHighlighted: isHighlightedForString,
+    };
+  } else if (valueType === 'choice' || valueType === 'numberwithchoices') {
+    // Choice is a "string" (with a selector for the user in the UI)
+    // $FlowFixMe[incompatible-exact]
+    const choices = mapVector(property.getChoices(), choice => ({
+      // $FlowFixMe[incompatible-use]
+      value: choice.getValue(),
+      label:
+        // $FlowFixMe[incompatible-use]
+        choice.getValue() +
+        // $FlowFixMe[incompatible-use]
+        (choice.getLabel() && choice.getLabel() !== choice.getValue()
+          ? // $FlowFixMe[incompatible-use]
+            ` — ${choice.getLabel()}`
+          : ''),
+    }));
+    // TODO Remove this once we made sure no built-in extension still use `addExtraInfo` instead of `addChoice`.
+    const deprecatedChoices = property
+      .getExtraInfo()
+      .toJSArray()
+      .map(value => ({ value, label: value }));
+
+    return valueType === 'numberwithchoices'
+      ? // $FlowFixMe[incompatible-type]
+        {
+          name,
+          valueType: 'number',
+          getChoices: () => [...choices, ...deprecatedChoices],
+          getValue: getValueForNumber,
+          setValue: (instance: Instance, newValue: number) => {
+            setNumberValue(instance, name, newValue);
+          },
+          getLabel,
+          getDescription,
+          hasImpactOnAllOtherFields: property.hasImpactOnOtherProperties(),
+          visibility,
+          isHighlighted: isHighlightedForNumber,
+        }
+      : // $FlowFixMe[incompatible-type]
+        {
+          name,
+          valueType: 'string',
+          getChoices: () => [...choices, ...deprecatedChoices],
+          getValue: getValueForString,
+          setValue: (instance: Instance, newValue: string) => {
+            setStringValue(instance, name, newValue);
+          },
+          getLabel,
+          getDescription,
+          hasImpactOnAllOtherFields: property.hasImpactOnOtherProperties(),
+          visibility,
+          isHighlighted: isHighlightedForString,
+        };
+  } else if (valueType === 'behavior') {
+    const behaviorType =
+      property.getExtraInfo().size() > 0 ? property.getExtraInfo().at(0) : '';
+    return {
+      name,
+      isHiddenWhenOnlyOneChoice: true,
+      valueType: 'string',
+      getChoices: () => {
+        return !object || behaviorType === ''
+          ? []
+          : object
+              .getAllBehaviorNames()
+              .toJSArray()
+              .map(name =>
+                object.getBehavior(name).getTypeName() === behaviorType
+                  ? name
+                  : null
+              )
+              .filter(Boolean)
+              .map(value => ({ value, label: value }));
+      },
+      getValue: (instance: Instance): string => getStringValue(instance, name),
+      setValue: (instance: Instance, newValue: string) => {
+        setStringValue(instance, name, newValue);
+      },
+      getLabel,
+      getDescription,
+      hasImpactOnAllOtherFields: property.hasImpactOnOtherProperties(),
+      visibility,
+      isHighlighted: isHighlightedForString,
+    };
+  } else if (valueType === 'leaderboardid') {
+    // LeaderboardId is a "string" (with a selector in the UI)
+    return {
+      name,
+      valueType: 'leaderboardId',
+      getValue: getValueForString,
+      setValue: (instance: Instance, newValue: string) => {
+        setStringValue(instance, name, newValue);
+      },
+      getLabel,
+      getDescription,
+      hasImpactOnAllOtherFields: property.hasImpactOnOtherProperties(),
+      visibility,
+      isHighlighted: isHighlightedForString,
+    };
+  } else if (valueType === 'resource') {
+    // Resource is a "string" (with a selector in the UI)
+    const extraInfos = property.getExtraInfo().toJSArray();
+    // $FlowFixMe[incompatible-type] - assume the passed resource kind is always valid.
+    const kind: ResourceKind = extraInfos[0] || '';
+    return {
+      name,
+      valueType: 'resource',
+      resourceKind: kind,
+      getValue: getValueForString,
+      setValue: (instance: Instance, newValue: string) => {
+        setStringValue(instance, name, newValue);
+      },
+      getLabel,
+      getDescription,
+      hasImpactOnAllOtherFields: property.hasImpactOnOtherProperties(),
+      visibility,
+      isHighlighted: isHighlightedForString,
+    };
+  } else if (valueType === 'color') {
+    return {
+      name,
+      valueType: 'color',
+      getValue: getValueForString,
+      setValue: (instance: Instance, newValue: string) => {
+        setStringValue(instance, name, newValue);
+      },
+      getLabel,
+      getDescription,
+      hasImpactOnAllOtherFields: property.hasImpactOnOtherProperties(),
+      visibility,
+      isHighlighted: isHighlightedForString,
+    };
+  } else if (valueType === 'multilinestring') {
+    return {
+      name,
+      valueType: 'multilinestring',
+      getValue: getValueForString,
+      setValue: (instance: Instance, newValue: string) => {
+        setStringValue(instance, name, newValue);
+      },
+      getLabel,
+      getDescription,
+      hasImpactOnAllOtherFields: property.hasImpactOnOtherProperties(),
+      visibility,
+      isHighlighted: isHighlightedForString,
+    };
+  } else if (valueType === 'objectanimationname') {
+    // $FlowFixMe[incompatible-type]
+    return {
+      getChoices: () => {
+        if (!object) {
+          return [];
+        }
+        const choices = mapFor(
+          0,
+          object.getConfiguration().getAnimationsCount(),
+          i => {
+            const animationName = object.getConfiguration().getAnimationName(i);
+            return animationName === ''
+              ? null
+              : {
+                  value: animationName,
+                  label: animationName,
+                };
+          }
+        ).filter(Boolean);
+        choices.push({ value: '', label: '(no animation)' });
+        return choices;
+      },
+      name,
+      valueType: 'string',
+      getValue: getValueForString,
+      setValue: (instance: Instance, newValue: string) => {
+        setStringValue(instance, name, newValue);
+      },
+      getLabel,
+      getDescription,
+      visibility,
+      isHighlighted: isHighlightedForString,
+    };
+  } else if (valueType === 'keyboardkey') {
+    // $FlowFixMe[incompatible-type]
+    return {
+      getChoices: () => {
+        const choices = keyNames.map(keyName => ({
+          value: keyName,
+          label: keyName,
+        }));
+        choices.push({ value: '', label: '(no key)' });
+        return choices;
+      },
+      name,
+      valueType: 'string',
+      getValue: getValueForString,
+      setValue: (instance: Instance, newValue: string) => {
+        setStringValue(instance, name, newValue);
+      },
+      getLabel,
+      getDescription,
+      visibility,
+      isHighlighted: isHighlightedForString,
+    };
+  } else {
+    console.error(
+      `A property with type=${valueType} could not be mapped to a field. Ensure that this type is correct and understood by the IDE.`
+    );
+    return null;
+  }
+};
+
+const propertyKeywordCouples: Array<Array<string>> = [
+  ['Top', 'Bottom'],
+  ['Left', 'Right'],
+  ['Front', 'Back'],
+  ['Up', 'Down'],
+  ['Min', 'Max'],
+  ['Low', 'High'],
+  ['Color', 'Opacity'],
+  ['Horizontal', 'Vertical'],
+  ['Acceleration', 'Deceleration'],
+  ['Duration', 'Easing'],
+  ['Delay', 'Duration'],
+  ['EffectName', 'EffectProperty'],
+  ['Gravity', 'MaxFallingSpeed'],
+  ['JumpSpeed', 'JumpSustainTime'],
+  ['XGrabTolerance', 'YGrabOffset'],
+  ['MaxSpeed', 'SlopeMaxAngle'],
+  ['Beginning', 'End'],
+  ['Start', 'End'],
+  ['Rear', 'Front'],
+  ['1', '2'],
+  ['3', '4'],
+  ['5', '6'],
+  // Make triples low priority because side panels are tight.
+  ['X', 'Y', 'Z'],
+  ['Width', 'Height', 'Depth'],
+];
+
+// $FlowFixMe[missing-local-annot]
+const uncapitalize = str => {
+  if (!str) return str;
+  return str[0].toLowerCase() + str.substr(1);
+};
+
+/**
+ * Return true when the property exists and should be displayed.
+ *
+ * @param properties The properties
+ * @param name The property name
+ * @param visibility `true` when only deprecated properties must be displayed
+ * and `false` when only not deprecated ones must be displayed
+ */
+const isPropertyVisible = ({
+  properties,
+  name,
+  visibility,
+  quickCustomizationVisibilities,
+}: {
+  properties: gdMapStringPropertyDescriptor,
+  name: string,
+  visibility: 'All' | 'Basic' | 'Advanced' | 'Deprecated' | 'Basic-Quick',
+  quickCustomizationVisibilities?: gdQuickCustomizationVisibilitiesContainer,
+}): boolean => {
+  if (!properties.has(name)) {
+    return false;
+  }
+  const property = properties.get(name);
+  if (property.isHidden()) {
+    return false;
+  }
+  if (visibility === 'All') {
+    return true;
+  }
+  if (visibility === 'Deprecated') {
+    return property.isDeprecated();
+  }
+  if (visibility === 'Advanced') {
+    return property.isAdvanced();
+  }
+  if (visibility === 'Basic') {
+    return !property.isAdvanced() && !property.isDeprecated();
+  }
+  if (visibility === 'Basic-Quick') {
+    // "Basic":
+    if (property.isDeprecated()) return false;
+    if (property.isAdvanced()) return false;
+
+    // Honor visibility if set on the property.
+    if (
+      property.getQuickCustomizationVisibility() ===
+      gd.QuickCustomization.Hidden
+    )
+      return false;
+    if (
+      property.getQuickCustomizationVisibility() ===
+      gd.QuickCustomization.Visible
+    )
+      return true;
+
+    // Honor visibility if set on the container.
+    if (quickCustomizationVisibilities) {
+      const visibility = quickCustomizationVisibilities.get(name);
+      if (visibility === gd.QuickCustomization.Hidden) return false;
+      if (visibility === gd.QuickCustomization.Visible) return true;
+    }
+
+    // Otherwise, hide some properties that we know are complex.
+    const propertyType = property.getType();
+    if (propertyType === 'Behavior') return false; // Hide "required behaviors".
+  }
+  return true;
+};
+
+type CommonProps = {|
+  defaultValueProperties:
+    | gdPropertiesContainer
+    | gdMapStringPropertyDescriptor
+    | null,
+  object?: ?gdObject,
+  visibility?: 'All' | 'Basic' | 'Advanced' | 'Deprecated' | 'Basic-Quick',
+  quickCustomizationVisibilities?: gdQuickCustomizationVisibilitiesContainer,
+  showcaseNonDefaultValues?: boolean,
+|};
+
+export const effectPropertiesMapToSchema = ({
+  defaultValueProperties,
+  object,
+  visibility = 'All',
+  quickCustomizationVisibilities,
+  showcaseNonDefaultValues,
+}: {
+  ...CommonProps,
+  defaultValueProperties: gdMapStringPropertyDescriptor,
+}): Schema => {
+  return adaptablePropertiesMapToSchema({
+    properties: defaultValueProperties,
+    defaultValueProperties,
+    object,
+    visibility,
+    quickCustomizationVisibilities,
+    showcaseNonDefaultValues,
+    getNumberValue: (instance: Instance, propertyName: string): number =>
+      instance.hasDoubleParameter(propertyName)
+        ? instance.getDoubleParameter(propertyName)
+        : defaultValueProperties.has(propertyName)
+        ? parseFloat(defaultValueProperties.get(propertyName).getValue()) || 0
+        : 0,
+    getStringValue: (instance: Instance, propertyName: string): string =>
+      instance.hasStringParameter(propertyName)
+        ? instance.getStringParameter(propertyName)
+        : defaultValueProperties.has(propertyName)
+        ? defaultValueProperties.get(propertyName).getValue()
+        : '',
+    getBooleanValue: (instance: Instance, propertyName: string): boolean =>
+      instance.hasBooleanParameter(propertyName)
+        ? instance.getBooleanParameter(propertyName)
+        : defaultValueProperties.has(propertyName)
+        ? defaultValueProperties.get(propertyName).getValue() === 'true'
+        : false,
+    setNumberValue: (instance: Instance, propertyName: string, value: number) =>
+      instance.setDoubleParameter(propertyName, value),
+    setStringValue: (instance: Instance, propertyName: string, value: string) =>
+      instance.setStringParameter(propertyName, value),
+    setBooleanValue: (
+      instance: Instance,
+      propertyName: string,
+      value: boolean
+    ) => instance.setBooleanParameter(propertyName, value),
+  });
+};
+
+/**
+ * Transform a MapStringPropertyDescriptor to a schema that can be used in:
+ * - CompactPropertiesEditor
+ * - CompactPropertiesEditorByVisibility
+ * - PropertiesEditor
+ * - PropertiesEditorByVisibility.
+ *
+ * @param properties The properties to use
+ * @param getProperties The function called to read again the properties
+ * @param onUpdateProperty The function called to update a property of an object
+ */
+const propertiesMapToSchema = ({
+  properties,
+  defaultValueProperties,
+  getPropertyValue,
+  onUpdateProperty,
+  object,
+  visibility = 'All',
+  quickCustomizationVisibilities,
+  showcaseNonDefaultValues,
+}: {
+  ...CommonProps,
+  getPropertyValue: (instance: Instance, propertyName: string) => string,
+  properties: gdMapStringPropertyDescriptor,
+  onUpdateProperty: (
+    instance: Instance,
+    propertyName: string,
+    newValue: string
+  ) => void,
+}): Schema => {
+  return adaptablePropertiesMapToSchema({
+    properties,
+    defaultValueProperties,
+    object,
+    visibility,
+    quickCustomizationVisibilities,
+    showcaseNonDefaultValues,
+    getNumberValue: (instance: Instance, propertyName: string): number => {
+      // Consider a missing value as 0 to avoid propagating NaN.
+      return parseFloat(getPropertyValue(instance, propertyName)) || 0;
+    },
+    getStringValue: (instance: Instance, propertyName: string): string => {
+      return getPropertyValue(instance, propertyName);
+    },
+    getBooleanValue: (instance: Instance, propertyName: string): boolean => {
+      return getPropertyValue(instance, propertyName) === 'true';
+    },
+    setNumberValue: (instance: Instance, propertyName: string, value: number) =>
+      onUpdateProperty(instance, propertyName, '' + value),
+    setStringValue: (instance: Instance, propertyName: string, value: string) =>
+      onUpdateProperty(instance, propertyName, value),
+    setBooleanValue: (
+      instance: Instance,
+      propertyName: string,
+      value: boolean
+    ) => onUpdateProperty(instance, propertyName, value ? '1' : '0'),
+  });
+};
+
+const adaptablePropertiesMapToSchema = ({
+  properties,
+  defaultValueProperties,
+  object,
+  visibility = 'All',
+  quickCustomizationVisibilities,
+  showcaseNonDefaultValues,
+  getNumberValue,
+  getStringValue,
+  getBooleanValue,
+  setNumberValue,
+  setStringValue,
+  setBooleanValue,
+}: {|
+  ...CommonProps,
+  properties: gdMapStringPropertyDescriptor,
+  getNumberValue: (instance: Instance, propertyName: string) => number,
+  getStringValue: (instance: Instance, propertyName: string) => string,
+  getBooleanValue: (instance: Instance, propertyName: string) => boolean,
+  setNumberValue: (
+    instance: Instance,
+    propertyName: string,
+    value: number
+  ) => void,
+  setStringValue: (
+    instance: Instance,
+    propertyName: string,
+    value: string
+  ) => void,
+  setBooleanValue: (
+    instance: Instance,
+    propertyName: string,
+    value: boolean
+  ) => void,
+|}): Schema => {
+  const propertyNames = properties.keys();
+  // Aggregate field by groups to be able to build field groups with a title.
+  const fieldsByGroups = new Map<string, Array<Field>>();
+  const alreadyHandledProperties = new Set<string>();
+  mapFor(0, propertyNames.size(), i => {
+    const name = propertyNames.at(i);
+    const property = properties.get(name);
+    if (
+      !isPropertyVisible({
+        properties,
+        name,
+        visibility,
+        quickCustomizationVisibilities,
+      })
+    ) {
+      return null;
+    }
+    if (alreadyHandledProperties.has(name)) return null;
+
+    const groupName = property.getGroup() || '';
+    let fields = fieldsByGroups.get(groupName);
+    if (!fields) {
+      fields = [];
+      fieldsByGroups.set(groupName, fields);
+    }
+
+    // Search a property couple that can be put in a row.
+    let field: ?Field = null;
+    for (const propertyKeywords of propertyKeywordCouples) {
+      const rowPropertyNames: string[] = [];
+      for (let index = 0; index < propertyKeywords.length; index++) {
+        const keyword = propertyKeywords[index];
+
+        if (name.includes(keyword)) {
+          const rowAllPropertyNames = propertyKeywords.map(otherKeyword =>
+            name.replace(keyword, otherKeyword)
+          );
+          for (const rowPropertyName of rowAllPropertyNames) {
+            if (
+              isPropertyVisible({
+                properties,
+                name: rowPropertyName,
+                visibility,
+                quickCustomizationVisibilities,
+              })
+            ) {
+              rowPropertyNames.push(rowPropertyName);
+            }
+          }
+        } else {
+          const uncapitalizeKeyword = uncapitalize(keyword);
+          if (name.startsWith(uncapitalizeKeyword)) {
+            const rowAllPropertyNames = propertyKeywords.map(otherKeyword =>
+              name.replace(uncapitalizeKeyword, uncapitalize(otherKeyword))
+            );
+            for (const rowPropertyName of rowAllPropertyNames) {
+              if (
+                isPropertyVisible({
+                  properties,
+                  name: rowPropertyName,
+                  visibility,
+                  quickCustomizationVisibilities,
+                })
+              ) {
+                rowPropertyNames.push(rowPropertyName);
+              }
+            }
+          }
+        }
+      }
+      if (rowPropertyNames.length > 1) {
+        const rowProperties = rowPropertyNames.map(name =>
+          properties.get(name)
+        );
+        if (
+          rowProperties.every(
+            property => property.getGroup() === rowProperties[0].getGroup()
+          )
+        ) {
+          const rowFields: Field[] = [];
+          for (
+            let index = 0;
+            index < rowProperties.length && index < rowPropertyNames.length;
+            index++
+          ) {
+            const rowProperty = rowProperties[index];
+            const rowPropertyName = rowPropertyNames[index];
+            const rowPropertyDefaultValue = defaultValueProperties
+              ? defaultValueProperties.has(rowPropertyName)
+                ? defaultValueProperties.get(rowPropertyName).getValue()
+                : ''
+              : null;
+
+            const field = createField(
+              rowPropertyName,
+              rowProperty,
+              getNumberValue,
+              getStringValue,
+              getBooleanValue,
+              setNumberValue,
+              setStringValue,
+              setBooleanValue,
+              rowPropertyDefaultValue,
+              object,
+              !!showcaseNonDefaultValues
+            );
+
+            if (field) {
+              rowFields.push(field);
+            }
+          }
+          if (rowFields.length === rowProperties.length) {
+            field = {
+              name: rowPropertyNames.join('-'),
+              type: 'row',
+              children: rowFields,
+            };
+            rowPropertyNames.forEach(propertyName => {
+              alreadyHandledProperties.add(propertyName);
+            });
+            // Don't try to match this property with anything else.
+            break;
+          }
+        }
+      }
+    }
+    if (!field) {
+      field = createField(
+        name,
+        property,
+        getNumberValue,
+        getStringValue,
+        getBooleanValue,
+        setNumberValue,
+        setStringValue,
+        setBooleanValue,
+        defaultValueProperties
+          ? defaultValueProperties.has(name)
+            ? defaultValueProperties.get(name).getValue()
+            : ''
+          : null,
+        object,
+        !!showcaseNonDefaultValues
+      );
+    }
+    if (field) {
+      fields.push(field);
+    }
+  });
+  if (fieldsByGroups.size === 0) {
+    return [];
+  }
+  const defaultGroupField = fieldsByGroups.get('');
+  if (fieldsByGroups.size === 1 && defaultGroupField) {
+    // Avoid to create a blank title
+    return defaultGroupField;
+  }
+  // Create a group for the default one too because it would look weird with the indentation.
+  const groupNames = [...fieldsByGroups.keys()].sort((a, b) =>
+    a.localeCompare(b)
+  );
+  return groupNames.map(groupName => ({
+    name: groupName,
+    type: 'column',
+    title: groupName,
+    // The group actually always exists here.
+    children: fieldsByGroups.get(groupName) || [],
+  }));
+};
+
+const exponents = ['⁰', '¹', '²', '³', '⁴', '⁵'];
+
+export const getMeasurementUnitShortLabel = (
+  measurementUnit: gdMeasurementUnit
+): string => {
+  return mapFor(0, measurementUnit.getElementsCount(), i => {
+    const baseUnit = measurementUnit.getElementBaseUnit(i);
+    const power = measurementUnit.getElementPower(i);
+    const absPower = Math.abs(power);
+    const showPower = power < 0 || (absPower > 1 && absPower < 6);
+    return (
+      baseUnit.getSymbol() +
+      (power < 0 ? '⁻' : '') +
+      (showPower ? exponents[absPower] : '')
+    );
+  }).join(' · ');
+};
+
+export default propertiesMapToSchema;

@@ -1,0 +1,156 @@
+// @flow
+import axios from 'axios';
+import { GDevelopAssetApi } from './ApiConfigs';
+import { type Capabilities } from './Usage';
+import { type MessageByLocale } from '../i18n/MessageByLocale';
+import { ensureIsArray } from '../DataValidator';
+
+export type TutorialCategory =
+  | 'game-mechanic'
+  | 'full-game'
+  | 'official-beginner'
+  | 'official-intermediate'
+  | 'official-advanced'
+  | 'recommendations'
+  | 'education-curriculum';
+
+export type Tutorial = {|
+  id: string,
+  /** Deprecated - see `titleByLocale`. */
+  title?: string,
+  titleByLocale: MessageByLocale,
+  /** Deprecated - see `descriptionByLocale`. */
+  description?: string,
+  descriptionByLocale: MessageByLocale,
+  type: 'video' | 'text' | 'pdf-tutorial' | 'course',
+  category: TutorialCategory,
+  duration?: number,
+  /** Deprecated - see `linkByLocale`. */
+  link?: string,
+  linkByLocale: MessageByLocale,
+  /** Deprecated - see `thumbnailUrlByLocale`. */
+  thumbnailUrl?: string,
+  thumbnailUrlByLocale: MessageByLocale,
+
+  isPrivateTutorial?: boolean,
+  redeemHintByLocale?: MessageByLocale,
+  redeemLinkByLocale?: MessageByLocale,
+  sectionByLocale?: MessageByLocale,
+  tagsByLocale?: MessageByLocale[],
+  availableAt?: string,
+  gameLink?: string,
+  templateUrl?: string,
+
+  courseId?: string,
+  examUrl?: string,
+|};
+
+export const canAccessTutorial = (
+  _tutorial: Tutorial,
+  _capabilities: Capabilities | null
+): boolean => {
+  return true;
+};
+
+// $FlowFixMe[cannot-resolve-name]
+export const client: Axios = axios.create({
+  baseURL: GDevelopAssetApi.baseUrl,
+});
+
+export const listAllTutorials = (): Promise<Array<Tutorial>> => {
+  return client
+    .get(`/tutorial`, {
+      params: { include: 'upcoming' },
+    })
+    .then(response =>
+      ensureIsArray({
+        data: response.data,
+        endpointName: '/tutorial of Asset API',
+      })
+    );
+};
+
+export const getObjectTutorialIds = (type: string): Array<string> => {
+  switch (type) {
+    case 'ParticleSystem::ParticleEmitter':
+      return ['in-depth-tutorial-particle-emitter'];
+    case 'Lighting::LightObject':
+      return ['flickering-dynamic-light-effect'];
+    case 'BitmapText::BitmapTextObject':
+    case 'TileMap::TileMap':
+      return ['intermediate-bitmap-text-and-tilemap'];
+    default:
+      return [];
+  }
+};
+
+export const getBehaviorTutorialIds = (type: string): Array<string> => {
+  switch (type) {
+    case 'Tween::TweenBehavior':
+      return ['tween-behavior'];
+    case 'AnchorBehavior::AnchorBehavior':
+      return ['responsive-ui'];
+    case 'Physics2::Physics2Behavior':
+      return ['in-depth-tutorial-physics-engine-two'];
+    case 'PlatformBehavior::PlatformerObjectBehavior':
+    case 'PlatformBehavior::PlatformBehavior':
+      return ['in-depth-tutorial-platformer'];
+    case 'TopDownMovementBehavior::TopDownMovementBehavior':
+      return ['in-depth-tutorial-top-down-behavior'];
+    default:
+      return [];
+  }
+};
+
+export const getInstructionTutorialIds = (type: string): Array<string> => {
+  switch (type) {
+    case 'CameraX':
+    case 'CameraY':
+    case 'RotateCamera':
+    case 'ZoomCamera':
+    case 'FixCamera':
+    case 'CentreCamera':
+      return ['smooth-camera-movement'];
+    case 'ChangeTimeScale':
+      return ['pause-menu'];
+    case 'EcrireFichierExp':
+    case 'EcrireFichierTxt':
+    case 'LireFichierExp':
+    case 'LireFichierTxt':
+    case 'ReadNumberFromStorage':
+    case 'ReadStringFromStorage':
+      return ['intermediate-storage'];
+    case 'PlatformBehavior::SimulateJumpKey':
+      return ['simple-trampoline-platformer'];
+    case 'AjoutObjConcern':
+    case 'PickNearest':
+    case 'AjoutHasard':
+      return ['intermediate-object-picking'];
+    case 'ToggleObjectVariableAsBoolean':
+    case 'ToggleGlobalVariableAsBoolean':
+    case 'ToggleSceneVariableAsBoolean':
+    case 'SetBooleanObjectVariable':
+    case 'SetBooleanVariable':
+      return ['intermediate-toggle-states-with-variable'];
+    case 'Scene':
+    case 'PushScene':
+    case 'PopScene':
+      return ['intermediate-level-select-menu'];
+    case 'Animation':
+    case 'AnimationName':
+    case 'ChangeAnimation':
+    case 'ChangeAnimationName':
+    case 'AnimatableCapability::AnimatableBehavior::Index':
+    case 'AnimatableCapability::AnimatableBehavior::Name':
+    case 'AnimatableCapability::AnimatableBehavior::SetIndex':
+    case 'AnimatableCapability::AnimatableBehavior::SetName':
+      return ['intermediate-changing-animations'];
+    case 'PopStartedTouch':
+    case 'MouseButtonPressed':
+    case 'HasAnyTouchOrMouseStarted':
+    case 'HasTouchEnded':
+      return ['intermediate-touchscreen-controls'];
+    default:
+      return [];
+  }
+};

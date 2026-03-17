@@ -1,0 +1,61 @@
+.container {
+  display: flex;
+  align-items: center;
+  background-color: var(--theme-text-field-default-background-color);
+  border-radius: 4px;
+}
+
+.containerExpand {
+  flex: 1;
+}
+
+.compactToggleButton {
+  border-radius: 4px;
+  color: var(--theme-text-default-color);
+  background-color: var(--theme-text-field-default-background-color);
+  transition: box-shadow 0.1s;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0px;
+  margin: 3px;
+  border: 0;
+}
+
+.label {
+  font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, Oxygen-Sans, Ubuntu, 'Helvetica Neue', Helvetica, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+  margin-left: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--theme-text-default-color);
+  transition: color 0.1s linear;
+}
+
+.active .label {
+  color: var(--theme-icon-button-selected-color);
+}
+
+.separator {
+  background-color: var(--theme-text-field-disabled-color);
+  height: 15px;
+  width: 1px;
+  margin: 0 1px;
+}
+
+/* svg tag is needed to be first priority compared to Material UI Custom SVG icon classes*/
+svg.icon {
+  font-size: 20px;
+  color: var(--theme-text-default-color);
+  transition: color 0.1s linear;
+}
+
+.compactToggleButton.active {
+  background-color: var(--theme-icon-button-selected-background-color);
+}
+.compactToggleButton.active svg.icon {
+  color: var(--theme-icon-button-selected-color);
+}

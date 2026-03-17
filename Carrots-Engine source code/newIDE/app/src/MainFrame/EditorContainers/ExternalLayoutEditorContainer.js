@@ -1,0 +1,465 @@
+// @flow
+import { Trans } from '@lingui/macro';
+
+import * as React from 'react';
+import RaisedButton from '../../UI/RaisedButton';
+import SceneEditor from '../../SceneEditor';
+import {
+  serializeToJSObject,
+  unserializeFromJSObject,
+} from '../../Utils/Serializer';
+import PlaceholderMessage from '../../UI/PlaceholderMessage';
+import {
+  type RenderEditorContainerProps,
+  type RenderEditorContainerPropsWithRef,
+  type SceneEventsOutsideEditorChanges,
+  type InstancesOutsideEditorChanges,
+  type ObjectsOutsideEditorChanges,
+  type ObjectGroupsOutsideEditorChanges,
+} from './BaseEditor';
+import ExternalPropertiesDialog, {
+  type ExternalProperties,
+} from './ExternalPropertiesDialog';
+import { Line } from '../../UI/Grid';
+import Text from '../../UI/Text';
+import { prepareInstancesEditorSettings } from '../../InstancesEditor/InstancesEditorSettings';
+import TutorialButton from '../../UI/TutorialButton';
+import HelpButton from '../../UI/HelpButton';
+import {
+  registerOnResourceExternallyChangedCallback,
+  unregisterOnResourceExternallyChangedCallback,
+} from '../ResourcesWatcher';
+import { ProjectScopedContainersAccessor } from '../../InstructionOrExpression/EventsScope';
+import { type ObjectWithContext } from '../../ObjectsList/EnumerateObjects';
+import {
+  switchToSceneEdition,
+  setEditorHotReloadNeeded,
+  switchInGameEditorIfNoHotReloadIsNeeded,
+  type HotReloadSteps,
+} from '../../EmbeddedGame/EmbeddedGameFrame';
+import Background from '../../UI/Background';
+
+const styles = {
+  container: {
+    display: 'flex',
+    flex: 1,
+  },
+};
+
+type State = {|
+  externalPropertiesDialogOpen: boolean,
+|};
+
+export class ExternalLayoutEditorContainer extends React.Component<
+  RenderEditorContainerProps,
+  State
+> {
+  editor: ?SceneEditor;
+  resourceExternallyChangedCallbackId: ?string;
+  // $FlowFixMe[missing-local-annot]
+  state = {
+    externalPropertiesDialogOpen: false,
+  };
+
+  getProject(): ?gdProject {
+    return this.props.project;
+  }
+
+  shouldComponentUpdate(nextProps: RenderEditorContainerProps): any {
+    if (!this.props.isActive && nextProps.isActive) {
+      this._setPreviewedLayout();
+    }
+    // This optimization is a bit more cautious than the traditional one, to still allow
+    // children, and in particular SceneEditor and InstancesEditor, to be notified when isActive
+    // goes from true to false (in which case PIXI rendering is halted). If isActive was false
+    // and remains false, it's safe to stop update here (PIXI rendering is already halted).
+    return this.props.isActive || nextProps.isActive;
+  }
+
+  componentDidMount() {
+    if (this.props.isActive) {
+      this._setPreviewedLayout();
+    }
+    this.resourceExternallyChangedCallbackId = registerOnResourceExternallyChangedCallback(
+      // $FlowFixMe[method-unbinding]
+      this.onResourceExternallyChanged.bind(this)
+    );
+  }
+  componentWillUnmount() {
+    unregisterOnResourceExternallyChangedCallback(
+      this.resourceExternallyChangedCallbackId
+    );
+  }
+
+  _setPreviewedLayout() {
+    const { projectItemName } = this.props;
+    const layout = this.getLayout();
+    this.props.setPreviewedLayout({
+      layoutName: layout ? layout.getName() : null,
+      externalLayoutName: projectItemName || null,
+      eventsBasedObjectType: null,
+      eventsBasedObjectVariantName: null,
+    });
+  }
+
+  notifyChangesToInGameEditor(hotReloadSteps: HotReloadSteps) {
+    this._switchToSceneEdition(hotReloadSteps);
+  }
+
+  _switchToSceneEdition(hotReloadSteps: HotReloadSteps): void {
+    const { projectItemName, editorId } = this.props;
+    const layout = this.getLayout();
+    this._setPreviewedLayout();
+    if (
+      this.props.gameEditorMode === 'embedded-game' &&
+      layout &&
+      projectItemName &&
+      // Avoid to hot-reload the editor every time an image is edited with Pixi.
+      (!this.editor || !this.editor.isEditingObject())
+    ) {
+      switchToSceneEdition({
+        ...hotReloadSteps,
+        editorId,
+        sceneName: layout.getName(),
+        externalLayoutName: projectItemName,
+        eventsBasedObjectType: null,
+        eventsBasedObjectVariantName: null,
+      });
+      if (this.editor) {
+        this.editor.onEditorReloaded();
+      }
+    } else {
+      setEditorHotReloadNeeded(hotReloadSteps);
+    }
+  }
+
+  switchInGameEditorIfNoHotReloadIsNeeded() {
+    const { projectItemName, editorId } = this.props;
+    const layout = this.getLayout();
+    if (!projectItemName || !layout) {
+      return;
+    }
+    switchInGameEditorIfNoHotReloadIsNeeded({
+      editorId,
+      sceneName: layout.getName(),
+      externalLayoutName: projectItemName,
+      eventsBasedObjectType: null,
+      eventsBasedObjectVariantName: null,
+    });
+  }
+
+  onResourceExternallyChanged(resourceInfo: {| identifier: string |}) {
+    const { editor } = this;
+    if (editor) {
+      editor.onResourceExternallyChanged(resourceInfo);
+    }
+  }
+
+  updateToolbar() {
+    if (this.editor) {
+      this.editor.updateToolbar();
+    } else {
+      // Clear the toolbar if the editor is not ready yet to avoid showing stale toolbar
+      // from the previous editor (e.g., HomePage when opening external layout from home page)
+      this.props.setToolbar(null);
+    }
+  }
+
+  forceUpdateEditor() {
+    const { editor } = this;
+    if (editor) {
+      editor.forceUpdateObjectsList();
+      editor.forceUpdateObjectGroupsList();
+      editor.forceUpdateLayersList();
+    }
+  }
+
+  onEventsBasedObjectChildrenEdited() {
+    const { editor } = this;
+    if (editor) {
+      // Update every custom object because some custom objects may include
+      // the one actually edited.
+      editor.forceUpdateCustomObjectRenderedInstances();
+    }
+  }
+
+  onSceneObjectEdited(scene: gdLayout, objectWithContext: ObjectWithContext) {
+    const { editor } = this;
+    const externalLayout = this.getExternalLayout();
+    if (!externalLayout) {
+      return;
+    }
+    if (
+      externalLayout.getAssociatedLayout() !== scene.getName() &&
+      !objectWithContext.global
+    ) {
+      return;
+    }
+    if (editor) {
+      // Update instances of the object as it was modified in an editor.
+      editor.forceUpdateRenderedInstancesOfObject(objectWithContext.object);
+    }
+  }
+
+  onSceneObjectsDeleted(scene: gdLayout) {
+    const { editor } = this;
+    const externalLayout = this.getExternalLayout();
+    if (!externalLayout) {
+      return;
+    }
+    if (externalLayout.getAssociatedLayout() !== scene.getName()) {
+      return;
+    }
+    if (editor) {
+      editor.forceUpdateObjectsList();
+    }
+  }
+
+  onSceneEventsModifiedOutsideEditor(changes: SceneEventsOutsideEditorChanges) {
+    // No thing to be done.
+  }
+
+  onInstancesModifiedOutsideEditor(changes: InstancesOutsideEditorChanges) {
+    if (changes.scene !== this.getLayout()) {
+      return;
+    }
+
+    if (this.editor) {
+      this.editor.onInstancesModifiedOutsideEditor();
+    }
+  }
+
+  onObjectsModifiedOutsideEditor(changes: ObjectsOutsideEditorChanges) {
+    if (changes.scene !== this.getLayout()) {
+      return;
+    }
+
+    if (this.editor) {
+      this.editor.forceUpdateObjectsList();
+    }
+  }
+
+  onObjectGroupsModifiedOutsideEditor(
+    changes: ObjectGroupsOutsideEditorChanges
+  ) {
+    if (changes.scene !== this.getLayout()) {
+      return;
+    }
+
+    if (this.editor) {
+      this.editor.onObjectGroupsModifiedOutsideEditor();
+    }
+  }
+
+  getExternalLayout(): ?gdExternalLayout {
+    const { project, projectItemName } = this.props;
+    if (!project || !projectItemName) return null;
+
+    if (!project.hasExternalLayoutNamed(projectItemName)) {
+      return null;
+    }
+    return project.getExternalLayout(projectItemName);
+  }
+
+  getLayout(): ?gdLayout {
+    const { project } = this.props;
+    if (!project) return null;
+
+    const layoutName = this.getAssociatedLayoutName();
+    if (!layoutName) return;
+
+    return project.getLayout(layoutName);
+  }
+
+  getAssociatedLayoutName(): ?string {
+    const { project } = this.props;
+    if (!project) return null;
+
+    const externalLayout = this.getExternalLayout();
+    if (!externalLayout) return null;
+
+    const layoutName = externalLayout.getAssociatedLayout();
+    if (!project.hasLayoutNamed(layoutName)) {
+      return null;
+    }
+
+    return layoutName;
+  }
+
+  saveExternalProperties = (externalProps: ExternalProperties) => {
+    const externalLayout = this.getExternalLayout();
+    if (!externalLayout) return;
+
+    externalLayout.setAssociatedLayout(externalProps.layoutName);
+    this.setState(
+      {
+        externalPropertiesDialogOpen: false,
+      },
+      () => this.updateToolbar()
+    );
+    this.props.onExternalLayoutAssociationChanged();
+  };
+
+  openExternalPropertiesDialog = () => {
+    this.setState({
+      externalPropertiesDialogOpen: true,
+    });
+  };
+
+  saveUiSettings = () => {
+    const layout = this.getExternalLayout();
+    const editor = this.editor;
+
+    if (editor && layout) {
+      unserializeFromJSObject(
+        layout.getAssociatedEditorSettings(),
+        editor.getInstancesEditorSettings()
+      );
+    }
+  };
+
+  render(): any {
+    const { project, projectItemName, isActive } = this.props;
+    const externalLayout = this.getExternalLayout();
+    const layout = this.getLayout();
+
+    if (!externalLayout || !project) {
+      //TODO: Error component
+      return <div>No external layout called {projectItemName} found!</div>;
+    }
+
+    const projectScopedContainersAccessor = new ProjectScopedContainersAccessor(
+      {
+        project,
+        layout,
+      }
+    );
+
+    return (
+      <div style={styles.container}>
+        {layout && (
+          <SceneEditor
+            editorId={this.props.editorId}
+            gameEditorMode={this.props.gameEditorMode}
+            setGameEditorMode={this.props.setGameEditorMode}
+            onRestartInGameEditor={this.props.onRestartInGameEditor}
+            showRestartInGameEditorAfterErrorButton={
+              this.props.showRestartInGameEditorAfterErrorButton
+            }
+            setToolbar={this.props.setToolbar}
+            resourceManagementProps={this.props.resourceManagementProps}
+            unsavedChanges={this.props.unsavedChanges}
+            hotReloadPreviewButtonProps={this.props.hotReloadPreviewButtonProps}
+            ref={editor => (this.editor = editor)}
+            project={project}
+            projectScopedContainersAccessor={projectScopedContainersAccessor}
+            layout={layout}
+            eventsFunctionsExtension={null}
+            eventsBasedObject={null}
+            eventsBasedObjectVariant={null}
+            globalObjectsContainer={project.getObjects()}
+            objectsContainer={layout.getObjects()}
+            layersContainer={layout.getLayers()}
+            initialInstances={externalLayout.getInitialInstances()}
+            getInitialInstancesEditorSettings={() =>
+              prepareInstancesEditorSettings(
+                serializeToJSObject(
+                  externalLayout.getAssociatedEditorSettings()
+                ),
+                Math.max(
+                  project.getGameResolutionWidth(),
+                  project.getGameResolutionHeight()
+                )
+              )
+            }
+            onOpenProjectManager={this.props.onOpenProjectManager}
+            onOpenEvents={this.props.onOpenEvents}
+            onOpenMoreSettings={this.openExternalPropertiesDialog}
+            isActive={isActive}
+            previewDebuggerServer={this.props.previewDebuggerServer}
+            openBehaviorEvents={this.props.openBehaviorEvents}
+            onExtractAsExternalLayout={this.props.onExtractAsExternalLayout}
+            onExtractAsEventBasedObject={this.props.onExtractAsEventBasedObject}
+            onOpenEventBasedObjectEditor={
+              this.props.onOpenEventBasedObjectEditor
+            }
+            onOpenEventBasedObjectVariantEditor={
+              this.props.onOpenEventBasedObjectVariantEditor
+            }
+            onObjectEdited={objectWithContext =>
+              this.props.onSceneObjectEdited(layout, objectWithContext)
+            }
+            onObjectsDeleted={() => this.props.onSceneObjectsDeleted(layout)}
+            // It's only used to refresh events-based object variants.
+            onObjectGroupEdited={() => {}}
+            onObjectGroupsDeleted={() => {}}
+            // Nothing to do as events-based objects can't have external layout.
+            onEventsBasedObjectChildrenEdited={() => {}}
+            onWillInstallExtension={this.props.onWillInstallExtension}
+            onExtensionInstalled={this.props.onExtensionInstalled}
+            onDeleteEventsBasedObjectVariant={
+              this.props.onDeleteEventsBasedObjectVariant
+            }
+            onEffectAdded={this.props.onEffectAdded}
+            onObjectListsModified={this.props.onObjectListsModified}
+            triggerHotReloadInGameEditorIfNeeded={
+              this.props.triggerHotReloadInGameEditorIfNeeded
+            }
+          />
+        )}
+        {!layout && (
+          <Background>
+            <PlaceholderMessage>
+              <Text>
+                <Trans>
+                  To edit the external layout, choose the scene in which it will
+                  be included
+                </Trans>
+              </Text>
+              <Line justifyContent="center">
+                <RaisedButton
+                  label={<Trans>Choose the scene</Trans>}
+                  primary
+                  onClick={this.openExternalPropertiesDialog}
+                />
+              </Line>
+              <Line justifyContent="flex-start" noMargin>
+                <TutorialButton
+                  tutorialId="Intermediate-externals"
+                  label={<Trans>Watch tutorial</Trans>}
+                  renderIfNotFound={
+                    <HelpButton helpPagePath="/interface/events-editor/external-events" />
+                  }
+                />
+              </Line>
+            </PlaceholderMessage>
+          </Background>
+        )}
+        <ExternalPropertiesDialog
+          title={<Trans>Configure the external layout</Trans>}
+          helpTexts={[
+            <Trans>
+              In order to see your objects in the scene, you need to add an
+              action "Create objects from external layout" in your events sheet.
+            </Trans>,
+            <Trans>
+              You can also launch a preview from this external layout, but
+              remember that it will still create objects from the scene, as well
+              as trigger its events. Make sure to disable any action loading the
+              external layout before doing so to avoid having duplicate objects!
+            </Trans>,
+          ]}
+          open={this.state.externalPropertiesDialogOpen}
+          project={project}
+          layoutName={this.getAssociatedLayoutName()}
+          onChoose={this.saveExternalProperties}
+          onClose={() => this.setState({ externalPropertiesDialogOpen: false })}
+        />
+      </div>
+    );
+  }
+}
+
+export const renderExternalLayoutEditorContainer = (
+  props: RenderEditorContainerPropsWithRef
+): React.Node => <ExternalLayoutEditorContainer {...props} />;

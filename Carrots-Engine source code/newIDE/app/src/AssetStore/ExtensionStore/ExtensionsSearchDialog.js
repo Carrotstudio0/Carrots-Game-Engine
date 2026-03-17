@@ -1,0 +1,244 @@
+// @flow
+import { Trans } from '@lingui/macro';
+import { t } from '@lingui/macro';
+import { I18n } from '@lingui/react';
+import { type I18n as I18nType } from '@lingui/core';
+import * as React from 'react';
+import Dialog from '../../UI/Dialog';
+import FlatButton from '../../UI/FlatButton';
+import { ExtensionStore } from '.';
+import EventsFunctionsExtensionsContext from '../../EventsFunctionsExtensionsLoader/EventsFunctionsExtensionsContext';
+import HelpButton from '../../UI/HelpButton';
+import {
+  useImportExtension,
+  useInstallExtension,
+  getRequiredExtensions,
+} from './InstallExtension';
+import DismissableInfoBar from '../../UI/Messages/DismissableInfoBar';
+import { type ExtensionShortHeader } from '../../Utils/GDevelopServices/Extension';
+import AuthenticatedUserContext from '../../Profile/AuthenticatedUserContext';
+import {
+  addCreateBadgePreHookIfNotClaimed,
+  TRIVIAL_FIRST_EXTENSION,
+} from '../../Utils/GDevelopServices/Badge';
+import { useResponsiveWindowSize } from '../../UI/Responsive/ResponsiveWindowMeasurer';
+import Download from '../../UI/CustomSvgIcons/Download';
+import Add from '../../UI/CustomSvgIcons/Add';
+import ErrorBoundary from '../../UI/ErrorBoundary';
+import { checkRequiredExtensionsUpdate } from '../../AssetStore/ExtensionStore/InstallExtension';
+import { showErrorBox } from '../../UI/Messages/MessageBox';
+import { ExtensionStoreContext } from './ExtensionStoreContext';
+
+type Props = {|
+  project: gdProject,
+  onClose: () => void,
+  onWillInstallExtension: (extensionNames: Array<string>) => void,
+  onExtensionInstalled: (extensionNames: Array<string>) => void,
+  onCreateNew?: () => void,
+|};
+
+/**
+ * Allows to browse and install events based extensions.
+ */
+const ExtensionsSearchDialog = ({
+  project,
+  onClose,
+  onWillInstallExtension,
+  onExtensionInstalled,
+  onCreateNew,
+}: Props) => {
+  const { isMobile } = useResponsiveWindowSize();
+  const installExtension = useInstallExtension();
+  const {
+    translatedExtensionShortHeadersByName: extensionShortHeadersByName,
+  } = React.useContext(ExtensionStoreContext);
+  const importExtension = useImportExtension();
+  const [isInstalling, setIsInstalling] = React.useState(false);
+  const [extensionWasInstalled, setExtensionWasInstalled] = React.useState(
+    false
+  );
+  const eventsFunctionsExtensionsState = React.useContext(
+    EventsFunctionsExtensionsContext
+  );
+  const authenticatedUser = React.useContext(AuthenticatedUserContext);
+
+  const createBadgeFirstExtension = addCreateBadgePreHookIfNotClaimed(
+    authenticatedUser,
+    TRIVIAL_FIRST_EXTENSION,
+    () => {}
+  );
+
+  const installOrImportExtension = async (
+    i18n: I18nType,
+    extensionShortHeader?: ExtensionShortHeader
+  ): Promise<boolean> => {
+    setIsInstalling(true);
+    try {
+      if (extensionShortHeader) {
+        try {
+          const extensionShortHeaders: Array<ExtensionShortHeader> = [
+            extensionShortHeader,
+          ];
+          const requiredExtensions = getRequiredExtensions(
+            extensionShortHeaders
+          );
+          requiredExtensions.push({
+            extensionName: extensionShortHeader.name,
+            extensionVersion: extensionShortHeader.version,
+          });
+          const requiredExtensionInstallation = await checkRequiredExtensionsUpdate(
+            {
+              requiredExtensions,
+              project,
+              extensionShortHeadersByName,
+            }
+          );
+          if (
+            !requiredExtensionInstallation.missingExtensionShortHeaders.includes(
+              extensionShortHeader
+            )
+          ) {
+            // The extension chosen by users is not part of `requiredExtensions`
+            // but should always be installed. This is true even if the versions
+            // are matching to allow to reinstall the extension.
+            requiredExtensionInstallation.missingExtensionShortHeaders.push(
+              extensionShortHeader
+            );
+          }
+          const wasExtensionInstalled = await installExtension({
+            project,
+            requiredExtensionInstallation,
+            importedSerializedExtensions: [],
+            onWillInstallExtension,
+            onExtensionInstalled,
+            updateMode: 'all',
+            reason: 'extension',
+          });
+          if (!wasExtensionInstalled) {
+            return false;
+          }
+          createBadgeFirstExtension();
+          setExtensionWasInstalled(true);
+        } catch (rawError) {
+          showErrorBox({
+            message: i18n._(
+              t`Unable to download and install the extension and its dependencies. Verify that your internet connection is working or try again later.`
+            ),
+            rawError,
+            errorId: 'download-extension-error',
+          });
+          return false;
+        }
+      } else {
+        const installedOrImportedExtensionNames = await importExtension({
+          i18n,
+          project,
+          onWillInstallExtension,
+          onExtensionInstalled,
+        });
+        if (installedOrImportedExtensionNames.length > 0) {
+          setExtensionWasInstalled(true);
+          onExtensionInstalled(installedOrImportedExtensionNames);
+          return true;
+        }
+      }
+      return false;
+    } finally {
+      setIsInstalling(false);
+    }
+  };
+
+  const eventsFunctionsExtensionOpener = eventsFunctionsExtensionsState.getEventsFunctionsExtensionOpener();
+
+  return (
+    <I18n>
+      {({ i18n }) => (
+        <Dialog
+          title={<Trans>Search for New Extensions</Trans>}
+          id="extension-search-dialog"
+          fullHeight
+          actions={[
+            <FlatButton
+              id="close-button"
+              key="close"
+              label={<Trans>Close</Trans>}
+              primary
+              onClick={onClose}
+              disabled={isInstalling}
+            />,
+          ]}
+          secondaryActions={[
+            <HelpButton key="help" helpPagePath="/extensions/search" />,
+            eventsFunctionsExtensionOpener ? (
+              <FlatButton
+                leftIcon={<Download />}
+                key="import"
+                label={
+                  isMobile ? (
+                    <Trans>Import</Trans>
+                  ) : (
+                    <Trans>Import extension</Trans>
+                  )
+                }
+                onClick={() => {
+                  installOrImportExtension(i18n);
+                }}
+                disabled={isInstalling}
+              />
+            ) : null,
+            onCreateNew ? (
+              <FlatButton
+                key="create-new"
+                onClick={onCreateNew}
+                label={
+                  isMobile ? (
+                    <Trans>Create</Trans>
+                  ) : (
+                    <Trans>Create a new extension</Trans>
+                  )
+                }
+                leftIcon={<Add />}
+              />
+            ) : null,
+          ]}
+          flexBody
+          open
+          cannotBeDismissed={isInstalling}
+          onRequestClose={onClose}
+        >
+          <ExtensionStore
+            isInstalling={isInstalling}
+            onInstall={extensionShortHeader =>
+              installOrImportExtension(i18n, extensionShortHeader)
+            }
+            project={project}
+            showOnlyWithBehaviors={false}
+          />
+          <DismissableInfoBar
+            identifier="extension-installed-explanation"
+            message={
+              <Trans>
+                The extension was added to the project. You can now use it in
+                the list of actions/conditions and, if it's a behavior, in the
+                list of behaviors for an object.
+              </Trans>
+            }
+            show={extensionWasInstalled}
+          />
+        </Dialog>
+      )}
+    </I18n>
+  );
+};
+
+const ExtensionsSearchDialogWithErrorBoundary = (props: Props): React.Node => (
+  <ErrorBoundary
+    componentTitle={<Trans>Extensions search</Trans>}
+    scope="extensions-search-dialog"
+    onClose={props.onClose}
+  >
+    <ExtensionsSearchDialog {...props} />
+  </ErrorBoundary>
+);
+
+export default ExtensionsSearchDialogWithErrorBoundary;

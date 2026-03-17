@@ -1,0 +1,94 @@
+// @flow
+import * as React from 'react';
+import { Trans, t } from '@lingui/macro';
+
+import Dialog from '../UI/Dialog';
+import FlatButton from '../UI/FlatButton';
+import { List } from '../UI/List';
+
+import StorageProviderListItem from './StorageProviderListItem';
+import { type StorageProvider } from '.';
+import AuthenticatedUserContext from '../Profile/AuthenticatedUserContext';
+import {
+  checkIfHasTooManyCloudProjects,
+  MaxProjectCountAlertMessage,
+} from '../MainFrame/EditorContainers/HomePage/CreateSection/MaxProjectCountAlertMessage';
+import Computer from '../UI/CustomSvgIcons/Computer';
+import { isNativeMobileApp } from '../Utils/Platform';
+import optionalRequire from '../Utils/OptionalRequire';
+const electron = optionalRequire('electron');
+
+type Props = {|
+  storageProviders: Array<StorageProvider>,
+  onChooseProvider: StorageProvider => void,
+  onClose: () => void,
+|};
+
+const fakeLocalFileStorageProvider: StorageProvider = {
+  internalName: 'LocalFile',
+  name: t`Save to computer with GDevelop desktop app`,
+  disabled: true,
+  renderIcon: props => <Computer fontSize={props.size} />,
+  createOperations: () => ({}),
+};
+
+const SaveToStorageProviderDialog = ({
+  onClose,
+  storageProviders,
+  onChooseProvider,
+}: Props): React.Node => {
+  const authenticatedUser = React.useContext(AuthenticatedUserContext);
+
+  const { profile, cloudProjects } = authenticatedUser;
+
+  const isLoadingCloudProjects = !!profile && !cloudProjects;
+  const isCloudProjectsMaximumReached = checkIfHasTooManyCloudProjects(
+    authenticatedUser
+  );
+
+  return (
+    <Dialog
+      title={<Trans>Choose where to save the project to</Trans>}
+      actions={[
+        <FlatButton
+          label={<Trans>Cancel</Trans>}
+          key="close"
+          primary={false}
+          onClick={onClose}
+        />,
+      ]}
+      onRequestClose={onClose}
+      open
+      maxWidth="sm"
+    >
+      <List useGap>
+        {storageProviders
+          .filter(storageProvider => !storageProvider.hiddenInSaveDialog)
+          .map(storageProvider => (
+            <React.Fragment key={storageProvider.internalName}>
+              <StorageProviderListItem
+                onChooseProvider={onChooseProvider}
+                storageProvider={storageProvider}
+                disabled={
+                  storageProvider.internalName === 'Cloud' &&
+                  (isCloudProjectsMaximumReached || isLoadingCloudProjects)
+                }
+              />
+              {storageProvider.internalName === 'Cloud' &&
+                isCloudProjectsMaximumReached && (
+                  <MaxProjectCountAlertMessage margin="dense" />
+                )}
+            </React.Fragment>
+          ))}
+        {!electron && !isNativeMobileApp() && (
+          <StorageProviderListItem
+            onChooseProvider={onChooseProvider}
+            storageProvider={fakeLocalFileStorageProvider}
+          />
+        )}
+      </List>
+    </Dialog>
+  );
+};
+
+export default SaveToStorageProviderDialog;

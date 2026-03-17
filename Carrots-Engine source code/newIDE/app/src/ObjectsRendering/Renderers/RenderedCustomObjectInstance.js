@@ -1,0 +1,656 @@
+// @flow
+import RenderedInstance from './RenderedInstance';
+import Rendered3DInstance from './Rendered3DInstance';
+import RenderedUnknownInstance from './RenderedUnknownInstance';
+import PixiResourcesLoader from '../PixiResourcesLoader';
+import ResourcesLoader from '../../ResourcesLoader';
+import ObjectsRenderingService from '../ObjectsRenderingService';
+import {
+  getLayoutedRenderedInstance,
+  LayoutedInstance,
+  // $FlowFixMe[import-type-as-value]
+  LayoutedParent,
+} from './CustomObjectLayoutingModel';
+import { mapVector } from '../../Utils/MapFor';
+import * as PIXI from 'pixi.js-legacy';
+import * as THREE from 'three';
+
+const gd: libGDevelop = global.gd;
+
+const getEventBasedObject = (
+  project: gdProject,
+  customObjectConfiguration: gdCustomObjectConfiguration
+): gdEventsBasedObject | null => {
+  const type = customObjectConfiguration.getType();
+  return project.hasEventsBasedObject(type)
+    ? project.getEventsBasedObject(type)
+    : null;
+};
+
+const getVariant = (
+  eventBasedObject: gdEventsBasedObject,
+  customObjectConfiguration: gdCustomObjectConfiguration
+): gdEventsBasedObjectVariant => {
+  const variants = eventBasedObject.getVariants();
+  const variantName = customObjectConfiguration.getVariantName();
+  return variants.hasVariantNamed(variantName)
+    ? variants.getVariant(variantName)
+    : eventBasedObject.getDefaultVariant();
+};
+
+const getChildObjectConfiguration = (
+  childObjectName: string,
+  eventBasedObject: gdEventsBasedObject,
+  customObjectConfiguration: gdCustomObjectConfiguration,
+  variant: gdEventsBasedObjectVariant
+): gdObjectConfiguration | null => {
+  // Legacy events-based objects don't have any instance in their default
+  // variant since there wasn't a graphical editor at the time.
+  // In this case, the editor doesn't allow to choose a variant, but a
+  // variant may have stayed after a user rolled back the extension.
+  // This variant must be ignored to match what the editor shows.
+  if (
+    customObjectConfiguration.isForcedToOverrideEventsBasedObjectChildrenConfiguration() ||
+    (variant === eventBasedObject.getDefaultVariant() &&
+      customObjectConfiguration.isMarkedAsOverridingEventsBasedObjectChildrenConfiguration())
+  ) {
+    return customObjectConfiguration.getChildObjectConfiguration(
+      childObjectName
+    );
+  }
+  const childObjects = variant.getObjects();
+  return childObjects.hasObjectNamed(childObjectName)
+    ? childObjects.getObject(childObjectName).getConfiguration()
+    : null;
+};
+
+type PropertyMappingRule = {
+  targetChild: string,
+  targetProperty: string,
+  sourceProperty: string,
+};
+
+const getPropertyMappingRules = (
+  eventBasedObject: gdEventsBasedObject
+): Array<PropertyMappingRule> => {
+  const properties = eventBasedObject.getPropertyDescriptors();
+  if (!properties.has('_PropertyMapping')) {
+    return [];
+  }
+  // $FlowFixMe[incompatible-exact]
+  return mapVector(properties.get('_PropertyMapping').getChoices(), choice => {
+    // $FlowFixMe[incompatible-use]
+    const mapping = choice.getValue().split('=');
+    if (mapping.length < 2) {
+      return null;
+    }
+    const targetPath = mapping[0].split('.');
+    if (mapping.length < 2) {
+      return null;
+    }
+    return {
+      targetChild: targetPath[0],
+      targetProperty: targetPath[1],
+      sourceProperty: mapping[1],
+    };
+  }).filter(Boolean);
+};
+
+/**
+ * Renderer for gd.CustomObject (the class is not exposed to newIDE)
+ */
+export default class RenderedCustomObjectInstance extends Rendered3DInstance
+  implements LayoutedParent<RenderedInstance | Rendered3DInstance> {
+  _isRenderedIn3D = false;
+
+  /** Functor used to render an instance */
+  instancesRenderer: gdInitialInstanceJSFunctor;
+
+  // $FlowFixMe[missing-local-annot]
+  layoutedInstances = (new Map<number, LayoutedInstance>(): Map<
+    number,
+    LayoutedInstance
+  >);
+  // $FlowFixMe[missing-local-annot]
+  renderedInstances = (new Map<
+    number,
+    RenderedInstance | Rendered3DInstance
+  >(): Map<number, RenderedInstance | Rendered3DInstance>);
+  _propertyMappingRules: Array<PropertyMappingRule>;
+
+  constructor(
+    project: gdProject,
+    instance: gdInitialInstance,
+    associatedObjectConfiguration: gdObjectConfiguration,
+    // $FlowFixMe[value-as-type]
+    pixiContainer: PIXI.Container,
+    // $FlowFixMe[value-as-type]
+    threeGroup: THREE.Group,
+    pixiResourcesLoader: Class<PixiResourcesLoader>,
+    getPropertyOverridings: (() => Map<string, string>) | null = null
+  ) {
+    super(
+      project,
+      instance,
+      associatedObjectConfiguration,
+      pixiContainer,
+      threeGroup,
+      pixiResourcesLoader,
+      getPropertyOverridings
+    );
+
+    // Setup the PIXI object:
+    this._pixiObject = new PIXI.Container();
+    this._pixiContainer.addChild(this._pixiObject);
+
+    if (this._threeGroup) {
+      // No Three group means the instance should only be rendered in 2D.
+      const threeObject = new THREE.Group();
+      threeObject.rotation.order = 'ZYX';
+      this._threeGroup.add(threeObject);
+      this._threeObject = threeObject;
+    }
+
+    const customObjectConfiguration = gd.asCustomObjectConfiguration(
+      associatedObjectConfiguration
+    );
+    const eventBasedObject = getEventBasedObject(
+      project,
+      customObjectConfiguration
+    );
+    if (!eventBasedObject) {
+      return;
+    }
+    this._propertyMappingRules = getPropertyMappingRules(eventBasedObject);
+    this._isRenderedIn3D = eventBasedObject.isRenderedIn3D();
+
+    // Functor used to render an instance
+    this.instancesRenderer = new gd.InitialInstanceJSFunctor();
+    // $FlowFixMe[incompatible-type] - invoke is not writable
+    // $FlowFixMe[cannot-write]
+    this.instancesRenderer.invoke = instancePtr => {
+      // $FlowFixMe[incompatible-type] - wrapPointer is not exposed
+      const instance: gdInitialInstance = gd.wrapPointer(
+        // $FlowFixMe[incompatible-type]
+        instancePtr,
+        gd.InitialInstance
+      );
+
+      //Get the "RenderedInstance" object associated to the instance and tell it to update.
+      const renderedInstance:
+        | RenderedInstance
+        | Rendered3DInstance
+        | null = eventBasedObject.isInnerAreaFollowingParentSize()
+        ? getLayoutedRenderedInstance(this, instance)
+        : this.getRendererOfInstance(instance);
+
+      if (!renderedInstance) return;
+
+      // $FlowFixMe[value-as-type]
+      const pixiObject: PIXI.DisplayObject | null = renderedInstance.getPixiObject();
+      if (pixiObject) {
+        if (renderedInstance.isRenderedIn3D()) {
+          pixiObject.zOrder = instance.getZ() + renderedInstance.getDepth();
+        } else {
+          pixiObject.zOrder = instance.getZOrder();
+        }
+      }
+
+      try {
+        // TODO: should we do culling here?
+        // "Culling" improves rendering performance of large levels
+        const isVisible = true; // this._isInstanceVisible(instance);
+        if (pixiObject) {
+          pixiObject.visible = isVisible;
+          pixiObject.eventMode = 'auto';
+        }
+        // $FlowFixMe[constant-condition]
+        if (isVisible) renderedInstance.update();
+
+        if (renderedInstance instanceof Rendered3DInstance) {
+          const threeObject = renderedInstance.getThreeObject();
+          if (threeObject) {
+            threeObject.visible = isVisible;
+          }
+        }
+      } catch (error) {
+        if (error instanceof TypeError) {
+          // When reloading a texture when a resource changed externally, rendering
+          // an instance could crash when trying to access a non-existent PIXI base texture.
+          // The error is not propagated in order to avoid a crash at the SceneEditor level.
+          // See https://github.com/4ian/GDevelop/issues/5802.
+          console.error(
+            `An error occurred when rendering instance for object ${instance.getObjectName()}:`,
+            error
+          );
+          return;
+        }
+        throw error;
+      } finally {
+        renderedInstance.wasUsed = true;
+      }
+    };
+  }
+
+  _getChildObjectConfiguration = (
+    childObjectName: string
+  ): gdObjectConfiguration | null => {
+    const customObjectConfiguration = gd.asCustomObjectConfiguration(
+      this._associatedObjectConfiguration
+    );
+    const eventBasedObject = getEventBasedObject(
+      this._project,
+      customObjectConfiguration
+    );
+    if (!eventBasedObject) {
+      return null;
+    }
+    const variant = getVariant(eventBasedObject, customObjectConfiguration);
+    if (!variant) {
+      return null;
+    }
+    return getChildObjectConfiguration(
+      childObjectName,
+      eventBasedObject,
+      customObjectConfiguration,
+      variant
+    );
+  };
+
+  getRendererOfInstance = (
+    instance: gdInitialInstance
+  ): RenderedInstance | Rendered3DInstance => {
+    let renderedInstance = this.renderedInstances.get(instance.ptr);
+    if (!renderedInstance) {
+      // No renderer associated yet, the instance must have been just created!...
+
+      const customObjectConfiguration = gd.asCustomObjectConfiguration(
+        this._associatedObjectConfiguration
+      );
+      // Apply property mapping rules on the child instance.
+      const getChildPropertyOverridings = () => {
+        const childPropertyOverridings = new Map<string, string>();
+
+        const propertyOverridings = this.getPropertyOverridings();
+        const customObjectProperties = customObjectConfiguration.getProperties();
+        for (const propertyMappingRule of this._propertyMappingRules) {
+          if (propertyMappingRule.targetChild !== instance.getObjectName()) {
+            continue;
+          }
+          const sourceValue =
+            propertyOverridings &&
+            propertyOverridings.has(propertyMappingRule.sourceProperty)
+              ? propertyOverridings.get(propertyMappingRule.sourceProperty)
+              : customObjectProperties
+                  .get(propertyMappingRule.sourceProperty)
+                  .getValue();
+          if (sourceValue !== undefined) {
+            childPropertyOverridings.set(
+              propertyMappingRule.targetProperty,
+              sourceValue
+            );
+          }
+        }
+        return childPropertyOverridings;
+      };
+      //...so let's create a renderer.
+      const childObjectConfiguration = this._getChildObjectConfiguration(
+        instance.getObjectName()
+      );
+      renderedInstance = childObjectConfiguration
+        ? ObjectsRenderingService.createNewInstanceRenderer(
+            this._project,
+            instance,
+            childObjectConfiguration,
+            this._pixiObject,
+            this._threeObject,
+            getChildPropertyOverridings
+          )
+        : new RenderedUnknownInstance(
+            this._project,
+            instance,
+            // $FlowFixMe[incompatible-type] It's not actually used.
+            null,
+            this._pixiObject,
+            PixiResourcesLoader
+          );
+      this.renderedInstances.set(instance.ptr, renderedInstance);
+    }
+    return renderedInstance;
+  };
+
+  getLayoutedInstance = (instance: gdInitialInstance): LayoutedInstance => {
+    let layoutedInstance = this.layoutedInstances.get(instance.ptr);
+    if (!layoutedInstance) {
+      layoutedInstance = new LayoutedInstance(instance);
+      this.layoutedInstances.set(instance.ptr, layoutedInstance);
+    }
+    return layoutedInstance;
+  };
+
+  /**
+   * Remove rendered instances that are not associated to any instance anymore
+   * (this can happen after an instance has been deleted).
+   */
+  _destroyUnusedInstanceRenderers() {
+    for (const [i, renderedInstance] of this.renderedInstances) {
+      if (!renderedInstance.wasUsed) {
+        renderedInstance.onRemovedFromScene();
+        if (!renderedInstance._wasDestroyed)
+          console.error(
+            'Rendered instance was not marked as destroyed by onRemovedFromScene - verify the implementation.',
+            renderedInstance
+          );
+
+        this.renderedInstances.delete(i);
+        this.layoutedInstances.delete(i);
+      }
+      renderedInstance.wasUsed = false;
+    }
+  }
+
+  isRenderedIn3D(): boolean {
+    return this._isRenderedIn3D;
+  }
+
+  onRemovedFromScene(): void {
+    super.onRemovedFromScene();
+
+    // Destroy all instances
+    for (const renderedInstance of this.renderedInstances.values()) {
+      renderedInstance.onRemovedFromScene();
+      if (!renderedInstance._wasDestroyed)
+        console.error(
+          'Rendered instance (of a custom object) was not marked as destroyed by onRemovedFromScene - verify the implementation.',
+          renderedInstance
+        );
+    }
+    this.renderedInstances.clear();
+    this.layoutedInstances.clear();
+
+    // Destroy the object iterating on instances
+    if (this.instancesRenderer) {
+      this.instancesRenderer.delete();
+    }
+
+    // Destroy the container.
+    this._pixiObject.destroy(false);
+  }
+
+  /**
+   * Return a URL for thumbnail of the specified object.
+   */
+  static getThumbnail(
+    project: gdProject,
+    resourcesLoader: Class<ResourcesLoader>,
+    objectConfiguration: gdObjectConfiguration
+  ): any {
+    const customObjectConfiguration = gd.asCustomObjectConfiguration(
+      objectConfiguration
+    );
+    const eventBasedObject = getEventBasedObject(
+      project,
+      customObjectConfiguration
+    );
+    if (!eventBasedObject) {
+      return 'res/unknown32.png';
+    }
+    if (eventBasedObject.isAnimatable()) {
+      const animations = customObjectConfiguration.getAnimations();
+
+      if (
+        animations.getAnimationsCount() > 0 &&
+        animations.getAnimation(0).getDirectionsCount() > 0 &&
+        animations
+          .getAnimation(0)
+          .getDirection(0)
+          .getSpritesCount() > 0
+      ) {
+        const imageName = animations
+          .getAnimation(0)
+          .getDirection(0)
+          .getSprite(0)
+          .getImageName();
+        return resourcesLoader.getResourceFullUrl(project, imageName, {});
+      }
+      return 'res/unknown32.png';
+    }
+    const variant = getVariant(eventBasedObject, customObjectConfiguration);
+    const childObjects = variant.getObjects();
+    for (let i = 0; i < childObjects.getObjectsCount(); i++) {
+      const childObject = childObjects.getObjectAt(i);
+
+      const childObjectConfiguration = getChildObjectConfiguration(
+        childObject.getName(),
+        eventBasedObject,
+        customObjectConfiguration,
+        variant
+      );
+      if (!childObjectConfiguration) {
+        continue;
+      }
+      const childType = childObjectConfiguration.getType();
+      if (
+        childType === 'Sprite' ||
+        childType === 'TiledSpriteObject::TiledSprite' ||
+        childType === 'PanelSpriteObject::PanelSprite' ||
+        childType === 'Scene3D::Cube3DObject'
+      ) {
+        const thumbnail = ObjectsRenderingService.getThumbnail(
+          project,
+          childObjectConfiguration
+        );
+        if (thumbnail) return thumbnail;
+      }
+    }
+    return 'res/unknown32.png';
+  }
+
+  _updatePixiObjectsZOrder() {
+    this._pixiContainer.children.sort((a, b) => {
+      a.zOrder = a.zOrder || 0;
+      b.zOrder = b.zOrder || 0;
+      return a.zOrder - b.zOrder;
+    });
+  }
+
+  getVariant(): gdEventsBasedObjectVariant | null {
+    const customObjectConfiguration = gd.asCustomObjectConfiguration(
+      this._associatedObjectConfiguration
+    );
+    const eventBasedObject = getEventBasedObject(
+      this._project,
+      customObjectConfiguration
+    );
+    if (!eventBasedObject) {
+      return null;
+    }
+    return getVariant(eventBasedObject, customObjectConfiguration);
+  }
+
+  update() {
+    const customObjectConfiguration = gd.asCustomObjectConfiguration(
+      this._associatedObjectConfiguration
+    );
+    const eventBasedObject = getEventBasedObject(
+      this._project,
+      customObjectConfiguration
+    );
+    if (!eventBasedObject) {
+      return;
+    }
+    const variant = getVariant(eventBasedObject, customObjectConfiguration);
+    if (!variant) {
+      return;
+    }
+
+    const layers = variant.getLayers();
+    for (
+      let layerIndex = 0;
+      layerIndex < layers.getLayersCount();
+      layerIndex++
+    ) {
+      const layer = layers.getLayerAt(layerIndex);
+      if (layer.getVisibility()) {
+        variant.getInitialInstances().iterateOverInstancesWithZOrdering(
+          // $FlowFixMe[incompatible-type] - gd.castObject is not supporting typings.
+          this.instancesRenderer,
+          layer.getName()
+        );
+      }
+    }
+    this._updatePixiObjectsZOrder();
+    this._destroyUnusedInstanceRenderers();
+
+    const is3D = this.isRenderedIn3D();
+
+    if (!eventBasedObject.isInnerAreaFollowingParentSize()) {
+      // The children are rendered for the default size and the render image is
+      // stretched.
+      const scaleX = this.getWidth() / this.getDefaultWidth();
+      const scaleY = this.getHeight() / this.getDefaultHeight();
+      const scaleZ = this.getDepth() / this.getDefaultDepth();
+
+      const threeObject = this._threeObject;
+      if (threeObject && is3D) {
+        const pivotX = this.getCenterX() - this.getOriginX();
+        const pivotY = this.getCenterY() - this.getOriginY();
+        const pivotZ = this.getCenterZ() - this.getOriginZ();
+
+        threeObject.rotation.set(
+          RenderedInstance.toRad(this._instance.getRotationX()),
+          RenderedInstance.toRad(this._instance.getRotationY()),
+          RenderedInstance.toRad(this._instance.getAngle())
+        );
+
+        threeObject.position.set(-pivotX, -pivotY, -pivotZ);
+        threeObject.position.applyEuler(threeObject.rotation);
+        threeObject.position.x += this._instance.getX() + pivotX;
+        threeObject.position.y += this._instance.getY() + pivotY;
+        threeObject.position.z += this._instance.getZ() + pivotZ;
+
+        threeObject.scale.set(scaleX, scaleY, scaleZ);
+      }
+
+      const unscaledCenterX =
+        this.getDefaultWidth() / 2 + variant.getAreaMinX();
+      const unscaledCenterY =
+        this.getDefaultHeight() / 2 + variant.getAreaMinY();
+
+      this._pixiObject.pivot.x = unscaledCenterX;
+      this._pixiObject.pivot.y = unscaledCenterY;
+      this._pixiObject.position.x =
+        this._instance.getX() + unscaledCenterX * Math.abs(scaleX);
+      this._pixiObject.position.y =
+        this._instance.getY() + unscaledCenterY * Math.abs(scaleY);
+
+      this._pixiObject.rotation = RenderedInstance.toRad(
+        this._instance.getAngle()
+      );
+      this._pixiObject.scale.x = scaleX;
+      this._pixiObject.scale.y = scaleY;
+    } else {
+      // The children dimension and position are evaluated according to the
+      // layout. The object pixels are not stretched. The object is rendered in
+      // its current dimension. This is why the scale is always set to 1.
+      const originX = this.getOriginX();
+      const originY = this.getOriginY();
+      const originZ = this.getOriginZ();
+      const centerX = this.getCenterX();
+      const centerY = this.getCenterY();
+      const centerZ = this.getCenterZ();
+
+      const threeObject = this._threeObject;
+      if (threeObject && is3D) {
+        threeObject.rotation.set(
+          RenderedInstance.toRad(this._instance.getRotationX()),
+          RenderedInstance.toRad(this._instance.getRotationY()),
+          RenderedInstance.toRad(this._instance.getAngle())
+        );
+        threeObject.position.set(-centerX, -centerY, -centerZ);
+        threeObject.position.applyEuler(threeObject.rotation);
+        threeObject.position.x += this._instance.getX() + centerX - originX;
+        threeObject.position.y += this._instance.getY() + centerY - originY;
+        threeObject.position.z += this._instance.getZ() + centerZ - originZ;
+      }
+      this._pixiObject.pivot.x = centerX - originX;
+      this._pixiObject.pivot.y = centerY - originY;
+      this._pixiObject.position.x = this._instance.getX() + centerX - originX;
+      this._pixiObject.position.y = this._instance.getY() + centerY - originY;
+
+      this._pixiObject.rotation = RenderedInstance.toRad(
+        this._instance.getAngle()
+      );
+      this._pixiObject.scale.x = 1;
+      this._pixiObject.scale.y = 1;
+    }
+
+    // Opacity is not handled by 3D objects.
+    // TODO Transform 3D objects according to their flipping.
+    if (!is3D) {
+      // Do not hide completely an object so it can still be manipulated
+      const alphaForDisplay = Math.max(this._instance.getOpacity() / 255, 0.5);
+      this._pixiObject.alpha = alphaForDisplay;
+
+      this._pixiObject.scale.x =
+        Math.abs(this._pixiObject.scale.x) *
+        (this._instance.isFlippedX() ? -1 : 1);
+      this._pixiObject.scale.y =
+        Math.abs(this._pixiObject.scale.y) *
+        (this._instance.isFlippedY() ? -1 : 1);
+    }
+  }
+
+  getDefaultWidth(): any {
+    const variant = this.getVariant();
+    return variant ? variant.getAreaMaxX() - variant.getAreaMinX() : 48;
+  }
+
+  getDefaultHeight(): any {
+    const variant = this.getVariant();
+    return variant ? variant.getAreaMaxY() - variant.getAreaMinY() : 48;
+  }
+
+  getDefaultDepth(): any {
+    const variant = this.getVariant();
+    return variant ? variant.getAreaMaxZ() - variant.getAreaMinZ() : 48;
+  }
+
+  getOriginX(): number {
+    const variant = this.getVariant();
+    if (!variant) {
+      return 0;
+    }
+    return (-variant.getAreaMinX() / this.getDefaultWidth()) * this.getWidth();
+  }
+
+  getOriginY(): number {
+    const variant = this.getVariant();
+    if (!variant) {
+      return 0;
+    }
+    return (
+      (-variant.getAreaMinY() / this.getDefaultHeight()) * this.getHeight()
+    );
+  }
+
+  getOriginZ(): number {
+    const variant = this.getVariant();
+    if (!variant) {
+      return 0;
+    }
+    return (-variant.getAreaMinZ() / this.getDefaultDepth()) * this.getDepth();
+  }
+
+  getCenterX(): any {
+    return this.getWidth() / 2;
+  }
+
+  getCenterY(): any {
+    return this.getHeight() / 2;
+  }
+
+  getCenterZ(): any {
+    return this.getDepth() / 2;
+  }
+}

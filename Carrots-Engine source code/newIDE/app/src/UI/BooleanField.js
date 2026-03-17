@@ -1,0 +1,47 @@
+// @flow
+import React from 'react';
+
+import { Trans } from '@lingui/macro';
+import RaisedButton from './RaisedButton';
+import { Line, Column } from './Grid';
+
+const buttonStyle = {
+  margin: 5,
+};
+
+type Props = {|
+  value: boolean,
+  onChange: (newValue: boolean) => void,
+  disabled: boolean,
+|};
+
+const BooleanField = ({ value, onChange, disabled }: Props): React.Node => {
+  return (
+    <Line>
+      <Column noMargin>
+        <RaisedButton
+          // $FlowFixMe[incompatible-type]
+          style={buttonStyle}
+          label={<Trans>True</Trans>}
+          primary={value && !disabled}
+          onClick={() => {
+            if (!value && !disabled) onChange(true);
+          }}
+        />
+      </Column>
+      <Column noMargin>
+        <RaisedButton
+          // $FlowFixMe[incompatible-type]
+          style={buttonStyle}
+          label={<Trans>False</Trans>}
+          primary={!value && !disabled}
+          onClick={() => {
+            if (value && !disabled) onChange(false);
+          }}
+        />
+      </Column>
+    </Line>
+  );
+};
+
+export default BooleanField;

@@ -1,0 +1,114 @@
+// @flow
+import React from 'react';
+import { CorsAwareImage } from './CorsAwareImage';
+import GDevelopThemeContext from './Theme/GDevelopThemeContext';
+// No i18n in this file
+
+type SizeProps =
+  | {|
+      iconSize: number,
+    |}
+  | {|
+      iconWidth: number,
+      iconHeight: number,
+    |};
+
+type Props = {|
+  src: string,
+  brightness?: ?number,
+  tooltip?: string,
+  disabled?: boolean,
+  /**
+   * Set true if icon is either an icon loaded from the
+   * app or a base64 encoded SVG in a data url.
+   */
+  isGDevelopIcon?: boolean,
+  useExactIconSize?: boolean,
+  padding?: ?number,
+  ...SizeProps,
+|};
+
+/**
+ * An icon that can be used as the leftIcon of a ListItem.
+ */
+function ListIcon(props: Props) {
+  const gdevelopTheme = React.useContext(GDevelopThemeContext);
+  const paletteType = gdevelopTheme.palette.type;
+
+  const {
+    src,
+    tooltip,
+    disabled,
+    isGDevelopIcon,
+    useExactIconSize,
+    brightness,
+  } = props;
+
+  const padding = props.padding || 0;
+
+  const iconWidth =
+    props.iconWidth !== undefined ? props.iconWidth : props.iconSize;
+  const iconHeight =
+    props.iconHeight !== undefined ? props.iconHeight : props.iconSize;
+
+  // The material-ui List component reserves 56 pixels for the icon, so the maximum
+  // size is 40px before we start consuming the padding space between the icon and
+  // the text. Add it back if necessary
+  const paddingRight = iconWidth > 40 ? 16 : 0;
+
+  const isBlackIcon =
+    src.startsWith('data:image/svg+xml') ||
+    src.startsWith(
+      'https://asset-resources.gdevelop.io/public-resources/Icons/'
+    ) ||
+    src.startsWith('https://resources.gdevelop-app.com/assets/Icons/') ||
+    src.includes('_black');
+  const shouldInvertGrayScale = paletteType === 'dark' && isBlackIcon;
+
+  let filter = undefined;
+  if (brightness != null && Number.isFinite(brightness)) {
+    // $FlowFixMe[incompatible-type]
+    filter = `grayscale(1) invert(1) brightness(${brightness})`;
+  } else if (shouldInvertGrayScale) {
+    // $FlowFixMe[incompatible-type]
+    filter = 'grayscale(1) invert(1)';
+  } else if (isGDevelopIcon && !isBlackIcon) {
+    filter = disabled
+      ? // $FlowFixMe[incompatible-type]
+        'grayscale(100%)'
+      : gdevelopTheme.gdevelopIconsCSSFilter;
+  }
+
+  const style = {
+    maxWidth: useExactIconSize ? undefined : iconWidth,
+    maxHeight: useExactIconSize ? undefined : iconHeight,
+    width: useExactIconSize ? iconWidth : undefined,
+    height: useExactIconSize ? iconHeight : undefined,
+    verticalAlign: 'middle', // Vertical centering
+    filter,
+  };
+
+  return (
+    <div
+      style={{
+        width: iconWidth + 2 * padding,
+        height: iconHeight + 2 * padding,
+        lineHeight: `${iconHeight + 2 * padding}px`, // Vertical centering
+        textAlign: 'center', // Horizontal centering
+        paddingRight: padding + paddingRight,
+        paddingLeft: padding,
+        paddingTop: padding,
+        paddingBottom: padding,
+      }}
+    >
+      {isGDevelopIcon ? (
+        <img title={tooltip} alt={tooltip} src={src} style={style} />
+      ) : (
+        <CorsAwareImage title={tooltip} alt={tooltip} src={src} style={style} />
+      )}
+    </div>
+  );
+}
+
+const ListIconMemo: React.ComponentType<Props> = React.memo<Props>(ListIcon);
+export default ListIconMemo;

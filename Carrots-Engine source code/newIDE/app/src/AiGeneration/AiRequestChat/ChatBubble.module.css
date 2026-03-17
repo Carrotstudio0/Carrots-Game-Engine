@@ -1,0 +1,19 @@
+.chatBubbleContainer {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /** Prevents horizontal overflow */
+  gap: 4px;
+  position: relative;
+}
+
+.chatBubbleRestoreArrow {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  z-index: 1;
+}
+
+.chatBubbleContent {
+  display: flex;
+  min-width: 0; /** Prevents horizontal overflow */
+}

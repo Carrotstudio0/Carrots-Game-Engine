@@ -1,0 +1,220 @@
+// @flow
+import * as React from 'react';
+import { action } from '@storybook/addon-actions';
+import paperDecorator from '../../PaperDecorator';
+import { testProject } from '../../GDevelopJsInitializerDecorator';
+import EffectsList from '../../../EffectsList';
+import DragAndDropContextProvider from '../../../UI/DragAndDrop/DragAndDropContextProvider';
+import FixedHeightFlexContainer from '../../FixedHeightFlexContainer';
+import fakeResourceManagementProps from '../../FakeResourceManagement';
+import { emptyStorageProvider } from '../../../ProjectsStorage/ProjectStorageProviders';
+import fakeResourceExternalEditors from '../../FakeResourceExternalEditors';
+
+export const withSomeEffectsForAMixedLayer = (): React.Node => (
+  <DragAndDropContextProvider>
+    <FixedHeightFlexContainer height={600}>
+      <EffectsList
+        target="layer"
+        layerRenderingType="2d+3d"
+        project={testProject.project}
+        resourceManagementProps={fakeResourceManagementProps}
+        projectScopedContainersAccessor={
+          testProject.testSceneProjectScopedContainersAccessor
+        }
+        effectsContainer={testProject.layerWithEffects.getEffects()}
+        onEffectsRenamed={action('effects renamed')}
+        onEffectsUpdated={action('effects updated')}
+        onEffectAdded={action('effect added')}
+      />
+    </FixedHeightFlexContainer>
+  </DragAndDropContextProvider>
+);
+
+export const withSomeEffectsForA2DLayer = (): React.Node => (
+  <DragAndDropContextProvider>
+    <FixedHeightFlexContainer height={600}>
+      <EffectsList
+        target="layer"
+        layerRenderingType="2d"
+        project={testProject.project}
+        resourceManagementProps={fakeResourceManagementProps}
+        projectScopedContainersAccessor={
+          testProject.testSceneProjectScopedContainersAccessor
+        }
+        effectsContainer={testProject.layerWith2DEffects.getEffects()}
+        onEffectsRenamed={action('effects renamed')}
+        onEffectsUpdated={action('effects updated')}
+        onEffectAdded={action('effect added')}
+      />
+    </FixedHeightFlexContainer>
+  </DragAndDropContextProvider>
+);
+
+// TODO Add a story with 2 effects of the same type that should be unique.
+// Note that this can't be done until the list of unique effect is hardcoded.
+
+export const withSomeEffectsForA3DLayer = (): React.Node => (
+  <DragAndDropContextProvider>
+    <FixedHeightFlexContainer height={600}>
+      <EffectsList
+        target="layer"
+        layerRenderingType="3d"
+        project={testProject.project}
+        resourceManagementProps={fakeResourceManagementProps}
+        projectScopedContainersAccessor={
+          testProject.testSceneProjectScopedContainersAccessor
+        }
+        effectsContainer={testProject.layerWith3DEffects.getEffects()}
+        onEffectsRenamed={action('effects renamed')}
+        onEffectsUpdated={action('effects updated')}
+        onEffectAdded={action('effect added')}
+      />
+    </FixedHeightFlexContainer>
+  </DragAndDropContextProvider>
+);
+
+export const withSomeEffectsForAnObject = (): React.Node => (
+  <DragAndDropContextProvider>
+    <FixedHeightFlexContainer height={600}>
+      <EffectsList
+        target="object"
+        layerRenderingType="2d"
+        project={testProject.project}
+        resourceManagementProps={fakeResourceManagementProps}
+        projectScopedContainersAccessor={
+          testProject.testSceneProjectScopedContainersAccessor
+        }
+        effectsContainer={testProject.spriteObjectWithEffects.getEffects()}
+        onEffectsRenamed={action('effects renamed')}
+        onEffectsUpdated={action('effects updated')}
+        onEffectAdded={action('effect added')}
+      />
+    </FixedHeightFlexContainer>
+  </DragAndDropContextProvider>
+);
+
+export const withAnEffectWithoutEffectTypeForALayer = (): React.Node => (
+  <DragAndDropContextProvider>
+    <FixedHeightFlexContainer height={600}>
+      <EffectsList
+        target="layer"
+        layerRenderingType="2d"
+        project={testProject.project}
+        resourceManagementProps={fakeResourceManagementProps}
+        projectScopedContainersAccessor={
+          testProject.testSceneProjectScopedContainersAccessor
+        }
+        effectsContainer={testProject.layerWithEffectWithoutEffectType.getEffects()}
+        onEffectsRenamed={action('effects renamed')}
+        onEffectsUpdated={action('effects updated')}
+        onEffectAdded={action('effect added')}
+      />
+    </FixedHeightFlexContainer>
+  </DragAndDropContextProvider>
+);
+
+export const withoutEffectsForAMixedLayer = (): React.Node => (
+  <DragAndDropContextProvider>
+    <FixedHeightFlexContainer height={600}>
+      <EffectsList
+        target="layer"
+        layerRenderingType="2d+3d"
+        project={testProject.project}
+        resourceManagementProps={fakeResourceManagementProps}
+        projectScopedContainersAccessor={
+          testProject.testSceneProjectScopedContainersAccessor
+        }
+        effectsContainer={testProject.layerWithoutEffects.getEffects()}
+        onEffectsRenamed={action('effects renamed')}
+        onEffectsUpdated={action('effects updated')}
+        onEffectAdded={action('effect added')}
+      />
+    </FixedHeightFlexContainer>
+  </DragAndDropContextProvider>
+);
+
+export const withoutEffectsForA2DLayer = (): React.Node => (
+  <DragAndDropContextProvider>
+    <FixedHeightFlexContainer height={600}>
+      <EffectsList
+        target="layer"
+        layerRenderingType="2d"
+        project={testProject.project}
+        resourceManagementProps={{
+          getStorageProvider: () => emptyStorageProvider,
+          getStorageProviderResourceOperations: () => null,
+          onFetchNewlyAddedResources: async () => {},
+          resourceSources: [],
+          onChooseResource: () => Promise.reject('Unimplemented'),
+          resourceExternalEditors: fakeResourceExternalEditors,
+          canInstallPrivateAsset: () => false,
+          onNewResourcesAdded: () => {},
+          onResourceUsageChanged: () => {},
+        }}
+        projectScopedContainersAccessor={
+          testProject.testSceneProjectScopedContainersAccessor
+        }
+        effectsContainer={testProject.layerWithoutEffects.getEffects()}
+        onEffectsRenamed={action('effects renamed')}
+        onEffectsUpdated={action('effects updated')}
+        onEffectAdded={action('effect added')}
+      />
+    </FixedHeightFlexContainer>
+  </DragAndDropContextProvider>
+);
+
+export const withoutEffectsForA3DLayer = (): React.Node => (
+  <DragAndDropContextProvider>
+    <FixedHeightFlexContainer height={600}>
+      <EffectsList
+        target="layer"
+        layerRenderingType="3d"
+        project={testProject.project}
+        resourceManagementProps={{
+          getStorageProvider: () => emptyStorageProvider,
+          getStorageProviderResourceOperations: () => null,
+          onFetchNewlyAddedResources: async () => {},
+          resourceSources: [],
+          onChooseResource: () => Promise.reject('Unimplemented'),
+          resourceExternalEditors: fakeResourceExternalEditors,
+          canInstallPrivateAsset: () => false,
+          onNewResourcesAdded: () => {},
+          onResourceUsageChanged: () => {},
+        }}
+        projectScopedContainersAccessor={
+          testProject.testSceneProjectScopedContainersAccessor
+        }
+        effectsContainer={testProject.layerWithoutEffects.getEffects()}
+        onEffectsRenamed={action('effects renamed')}
+        onEffectsUpdated={action('effects updated')}
+        onEffectAdded={action('effect added')}
+      />
+    </FixedHeightFlexContainer>
+  </DragAndDropContextProvider>
+);
+
+export const withoutEffectsForAnObject = (): React.Node => (
+  <DragAndDropContextProvider>
+    <FixedHeightFlexContainer height={600}>
+      <EffectsList
+        target="object"
+        layerRenderingType="2d"
+        project={testProject.project}
+        resourceManagementProps={fakeResourceManagementProps}
+        projectScopedContainersAccessor={
+          testProject.testSceneProjectScopedContainersAccessor
+        }
+        effectsContainer={testProject.spriteObjectWithoutEffects.getEffects()}
+        onEffectsRenamed={action('effects renamed')}
+        onEffectsUpdated={action('effects updated')}
+        onEffectAdded={action('effect added')}
+      />
+    </FixedHeightFlexContainer>
+  </DragAndDropContextProvider>
+);
+
+export default {
+  title: 'ObjectEditor/EffectsList',
+  component: EffectsList,
+  decorators: [paperDecorator],
+};

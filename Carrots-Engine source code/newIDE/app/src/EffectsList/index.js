@@ -1,0 +1,1510 @@
+// @flow
+import * as React from 'react';
+import { t, Trans } from '@lingui/macro';
+import { I18n } from '@lingui/react';
+import { type I18n as I18nType } from '@lingui/core';
+
+import { Column, Line, Spacer } from '../UI/Grid';
+import { LineStackLayout } from '../UI/Layout';
+import SelectField from '../UI/SelectField';
+import SelectOption from '../UI/SelectOption';
+import { mapFor } from '../Utils/MapFor';
+import RaisedButton from '../UI/RaisedButton';
+import IconButton from '../UI/IconButton';
+import ElementWithMenu from '../UI/Menu/ElementWithMenu';
+import SemiControlledTextField from '../UI/SemiControlledTextField';
+import newNameGenerator from '../Utils/NewNameGenerator';
+import DismissableAlertMessage from '../UI/DismissableAlertMessage';
+import AlertMessage from '../UI/AlertMessage';
+import BackgroundText from '../UI/BackgroundText';
+import { MarkdownText } from '../UI/MarkdownText';
+import useForceUpdate from '../Utils/UseForceUpdate';
+import PreferencesContext from '../MainFrame/Preferences/PreferencesContext';
+import {
+  enumerateEffectsMetadata,
+  type EnumeratedEffectMetadata,
+  setEffectDefaultParameters,
+} from './EnumerateEffects';
+import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
+import ScrollView, { type ScrollViewInterface } from '../UI/ScrollView';
+import { EmptyPlaceholder } from '../UI/EmptyPlaceholder';
+import {
+  addCreateBadgePreHookIfNotClaimed,
+  TRIVIAL_FIRST_EFFECT,
+} from '../Utils/GDevelopServices/Badge';
+import AuthenticatedUserContext from '../Profile/AuthenticatedUserContext';
+import { makeDragSourceAndDropTarget } from '../UI/DragAndDrop/DragSourceAndDropTarget';
+import { DragHandleIcon } from '../UI/DragHandle';
+import DropIndicator from '../UI/SortableVirtualizedItemList/DropIndicator';
+import { ResponsiveLineStackLayout } from '../UI/Layout';
+import Text from '../UI/Text';
+import GDevelopThemeContext from '../UI/Theme/GDevelopThemeContext';
+import ThreeDotsMenu from '../UI/CustomSvgIcons/ThreeDotsMenu';
+import Add from '../UI/CustomSvgIcons/Add';
+import Clipboard from '../Utils/Clipboard';
+import { SafeExtractor } from '../Utils/SafeExtractor';
+import {
+  serializeToJSObject,
+  unserializeFromJSObject,
+} from '../Utils/Serializer';
+import useAlertDialog from '../UI/Alert/useAlertDialog';
+import PasteIcon from '../UI/CustomSvgIcons/Clipboard';
+import CopyIcon from '../UI/CustomSvgIcons/Copy';
+import { type ConnectDragSource } from 'react-dnd';
+import ResponsiveFlatButton from '../UI/ResponsiveFlatButton';
+import { ProjectScopedContainersAccessor } from '../InstructionOrExpression/EventsScope';
+import InlineCheckbox from '../UI/InlineCheckbox';
+import VisibilityIcon from '../UI/CustomSvgIcons/Visibility';
+import VisibilityOffIcon from '../UI/CustomSvgIcons/VisibilityOff';
+import PropertiesEditorByVisibility from '../PropertiesEditor/PropertiesEditorByVisibility';
+import { Tabs } from '../UI/Tabs';
+
+const gd: libGDevelop = global.gd;
+
+const EFFECTS_CLIPBOARD_KIND = 'Effects';
+
+// $FlowFixMe[underconstrained-implicit-instantiation]
+const DragSourceAndDropTarget2D = makeDragSourceAndDropTarget(
+  '2d-effects-list'
+);
+// $FlowFixMe[underconstrained-implicit-instantiation]
+const DragSourceAndDropTarget3D = makeDragSourceAndDropTarget(
+  '3d-effects-list'
+);
+
+const styles = {
+  rowContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    marginTop: 5,
+  },
+  rowContent: {
+    display: 'flex',
+    flex: 1,
+    alignItems: 'center',
+  },
+};
+
+export type EffectInterfaceMode = 'all' | 'effects' | 'shaders' | 'lighting';
+
+const lighting3DEffectTypeNames = new Set([
+  'AmbientLight',
+  'DirectionalLight',
+  'HemisphereLight',
+  'PointLight',
+  'SpotLight',
+  'LinearFog',
+  'ExponentialFog',
+  'VolumetricFog',
+]);
+
+const getEffectBaseType = (effectType: string): string =>
+  effectType.startsWith('Scene3D::')
+    ? effectType.substring('Scene3D::'.length)
+    : effectType;
+
+export const getEffectInterfaceModeForMetadata = (
+  effectMetadata: ?EnumeratedEffectMetadata
+): EffectInterfaceMode => {
+  if (!effectMetadata) {
+    return 'effects';
+  }
+
+  if (
+    effectMetadata.type.startsWith('Scene3D::') &&
+    lighting3DEffectTypeNames.has(getEffectBaseType(effectMetadata.type))
+  ) {
+    return 'lighting';
+  }
+
+  if (
+    effectMetadata.type.startsWith('Scene3D::') ||
+    effectMetadata.isMarkedAsOnlyWorkingFor3D
+  ) {
+    return 'shaders';
+  }
+
+  return 'effects';
+};
+
+export const useEffectOverridingAlertDialog = (): ((
+  existingEffectNames: Array<string>
+) => Promise<boolean>) => {
+  const { showConfirmation } = useAlertDialog();
+  return async (existingEffectNames: Array<string>): Promise<boolean> => {
+    return await showConfirmation({
+      title: t`Existing effects`,
+      message: t`These effects already exist:${'\n\n - ' +
+        existingEffectNames.join('\n\n - ') +
+        '\n\n'}Do you want to replace them?`,
+      confirmButtonLabel: t`Replace`,
+      dismissButtonLabel: t`Omit`,
+    });
+  };
+};
+
+const Effect = React.forwardRef((
+  {
+    layerRenderingType,
+    target,
+    project,
+    resourceManagementProps,
+    projectScopedContainersAccessor,
+    effectsContainer,
+    effect,
+    removeEffect,
+    copyEffect,
+    pasteEffectsBefore,
+    chooseEffectType,
+    allEffectMetadata,
+    onEffectsUpdated,
+    onEffectsRenamed,
+    nameErrors,
+    setNameErrors,
+    connectDragSource,
+  }: {|
+    layerRenderingType: '2d' | '3d',
+    target: 'object' | 'layer',
+    project: gdProject,
+    resourceManagementProps: ResourceManagementProps,
+    projectScopedContainersAccessor: ProjectScopedContainersAccessor,
+    effectsContainer: gdEffectsContainer,
+    effect: gdEffect,
+    onEffectsUpdated: () => void,
+    onEffectsRenamed: (oldName: string, newName: string) => void,
+    removeEffect: (effect: gdEffect) => void,
+    copyEffect: (effect: gdEffect) => void,
+    pasteEffectsBefore: (effect: gdEffect) => Promise<void>,
+    chooseEffectType: (effect: gdEffect, newEffectType: string) => void,
+    allEffectMetadata: Array<EnumeratedEffectMetadata>,
+    nameErrors: { [number]: React.Node },
+    setNameErrors: (nameErrors: { [number]: React.Node }) => void,
+    connectDragSource: ConnectDragSource,
+  |},
+  // $FlowFixMe[missing-local-annot]
+  ref
+) => {
+  const gdevelopTheme = React.useContext(GDevelopThemeContext);
+  const preferences = React.useContext(PreferencesContext);
+  const showEffectParameterNames = preferences.values.showEffectParameterNames;
+  const setShowEffectParameterNames = preferences.setShowEffectParameterNames;
+
+  const forceUpdate = useForceUpdate();
+  const isClipboardContainingEffects = Clipboard.has(EFFECTS_CLIPBOARD_KIND);
+
+  const renameEffect = React.useCallback(
+    (effect: gdEffect, newName: string) => {
+      if (newName === effect.getName()) return;
+      if (nameErrors[effect.ptr]) {
+        const newNameErrors = { ...nameErrors };
+        delete newNameErrors[effect.ptr];
+        setNameErrors(newNameErrors);
+      }
+
+      if (!newName) {
+        setNameErrors({
+          ...nameErrors,
+          [effect.ptr]: <Trans>Effects cannot have empty names</Trans>,
+        });
+        return;
+      }
+
+      if (effectsContainer.hasEffectNamed(newName)) {
+        setNameErrors({
+          ...nameErrors,
+          [effect.ptr]: (
+            <Trans>The effect name {newName} is already taken</Trans>
+          ),
+        });
+        return;
+      }
+      const oldName = effect.getName();
+      effect.setName(newName);
+      forceUpdate();
+      onEffectsRenamed(oldName, newName);
+      onEffectsUpdated();
+    },
+    [
+      effectsContainer,
+      forceUpdate,
+      nameErrors,
+      onEffectsRenamed,
+      onEffectsUpdated,
+      setNameErrors,
+    ]
+  );
+
+  const effectType = effect.getEffectType();
+  const effectMetadata = getEnumeratedEffectMetadata(
+    allEffectMetadata,
+    effectType
+  );
+
+  return (
+    <I18n>
+      {({ i18n }) => (
+        <React.Fragment>
+          <div
+            ref={ref}
+            style={{
+              ...styles.rowContent,
+              backgroundColor: gdevelopTheme.list.itemsBackgroundColor,
+            }}
+          >
+            {connectDragSource(
+              <span>
+                <Column>
+                  <DragHandleIcon />
+                </Column>
+              </span>
+            )}
+            <ResponsiveLineStackLayout expand>
+              <Line noMargin expand alignItems="center">
+                <Text noMargin noShrink>
+                  <Trans>Effect name:</Trans>
+                </Text>
+                <Spacer />
+                <SemiControlledTextField
+                  margin="none"
+                  commitOnBlur
+                  errorText={nameErrors[effect.ptr]}
+                  translatableHintText={t`Enter the effect name`}
+                  value={effect.getName()}
+                  onChange={newName => {
+                    renameEffect(effect, newName);
+                  }}
+                  fullWidth
+                />
+              </Line>
+              <Line noMargin expand alignItems="center">
+                <Text noMargin noShrink>
+                  <Trans>Type:</Trans>
+                </Text>
+                <Spacer />
+                <SelectField
+                  margin="none"
+                  value={effectType}
+                  onChange={(e, i, newEffectType: string) =>
+                    chooseEffectType(effect, newEffectType)
+                  }
+                  fullWidth
+                  translatableHintText={t`Choose the effect to apply`}
+                >
+                  {allEffectMetadata.map(effectMetadata => (
+                    <SelectOption
+                      key={effectMetadata.type}
+                      value={effectMetadata.type}
+                      label={effectMetadata.fullName}
+                      disabled={
+                        target === 'object' &&
+                        effectMetadata.isMarkedAsNotWorkingForObjects
+                      }
+                    />
+                  ))}
+                </SelectField>
+              </Line>
+            </ResponsiveLineStackLayout>
+            <InlineCheckbox
+              id="effect-visibility"
+              paddingSize="small"
+              checkedIcon={<VisibilityIcon />}
+              uncheckedIcon={<VisibilityOffIcon />}
+              checked={effect.isEnabled()}
+              onCheck={(e, checked) => {
+                effect.setEnabled(checked);
+                forceUpdate();
+              }}
+              tooltipOrHelperText={
+                effect.isEnabled() ? (
+                  <Trans>Hide effect</Trans>
+                ) : (
+                  <Trans>Show effect</Trans>
+                )
+              }
+            />
+            <ElementWithMenu
+              element={
+                <IconButton size="small">
+                  <ThreeDotsMenu />
+                </IconButton>
+              }
+              buildMenuTemplate={(i18n: I18nType) => [
+                {
+                  label: i18n._(t`Delete`),
+                  click: () => removeEffect(effect),
+                },
+                {
+                  label: i18n._(t`Copy`),
+                  click: () => copyEffect(effect),
+                },
+                {
+                  label: i18n._(t`Paste`),
+                  click: () => pasteEffectsBefore(effect),
+                  enabled: isClipboardContainingEffects,
+                },
+                { type: 'separator' },
+                {
+                  type: 'checkbox',
+                  label: i18n._(t`Show Properties Names`),
+                  checked: showEffectParameterNames,
+                  click: () =>
+                    setShowEffectParameterNames(!showEffectParameterNames),
+                },
+              ]}
+            />
+            <Spacer />
+          </div>
+          {effectMetadata && (
+            <Line expand noMargin>
+              <Column expand>
+                <Line>
+                  <BackgroundText>
+                    <MarkdownText source={effectMetadata.description} />
+                  </BackgroundText>
+                </Line>
+                <PropertiesEditorByVisibility
+                  project={project}
+                  schema={effectMetadata.parametersSchema}
+                  instances={[effect]}
+                  resourceManagementProps={resourceManagementProps}
+                  projectScopedContainersAccessor={
+                    projectScopedContainersAccessor
+                  }
+                  renderExtraDescriptionText={
+                    showEffectParameterNames
+                      ? parameterName =>
+                          i18n._(
+                            t`Property name in events: \`${parameterName}\` `
+                          )
+                      : undefined
+                  }
+                  placeholder={
+                    <Trans>
+                      There is nothing to configure for this effect.
+                    </Trans>
+                  }
+                />
+              </Column>
+            </Line>
+          )}
+        </React.Fragment>
+      )}
+    </I18n>
+  );
+});
+
+export const getEnumeratedEffectMetadata = (
+  allEffectDescriptions: Array<EnumeratedEffectMetadata>,
+  effectType: string
+): ?EnumeratedEffectMetadata => {
+  return allEffectDescriptions.find(
+    effectMetadata => effectMetadata.type === effectType
+  );
+};
+
+export const getEffects2DCount = (
+  platform: gdPlatform,
+  effectsContainer: gdEffectsContainer
+): number => {
+  const effectCount = effectsContainer.getEffectsCount();
+  let effect2DCount = 0;
+  for (let i = 0; i < effectCount; i++) {
+    const effect: gdEffect = effectsContainer.getEffectAt(i);
+    const effectMetadata = gd.MetadataProvider.getEffectMetadata(
+      platform,
+      effect.getEffectType()
+    );
+    if (!effectMetadata || !effectMetadata.isMarkedAsOnlyWorkingFor3D()) {
+      effect2DCount++;
+    }
+  }
+  return effect2DCount;
+};
+
+export const getEffects3DCount = (
+  platform: gdPlatform,
+  effectsContainer: gdEffectsContainer
+): number => {
+  const effectCount = effectsContainer.getEffectsCount();
+  let effect3DCount = 0;
+  for (let i = 0; i < effectCount; i++) {
+    const effect: gdEffect = effectsContainer.getEffectAt(i);
+    const effectMetadata = gd.MetadataProvider.getEffectMetadata(
+      platform,
+      effect.getEffectType()
+    );
+    if (!effectMetadata || !effectMetadata.isMarkedAsOnlyWorkingFor2D()) {
+      effect3DCount++;
+    }
+  }
+  return effect3DCount;
+};
+
+type UseManageEffectsState = {|
+  allEffectMetadata: Array<EnumeratedEffectMetadata>,
+  all2DEffectMetadata: Array<EnumeratedEffectMetadata>,
+  all3DEffectMetadata: Array<EnumeratedEffectMetadata>,
+  draggedEffect: {| current: ?gdEffect |},
+  addEffect: boolean => void,
+  addEffectWithType: string => void,
+  chooseEffectType: (effect: gdEffect, newEffectType: string) => void,
+  copyAllEffects: () => void,
+  copyEffect: (effect: gdEffect) => void,
+  duplicatedUniqueEffectMetadata: ?EnumeratedEffectMetadata,
+  isClipboardContainingEffects: boolean,
+  moveEffect: (targetEffect: gdEffect) => void,
+  pasteEffectsAtTheEnd: () => Promise<void>,
+  pasteEffectsBefore: (effect: gdEffect) => Promise<void>,
+  removeEffect: (effect: gdEffect) => void,
+  resetJustAddedEffectName: () => void,
+  justAddedEffectName: ?string,
+|};
+
+export const useManageEffects = ({
+  effectsContainer,
+  project,
+  onEffectsUpdated,
+  onEffectAdded,
+  onUpdate,
+  target,
+}: {|
+  effectsContainer: gdEffectsContainer,
+  project: gdProject,
+  onEffectsUpdated: () => void,
+  onEffectAdded: () => void,
+  onUpdate: () => void,
+  target: 'object' | 'layer',
+|}): UseManageEffectsState => {
+  const authenticatedUser = React.useContext(AuthenticatedUserContext);
+  const [justAddedEffectName, setJustAddedEffectName] = React.useState<?string>(
+    null
+  );
+  const draggedEffect = React.useRef<?gdEffect>(null);
+
+  const allEffectMetadata = React.useMemo(
+    () => enumerateEffectsMetadata(project),
+    [project]
+  );
+
+  const all3DEffectMetadata = React.useMemo(
+    () => {
+      const lightEffectMetadata = [];
+      const fogEffectMetadata = [];
+      const otherEffectMetadata = [];
+      for (const effect of allEffectMetadata) {
+        if (!effect.isMarkedAsOnlyWorkingFor3D) {
+          continue;
+        }
+        if (effect.type.endsWith('Light')) {
+          lightEffectMetadata.push(effect);
+        } else if (effect.type.endsWith('Fog')) {
+          fogEffectMetadata.push(effect);
+        } else {
+          otherEffectMetadata.push(effect);
+        }
+      }
+      return [
+        ...lightEffectMetadata,
+        ...fogEffectMetadata,
+        ...otherEffectMetadata,
+      ];
+    },
+    [allEffectMetadata]
+  );
+
+  const all2DEffectMetadata: Array<EnumeratedEffectMetadata> = React.useMemo(
+    () => allEffectMetadata.filter(effect => effect.isMarkedAsOnlyWorkingFor2D),
+    [allEffectMetadata]
+  );
+
+  const showEffectOverridingConfirmation = useEffectOverridingAlertDialog();
+
+  const chooseEffectType = React.useCallback(
+    (effect: gdEffect, newEffectType: string) => {
+      effect.setEffectType(newEffectType);
+      const effectMetadata = getEnumeratedEffectMetadata(
+        allEffectMetadata,
+        newEffectType
+      );
+
+      if (effectMetadata) {
+        setEffectDefaultParameters(effect, effectMetadata.effectMetadata);
+      }
+
+      onUpdate();
+      onEffectsUpdated();
+      // Changing the type is like adding a new effect.
+      // TODO Make a new effect dialog like for objects or behaviors to make this clearer.
+      onEffectAdded();
+    },
+    [allEffectMetadata, onUpdate, onEffectsUpdated, onEffectAdded]
+  );
+
+  const _addEffectWithType = React.useCallback(
+    (effectType: string) => {
+      const newName = newNameGenerator('Effect', name =>
+        effectsContainer.hasEffectNamed(name)
+      );
+      const effect = effectsContainer.insertNewEffect(
+        newName,
+        effectsContainer.getEffectsCount()
+      );
+
+      chooseEffectType(effect, effectType);
+
+      onUpdate();
+      onEffectsUpdated();
+      setJustAddedEffectName(newName);
+    },
+    [chooseEffectType, effectsContainer, onUpdate, onEffectsUpdated]
+  );
+
+  const addEffectWithType = addCreateBadgePreHookIfNotClaimed(
+    authenticatedUser,
+    TRIVIAL_FIRST_EFFECT,
+    _addEffectWithType
+  );
+
+  const addEffect = React.useCallback(
+    (is3D: boolean) => {
+      addEffectWithType(is3D ? 'Scene3D::DirectionalLight' : 'Outline');
+    },
+    [addEffectWithType]
+  );
+
+  const removeEffect = React.useCallback(
+    (effect: gdEffect) => {
+      effectsContainer.removeEffect(effect.getName());
+      onUpdate();
+      onEffectsUpdated();
+    },
+    [effectsContainer, onUpdate, onEffectsUpdated]
+  );
+
+  const copyEffect = React.useCallback(
+    (effect: gdEffect) => {
+      Clipboard.set(EFFECTS_CLIPBOARD_KIND, [
+        {
+          name: effect.getName(),
+          type: effect.getEffectType(),
+          serializedEffect: serializeToJSObject(effect),
+        },
+      ]);
+      onUpdate();
+    },
+    [onUpdate]
+  );
+
+  const copyAllEffects = React.useCallback(
+    () => {
+      Clipboard.set(
+        EFFECTS_CLIPBOARD_KIND,
+        mapFor(0, effectsContainer.getEffectsCount(), (index: number) => {
+          const effect: gdEffect = effectsContainer.getEffectAt(index);
+          return {
+            name: effect.getName(),
+            type: effect.getEffectType(),
+            serializedEffect: serializeToJSObject(effect),
+          };
+        })
+      );
+      onUpdate();
+    },
+    [onUpdate, effectsContainer]
+  );
+
+  const pasteEffects = React.useCallback(
+    // $FlowFixMe[missing-local-annot]
+    async effectInsertionIndex => {
+      const clipboardContent = Clipboard.get(EFFECTS_CLIPBOARD_KIND);
+      const effectContents = SafeExtractor.extractArray(clipboardContent);
+      if (!effectContents) return;
+
+      const newNamedEffects: Array<{
+        name: string,
+        serializedEffect: string,
+      }> = [];
+      const existingNamedEffects: Array<{
+        name: string,
+        serializedEffect: string,
+      }> = [];
+      effectContents.forEach(effectContent => {
+        const name = SafeExtractor.extractStringProperty(effectContent, 'name');
+        const type = SafeExtractor.extractStringProperty(effectContent, 'type');
+        const serializedEffect = SafeExtractor.extractObjectProperty(
+          effectContent,
+          'serializedEffect'
+        );
+        if (!name || !serializedEffect) {
+          return;
+        }
+
+        if (type) {
+          const effectMetadata = gd.MetadataProvider.getEffectMetadata(
+            project.getCurrentPlatform(),
+            type
+          );
+          if (!effectMetadata) {
+            return;
+          }
+          if (
+            target === 'object' &&
+            effectMetadata.isMarkedAsNotWorkingForObjects()
+          ) {
+            return;
+          }
+        }
+
+        if (effectsContainer.hasEffectNamed(name)) {
+          existingNamedEffects.push({ name, serializedEffect });
+        } else {
+          newNamedEffects.push({ name, serializedEffect });
+        }
+      });
+
+      let firstAddedEffectName: string | null = null;
+      let index = effectInsertionIndex;
+      newNamedEffects.forEach(({ name, serializedEffect }) => {
+        const effect = effectsContainer.insertNewEffect(name, index);
+        index++;
+        unserializeFromJSObject(effect, serializedEffect);
+        if (!firstAddedEffectName) {
+          firstAddedEffectName = name;
+        }
+      });
+
+      let shouldOverrideEffects = false;
+      if (existingNamedEffects.length > 0) {
+        shouldOverrideEffects = await showEffectOverridingConfirmation(
+          existingNamedEffects.map(namedEffect => namedEffect.name)
+        );
+
+        if (shouldOverrideEffects) {
+          existingNamedEffects.forEach(({ name, serializedEffect }) => {
+            if (effectsContainer.hasEffectNamed(name)) {
+              const effect = effectsContainer.getEffect(name);
+              unserializeFromJSObject(effect, serializedEffect);
+            }
+          });
+        }
+      }
+
+      onUpdate();
+      if (firstAddedEffectName) {
+        setJustAddedEffectName(firstAddedEffectName);
+      } else if (existingNamedEffects.length === 1) {
+        setJustAddedEffectName(existingNamedEffects[0].name);
+      }
+      if (firstAddedEffectName || shouldOverrideEffects) {
+        // $FlowFixMe[constant-condition]
+        if (onEffectsUpdated) onEffectsUpdated();
+      }
+    },
+    [
+      onUpdate,
+      project,
+      target,
+      effectsContainer,
+      showEffectOverridingConfirmation,
+      onEffectsUpdated,
+    ]
+  );
+
+  const pasteEffectsAtTheEnd = React.useCallback(
+    async () => {
+      await pasteEffects(effectsContainer.getEffectsCount());
+    },
+    [effectsContainer, pasteEffects]
+  );
+
+  const pasteEffectsBefore = React.useCallback(
+    async (effect: gdEffect) => {
+      await pasteEffects(effectsContainer.getEffectPosition(effect.getName()));
+    },
+    [effectsContainer, pasteEffects]
+  );
+
+  const moveEffect = React.useCallback(
+    (targetEffect: gdEffect) => {
+      const { current } = draggedEffect;
+      if (!current) return;
+
+      const draggedIndex = effectsContainer.getEffectPosition(
+        current.getName()
+      );
+      const targetIndex = effectsContainer.getEffectPosition(
+        targetEffect.getName()
+      );
+
+      effectsContainer.moveEffect(
+        draggedIndex,
+        targetIndex > draggedIndex ? targetIndex - 1 : targetIndex
+      );
+      onUpdate();
+      onEffectsUpdated();
+    },
+    [effectsContainer, onUpdate, onEffectsUpdated]
+  );
+
+  const isClipboardContainingEffects = Clipboard.has(EFFECTS_CLIPBOARD_KIND);
+
+  const getDuplicatedUniqueEffectMetadata = React.useCallback(
+    () => {
+      if (effectsContainer.getEffectsCount() < 2) {
+        return null;
+      }
+      // $FlowFixMe[definition-cycle]
+      const uniqueEffectTypes = [];
+      for (let i = 0; i < effectsContainer.getEffectsCount(); i++) {
+        const effect: gdEffect = effectsContainer.getEffectAt(i);
+        const effectType = effect.getEffectType();
+        const effectMetadata = getEnumeratedEffectMetadata(
+          allEffectMetadata,
+          effectType
+        );
+        if (!effectMetadata) {
+          continue;
+        }
+        // TODO Add an `isUnique` attribute in effect metadata if more effect are unique.
+        if (
+          effectType === 'Scene3D::LinearFog' ||
+          effectType === 'Scene3D::ExponentialFog'
+        ) {
+          if (uniqueEffectTypes.includes(effectType)) {
+            return effectMetadata;
+          }
+          uniqueEffectTypes.push(effectType);
+        }
+      }
+      return null;
+    },
+    [allEffectMetadata, effectsContainer]
+  );
+
+  const duplicatedUniqueEffectMetadata = getDuplicatedUniqueEffectMetadata();
+
+  const resetJustAddedEffectName = React.useCallback(() => {
+    setJustAddedEffectName(null);
+  }, []);
+
+  return {
+    allEffectMetadata,
+    all2DEffectMetadata,
+    all3DEffectMetadata,
+    draggedEffect,
+    addEffect,
+    addEffectWithType,
+    chooseEffectType,
+    copyAllEffects,
+    copyEffect,
+    duplicatedUniqueEffectMetadata,
+    isClipboardContainingEffects,
+    moveEffect,
+    pasteEffectsAtTheEnd,
+    pasteEffectsBefore,
+    removeEffect,
+    resetJustAddedEffectName,
+    justAddedEffectName,
+  };
+};
+
+type Props = {|
+  project: gdProject,
+  resourceManagementProps: ResourceManagementProps,
+  projectScopedContainersAccessor: ProjectScopedContainersAccessor,
+  effectsContainer: gdEffectsContainer,
+  onEffectsUpdated: () => void,
+  onEffectsRenamed: (oldName: string, newName: string) => void,
+  onEffectAdded: () => void,
+  target: 'object' | 'layer',
+  layerRenderingType: string,
+  effectInterfaceMode?: EffectInterfaceMode,
+|};
+
+/**
+ * Display a list of effects and allow to add/remove/edit them.
+ *
+ * All available effects are fetched from the project's platform.
+ */
+export default function EffectsList(props: Props): React.Node {
+  const {
+    effectsContainer,
+    onEffectsUpdated,
+    onEffectsRenamed,
+    onEffectAdded,
+    project,
+    target,
+  } = props;
+  const effectInterfaceMode: EffectInterfaceMode =
+    props.effectInterfaceMode || 'all';
+  const scrollView = React.useRef<?ScrollViewInterface>(null);
+  const justAddedEffectElement = React.useRef<?any>(null);
+  const [
+    currentSeparatedInterfaceTab,
+    setCurrentSeparatedInterfaceTab,
+  ] = React.useState<EffectInterfaceMode>('effects');
+
+  const forceUpdate = useForceUpdate();
+  const {
+    allEffectMetadata,
+    all2DEffectMetadata,
+    all3DEffectMetadata,
+    addEffect,
+    addEffectWithType,
+    chooseEffectType,
+    copyAllEffects,
+    copyEffect,
+    duplicatedUniqueEffectMetadata,
+    isClipboardContainingEffects,
+    moveEffect,
+    pasteEffectsAtTheEnd,
+    pasteEffectsBefore,
+    removeEffect,
+    resetJustAddedEffectName,
+    justAddedEffectName,
+    draggedEffect,
+  } = useManageEffects({
+    effectsContainer,
+    project,
+    onEffectsUpdated,
+    onEffectAdded,
+    onUpdate: forceUpdate,
+    target,
+  });
+
+  const shouldShowSeparatedInterfaces =
+    effectInterfaceMode === 'all' &&
+    target === 'layer' &&
+    props.layerRenderingType !== '2d';
+
+  React.useEffect(
+    () => {
+      if (
+        scrollView.current &&
+        justAddedEffectElement.current &&
+        justAddedEffectName
+      ) {
+        scrollView.current.scrollTo(justAddedEffectElement.current);
+        resetJustAddedEffectName();
+        justAddedEffectElement.current = null;
+      }
+    },
+    [justAddedEffectName, resetJustAddedEffectName]
+  );
+
+  const [nameErrors, setNameErrors] = React.useState<{ [number]: React.Node }>(
+    {}
+  );
+
+  const shouldDisplayEffectForInterfaceMode = React.useCallback(
+    (effectMetadata: ?EnumeratedEffectMetadata): boolean => {
+      if (effectInterfaceMode === 'all') {
+        return true;
+      }
+      return (
+        getEffectInterfaceModeForMetadata(effectMetadata) ===
+        effectInterfaceMode
+      );
+    },
+    [effectInterfaceMode]
+  );
+
+  const visibleEffectsCount = React.useMemo(
+    () => {
+      let count = 0;
+
+      for (let i = 0; i < effectsContainer.getEffectsCount(); i++) {
+        const effect: gdEffect = effectsContainer.getEffectAt(i);
+        const effectMetadata = getEnumeratedEffectMetadata(
+          allEffectMetadata,
+          effect.getEffectType()
+        );
+
+        if (!shouldDisplayEffectForInterfaceMode(effectMetadata)) {
+          continue;
+        }
+
+        if (
+          props.layerRenderingType === '2d' &&
+          effectMetadata &&
+          effectMetadata.isMarkedAsOnlyWorkingFor3D
+        ) {
+          continue;
+        }
+
+        if (
+          props.layerRenderingType === '3d' &&
+          effectMetadata &&
+          effectMetadata.isMarkedAsOnlyWorkingFor2D
+        ) {
+          continue;
+        }
+
+        count++;
+      }
+
+      return count;
+    },
+    [
+      allEffectMetadata,
+      effectsContainer,
+      props.layerRenderingType,
+      shouldDisplayEffectForInterfaceMode,
+    ]
+  );
+
+  const filtered2DEffectMetadata = React.useMemo(
+    () =>
+      all2DEffectMetadata.filter(effectMetadata =>
+        shouldDisplayEffectForInterfaceMode(effectMetadata)
+      ),
+    [all2DEffectMetadata, shouldDisplayEffectForInterfaceMode]
+  );
+
+  const filtered3DEffectMetadata = React.useMemo(
+    () =>
+      all3DEffectMetadata.filter(effectMetadata =>
+        shouldDisplayEffectForInterfaceMode(effectMetadata)
+      ),
+    [all3DEffectMetadata, shouldDisplayEffectForInterfaceMode]
+  );
+
+  const getDefaultEffectTypeForInterface = React.useCallback(
+    (): ?string => {
+      if (effectInterfaceMode === 'lighting') {
+        const lightingType =
+          filtered3DEffectMetadata.find(
+            effectMetadata =>
+              effectMetadata.type === 'Scene3D::DirectionalLight'
+          ) ||
+          filtered3DEffectMetadata.find(
+            effectMetadata => effectMetadata.type === 'Scene3D::AmbientLight'
+          ) ||
+          filtered3DEffectMetadata[0];
+        return lightingType ? lightingType.type : null;
+      }
+
+      if (effectInterfaceMode === 'shaders') {
+        const shaderType =
+          filtered3DEffectMetadata.find(
+            effectMetadata => effectMetadata.type === 'Scene3D::Bloom'
+          ) || filtered3DEffectMetadata[0];
+        return shaderType ? shaderType.type : null;
+      }
+
+      const baseEffectType =
+        filtered2DEffectMetadata.find(
+          effectMetadata => effectMetadata.type === 'Outline'
+        ) || filtered2DEffectMetadata[0];
+      if (baseEffectType) {
+        return baseEffectType.type;
+      }
+
+      return filtered3DEffectMetadata[0]
+        ? filtered3DEffectMetadata[0].type
+        : null;
+    },
+    [effectInterfaceMode, filtered2DEffectMetadata, filtered3DEffectMetadata]
+  );
+
+  const addCurrentInterfaceEffect = React.useCallback(
+    () => {
+      const defaultEffectType = getDefaultEffectTypeForInterface();
+      if (defaultEffectType) {
+        addEffectWithType(defaultEffectType);
+      }
+    },
+    [addEffectWithType, getDefaultEffectTypeForInterface]
+  );
+
+  const effects3DCount = React.useMemo(
+    () => {
+      let count = 0;
+      for (let i = 0; i < effectsContainer.getEffectsCount(); i++) {
+        const effect: gdEffect = effectsContainer.getEffectAt(i);
+        const effectMetadata = getEnumeratedEffectMetadata(
+          allEffectMetadata,
+          effect.getEffectType()
+        );
+        if (
+          (!effectMetadata || !effectMetadata.isMarkedAsOnlyWorkingFor2D) &&
+          shouldDisplayEffectForInterfaceMode(effectMetadata)
+        ) {
+          count++;
+        }
+      }
+      return count;
+    },
+    [allEffectMetadata, effectsContainer, shouldDisplayEffectForInterfaceMode]
+  );
+
+  const effects2DCount = React.useMemo(
+    () => {
+      let count = 0;
+      for (let i = 0; i < effectsContainer.getEffectsCount(); i++) {
+        const effect: gdEffect = effectsContainer.getEffectAt(i);
+        const effectMetadata = getEnumeratedEffectMetadata(
+          allEffectMetadata,
+          effect.getEffectType()
+        );
+        if (
+          (!effectMetadata || !effectMetadata.isMarkedAsOnlyWorkingFor3D) &&
+          shouldDisplayEffectForInterfaceMode(effectMetadata)
+        ) {
+          count++;
+        }
+      }
+      return count;
+    },
+    [allEffectMetadata, effectsContainer, shouldDisplayEffectForInterfaceMode]
+  );
+
+  if (shouldShowSeparatedInterfaces) {
+    return (
+      <Column noMargin expand useFullHeight>
+        <Tabs
+          value={currentSeparatedInterfaceTab}
+          onChange={newTab => setCurrentSeparatedInterfaceTab(newTab)}
+          options={[
+            {
+              value: 'effects',
+              label: <Trans>Effects</Trans>,
+            },
+            {
+              value: 'shaders',
+              label: <Trans>Shaders</Trans>,
+            },
+            {
+              value: 'lighting',
+              label: <Trans>Lighting</Trans>,
+            },
+          ]}
+        />
+        <EffectsList
+          {...props}
+          effectInterfaceMode={currentSeparatedInterfaceTab}
+        />
+      </Column>
+    );
+  }
+
+  return (
+    <I18n>
+      {({ i18n }) => (
+        <Column noMargin expand useFullHeight>
+          {visibleEffectsCount !== 0 ? (
+            <React.Fragment>
+              <ScrollView ref={scrollView}>
+                {duplicatedUniqueEffectMetadata && (
+                  <Line>
+                    <Column expand>
+                      <AlertMessage kind="error">
+                        <Trans>
+                          The "{duplicatedUniqueEffectMetadata.fullName}" effect
+                          can only be applied once.
+                        </Trans>
+                      </AlertMessage>
+                    </Column>
+                  </Line>
+                )}
+                {effectsContainer.getEffectsCount() > 3 && (
+                  <Line>
+                    <Column expand>
+                      <DismissableAlertMessage
+                        identifier="too-much-effects"
+                        kind="warning"
+                      >
+                        <Trans>
+                          Using a lot of effects can have a severe negative
+                          impact on the rendering performance, especially on
+                          low-end or mobile devices. Consider using less effects
+                          if possible. You can also disable and re-enable
+                          effects as needed using events.
+                        </Trans>
+                      </DismissableAlertMessage>
+                    </Column>
+                  </Line>
+                )}
+                {props.layerRenderingType !== '2d' && effects3DCount > 0 && (
+                  <Column noMargin expand>
+                    {props.layerRenderingType !== '3d' && (
+                      <Column noMargin>
+                        <Line>
+                          <Text size="block-title">
+                            {effectInterfaceMode === 'lighting' ? (
+                              <Trans>Lighting</Trans>
+                            ) : effectInterfaceMode === 'shaders' ? (
+                              <Trans>Shaders</Trans>
+                            ) : (
+                              <Trans>3D effects</Trans>
+                            )}
+                          </Text>
+                        </Line>
+                      </Column>
+                    )}
+                    <Line>
+                      <Column noMargin expand>
+                        {mapFor(
+                          0,
+                          effectsContainer.getEffectsCount(),
+                          (i: number) => {
+                            const effect: gdEffect = effectsContainer.getEffectAt(
+                              i
+                            );
+                            const effectType = effect.getEffectType();
+                            const effectMetadata = getEnumeratedEffectMetadata(
+                              allEffectMetadata,
+                              effectType
+                            );
+
+                            const effectRef =
+                              justAddedEffectName === effect.getName()
+                                ? justAddedEffectElement
+                                : null;
+
+                            return (!effectMetadata ||
+                              !effectMetadata.isMarkedAsOnlyWorkingFor2D) &&
+                              shouldDisplayEffectForInterfaceMode(
+                                effectMetadata
+                              ) ? (
+                              <DragSourceAndDropTarget3D
+                                key={effect.ptr}
+                                beginDrag={() => {
+                                  draggedEffect.current = effect;
+                                  return {};
+                                }}
+                                canDrag={() => true}
+                                canDrop={() => true}
+                                drop={() => {
+                                  moveEffect(effect);
+                                }}
+                              >
+                                {({
+                                  connectDragSource,
+                                  connectDropTarget,
+                                  isOver,
+                                  canDrop,
+                                }) =>
+                                  connectDropTarget(
+                                    <div
+                                      key={effect.ptr}
+                                      style={styles.rowContainer}
+                                    >
+                                      {isOver && (
+                                        <DropIndicator canDrop={canDrop} />
+                                      )}
+                                      <Effect
+                                        ref={effectRef}
+                                        layerRenderingType={'3d'}
+                                        target={target}
+                                        project={project}
+                                        projectScopedContainersAccessor={
+                                          props.projectScopedContainersAccessor
+                                        }
+                                        resourceManagementProps={
+                                          props.resourceManagementProps
+                                        }
+                                        effectsContainer={effectsContainer}
+                                        effect={effect}
+                                        removeEffect={removeEffect}
+                                        copyEffect={copyEffect}
+                                        pasteEffectsBefore={pasteEffectsBefore}
+                                        chooseEffectType={chooseEffectType}
+                                        allEffectMetadata={
+                                          filtered3DEffectMetadata
+                                        }
+                                        onEffectsUpdated={onEffectsUpdated}
+                                        onEffectsRenamed={onEffectsRenamed}
+                                        nameErrors={nameErrors}
+                                        setNameErrors={setNameErrors}
+                                        connectDragSource={connectDragSource}
+                                      />
+                                    </div>
+                                  )
+                                }
+                              </DragSourceAndDropTarget3D>
+                            ) : null;
+                          }
+                        )}
+                      </Column>
+                    </Line>
+                  </Column>
+                )}
+                {props.layerRenderingType !== '3d' && effects2DCount > 0 && (
+                  <Column noMargin expand>
+                    {props.layerRenderingType !== '2d' && (
+                      <Column noMargin>
+                        <Line>
+                          <Text size="block-title">
+                            {effectInterfaceMode === 'effects' ? (
+                              <Trans>Effects</Trans>
+                            ) : (
+                              <Trans>2D effects</Trans>
+                            )}
+                          </Text>
+                        </Line>
+                      </Column>
+                    )}
+                    <Line>
+                      <Column noMargin expand>
+                        {mapFor(
+                          0,
+                          effectsContainer.getEffectsCount(),
+                          (i: number) => {
+                            const effect: gdEffect = effectsContainer.getEffectAt(
+                              i
+                            );
+                            const effectType = effect.getEffectType();
+                            const effectMetadata = getEnumeratedEffectMetadata(
+                              allEffectMetadata,
+                              effectType
+                            );
+
+                            const effectRef =
+                              justAddedEffectName === effect.getName()
+                                ? justAddedEffectElement
+                                : null;
+
+                            return (!effectMetadata ||
+                              !effectMetadata.isMarkedAsOnlyWorkingFor3D) &&
+                              shouldDisplayEffectForInterfaceMode(
+                                effectMetadata
+                              ) ? (
+                              <DragSourceAndDropTarget2D
+                                key={effect.ptr}
+                                beginDrag={() => {
+                                  draggedEffect.current = effect;
+                                  return {};
+                                }}
+                                canDrag={() => true}
+                                canDrop={() => true}
+                                drop={() => {
+                                  moveEffect(effect);
+                                }}
+                              >
+                                {({
+                                  connectDragSource,
+                                  connectDropTarget,
+                                  isOver,
+                                  canDrop,
+                                }) =>
+                                  connectDropTarget(
+                                    <div
+                                      key={effect.ptr}
+                                      style={styles.rowContainer}
+                                    >
+                                      {isOver && (
+                                        <DropIndicator canDrop={canDrop} />
+                                      )}
+                                      <Effect
+                                        ref={effectRef}
+                                        layerRenderingType={'2d'}
+                                        target={target}
+                                        project={project}
+                                        resourceManagementProps={
+                                          props.resourceManagementProps
+                                        }
+                                        projectScopedContainersAccessor={
+                                          props.projectScopedContainersAccessor
+                                        }
+                                        effectsContainer={effectsContainer}
+                                        effect={effect}
+                                        removeEffect={removeEffect}
+                                        copyEffect={copyEffect}
+                                        pasteEffectsBefore={pasteEffectsBefore}
+                                        chooseEffectType={chooseEffectType}
+                                        allEffectMetadata={
+                                          filtered2DEffectMetadata
+                                        }
+                                        onEffectsUpdated={onEffectsUpdated}
+                                        onEffectsRenamed={onEffectsRenamed}
+                                        nameErrors={nameErrors}
+                                        setNameErrors={setNameErrors}
+                                        connectDragSource={connectDragSource}
+                                      />
+                                    </div>
+                                  )
+                                }
+                              </DragSourceAndDropTarget2D>
+                            ) : null;
+                          }
+                        )}
+                      </Column>
+                    </Line>
+                  </Column>
+                )}
+              </ScrollView>
+              <Column>
+                <Line noMargin>
+                  <LineStackLayout expand>
+                    <ResponsiveFlatButton
+                      key={'copy-all-effects'}
+                      leftIcon={<CopyIcon />}
+                      label={<Trans>Copy all effects</Trans>}
+                      onClick={() => {
+                        copyAllEffects();
+                      }}
+                    />
+                    <ResponsiveFlatButton
+                      key={'paste-effects'}
+                      leftIcon={<PasteIcon />}
+                      label={<Trans>Paste</Trans>}
+                      onClick={() => {
+                        pasteEffectsAtTheEnd();
+                      }}
+                      disabled={!isClipboardContainingEffects}
+                    />
+                  </LineStackLayout>
+                  <LineStackLayout justifyContent="flex-end" expand>
+                    {effectInterfaceMode === 'all' ? (
+                      <React.Fragment>
+                        {props.layerRenderingType !== '2d' && (
+                          <RaisedButton
+                            primary
+                            label={<Trans>Add a 3D effect</Trans>}
+                            onClick={() => addEffect(true)}
+                            icon={<Add />}
+                          />
+                        )}
+                        {props.layerRenderingType !== '3d' && (
+                          <RaisedButton
+                            primary
+                            label={<Trans>Add a 2D effect</Trans>}
+                            onClick={() => addEffect(false)}
+                            icon={<Add />}
+                          />
+                        )}
+                      </React.Fragment>
+                    ) : (
+                      <RaisedButton
+                        primary
+                        label={
+                          effectInterfaceMode === 'lighting' ? (
+                            <Trans>Add a lighting effect</Trans>
+                          ) : effectInterfaceMode === 'shaders' ? (
+                            <Trans>Add a shader</Trans>
+                          ) : (
+                            <Trans>Add an effect</Trans>
+                          )
+                        }
+                        onClick={addCurrentInterfaceEffect}
+                        icon={<Add />}
+                        disabled={!getDefaultEffectTypeForInterface()}
+                      />
+                    )}
+                  </LineStackLayout>
+                </Line>
+              </Column>
+            </React.Fragment>
+          ) : (
+            <Column noMargin expand justifyContent="center">
+              {effectInterfaceMode === 'all' ? (
+                props.layerRenderingType === '' ||
+                props.layerRenderingType === '2d+3d' ? (
+                  <EmptyPlaceholder
+                    title={<Trans>Add your first effect</Trans>}
+                    description={
+                      <Trans>
+                        Effects create visual changes to the object.
+                      </Trans>
+                    }
+                    actionLabel={<Trans>Add a 2D effect</Trans>}
+                    helpPagePath={
+                      props.target === 'object'
+                        ? '/objects/effects'
+                        : '/interface/scene-editor/layer-effects'
+                    }
+                    onAction={() => addEffect(false)}
+                    secondaryActionIcon={<Add />}
+                    secondaryActionLabel={<Trans>Add a 3D effect</Trans>}
+                    onSecondaryAction={() => addEffect(true)}
+                  />
+                ) : (
+                  <EmptyPlaceholder
+                    title={<Trans>Add your first effect</Trans>}
+                    description={
+                      <Trans>
+                        Effects create visual changes to the object.
+                      </Trans>
+                    }
+                    actionLabel={
+                      props.layerRenderingType === '3d' ? (
+                        <Trans>Add a 3D effect</Trans>
+                      ) : (
+                        <Trans>Add a 2D effect</Trans>
+                      )
+                    }
+                    helpPagePath={
+                      props.target === 'object'
+                        ? '/objects/effects'
+                        : '/interface/scene-editor/layer-effects'
+                    }
+                    onAction={() =>
+                      addEffect(props.layerRenderingType === '3d')
+                    }
+                    secondaryActionIcon={<PasteIcon />}
+                    secondaryActionLabel={
+                      isClipboardContainingEffects ? <Trans>Paste</Trans> : null
+                    }
+                    onSecondaryAction={() => {
+                      pasteEffectsAtTheEnd();
+                    }}
+                  />
+                )
+              ) : (
+                <EmptyPlaceholder
+                  title={
+                    effectInterfaceMode === 'lighting' ? (
+                      <Trans>Add your first lighting effect</Trans>
+                    ) : effectInterfaceMode === 'shaders' ? (
+                      <Trans>Add your first shader</Trans>
+                    ) : (
+                      <Trans>Add your first effect</Trans>
+                    )
+                  }
+                  description={
+                    effectInterfaceMode === 'lighting' ? (
+                      <Trans>
+                        Lighting controls 3D lights and fog in this layer.
+                      </Trans>
+                    ) : effectInterfaceMode === 'shaders' ? (
+                      <Trans>
+                        Shaders create advanced post-processing visuals.
+                      </Trans>
+                    ) : (
+                      <Trans>
+                        Effects create visual changes to the object.
+                      </Trans>
+                    )
+                  }
+                  actionLabel={
+                    effectInterfaceMode === 'lighting' ? (
+                      <Trans>Add a lighting effect</Trans>
+                    ) : effectInterfaceMode === 'shaders' ? (
+                      <Trans>Add a shader</Trans>
+                    ) : (
+                      <Trans>Add an effect</Trans>
+                    )
+                  }
+                  helpPagePath={
+                    props.target === 'object'
+                      ? '/objects/effects'
+                      : '/interface/scene-editor/layer-effects'
+                  }
+                  onAction={addCurrentInterfaceEffect}
+                  secondaryActionIcon={<PasteIcon />}
+                  secondaryActionLabel={
+                    isClipboardContainingEffects ? <Trans>Paste</Trans> : null
+                  }
+                  onSecondaryAction={() => {
+                    pasteEffectsAtTheEnd();
+                  }}
+                />
+              )}
+            </Column>
+          )}
+        </Column>
+      )}
+    </I18n>
+  );
+}

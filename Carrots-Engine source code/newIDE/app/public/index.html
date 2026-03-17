@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="%PUBLIC_URL%/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="%PUBLIC_URL%/favicon-16x16.png">
+    <title>Carrots Engine</title>
+
+    <meta name="title" content="Carrots Engine game making app" />
+    <meta property="og:title" content="Carrots Engine game making app" />
+    <meta name="description"
+      content="Build your own game super fast and without programming. Publish on mobile, desktop and on the web." />
+    <meta property="og:description"
+      content="Build your own game super fast and without programming. Publish on mobile, desktop and on the web." />
+    <meta property="og:url" content="https://gdevelop.io" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="%PUBLIC_URL%/GDevelop-editor-thumbnail.png" />
+    <meta property="og:image:width" content="1920" />
+    <meta property="og:image:height" content="1080" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background-color: #000;
+        transition: background-color 0.5s linear;
+      }
+
+      body {
+        background-image: radial-gradient(circle at center, #f2f2f2 0%, #d0d0d2 100%);
+
+        background-repeat: no-repeat;
+        background-position: center center;
+        overscroll-behavior: none;
+      }
+
+      @keyframes text-focus-in {
+        0% {
+          -webkit-filter: blur(12px);
+          filter: blur(12px);
+          opacity: 0;
+        }
+
+        100% {
+          -webkit-filter: blur(0px);
+          filter: blur(0px);
+          opacity: 1;
+        }
+      }
+    </style>
+
+    <!-- Progressive Web App support -->
+    <meta name="theme-color" content="#f0f0f0">
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json">
+  </head>
+  <body translate="no">
+    <!-- Root div used for React `Bootstrapper` component rendering-->
+    <div id="root"></div>
+
+    <script>
+      window["GD_STARTUP_TIMES"] = [["indexHtmlFirstScriptStarted", performance.now()]];
+    </script>
+
+    <noscript>
+      <div style="font-family: sans-serif; padding: 15px;">
+        <p>
+          Carrots Engine is an open-source, cross-platform game engine designed for
+          everyone - it's extensible, fast and easy to learn.
+        </p>
+
+        <p>
+          To use Carrots Engine, you must <b>activate JavaScript</b> in your browser or
+          download the desktop version for Windows, macOS or Linux on
+          <a href="https://gdevelop.io">https://gdevelop.io</a>.
+        </p>
+      </div>
+    </noscript>
+  </body>
+</html>
