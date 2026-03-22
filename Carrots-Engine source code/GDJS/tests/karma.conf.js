@@ -59,6 +59,7 @@ module.exports = function (config) {
       './newIDE/app/resources/GDJS/Runtime/logger.js',
       './newIDE/app/resources/GDJS/Runtime/gd.js',
       './newIDE/app/resources/GDJS/Runtime/AsyncTasksManager.js',
+      './newIDE/app/resources/GDJS/Runtime/multithreadingmanager.js',
       './newIDE/app/resources/GDJS/Runtime/libs/rbush.js',
       './newIDE/app/resources/GDJS/Runtime/pixi-renderers/pixi.js',
       './newIDE/app/resources/GDJS/Runtime/pixi-renderers/three.js',
