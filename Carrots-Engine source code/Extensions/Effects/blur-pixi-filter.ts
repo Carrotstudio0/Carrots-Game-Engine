@@ -3,7 +3,7 @@ namespace gdjs {
     b: number;
     q: number;
     ks: number;
-    res: number | null;
+    res: number | 'inherit';
   }
   gdjs.PixiFiltersTools.registerFilterCreator(
     'Blur',
@@ -18,6 +18,8 @@ namespace gdjs {
         parameterName: string,
         value: number
       ) {
+        const blurFilter = filter as PIXI.BlurFilter &
+          Record<string, number | 'inherit'>;
         if (
           parameterName !== 'blur' &&
           parameterName !== 'quality' &&
@@ -29,10 +31,13 @@ namespace gdjs {
         if (parameterName === 'kernelSize') {
           value = gdjs.PixiFiltersTools.clampKernelSize(value, 5, 15);
         }
-        filter[parameterName] = value;
+        blurFilter[parameterName] = value;
       }
       getDoubleParameter(filter: PIXI.Filter, parameterName: string): number {
-        return filter[parameterName] || 0;
+        const blurFilter = filter as PIXI.BlurFilter &
+          Record<string, number | 'inherit'>;
+        const value = blurFilter[parameterName];
+        return typeof value === 'number' ? value : 0;
       }
       updateStringParameter(
         filter: PIXI.Filter,
@@ -53,21 +58,25 @@ namespace gdjs {
         value: boolean
       ) {}
       getNetworkSyncData(filter: PIXI.Filter): BlurFilterNetworkSyncData {
+        const blurFilter = filter as PIXI.BlurFilter &
+          Record<string, number | 'inherit'>;
         return {
-          b: filter['blur'],
-          q: filter['quality'],
-          ks: filter['kernelSize'],
-          res: filter['resolution'],
+          b: blurFilter['blur'] as number,
+          q: blurFilter['quality'] as number,
+          ks: blurFilter['kernelSize'] as number,
+          res: blurFilter['resolution'],
         };
       }
       updateFromNetworkSyncData(
         filter: PIXI.Filter,
         data: BlurFilterNetworkSyncData
       ) {
-        filter['blur'] = data.b;
-        filter['quality'] = data.q;
-        filter['kernelSize'] = data.ks;
-        filter['resolution'] = data.res;
+        const blurFilter = filter as PIXI.BlurFilter &
+          Record<string, number | 'inherit'>;
+        blurFilter['blur'] = data.b;
+        blurFilter['quality'] = data.q;
+        blurFilter['kernelSize'] = data.ks;
+        blurFilter['resolution'] = data.res;
       }
     })()
   );

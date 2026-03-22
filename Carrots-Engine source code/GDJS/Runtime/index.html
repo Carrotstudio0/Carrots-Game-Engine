@@ -34,12 +34,12 @@
     <!-- GDJS_CUSTOM_HTML -->
 	<script>
 
-    (function() {
+    (async function() {
         //Initialization
         var game = new gdjs.RuntimeGame(gdjs.projectData, {}/*GDJS_ADDITIONAL_SPEC*/);
 
         //Create a renderer
-        game.getRenderer().createStandardCanvas(document.body);
+        await game.getRenderer().createStandardCanvas(document.body);
 
         //Bind keyboards/mouse/touch events
         game.getRenderer().bindStandardEvents(game.getInputManager(), window, document);

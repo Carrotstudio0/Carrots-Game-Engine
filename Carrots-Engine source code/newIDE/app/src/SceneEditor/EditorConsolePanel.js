@@ -1,7 +1,7 @@
 // @flow
 import * as React from 'react';
 import { Trans, t } from '@lingui/macro';
-import { Column, Line, Spacer } from '../UI/Grid';
+import { Column, Line } from '../UI/Grid';
 import FlatButton from '../UI/FlatButton';
 import SearchBar from '../UI/SearchBar';
 import CompactToggleButtons from '../UI/CompactToggleButtons';
@@ -126,7 +126,7 @@ const EditorConsolePanel = (): React.Node => {
   const [showInfo, setShowInfo] = React.useState(true);
   const [showWarning, setShowWarning] = React.useState(true);
   const [showError, setShowError] = React.useState(true);
-  const [logRevision, setLogRevision] = React.useState(0);
+  const [, setLogRevision] = React.useState(0);
   const gdevelopTheme = React.useContext(GDevelopThemeContext);
 
   React.useEffect(() => {
@@ -141,22 +141,16 @@ const EditorConsolePanel = (): React.Node => {
     };
   }, []);
 
-  const counts = React.useMemo(
-    () => {
-      const nextCounts = {
-        info: 0,
-        warning: 0,
-        error: 0,
-      };
-      editorLogsManager.logs.forEach(log => {
-        if (nextCounts[log.type] !== undefined) {
-          nextCounts[log.type] += 1;
-        }
-      });
-      return nextCounts;
-    },
-    [logRevision]
-  );
+  const counts = {
+    info: 0,
+    warning: 0,
+    error: 0,
+  };
+  editorLogsManager.logs.forEach(log => {
+    if (counts[log.type] !== undefined) {
+      counts[log.type] += 1;
+    }
+  });
 
   const filterLog = React.useCallback(
     (log: Log) => {

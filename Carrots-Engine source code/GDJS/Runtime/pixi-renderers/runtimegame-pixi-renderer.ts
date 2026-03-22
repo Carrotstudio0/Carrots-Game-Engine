@@ -26,6 +26,17 @@ namespace gdjs {
       ? true
       : false;
 
+  const enableLegacyLightsIfSupported = (
+    renderer: THREE.WebGLRenderer
+  ): void => {
+    const rendererWithLegacyLights = renderer as THREE.WebGLRenderer & {
+      useLegacyLights?: boolean;
+    };
+    if ('useLegacyLights' in rendererWithLegacyLights) {
+      rendererWithLegacyLights.useLegacyLights = true;
+    }
+  };
+
   /**
    * The renderer for a gdjs.RuntimeGame using Pixi.js.
    * @category Renderers > Game
@@ -61,6 +72,7 @@ namespace gdjs {
     _nextFrameId: integer = 0;
 
     _wasDisposed: boolean = false;
+    private _renderersInitializationPromise: Promise<void> | null = null;
 
     /**
      * @param game The game that is being rendered
@@ -86,14 +98,16 @@ namespace gdjs {
      *
      * @param parentElement The parent element to which the canvas will be added.
      */
-    createStandardCanvas(parentElement: HTMLElement) {
+    async createStandardCanvas(parentElement: HTMLElement): Promise<void> {
       this._throwIfDisposed();
 
       const gameCanvas = document.createElement('canvas');
       parentElement.appendChild(gameCanvas);
 
-      this.initializeRenderers(gameCanvas);
       this.initializeCanvas(gameCanvas);
+      await this.initializeRenderers(gameCanvas);
+      // Ensure proper sizing once renderers are ready.
+      this._resizeCanvas();
     }
 
     /**
@@ -101,7 +115,24 @@ namespace gdjs {
      *
      * In most cases, you can use `createStandardCanvas` instead to initialize the game.
      */
-    initializeRenderers(gameCanvas: HTMLCanvasElement): void {
+    async initializeRenderers(gameCanvas: HTMLCanvasElement): Promise<void> {
+      this._throwIfDisposed();
+      if (this._renderersInitializationPromise) {
+        return this._renderersInitializationPromise;
+      }
+
+      this._renderersInitializationPromise = this._initializeRenderers(
+        gameCanvas
+      ).catch((error) => {
+        this._renderersInitializationPromise = null;
+        throw error;
+      });
+      return this._renderersInitializationPromise;
+    }
+
+    private async _initializeRenderers(
+      gameCanvas: HTMLCanvasElement
+    ): Promise<void> {
       this._throwIfDisposed();
 
       if (typeof THREE !== 'undefined') {
@@ -111,50 +142,88 @@ namespace gdjs {
             this._game.getAntialiasingMode() !== 'none' &&
             (this._game.isAntialisingEnabledOnMobile() ||
               !gdjs.evtTools.common.isMobile()),
+          stencil: true,
           preserveDrawingBuffer: true, // Keep to true to allow screenshots.
         });
         this._threeRenderer.shadowMap.enabled = true;
         this._threeRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        this._threeRenderer.useLegacyLights = true;
+        enableLegacyLightsIfSupported(this._threeRenderer);
         this._threeRenderer.autoClear = false;
-        this._threeRenderer.pixelRatio = window.devicePixelRatio;
+        this._threeRenderer.setPixelRatio(window.devicePixelRatio);
         this._threeRenderer.setSize(
           this._game.getGameResolutionWidth(),
           this._game.getGameResolutionHeight()
         );
 
+        if (
+          this._game.isFsrEnabled() &&
+          !this._threeRenderer.capabilities.isWebGL2
+        ) {
+          this._game.disableFsrForSession('WebGL2 not supported');
+        }
+
         // Create a PixiJS renderer that use the same GL context as Three.js
         // so that both can render to the canvas and even have PixiJS rendering
         // reused in Three.js (by using a RenderTexture and the same internal WebGL texture).
-        this._pixiRenderer = new PIXI.Renderer({
+        const pixiRenderer = new PIXI.WebGLRenderer();
+        const pixiInitOptions: Partial<PIXI.WebGLOptions> & {
+          stencil: boolean;
+        } = {
           width: this._game.getGameResolutionWidth(),
           height: this._game.getGameResolutionHeight(),
           view: gameCanvas,
-          // @ts-ignore - reuse the context from Three.js.
-          context: this._threeRenderer.getContext(),
+          context: this._threeRenderer
+            .getContext() as unknown as WebGL2RenderingContext,
           clearBeforeRender: false,
           preserveDrawingBuffer: true, // Keep to true to allow screenshots.
           antialias: false,
+          stencil: true,
           backgroundAlpha: 0,
+          manageImports: false,
           // TODO (3D): add a setting for pixel ratio (`resolution: window.devicePixelRatio`)
-        });
+        };
+        // @ts-ignore - Pixi v8 requires async init. Reuse Three.js context.
+        await pixiRenderer.init(pixiInitOptions);
+        this._pixiRenderer = pixiRenderer;
       } else {
         // Create the renderer and setup the rendering area.
         // "preserveDrawingBuffer: true" is needed to avoid flickering
         // and background issues on some mobile phones (see #585 #572 #566 #463).
-        this._pixiRenderer = PIXI.autoDetectRenderer({
+        const pixiRenderer = new PIXI.WebGLRenderer();
+        const pixiInitOptions: Partial<PIXI.WebGLOptions> & {
+          stencil: boolean;
+        } = {
           width: this._game.getGameResolutionWidth(),
           height: this._game.getGameResolutionHeight(),
           view: gameCanvas,
           preserveDrawingBuffer: true,
           antialias: false,
-        }) as PIXI.Renderer;
+          stencil: true,
+          manageImports: false,
+        };
+        // @ts-ignore - Pixi v8 requires async init.
+        await pixiRenderer.init(pixiInitOptions);
+        this._pixiRenderer = pixiRenderer;
+
+        if (this._game.isFsrEnabled()) {
+          this._game.disableFsrForSession('Three.js is not available');
+        }
+      }
+
+      if (!this._pixiRenderer) {
+        return;
       }
 
       // Deactivating accessibility support in PixiJS renderer, as we want to be in control of this.
       // See https://github.com/pixijs/pixijs/issues/5111#issuecomment-420047824
-      this._pixiRenderer.plugins.accessibility.destroy();
-      delete this._pixiRenderer.plugins.accessibility;
+      const pixiPlugins = (this._pixiRenderer as any).plugins;
+      const accessibilityPlugin = pixiPlugins && pixiPlugins.accessibility;
+      if (accessibilityPlugin && accessibilityPlugin.destroy) {
+        accessibilityPlugin.destroy();
+      }
+      if (pixiPlugins && pixiPlugins.accessibility) {
+        delete pixiPlugins.accessibility;
+      }
     }
 
     /**
@@ -216,7 +285,21 @@ namespace gdjs {
 
       // Handle pixels rounding.
       if (this._game.getPixelsRounding()) {
-        PIXI.settings.ROUND_PIXELS = true;
+        const pixiWithCompat = PIXI as typeof PIXI & {
+          AbstractRenderer?: {
+            defaultOptions?: {
+              roundPixels?: boolean;
+            };
+          };
+          settings?: {
+            ROUND_PIXELS?: boolean;
+          };
+        };
+        if (pixiWithCompat.AbstractRenderer?.defaultOptions) {
+          pixiWithCompat.AbstractRenderer.defaultOptions.roundPixels = true;
+        } else if (pixiWithCompat.settings) {
+          pixiWithCompat.settings.ROUND_PIXELS = true;
+        }
       }
 
       // Handle resize: immediately adjust the game canvas (and dom element container)
@@ -1148,7 +1231,7 @@ namespace gdjs {
     isWebGLSupported(): boolean {
       return (
         !!this._pixiRenderer &&
-        this._pixiRenderer.type === PIXI.RENDERER_TYPE.WEBGL
+        this._pixiRenderer.type === PIXI.RendererType.WEBGL
       );
     }
 

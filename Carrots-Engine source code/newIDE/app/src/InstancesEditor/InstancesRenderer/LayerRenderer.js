@@ -5,7 +5,7 @@ import RenderedInstance from '../../ObjectsRendering/Renderers/RenderedInstance'
 import getObjectByName from '../../Utils/GetObjectByName';
 import ViewPosition from '../ViewPosition';
 
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
 import * as THREE from 'three';
 import { shouldBeHandledByPinch } from '../PinchHandler';
 import { makeDoubleClickable } from './PixiDoubleClickEvent';
@@ -22,6 +22,15 @@ import {
   makeBasicProfilingCounters,
   resetBasicProfilingCounters,
 } from './BasicProfilingCounters';
+import {
+  bindPixiEvent,
+  getPixiGlobalPoint,
+  getPixiMouseButton,
+  getPixiOriginalEvent,
+  getSharedGlTextureForThree,
+  renderToRenderTexture,
+  setTextureScaleMode,
+} from '../../Utils/PixiCompat/EditorPixiAdapter';
 const gd: libGDevelop = global.gd;
 
 export default class LayerRenderer {
@@ -455,22 +464,23 @@ export default class LayerRenderer {
       renderedInstance._pixiObject.eventMode = 'static';
       panable(renderedInstance._pixiObject);
       makeDoubleClickable(renderedInstance._pixiObject);
-      renderedInstance._pixiObject.addEventListener('click', event => {
-        if (event.data.originalEvent.button === 0)
+      bindPixiEvent(renderedInstance._pixiObject, 'click', event => {
+        if (getPixiMouseButton(event) === 0)
           this.onInstanceClicked(instance);
       });
-      renderedInstance._pixiObject.addEventListener('doubleclick', () => {
+      bindPixiEvent(renderedInstance._pixiObject, 'doubleclick', () => {
         this.onInstanceDoubleClicked(instance);
       });
-      renderedInstance._pixiObject.addEventListener('mouseover', () => {
+      bindPixiEvent(renderedInstance._pixiObject, 'mouseover', () => {
         this.onOverInstance(instance);
       });
-      renderedInstance._pixiObject.addEventListener(
+      bindPixiEvent(
+        renderedInstance._pixiObject,
         'mousedown',
         // $FlowFixMe[value-as-type]
         (event: PIXI.InteractionEvent) => {
-          if (event.data.originalEvent.button === 0) {
-            const viewPoint = event.data.global;
+          if (getPixiMouseButton(event) === 0) {
+            const viewPoint = getPixiGlobalPoint(event);
             const scenePoint = this.viewPosition.toSceneCoordinates(
               viewPoint.x,
               viewPoint.y
@@ -479,12 +489,13 @@ export default class LayerRenderer {
           }
         }
       );
-      renderedInstance._pixiObject.addEventListener(
+      bindPixiEvent(
+        renderedInstance._pixiObject,
         'mouseup',
         // $FlowFixMe[value-as-type]
         (event: PIXI.InteractionEvent) => {
-          if (event.data.originalEvent.button === 0) {
-            const viewPoint = event.data.global;
+          if (getPixiMouseButton(event) === 0) {
+            const viewPoint = getPixiGlobalPoint(event);
             const scenePoint = this.viewPosition.toSceneCoordinates(
               viewPoint.x,
               viewPoint.y
@@ -493,12 +504,12 @@ export default class LayerRenderer {
           }
         }
       );
-      renderedInstance._pixiObject.addEventListener(
+      bindPixiEvent(
+        renderedInstance._pixiObject,
         'rightclick',
         interactionEvent => {
-          const {
-            data: { global: viewPoint, originalEvent: event },
-          } = interactionEvent;
+          const viewPoint = getPixiGlobalPoint(interactionEvent);
+          const originalEvent = getPixiOriginalEvent(interactionEvent);
 
           // First select the instance
           const scenePoint = this.viewPosition.toSceneCoordinates(
@@ -510,54 +521,67 @@ export default class LayerRenderer {
           // Then call right click callback
           if (this.onInstanceRightClicked) {
             this.onInstanceRightClicked({
-              offsetX: event.offsetX,
-              offsetY: event.offsetY,
-              x: event.clientX,
-              y: event.clientY,
+              offsetX:
+                originalEvent && typeof originalEvent.offsetX === 'number'
+                  ? originalEvent.offsetX
+                  : viewPoint.x,
+              offsetY:
+                originalEvent && typeof originalEvent.offsetY === 'number'
+                  ? originalEvent.offsetY
+                  : viewPoint.y,
+              x:
+                originalEvent && typeof originalEvent.clientX === 'number'
+                  ? originalEvent.clientX
+                  : viewPoint.x,
+              y:
+                originalEvent && typeof originalEvent.clientY === 'number'
+                  ? originalEvent.clientY
+                  : viewPoint.y,
             });
           }
 
           return false;
         }
       );
-      renderedInstance._pixiObject.addEventListener('touchstart', event => {
-        if (shouldBeHandledByPinch(event.data && event.data.originalEvent)) {
+      bindPixiEvent(renderedInstance._pixiObject, 'touchstart', event => {
+        if (shouldBeHandledByPinch(getPixiOriginalEvent(event))) {
           return null;
         }
 
-        const viewPoint = event.data.global;
+        const viewPoint = getPixiGlobalPoint(event);
         const scenePoint = this.viewPosition.toSceneCoordinates(
           viewPoint.x,
           viewPoint.y
         );
         this.onDownInstance(instance, scenePoint[0], scenePoint[1]);
       });
-      renderedInstance._pixiObject.addEventListener('touchend', event => {
-        if (shouldBeHandledByPinch(event.data && event.data.originalEvent)) {
+      bindPixiEvent(renderedInstance._pixiObject, 'touchend', event => {
+        if (shouldBeHandledByPinch(getPixiOriginalEvent(event))) {
           return null;
         }
 
-        const viewPoint = event.data.global;
+        const viewPoint = getPixiGlobalPoint(event);
         const scenePoint = this.viewPosition.toSceneCoordinates(
           viewPoint.x,
           viewPoint.y
         );
         this.onUpInstance(instance, scenePoint[0], scenePoint[1]);
       });
-      renderedInstance._pixiObject.addEventListener('mouseout', () => {
+      bindPixiEvent(renderedInstance._pixiObject, 'mouseout', () => {
         this.onOutInstance(instance);
       });
-      renderedInstance._pixiObject.addEventListener(
+      bindPixiEvent(
+        renderedInstance._pixiObject,
         'panmove',
         (event: PanMoveEvent) => {
-          if (shouldBeHandledByPinch(event.data && event.data.originalEvent)) {
+          if (shouldBeHandledByPinch(getPixiOriginalEvent(event.data))) {
             return null;
           }
 
           this.onMoveInstance(instance, event.deltaX, event.deltaY);
         }
       );
-      renderedInstance._pixiObject.addEventListener('panend', event => {
+      bindPixiEvent(renderedInstance._pixiObject, 'panend', event => {
         this.onMoveInstanceEnd();
       });
     }
@@ -741,7 +765,7 @@ export default class LayerRenderer {
    */
   // $FlowFixMe[value-as-type]
   _createPixiRenderTexture(pixiRenderer: PIXI.Renderer | null): void {
-    if (!pixiRenderer || pixiRenderer.type !== PIXI.RENDERER_TYPE.WEBGL) {
+    if (!pixiRenderer || pixiRenderer.type !== PIXI.RendererType.WEBGL) {
       return;
     }
     if (this._renderTexture) {
@@ -762,7 +786,7 @@ export default class LayerRenderer {
       height: height || 100,
       resolution,
     });
-    this._renderTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+    setTextureScaleMode(this._renderTexture, 'linear');
     console.info(`RenderTexture created for layer ${this.layer.getName()}.`);
   }
 
@@ -787,21 +811,10 @@ export default class LayerRenderer {
       this._oldWidth = pixiRenderer.screen.width;
       this._oldHeight = pixiRenderer.screen.height;
     }
-    const oldRenderTexture = pixiRenderer.renderTexture.current;
-    const oldSourceFrame = pixiRenderer.renderTexture.sourceFrame;
-    pixiRenderer.renderTexture.bind(this._renderTexture);
-
-    pixiRenderer.renderTexture.clear([0, 0, 0, 0]);
-
-    pixiRenderer.render(this.pixiContainer, {
-      renderTexture: this._renderTexture,
-      clear: false,
+    renderToRenderTexture(pixiRenderer, this.pixiContainer, this._renderTexture, {
+      clear: true,
+      clearColor: [0, 0, 0, 0],
     });
-    pixiRenderer.renderTexture.bind(
-      oldRenderTexture,
-      oldSourceFrame,
-      undefined
-    );
   }
 
   /**
@@ -818,15 +831,18 @@ export default class LayerRenderer {
       return;
     }
 
-    const glTexture = this._renderTexture.baseTexture._glTextures[
-      pixiRenderer.CONTEXT_UID
-    ];
+    const glTexture = getSharedGlTextureForThree(
+      pixiRenderer,
+      this._renderTexture
+    );
     if (glTexture) {
       // "Hack" into the Three.js renderer by getting the internal WebGL texture for the PixiJS plane,
       // and set it so that it's the same as the WebGL texture for the PixiJS RenderTexture.
       // This works because PixiJS and Three.js are using the same WebGL context.
       const texture = threeRenderer.properties.get(this._threePlaneTexture);
-      texture.__webglTexture = glTexture.texture;
+      if (texture) {
+        texture.__webglTexture = glTexture.texture || glTexture;
+      }
     }
   }
 

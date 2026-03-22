@@ -8,8 +8,28 @@ namespace gdjs {
     'Outline',
     new (class extends gdjs.PixiFiltersTools.PixiFilterCreator {
       makePIXIFilter(target: EffectsTarget, effectData) {
-        const outlineFilter = new PIXI.filters.OutlineFilter();
-        return outlineFilter;
+        const OutlineFilter = (PIXI.filters as any).OutlineFilter;
+        if (OutlineFilter) {
+          try {
+            return new OutlineFilter();
+          } catch (error) {
+            console.warn(
+              'Failed to initialize OutlineFilter, falling back to AlphaFilter.',
+              error
+            );
+          }
+        }
+        const fallbackFilter = new PIXI.AlphaFilter({
+          alpha: 1,
+        }) as unknown as PIXI.Filter & {
+          thickness: number;
+          padding: number;
+          color: number;
+        };
+        fallbackFilter.thickness = 1;
+        fallbackFilter.padding = 1;
+        fallbackFilter.color = 0xffffff;
+        return fallbackFilter;
       }
       updatePreRender(filter: PIXI.Filter, target: EffectsTarget) {}
       updateDoubleParameter(

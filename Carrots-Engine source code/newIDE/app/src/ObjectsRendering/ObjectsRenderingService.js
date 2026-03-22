@@ -1,5 +1,5 @@
 // @flow
-import 'pixi-spine';
+import '@esotericsoftware/spine-pixi-v8';
 import RenderedUnknownInstance from './Renderers/RenderedUnknownInstance';
 import RenderedSpriteInstance from './Renderers/RenderedSpriteInstance';
 import RenderedTiledSpriteInstance from './Renderers/RenderedTiledSpriteInstance';
@@ -15,11 +15,12 @@ import PixiResourcesLoader from './PixiResourcesLoader';
 import ResourcesLoader from '../ResourcesLoader';
 import RenderedInstance from './Renderers/RenderedInstance';
 import Rendered3DInstance from './Renderers/Rendered3DInstance';
-import * as PIXI_LEGACY from 'pixi.js-legacy';
-import * as PIXI_SPINE from 'pixi-spine';
+import * as PIXI_MODULE from 'pixi.js';
+import * as PIXI_SPINE from '@esotericsoftware/spine-pixi-v8';
 import * as THREE from 'three';
-import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import optionalRequire from '../Utils/OptionalRequire';
+import applyPixiCompat from '../Utils/PixiCompat/applyPixiCompat';
 import {
   rgbOrHexToHexNumber,
   hexNumberToRGBArray,
@@ -28,7 +29,7 @@ import {
 const path = optionalRequire('path');
 const electron = optionalRequire('electron');
 const gd: libGDevelop = global.gd;
-const PIXI = { ...PIXI_LEGACY, ...PIXI_SPINE };
+const PIXI = applyPixiCompat({ ...PIXI_MODULE, ...PIXI_SPINE });
 
 // Some PixiJS plugins like pixi-tilemap are not distributed as UMD modules,
 // or still require a global PIXI object to be accessible, so we expose PIXI here.
@@ -228,6 +229,11 @@ const ObjectsRenderingService = {
    * the specified path (if `optionalRequire` can find the file, i.e: on the electron app).
    */
   requireModule: function(requireBasePath: string, requirePath: string): ?any {
+    // Prefer explicitly registered modules so development/electron uses the
+    // same compatibility wrappers as the bundled web-app.
+    // $FlowFixMe[invalid-computed-prop]
+    if (requirableModules[requirePath]) return requirableModules[requirePath];
+
     // On Electron, where modules can be required at runtime from files, require the
     // file, relative to the base path.
     if (electron && path) {
@@ -237,8 +243,8 @@ const ObjectsRenderingService = {
       );
 
       // Get the "module" module from Node.js and temporarily overwrite its internal "_load"
-      // method. This method is called when a module is loaded, and is used here to provide "pixi.js-legacy"
-      // to extensions needing it. If we don't, "pixi.js-legacy" is found in development, because Node.js resolution
+      // method. This method is called when a module is loaded, and is used here to provide Pixi/Spine
+      // to extensions needing it. If we don't, "pixi.js" is found in development, because Node.js resolution
       // algorithm traverses the paths until it reaches newIDE/app/node_modules, but is not found in production,
       // because newIDE/app node_modules are now gone (compiled by Webpack).
       const module = optionalRequire('module');
@@ -251,8 +257,10 @@ const ObjectsRenderingService = {
 
       // Allow pixi.js to be required by extensions:
       const allowedModules = {
-        'pixi.js-legacy': PIXI,
         'pixi.js': PIXI,
+        'pixi.js-legacy': PIXI,
+        '@esotericsoftware/spine-pixi-v8': PIXI_SPINE,
+        'pixi-spine': PIXI_SPINE,
         '@pixi/core': PIXI,
         '@pixi/display': PIXI,
         '@pixi/constants': PIXI,
@@ -297,9 +305,6 @@ const ObjectsRenderingService = {
       return requiredModule;
     } else {
       // On the web-app, modules need to be registered manually.
-      // $FlowFixMe[invalid-computed-prop]
-      if (requirableModules[requirePath]) return requirableModules[requirePath];
-
       console.error(
         `Unable to load module "${requirePath}". Are you sure you registered it using ObjectsRenderingService.registerModule? This is mandatory for the web-app to have the file bundled.`
       );

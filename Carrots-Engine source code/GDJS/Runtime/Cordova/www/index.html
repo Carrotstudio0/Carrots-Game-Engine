@@ -14,7 +14,7 @@
 	<script src='cordova.js'></script>
 	<!-- GDJS_CODE_FILES -->
 	<script type="text/javascript">
-		var onDeviceReady=function(){
+		var onDeviceReady=async function(){
 	        //Initialization
 			if (typeof navigator !== "undefined" && navigator.splashscreen && navigator.splashscreen.hide)
 				navigator.splashscreen.hide();
@@ -24,7 +24,7 @@
 
 				//Create a renderer
 				var canvasArea = document.getElementById("canvasArea");
-				game.getRenderer().createStandardCanvas(canvasArea);
+				await game.getRenderer().createStandardCanvas(canvasArea);
 
 				//Bind keyboards/mouse/touch events
 				game.getRenderer().bindStandardEvents(game.getInputManager(), window, document);

@@ -168,14 +168,20 @@ namespace gdjs {
       const map = (
         material as THREE.MeshBasicMaterial | THREE.MeshStandardMaterial
       ).map;
-      return map ? map.image.width : 0;
+      const image = map
+        ? (map.image as { width?: number; height?: number } | null | undefined)
+        : null;
+      return image && typeof image.width === 'number' ? image.width : 0;
     }
 
     getAnimationFrameHeight(material: THREE.Material) {
       const map = (
         material as THREE.MeshBasicMaterial | THREE.MeshStandardMaterial
       ).map;
-      return map ? map.image.height : 0;
+      const image = map
+        ? (map.image as { width?: number; height?: number } | null | undefined)
+        : null;
+      return image && typeof image.height === 'number' ? image.height : 0;
     }
   }
 }

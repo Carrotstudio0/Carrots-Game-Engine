@@ -41,7 +41,7 @@ export default (React.forwardRef<ParameterFieldProps, ParameterFieldInterface>(
         initialResourceName={props.value}
         onChange={props.onChange}
         floatingLabelText={
-          <Trans>Choose the 3D model file (.glb) to use</Trans>
+          <Trans>Choose the 3D model file (.glb or .fbx) to use</Trans>
         }
         onRequestClose={props.onRequestClose}
         onApply={props.onApply}

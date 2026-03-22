@@ -2,6 +2,7 @@
 // Scanner for validation errors in events (missing instructions, invalid parameters)
 import { mapFor } from './MapFor';
 import { getFunctionNameFromType } from '../EventsFunctionsExtensionsLoader';
+import { isMissingRequiredExpressionValue } from './ExpressionValidation';
 
 const gd: libGDevelop = global.gd;
 
@@ -137,6 +138,27 @@ const createValidationWorker = (
 
       // Skip codeOnly parameters
       if (parameterMetadata.isCodeOnly()) {
+        return;
+      }
+
+      if (
+        isMissingRequiredExpressionValue({
+          parameterType,
+          parameterMetadata,
+          value,
+        })
+      ) {
+        errors.push({
+          type: 'missing-parameter',
+          isCondition,
+          instructionType: type,
+          instructionSentence,
+          parameterIndex,
+          parameterValue: value,
+          locationName,
+          locationType,
+          eventPath: [...currentEventPath],
+        });
         return;
       }
 

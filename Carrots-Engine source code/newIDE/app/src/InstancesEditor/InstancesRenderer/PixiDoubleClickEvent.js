@@ -1,5 +1,6 @@
 // @flow
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
+import { bindPixiEvent } from '../../Utils/PixiCompat/EditorPixiAdapter';
 
 const moveTolerance = 10; // px
 const doubleClickDelay = 500; //ms
@@ -39,6 +40,6 @@ export const makeDoubleClickable = (pixiDisplayObject: PIXI.DisplayObject) => {
   };
 
   pixiDisplayObject.eventMode = 'static';
-  pixiDisplayObject.addEventListener('click', handleTap);
-  pixiDisplayObject.addEventListener('touchend', handleTap);
+  bindPixiEvent(pixiDisplayObject, 'click', handleTap);
+  bindPixiEvent(pixiDisplayObject, 'touchend', handleTap);
 };

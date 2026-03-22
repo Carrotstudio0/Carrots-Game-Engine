@@ -189,6 +189,7 @@ namespace gdjs {
     private _pixiContainer: PIXI.Container;
 
     private _layer: gdjs.RuntimeLayer;
+    private _runtimeInstanceContainerRenderer: gdjs.RuntimeInstanceContainerRenderer;
 
     /** For a lighting layer, the sprite used to display the render texture. */
     private _lightingSprite: PIXI.Sprite | null = null;
@@ -198,19 +199,15 @@ namespace gdjs {
 
     /**
      * The render texture where the whole 2D layer is rendered.
-     * The render texture is then used for lighting (if it's a light layer)
-     * or to be rendered in a 3D scene (for a 2D+3D layer).
+    * The render texture is then used for lighting (if it's a light layer)
+    * or to be rendered in a 3D scene (for a 2D+3D layer).
      */
     private _renderTexture: PIXI.RenderTexture | null = null;
-    private _lightingRenderTexture: PIXI.RenderTexture | null = null;
 
     // Width and height are tracked when a render texture is used.
     private _oldWidth: float | null = null;
     private _oldHeight: float | null = null;
-    private _oldLightingWidth: float | null = null;
-    private _oldLightingHeight: float | null = null;
     private _oldResolution: float | null = null;
-    private _oldLightingResolution: float | null = null;
 
     // For a 3D (or 2D+3D) layer:
     private _threeGroup: THREE.Group | null = null;
@@ -249,6 +246,7 @@ namespace gdjs {
       this._pixiContainer = new PIXI.Container();
       this._pixiContainer.sortableChildren = true;
       this._layer = layer;
+      this._runtimeInstanceContainerRenderer = runtimeInstanceContainerRenderer;
       this._isLightingLayer = layer.isLightingLayer();
       const runtimeGame = this._layer.getRuntimeScene().getGame();
       const threeRenderer = runtimeGameRenderer.getThreeRenderer();
@@ -460,10 +458,7 @@ namespace gdjs {
             );
             if (game.getAntialiasingMode() !== 'none') {
               this._threeEffectComposer.addPass(
-                new THREE_ADDONS.SMAAPass(
-                  game.getGameResolutionWidth(),
-                  game.getGameResolutionHeight()
-                )
+                new THREE_ADDONS.SMAAPass()
               );
             }
             this._threeEffectComposer.addPass(new THREE_ADDONS.OutputPass());
@@ -983,7 +978,7 @@ namespace gdjs {
             .getRuntimeScene()
             .getGame()
             .getRenderer()
-            .getPIXIRenderer() instanceof PIXI.Renderer
+            .getPIXIRenderer() instanceof PIXI.WebGLRenderer
         ) {
           // TODO Revert from `round` to `ceil` when the issue is fixed in Pixi.
           // Since the upgrade to Pixi 7, sprites are rounded with `round`
@@ -1020,6 +1015,36 @@ namespace gdjs {
             : game.getGameResolutionHeight()
         );
       }
+    }
+
+    /**
+     * Ensure the layer is configured for FSR rendering (forced 3D rendering).
+     * This is needed when FSR is enabled after the layer was created (hot-reload).
+     */
+    ensureFsrRendering(): void {
+      if (this._force3DRendering) return;
+
+      const runtimeGame = this._layer.getRuntimeScene().getGame();
+      const runtimeGameRenderer = runtimeGame.getRenderer();
+      const threeRenderer = runtimeGameRenderer.getThreeRenderer();
+      if (!threeRenderer || !threeRenderer.capabilities.isWebGL2) {
+        return;
+      }
+
+      this._force3DRendering = true;
+
+      if (!this._threeScene || !this._threeCamera) {
+        if (this._isLightingLayer) {
+          this._teardownLightingRendering();
+        }
+        this._setup3DRendering(
+          runtimeGameRenderer.getPIXIRenderer(),
+          this._runtimeInstanceContainerRenderer
+        );
+        this._update3DCameraAspectAndPosition();
+      }
+
+      this.updateResolution();
     }
 
     isCameraRotatedIn3D() {
@@ -1115,7 +1140,7 @@ namespace gdjs {
      * @param zOrder The z order of the associated object.
      */
     addRendererObject(pixiChild, zOrder: float): void {
-      const child = pixiChild as PIXI.DisplayObject;
+      const child = pixiChild as PIXI.ContainerChild & { zIndex: number };
       child.zIndex = zOrder || LayerPixiRenderer.zeroZOrderForPixi;
       this._pixiContainer.addChild(child);
     }
@@ -1127,7 +1152,7 @@ namespace gdjs {
      * @param newZOrder The z order of the associated object.
      */
     changeRendererObjectZOrder(pixiChild, newZOrder: float): void {
-      const child = pixiChild as PIXI.DisplayObject;
+      const child = pixiChild as PIXI.ContainerChild & { zIndex: number };
       child.zIndex = newZOrder;
     }
 
@@ -1172,7 +1197,7 @@ namespace gdjs {
      * so it can then be consumed by Three.js to render it in 3D.
      */
     private _createPixiRenderTexture(pixiRenderer: PIXI.Renderer | null): void {
-      if (!pixiRenderer || pixiRenderer.type !== PIXI.RENDERER_TYPE.WEBGL) {
+      if (!pixiRenderer || pixiRenderer.type !== PIXI.RendererType.WEBGL) {
         return;
       }
       if (this._renderTexture) {
@@ -1211,7 +1236,7 @@ namespace gdjs {
         height: height || 100,
         resolution,
       });
-      this._renderTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+      this._renderTexture.baseTexture.scaleMode = 'linear';
       logger.info(`RenderTexture created for layer ${this._layer.getName()}.`);
     }
 
@@ -1255,7 +1280,7 @@ namespace gdjs {
           height: height || 100,
           resolution,
         });
-        this._renderTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+        this._renderTexture.baseTexture.scaleMode = 'linear';
         if (this._lightingSprite) {
           this._lightingSprite.texture = this._renderTexture;
         }
@@ -1267,20 +1292,33 @@ namespace gdjs {
       this._oldWidth = width;
       this._oldHeight = height;
       this._oldResolution = resolution;
-      const oldRenderTexture = pixiRenderer.renderTexture.current || undefined;
-      const oldSourceFrame = pixiRenderer.renderTexture.sourceFrame;
-      pixiRenderer.renderTexture.bind(this._renderTexture);
+      const renderTextureSystem = (pixiRenderer as PIXI.WebGLRenderer & {
+        renderTexture: {
+          current?: PIXI.RenderTexture | null;
+          sourceFrame?: PIXI.Rectangle;
+          bind: (
+            renderTexture?: PIXI.RenderTexture | null,
+            sourceFrame?: PIXI.Rectangle,
+            destinationFrame?: PIXI.Rectangle
+          ) => void;
+          clear: (clearColor?: unknown) => void;
+        };
+      }).renderTexture;
+      const oldRenderTexture = renderTextureSystem.current || undefined;
+      const oldSourceFrame = renderTextureSystem.sourceFrame;
+      renderTextureSystem.bind(this._renderTexture);
 
       // The background is the ambient color for lighting layers
       // and transparent for 2D+3D layers.
       this._clearColor[3] = this._isLightingLayer ? 1 : 0;
-      pixiRenderer.renderTexture.clear(this._clearColor);
+      renderTextureSystem.clear(this._clearColor);
 
-      pixiRenderer.render(this._pixiContainer, {
-        renderTexture: this._renderTexture,
+      pixiRenderer.render({
+        container: this._pixiContainer,
+        target: this._renderTexture,
         clear: false,
       });
-      pixiRenderer.renderTexture.bind(
+      renderTextureSystem.bind(
         oldRenderTexture,
         oldSourceFrame,
         undefined
@@ -1299,14 +1337,59 @@ namespace gdjs {
         return;
       }
 
-      const glTexture =
-        this._renderTexture.baseTexture._glTextures[pixiRenderer.CONTEXT_UID];
-      if (glTexture) {
+      const renderTextureWithCompat = this._renderTexture as PIXI.RenderTexture & {
+        source?: unknown;
+        baseTexture?: {
+          _glTextures?: {
+            [contextUid: string]: {
+              texture?: WebGLTexture | null;
+            };
+          };
+        };
+      };
+
+      let webglTexture: WebGLTexture | null = null;
+      const pixiTextureSystem = (pixiRenderer as PIXI.Renderer & {
+        texture?: {
+          getGlSource?: (source: unknown) => { texture?: WebGLTexture | null };
+        };
+      }).texture;
+      if (
+        pixiTextureSystem &&
+        pixiTextureSystem.getGlSource &&
+        renderTextureWithCompat.source
+      ) {
+        const glSource = pixiTextureSystem.getGlSource(
+          renderTextureWithCompat.source
+        );
+        webglTexture = (glSource && glSource.texture) || null;
+      }
+
+      if (!webglTexture) {
+        const contextUid = (
+          pixiRenderer as PIXI.Renderer & {
+            CONTEXT_UID?: string | number;
+          }
+        ).CONTEXT_UID;
+        const legacyGlTextures =
+          renderTextureWithCompat.baseTexture &&
+          renderTextureWithCompat.baseTexture._glTextures;
+        if (legacyGlTextures && contextUid !== undefined) {
+          const legacyGlTexture = legacyGlTextures[String(contextUid)];
+          webglTexture = (legacyGlTexture && legacyGlTexture.texture) || null;
+        }
+      }
+
+      if (webglTexture) {
         // "Hack" into the Three.js renderer by getting the internal WebGL texture for the PixiJS plane,
         // and set it so that it's the same as the WebGL texture for the PixiJS RenderTexture.
         // This works because PixiJS and Three.js are using the same WebGL context.
-        const texture = threeRenderer.properties.get(this._threePlaneTexture);
-        texture.__webglTexture = glTexture.texture;
+        const texture = threeRenderer.properties.get(
+          this._threePlaneTexture
+        ) as {
+          __webglTexture?: WebGLTexture | null;
+        };
+        texture.__webglTexture = webglTexture;
       }
     }
 
@@ -1326,7 +1409,7 @@ namespace gdjs {
       }
 
       this._lightingSprite = new PIXI.Sprite(this._renderTexture);
-      this._lightingSprite.blendMode = PIXI.BLEND_MODES.MULTIPLY;
+      this._lightingSprite.blendMode = 'multiply';
       const parentPixiContainer =
         runtimeInstanceContainerRenderer.getRendererObject();
       if (parentPixiContainer) {
@@ -1334,6 +1417,36 @@ namespace gdjs {
         parentPixiContainer.addChildAt(this._lightingSprite, index);
         parentPixiContainer.removeChild(this._pixiContainer);
       }
+    }
+
+    private _teardownLightingRendering(): void {
+      const parentPixiContainer =
+        this._runtimeInstanceContainerRenderer.getRendererObject();
+      if (
+        parentPixiContainer &&
+        this._lightingSprite &&
+        this._lightingSprite.parent === parentPixiContainer
+      ) {
+        const index = parentPixiContainer.getChildIndex(this._lightingSprite);
+        if (!this._pixiContainer.parent) {
+          parentPixiContainer.addChildAt(this._pixiContainer, index);
+        }
+        parentPixiContainer.removeChild(this._lightingSprite);
+      } else if (parentPixiContainer && !this._pixiContainer.parent) {
+        parentPixiContainer.addChild(this._pixiContainer);
+      }
+
+      if (this._lightingSprite) {
+        this._lightingSprite.destroy();
+        this._lightingSprite = null;
+      }
+      if (this._renderTexture) {
+        this._renderTexture.destroy(true);
+        this._renderTexture = null;
+      }
+      this._oldWidth = null;
+      this._oldHeight = null;
+      this._oldResolution = null;
     }
   }
 

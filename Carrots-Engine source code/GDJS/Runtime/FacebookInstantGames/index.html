@@ -38,13 +38,13 @@
     <!-- GDJS_CUSTOM_HTML -->
 	<script>
 
-    (function() {
+    (async function() {
         //Initialization
         var game = new gdjs.RuntimeGame(gdjs.projectData, {}/*GDJS_ADDITIONAL_SPEC*/);
 
         //Create a renderer
         var canvasArea = document.getElementById("canvasArea");
-        game.getRenderer().createStandardCanvas(canvasArea);
+        await game.getRenderer().createStandardCanvas(canvasArea);
 
         //Bind keyboards/mouse/touch events
         game.getRenderer().bindStandardEvents(game.getInputManager(), window, document);

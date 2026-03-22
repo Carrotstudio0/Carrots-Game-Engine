@@ -3,7 +3,7 @@ import RenderedInstance from './RenderedInstance';
 import PixiResourcesLoader from '../../ObjectsRendering/PixiResourcesLoader';
 import ResourcesLoader from '../../ResourcesLoader';
 import { rgbStringToHexNumber } from '../../Utils/ColorTransformer';
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
 const gd: libGDevelop = global.gd;
 
 /**

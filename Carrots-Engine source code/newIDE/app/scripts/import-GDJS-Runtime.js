@@ -16,11 +16,40 @@ const destinationPaths = [
   path.join(__dirname, '..', 'node_modules', 'GDJS-for-web-app-only'),
 ];
 
+const cleanDestinationPath = destinationPath => {
+  const maxAttempts = 5;
+  const retryableErrorCodes = new Set(['ENOTEMPTY', 'EBUSY', 'EPERM']);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      fs.rmSync(destinationPath, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 150,
+      });
+      return;
+    } catch (error) {
+      const isRetryable =
+        !!error && typeof error.code === 'string' && retryableErrorCodes.has(error.code);
+      if (!isRetryable || attempt === maxAttempts) {
+        shell.echo(
+          `⚠️ Could not fully clean ${destinationPath} (${error.code || 'unknown'}). Continuing with existing files.`
+        );
+        return;
+      }
+      shell.echo(
+        `Retrying cleanup for ${destinationPath} (${attempt}/${maxAttempts}) because of ${error.code}...`
+      );
+    }
+  }
+};
+
 // Clean the paths where GDJS Runtime (and extensions) will be copied/bundled.
 if (!args['skip-clean']) {
   destinationPaths.forEach(destinationPath => {
     shell.echo('Cleaning destination first...');
-    shell.rm('-rf', destinationPath);
+    cleanDestinationPath(destinationPath);
     shell.mkdir('-p', destinationPath);
   });
 }
@@ -66,6 +95,7 @@ if (!args['skip-sources']) {
       'types'
     );
     const pixiDestinationPath = path.join(typesDestinationPath, 'pixi');
+    const pixiLibDestinationPath = path.join(pixiDestinationPath, 'lib');
     // TODO: Investigate the use of a smart & faster sync
     // that only copy files with changed content.
     return Promise.all([
@@ -97,65 +127,52 @@ if (!args['skip-sources']) {
         { ...copyOptions, filter: ['**/*.d.ts'] }
       ),
       copy(
-        path.join(gdevelopRootPath, 'GDJS', 'node_modules', '@pixi'),
-        pixiDestinationPath,
+        path.join(gdevelopRootPath, 'GDJS', 'node_modules', 'pixi.js', 'lib'),
+        pixiLibDestinationPath,
+        { ...copyOptions, filter: ['**/*.d.ts'] }
+      ),
+      copy(
+        path.join(gdevelopRootPath, 'GDJS', 'node_modules', '@pixi', 'colord'),
+        path.join(pixiDestinationPath, 'colord'),
         { ...copyOptions, filter: ['**/*.d.ts'] }
       ),
     ])
-      .then(function([unbundledResults, unbundledExtensionsResults]) {
-        // Replace import of packages by import of relative folders.
-        shell.sed(
-          '-i',
-          "from '@pixi((/\\w+)+)",
-          "from '../..$1/lib",
-          pixiDestinationPath + '/*/lib/*.d.ts'
+      .then(function([
+        unbundledResults,
+        unbundledExtensionsResults,
+        threeTypeResults,
+        threeSourceTypeResults,
+        pixiTypeResults,
+        pixiColordTypeResults,
+      ]) {
+        const pixiColorTypePath = path.join(
+          pixiLibDestinationPath,
+          'color',
+          'Color.d.ts'
         );
+        if (fs.existsSync(pixiColorTypePath)) {
+          shell.sed(
+            '-i',
+            "from '@pixi/colord'",
+            "from '../../colord'",
+            pixiColorTypePath
+          );
+        }
+
         fs.writeFileSync(
           path.join(pixiDestinationPath, 'index.d.ts'),
           `
-  import './mixin-cache-as-bitmap/lib';
-  import './mixin-get-child-by-name/lib';
-  import './mixin-get-global-position/lib';
-  export * from './accessibility/lib';
-  export * from './app/lib';
-  export * from './assets/lib';
-  export * from './color/lib';
-  export * from './compressed-textures/lib';
-  export * from './constant/lib';
-  export * from './core';
-  export * from './display/lib';
-  export * from './events/lib';
-  export * from './extensions/lib';
-  export * from './extract/lib';
-  export * from './filter-alpha/lib';
-  export * from './filter-blur/lib';
-  export * from './filter-color-matrix/lib';
-  export * from './filter-displacement/lib';
-  export * from './filter-fxaa/lib';
-  export * from './filter-noise/lib';
-  export * from './graphics/lib';
-  export * from './math/lib';
-  export * from './mesh/lib';
-  export * from './mesh-extras/lib';
-  export * from './particle-container/lib';
-  export * from './prepare/lib';
-  export * from './runner/lib';
-  export * from './settings/lib';
-  export * from './sprite/lib';
-  export * from './sprite-animated/lib';
-  export * from './sprite-tiling/lib';
-  export * from './spritesheet/lib';
-  export * from './text/lib';
-  export * from './text-bitmap/lib';
-  export * from './text-html/lib';
-  export * from './ticker/lib';
-  export * from './utils/lib';
-  
+  export * from './lib';
   export as namespace PIXI;
       `
         );
         const totalFilesCount =
-          unbundledResults.length + unbundledExtensionsResults.length;
+          unbundledResults.length +
+          unbundledExtensionsResults.length +
+          threeTypeResults.length +
+          threeSourceTypeResults.length +
+          pixiTypeResults.length +
+          pixiColordTypeResults.length;
         const duration = Date.now() - startTime;
         console.info(
           `Runtime source files copy done (${totalFilesCount} file(s) copied in ${duration}ms).`

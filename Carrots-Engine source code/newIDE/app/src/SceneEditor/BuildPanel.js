@@ -1,6 +1,6 @@
 // @flow
 import * as React from 'react';
-import { Trans, t } from '@lingui/macro';
+import { Trans } from '@lingui/macro';
 import { Column, Line, Spacer } from '../UI/Grid';
 import Text from '../UI/Text';
 import RaisedButton from '../UI/RaisedButton';

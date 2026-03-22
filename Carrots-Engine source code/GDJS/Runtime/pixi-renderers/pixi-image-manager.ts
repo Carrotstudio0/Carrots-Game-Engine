@@ -6,6 +6,17 @@
 namespace gdjs {
   const logger = new gdjs.Logger('PIXI Image manager');
 
+  const unloadCachedTexture = (cacheKey: string): void => {
+    const assets = PIXI.Assets as PIXI.AssetsClass & {
+      unload?: (key: string) => Promise<void>;
+    };
+    if (!assets.unload) {
+      return;
+    }
+
+    assets.unload(cacheKey).catch(() => {});
+  };
+
   const logFileLoadingError = (file: string, error: Error | undefined) => {
     logger.error(
       'Unable to load file ' + file + ' with error:',
@@ -20,8 +31,49 @@ namespace gdjs {
     if (!texture) return;
 
     if (!resourceData.smoothed) {
-      texture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+      texture.source.scaleMode = 'nearest';
     }
+  };
+
+  const isTextureUsable = (texture: PIXI.Texture): boolean => {
+    if (!texture || texture.destroyed) {
+      return false;
+    }
+
+    const textureWithCompat = texture as PIXI.Texture & {
+      valid?: boolean;
+      source?: {
+        width?: number;
+        height?: number;
+        pixelWidth?: number;
+        pixelHeight?: number;
+        destroyed?: boolean;
+      };
+      baseTexture?: {
+        width?: number;
+        height?: number;
+        destroyed?: boolean;
+      };
+    };
+
+    if (typeof textureWithCompat.valid === 'boolean') {
+      return textureWithCompat.valid;
+    }
+
+    const source = textureWithCompat.source || textureWithCompat.baseTexture;
+    if (!source || source.destroyed) {
+      return false;
+    }
+
+    const width =
+      typeof source.width === 'number' ? source.width : source.pixelWidth;
+    const height =
+      typeof source.height === 'number' ? source.height : source.pixelHeight;
+    if (typeof width === 'number' && typeof height === 'number') {
+      return width > 0 && height > 0;
+    }
+
+    return true;
   };
 
   const applyThreeTextureSettings = (
@@ -74,10 +126,15 @@ namespace gdjs {
      */
     constructor(resourceLoader: gdjs.ResourceLoader) {
       this._resourceLoader = resourceLoader;
-      this._invalidTexture = PIXI.Texture.from(
-        'data:image/png;base64,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',
-        { width: 192, height: 192 }
-      );
+      const invalidCanvas = document.createElement('canvas');
+      invalidCanvas.width = 8;
+      invalidCanvas.height = 8;
+      const invalidContext = invalidCanvas.getContext('2d');
+      if (invalidContext) {
+        invalidContext.fillStyle = '#ff00ff';
+        invalidContext.fillRect(0, 0, invalidCanvas.width, invalidCanvas.height);
+      }
+      this._invalidTexture = PIXI.Texture.from(invalidCanvas);
       this._loadedThreeTextures = new Hashtable();
     }
 
@@ -111,7 +168,7 @@ namespace gdjs {
         logger.error('Texture for ' + resourceName + ' is not valid anymore.');
         return this._invalidTexture;
       }
-      if (!existingTexture.valid) {
+      if (!isTextureUsable(existingTexture)) {
         logger.error(
           'Texture for ' +
             resourceName +
@@ -145,7 +202,7 @@ namespace gdjs {
 
       const existingTexture = this._loadedTextures.get(resource);
       if (existingTexture) {
-        if (existingTexture.valid) {
+        if (isTextureUsable(existingTexture)) {
           return existingTexture;
         } else {
           logger.error(
@@ -160,30 +217,31 @@ namespace gdjs {
       logger.log('Loading texture for resource "' + resourceName + '"...');
       const file = resource.file;
       const url = this._resourceLoader.getFullUrl(file);
-      const texture = PIXI.Texture.from(url, {
-        resourceOptions: {
-          // Note that using `false`
-          // to not having `crossorigin` at all would NOT work because the browser would taint the
-          // loaded resource so that it can't be read/used in a canvas (it's only working for display `<img>` on screen).
-          crossorigin: this._resourceLoader.checkIfCredentialsRequired(file)
-            ? 'use-credentials'
-            : 'anonymous',
-        },
-      }).on('error', (error) => {
-        logFileLoadingError(file, error);
-      });
-      if (!texture) {
-        throw new Error(
-          'Texture loading by PIXI returned nothing for file ' +
-            file +
-            ' behind url ' +
-            url
-        );
+      const cachedTexture = PIXI.Assets.get(url) as PIXI.Texture | undefined;
+      if (cachedTexture) {
+        applyTextureSettings(cachedTexture, resource);
+        this._loadedTextures.set(resource, cachedTexture);
+        return cachedTexture;
       }
-      applyTextureSettings(texture, resource);
 
-      this._loadedTextures.set(resource, texture);
-      return texture;
+      PIXI.Assets.load(url)
+        .then((asset) => {
+          const loadedTexture =
+            asset instanceof PIXI.Texture
+              ? asset
+              : ((asset && (asset as any).texture) as PIXI.Texture | undefined);
+          if (!loadedTexture) {
+            return;
+          }
+          applyTextureSettings(loadedTexture, resource);
+          this._loadedTextures.set(resource, loadedTexture);
+        })
+        .catch((error) => {
+          logFileLoadingError(file, error);
+          unloadCachedTexture(url);
+        });
+
+      return this._invalidTexture;
     }
 
     /**
@@ -215,7 +273,7 @@ namespace gdjs {
       return threeTexture;
     }
 
-    private _getImageSource(resourceName: string): HTMLImageElement {
+    private _getImageSource(resourceName: string): TexImageSource {
       // Texture is not loaded, load it now from the PixiJS texture.
       // TODO (3D) - optimization: don't load the PixiJS Texture if not used by PixiJS.
       // TODO (3D) - optimization: Ideally we could even share the same WebGL texture.
@@ -225,14 +283,32 @@ namespace gdjs {
         .getPIXIRenderer();
       if (!pixiRenderer) throw new Error('No PIXI renderer was found.');
 
-      // @ts-ignore - source does exist on resource.
-      const image = pixiTexture.baseTexture.resource.source;
-      if (!(image instanceof HTMLImageElement)) {
+      const pixiTextureWithCompat = pixiTexture as PIXI.Texture & {
+        source?: { resource?: unknown };
+        baseTexture?: { resource?: unknown };
+      };
+      const source =
+        pixiTextureWithCompat.source || pixiTextureWithCompat.baseTexture;
+      const textureResource = source && (source as any).resource;
+      const image =
+        textureResource instanceof HTMLImageElement ||
+        textureResource instanceof HTMLCanvasElement ||
+        textureResource instanceof HTMLVideoElement ||
+        (typeof ImageBitmap !== 'undefined' &&
+          textureResource instanceof ImageBitmap)
+          ? textureResource
+          : textureResource && textureResource.source;
+      const validImage =
+        image instanceof HTMLImageElement ||
+        image instanceof HTMLCanvasElement ||
+        image instanceof HTMLVideoElement ||
+        (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap);
+      if (!validImage) {
         throw new Error(
-          `Can't load texture for resource "${resourceName}" as it's not an image.`
+          `Can't load texture for resource "${resourceName}" as it's not an image source.`
         );
       }
-      return image;
+      return image as TexImageSource;
     }
 
     /**
@@ -428,64 +504,26 @@ namespace gdjs {
       }
       const resourceUrl = this._resourceLoader.getFullUrl(resource.file);
       try {
-        if (resource.kind === 'video') {
-          // For videos, we want to preload them so they are available as soon as we want to use them.
-          // We cannot use Pixi.assets.load() as it does not allow passing options (autoplay) to the resource loader.
-          // Pixi.Texture.from() does not return a promise, so we need to ensure we look at the 'loaded' event of the baseTexture,
-          // to continue, otherwise if we try to play the video too soon (at the beginning of scene for instance),
-          // it will fail.
-          await new Promise<void>((resolve, reject) => {
-            const texture = PIXI.Texture.from(resourceUrl, {
-              resourceOptions: {
-                crossorigin: this._resourceLoader.checkIfCredentialsRequired(
-                  resource.file
-                )
-                  ? 'use-credentials'
-                  : 'anonymous',
-                autoPlay: false,
-              },
-            }).on('error', (error) => {
-              reject(error);
-            });
-
-            const baseTexture = texture.baseTexture;
-            baseTexture
-              .on('loaded', () => {
-                this._loadedTextures.set(resource, texture);
-                applyTextureSettings(texture, resource);
-                resolve();
-              })
-              .on('error', (error) => {
-                reject(error);
-              });
-          });
-        } else {
-          // If the file has no extension, PIXI.assets.load cannot find
-          // an adequate load parser and does not load the file although
-          // we would like to force it to load (we are confident it's an image).
-          // TODO: When PIXI v8+ is used, PIXI.Assets.load can be used because
-          // loadParser can be forced in PIXI.Assets.load
-          // (see https://github.com/pixijs/pixijs/blob/71ed56c569ebc6b53da19e3c49258a0a84892101/packages/assets/src/loader/Loader.ts#L68)
-          const loadedTexture = PIXI.Texture.from(resourceUrl, {
-            resourceOptions: {
-              autoLoad: false,
-              crossorigin: this._resourceLoader.checkIfCredentialsRequired(
-                resource.file
-              )
-                ? 'use-credentials'
-                : 'anonymous',
-            },
-          });
-          await loadedTexture.baseTexture.resource.load();
-
-          this._loadedTextures.set(resource, loadedTexture);
-          // TODO What if 2 assets share the same file with different settings?
-          applyTextureSettings(loadedTexture, resource);
+        const loadedAsset = await PIXI.Assets.load(resourceUrl);
+        const loadedTexture =
+          loadedAsset instanceof PIXI.Texture
+            ? loadedAsset
+            : ((loadedAsset &&
+                (loadedAsset as any).texture) as PIXI.Texture | undefined);
+        if (!loadedTexture) {
+          throw new Error(
+            'Texture loading by PIXI returned nothing for file ' +
+              resource.file +
+              ' behind url ' +
+              resourceUrl
+          );
         }
+
+        this._loadedTextures.set(resource, loadedTexture);
+        applyTextureSettings(loadedTexture, resource);
       } catch (error) {
         logFileLoadingError(resource.file, error);
-        PIXI.Texture.removeFromCache(resourceUrl);
-        PIXI.BaseTexture.removeFromCache(resourceUrl);
+        unloadCachedTexture(resourceUrl);
         throw error;
       }
     }
@@ -502,10 +540,10 @@ namespace gdjs {
       let particleTexture = this._diskTextures.get(radius);
       if (!particleTexture) {
         const graphics = new PIXI.Graphics();
-        graphics.lineStyle(0, 0, 0);
-        graphics.beginFill(gdjs.rgbToHexNumber(255, 255, 255), 1);
-        graphics.drawCircle(0, 0, radius);
-        graphics.endFill();
+        graphics.circle(0, 0, radius).fill({
+          color: gdjs.rgbToHexNumber(255, 255, 255),
+          alpha: 1,
+        });
         particleTexture = pixiRenderer.generateTexture(graphics);
         graphics.destroy();
 
@@ -529,10 +567,10 @@ namespace gdjs {
       let particleTexture = this._rectangleTextures.get(key);
       if (!particleTexture) {
         const graphics = new PIXI.Graphics();
-        graphics.lineStyle(0, 0, 0);
-        graphics.beginFill(gdjs.rgbToHexNumber(255, 255, 255), 1);
-        graphics.drawRect(0, 0, width, height);
-        graphics.endFill();
+        graphics.rect(0, 0, width, height).fill({
+          color: gdjs.rgbToHexNumber(255, 255, 255),
+          alpha: 1,
+        });
         particleTexture = pixiRenderer.generateTexture(graphics);
         graphics.destroy();
 

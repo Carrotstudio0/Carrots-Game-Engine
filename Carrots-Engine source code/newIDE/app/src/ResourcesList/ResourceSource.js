@@ -45,7 +45,7 @@ export const allResourceKindsAndMetadata = [
   {
     kind: 'image',
     displayName: (t`Image`: any),
-    fileExtensions: ['png', 'jpg', 'jpeg', 'webp'],
+    fileExtensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'],
     createNewResource: (): gdImageResource => new gd.ImageResource(),
   },
   {
@@ -89,7 +89,7 @@ export const allResourceKindsAndMetadata = [
   {
     kind: 'model3D',
     displayName: (t`3D model`: any),
-    fileExtensions: ['glb'],
+    fileExtensions: ['glb', 'fbx'],
     createNewResource: (): gdModel3DResource => new gd.Model3DResource(),
   },
   {

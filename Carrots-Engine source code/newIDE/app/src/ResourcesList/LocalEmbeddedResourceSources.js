@@ -3,6 +3,7 @@ import optionalRequire from '../Utils/OptionalRequire';
 import newNameGenerator from '../Utils/NewNameGenerator';
 import { isPathInProjectFolder } from './ResourceUtils';
 import { createNewResource } from './ResourceSource';
+import { extractFbxEmbeddedResourcePathsFromText } from './FbxDependencyResolver';
 const fs = optionalRequire('fs');
 const path = optionalRequire('path');
 
@@ -315,9 +316,67 @@ export async function listSpineTextureAtlasEmbeddedResources(
   };
 }
 
+export async function listModel3DEmbeddedResources(
+  project: gdProject,
+  filePath: string
+): Promise<?EmbeddedResources> {
+  if (!fs || !path) return null;
+  if (path.extname(filePath).toLowerCase() !== '.fbx') return null;
+
+  let fileContent: ?string = null;
+  try {
+    const fileBuffer = await fs.promises.readFile(filePath);
+    fileContent = fileBuffer.toString('latin1');
+  } catch (error) {
+    console.error(`Unable to read FBX file at path ${filePath}:`, error);
+  }
+
+  if (!fileContent) return null;
+
+  const dependencies = extractFbxEmbeddedResourcePathsFromText(fileContent);
+  if (!dependencies.length) return null;
+
+  const dir = path.dirname(filePath);
+  const embeddedResources = new Map<string, EmbeddedResource>();
+  let hasAnyEmbeddedResourceOutsideProjectFolder = false;
+
+  dependencies.forEach(dependencyPath => {
+    const normalizedDependencyPath = dependencyPath.replace(/\\/g, '/');
+    const fullPath = path.resolve(dir, normalizedDependencyPath);
+
+    if (!fs.existsSync(fullPath)) {
+      console.warn(
+        `FBX dependency "${dependencyPath}" referenced by ${filePath} could not be found locally.`
+      );
+      return;
+    }
+
+    const isOutsideProjectFolder = !isPathInProjectFolder(project, fullPath);
+    const resource: EmbeddedResource = {
+      resourceKind: 'image',
+      relPath: normalizedDependencyPath,
+      fullPath,
+      isOutsideProjectFolder,
+    };
+
+    embeddedResources.set(normalizedDependencyPath, resource);
+    if (isOutsideProjectFolder) {
+      hasAnyEmbeddedResourceOutsideProjectFolder = true;
+    }
+  });
+
+  if (!embeddedResources.size) return null;
+
+  return {
+    embeddedResources,
+    hasAnyEmbeddedResourceOutsideProjectFolder,
+  };
+}
+
 export const embeddedResourcesParsers: { [string]: ParseEmbeddedFiles } = {
   tilemap: listTileMapEmbeddedResources,
   json: listTileMapEmbeddedResources,
   spine: listSpineEmbeddedResources,
   atlas: listSpineTextureAtlasEmbeddedResources,
+  model3D: listModel3DEmbeddedResources,
 };

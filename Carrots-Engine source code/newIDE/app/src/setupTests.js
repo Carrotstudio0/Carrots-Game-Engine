@@ -12,6 +12,9 @@
 // * We use a convoluted name to avoid it being imported by mistake in the
 // rest of the codebase. See scripts/import-libGD.js
 const initializeGDevelopJs = require('libGD.js-for-tests-only');
+const {
+  ensureGDevelopJsPlatformsInitialized,
+} = require('./Utils/GDevelopJsInitialization');
 
 // We create the global "gd" object **synchronously** here. This is done as
 // the source files are using `global.gd` as a "top level" object (after imports).
@@ -23,6 +26,7 @@ global.gd = {
 
 beforeAll(done => {
   initializeGDevelopJs().then(module => {
+    ensureGDevelopJsPlatformsInitialized(module);
     // We're **updating** the global "gd" object here. This is done so that
     // the source files that are using `global.gd` have the proper reference to the
     // object.

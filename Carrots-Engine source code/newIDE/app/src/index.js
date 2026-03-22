@@ -1,4 +1,6 @@
 // @flow
+import './Utils/PixiCompat/ensurePixiCompat';
+import './Utils/PixiCompat/ensureTinyLruCompat';
 import 'element-closest';
 // $FlowFixMe[missing-export]
 import React, { Component, type Element } from 'react';
@@ -16,6 +18,7 @@ import { showErrorBox } from './UI/Messages/MessageBox';
 import VersionMetadata from './Version/VersionMetadata';
 import { loadPreferencesFromLocalStorage } from './MainFrame/Preferences/PreferencesProvider';
 import { getFullTheme } from './UI/Theme';
+import { ensureGDevelopJsPlatformsInitialized } from './Utils/GDevelopJsInitialization';
 
 const GD_STARTUP_TIMES = global.GD_STARTUP_TIMES || [];
 
@@ -106,6 +109,7 @@ class Bootstrapper extends Component<{}, State> {
           return path + `?cache-buster=${VersionMetadata.versionWithHash}`;
         },
       }).then(gd => {
+        ensureGDevelopJsPlatformsInitialized(gd);
         global.gd = gd;
         GD_STARTUP_TIMES.push([
           'libGD.js initialization done',

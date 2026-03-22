@@ -1,7 +1,7 @@
 // @flow
 import panable, { type PanMoveEvent } from '../Utils/PixiSimpleGesture/pan';
 import transformRect from '../Utils/TransformRect';
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
 import { type ScreenType } from '../UI/Responsive/ScreenTypeMeasurer';
 import InstancesSelection from './InstancesSelection';
 import {
@@ -14,6 +14,7 @@ import {
 import { type InstanceMeasurer } from './InstancesRenderer';
 import Rectangle from '../Utils/Rectangle';
 import KeyboardShortcuts from '../UI/KeyboardShortcuts';
+import { bindPixiEvent } from '../Utils/PixiCompat/EditorPixiAdapter';
 
 type Props = {|
   instancesSelection: InstancesSelection,
@@ -217,7 +218,7 @@ export default class SelectedInstances {
     panable(objectButton);
 
     // change cursor style if space is pressed
-    objectButton.addEventListener('mousemove', event => {
+    bindPixiEvent(objectButton, 'mousemove', event => {
       if (this.keyboardShortcuts.shouldMoveView()) {
         objectButton.cursor = 'grab';
       } else {
@@ -225,7 +226,7 @@ export default class SelectedInstances {
       }
     });
 
-    objectButton.addEventListener('panmove', event => {
+    bindPixiEvent(objectButton, 'panmove', event => {
       if (this.keyboardShortcuts.shouldMoveView()) {
         if (this._currentPanMovingGoal === 'buttonInteraction') {
           onEnd();
@@ -238,7 +239,7 @@ export default class SelectedInstances {
       }
     });
 
-    objectButton.addEventListener('panend', event => {
+    bindPixiEvent(objectButton, 'panend', event => {
       if (this.keyboardShortcuts.shouldMoveView()) {
         onPanEnd();
       } else {
@@ -268,20 +269,21 @@ export default class SelectedInstances {
       return;
     }
 
-    buttonObject.beginFill(0xffffff);
-    buttonObject.lineStyle(1, 0x6868e8, 1);
-    buttonObject.fill.alpha = 0.9;
     if (shape === RECTANGLE_BUTTON_SHAPE) {
-      buttonObject.drawRect(canvasPosition[0], canvasPosition[1], size, size);
+      buttonObject
+        .rect(canvasPosition[0], canvasPosition[1], size, size)
+        .fill({ color: 0xffffff, alpha: 0.9 })
+        .stroke({ width: 1, color: 0x6868e8, alpha: 1 });
     } else if (shape === CIRCLE_BUTTON_SHAPE) {
-      buttonObject.drawCircle(
-        canvasPosition[0] + size / 2,
-        canvasPosition[1] + size / 2,
-        size / 2
-      );
+      buttonObject
+        .circle(
+          canvasPosition[0] + size / 2,
+          canvasPosition[1] + size / 2,
+          size / 2
+        )
+        .fill({ color: 0xffffff, alpha: 0.9 })
+        .stroke({ width: 1, color: 0x6868e8, alpha: 1 });
     }
-
-    buttonObject.endFill();
     buttonObject.hitArea = new PIXI.Rectangle(
       canvasPosition[0] - hitAreaPadding,
       canvasPosition[1] - hitAreaPadding,
@@ -345,18 +347,17 @@ export default class SelectedInstances {
       );
 
       this.selectedRectangles[i].clear();
-      const { color, alpha } = this.getFillColor(instance.isLocked());
-      this.selectedRectangles[i].beginFill(color, alpha);
-      this.selectedRectangles[i].lineStyle(1, color, 1);
-      this.selectedRectangles[i].fill.alpha = 0.3;
+      const { color } = this.getFillColor(instance.isLocked());
       this.selectedRectangles[i].alpha = 0.8;
-      this.selectedRectangles[i].drawRect(
-        selectionRectangle.left,
-        selectionRectangle.top,
-        selectionRectangle.width(),
-        selectionRectangle.height()
-      );
-      this.selectedRectangles[i].endFill();
+      this.selectedRectangles[i]
+        .rect(
+          selectionRectangle.left,
+          selectionRectangle.top,
+          selectionRectangle.width(),
+          selectionRectangle.height()
+        )
+        .fill({ color, alpha: 0.3 })
+        .stroke({ width: 1, color, alpha: 1 });
 
       if (instance.isLocked()) {
         continue;

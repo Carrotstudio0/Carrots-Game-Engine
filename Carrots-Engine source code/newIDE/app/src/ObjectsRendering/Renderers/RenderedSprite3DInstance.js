@@ -2,8 +2,9 @@
 import Rendered3DInstance from './Rendered3DInstance';
 import PixiResourcesLoader from '../PixiResourcesLoader';
 import ResourcesLoader from '../../ResourcesLoader';
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
 import * as THREE from 'three';
+import { isTextureReady } from '../../Utils/PixiCompat/EditorPixiAdapter';
 
 const gd: libGDevelop = global.gd;
 
@@ -212,7 +213,7 @@ export default class RenderedSprite3DInstance extends Rendered3DInstance {
     );
     this._pixiObject.texture = texture;
 
-    if (!texture.baseTexture.valid) {
+    if (!isTextureReady(texture)) {
       // Post pone texture update if texture is not loaded.
       texture.once('update', () => {
         if (this._wasDestroyed) return;
@@ -271,13 +272,9 @@ export default class RenderedSprite3DInstance extends Rendered3DInstance {
     const maxY = minY + height;
 
     this._pixiObject.clear();
-    this._pixiObject.beginFill(0x999999, 0.2);
-    this._pixiObject.lineStyle(1, 0xffd900, 0);
-    this._pixiObject.moveTo(minX, minY);
-    this._pixiObject.lineTo(maxX, minY);
-    this._pixiObject.lineTo(maxX, maxY);
-    this._pixiObject.lineTo(minX, maxY);
-    this._pixiObject.endFill();
+    this._pixiObject
+      .poly([minX, minY, maxX, minY, maxX, maxY, minX, maxY], true)
+      .fill({ color: 0x999999, alpha: 0.2 });
 
     this._pixiObject.pivot.x = this._centerX - this._originX;
     this._pixiObject.pivot.y = this._centerY - this._originY;

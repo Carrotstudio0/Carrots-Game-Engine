@@ -50,6 +50,10 @@ import {
 import Paper from '../../../UI/Paper';
 import { ProjectScopedContainersAccessor } from '../../../InstructionOrExpression/EventsScope';
 import PreferencesContext from '../../../MainFrame/Preferences/PreferencesContext';
+import {
+  getRequiredExpressionErrorText,
+  isMissingRequiredExpressionValue,
+} from '../../../Utils/ExpressionValidation';
 
 const gd: libGDevelop = global.gd;
 
@@ -473,6 +477,24 @@ export default class ExpressionField extends React.Component<Props, State> {
     if (!project) return null;
 
     const expression = this.state.validatedValue;
+
+    if (
+      isMissingRequiredExpressionValue({
+        parameterType: parameterMetadata
+          ? parameterMetadata.getType()
+          : expressionType,
+        parameterMetadata,
+        value: expression,
+      })
+    ) {
+      this.setState({
+        errorText: getRequiredExpressionErrorText(expressionType),
+        errorHighlights: [],
+        isOnlyWarning: false,
+        autocompletions: getAutocompletionsInitialState(),
+      });
+      return;
+    }
 
     // Parsing can be time consuming (~1ms for simple expression,
     // a few milliseconds for complex ones).

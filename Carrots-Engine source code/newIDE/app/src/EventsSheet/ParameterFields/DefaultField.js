@@ -9,6 +9,7 @@ import {
   type FieldFocusFunction,
 } from './ParameterFieldCommons';
 import { type ParameterInlineRendererProps } from './ParameterInlineRenderer.flow';
+import { isMissingRequiredExpressionValue } from '../../Utils/ExpressionValidation';
 
 export default (React.forwardRef<ParameterFieldProps, ParameterFieldInterface>(
   function DefaultField(props: ParameterFieldProps, ref) {
@@ -54,7 +55,18 @@ export const renderInlineDefaultField = ({
   DeprecatedParameterValue,
   MissingParameterValue,
 }: ParameterInlineRendererProps): string | React.MixedElement => {
-  if (!value && !parameterMetadata.isOptional()) {
+  const parameterType = parameterMetadata.getType();
+  const hasDefaultValue = parameterMetadata.getDefaultValue() !== '';
+  if (
+    isMissingRequiredExpressionValue({
+      parameterType,
+      parameterMetadata,
+      value,
+    }) ||
+    (value === '' &&
+      !parameterMetadata.isOptional() &&
+      !hasDefaultValue)
+  ) {
     return <MissingParameterValue />;
   }
   if (!expressionIsValid) {

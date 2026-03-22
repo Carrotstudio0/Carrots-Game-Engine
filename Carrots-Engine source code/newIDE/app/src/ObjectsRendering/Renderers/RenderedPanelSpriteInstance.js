@@ -2,7 +2,8 @@
 import RenderedInstance from './RenderedInstance';
 import PixiResourcesLoader from '../../ObjectsRendering/PixiResourcesLoader';
 import ResourcesLoader from '../../ResourcesLoader';
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
+import { isTextureReady } from '../../Utils/PixiCompat/EditorPixiAdapter';
 const gd: libGDevelop = global.gd;
 
 // $FlowFixMe[value-as-type]
@@ -287,7 +288,7 @@ export default class RenderedPanelSpriteInstance extends RenderedInstance {
       this._project,
       this._textureName
     );
-    if (!texture.baseTexture.valid) {
+    if (!isTextureReady(texture)) {
       // Post pone texture update if texture is not loaded.
       texture.once('update', () => {
         if (this._wasDestroyed) return;

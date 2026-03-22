@@ -85,7 +85,7 @@ namespace gdjs {
       runtimeObject: gdjs.Model3DRuntimeObject,
       instanceContainer: gdjs.RuntimeInstanceContainer
     ) {
-      // GLB files with skeleton must not have any transformation to work properly.
+      // Models with skeleton must not have any transformation to work properly.
       const originalModel = instanceContainer
         .getGame()
         .getModel3DManager()
@@ -410,7 +410,7 @@ namespace gdjs {
       );
       if (!clip) {
         console.error(
-          `The GLB file: ${this._model3DRuntimeObject._modelResourceName} doesn't have any animation named: ${animationName}`
+          `The 3D model file: ${this._model3DRuntimeObject._modelResourceName} doesn't have any animation named: ${animationName}`
         );
         return;
       }

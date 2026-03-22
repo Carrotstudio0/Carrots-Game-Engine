@@ -7,6 +7,18 @@ namespace gdjs {
     _object: gdjs.BitmapTextRuntimeObject;
     _pixiObject: PIXI.BitmapText;
 
+    private _getBitmapFontManager(): gdjs.PixiBitmapFontManager {
+      return this._object
+        .getInstanceContainer()
+        .getGame()
+        .getBitmapFontManager() as gdjs.PixiBitmapFontManager;
+    }
+
+    private _getCurrentBitmapFontInstallKey(): string {
+      const fontFamily = this._pixiObject.style.fontFamily;
+      return Array.isArray(fontFamily) ? fontFamily[0] || '' : fontFamily || '';
+    }
+
     /**
      * @param runtimeObject The object to render
      * @param instanceContainer The container in which the object is
@@ -24,10 +36,20 @@ namespace gdjs {
         .obtainBitmapFont(
           runtimeObject._bitmapFontResourceName,
           runtimeObject._textureAtlasResourceName
-        );
-      this._pixiObject = new PIXI.BitmapText(runtimeObject._text, {
-        fontName: bitmapFont.font,
-        fontSize: bitmapFont.size,
+        ) as PIXI.BitmapFont;
+      const bitmapFontInstallKey = (
+        instanceContainer.getGame().getBitmapFontManager() as gdjs.PixiBitmapFontManager
+      ).getBitmapFontInstallKey(
+        runtimeObject._bitmapFontResourceName,
+        runtimeObject._textureAtlasResourceName
+      );
+      this._pixiObject = new PIXI.BitmapText({
+        text: runtimeObject._text,
+        style: {
+          fontFamily: bitmapFontInstallKey,
+          fontSize: bitmapFont.size,
+          align: runtimeObject._textAlign as PIXI.TextStyleAlign | undefined,
+        },
       });
 
       // Set the object on the scene
@@ -55,36 +77,34 @@ namespace gdjs {
         .getInstanceContainer()
         .getGame()
         .getBitmapFontManager()
-        .releaseBitmapFont(this._pixiObject.fontName);
+        .releaseBitmapFont(this._getCurrentBitmapFontInstallKey());
 
       this._pixiObject.destroy();
     }
 
     getFontSize() {
-      return this._pixiObject.fontSize;
+      const fontSize = this._pixiObject.style.fontSize;
+      return typeof fontSize === 'number' ? fontSize : Number(fontSize) || 0;
     }
 
     updateFont(): void {
+      const bitmapFontManager = this._getBitmapFontManager();
       // Get the new bitmap font to use
-      const bitmapFont = this._object
-        .getInstanceContainer()
-        .getGame()
-        .getBitmapFontManager()
-        .obtainBitmapFont(
-          this._object._bitmapFontResourceName,
-          this._object._textureAtlasResourceName
-        );
+      const bitmapFont = bitmapFontManager.obtainBitmapFont(
+        this._object._bitmapFontResourceName,
+        this._object._textureAtlasResourceName
+      );
+      const newBitmapFontInstallKey = bitmapFontManager.getBitmapFontInstallKey(
+        this._object._bitmapFontResourceName,
+        this._object._textureAtlasResourceName
+      );
 
       // Mark the old font as not used anymore
-      this._object
-        .getInstanceContainer()
-        .getGame()
-        .getBitmapFontManager()
-        .releaseBitmapFont(this._pixiObject.fontName);
+      bitmapFontManager.releaseBitmapFont(this._getCurrentBitmapFontInstallKey());
 
       // Update the font used by the object:
-      this._pixiObject.fontName = bitmapFont.font;
-      this._pixiObject.fontSize = bitmapFont.size;
+      this._pixiObject.style.fontFamily = newBitmapFontInstallKey;
+      this._pixiObject.style.fontSize = bitmapFont.size;
       this.updatePosition();
     }
 
@@ -94,7 +114,6 @@ namespace gdjs {
         this._object._tint[1],
         this._object._tint[2]
       );
-      this._pixiObject.dirty = true;
     }
 
     /**
@@ -124,14 +143,11 @@ namespace gdjs {
     }
 
     updateWrappingWidth(): void {
-      if (this._object._wrapping) {
-        this._pixiObject.maxWidth =
-          this._object._wrappingWidth / this._object._scaleX;
-        this._pixiObject.dirty = true;
-      } else {
-        this._pixiObject.maxWidth = 0;
-        this._pixiObject.dirty = true;
-      }
+      this._pixiObject.style.wordWrap = this._object._wrapping;
+      this._pixiObject.style.wordWrapWidth =
+        this._object._wrapping && this._object._scaleX !== 0
+          ? this._object._wrappingWidth / this._object._scaleX
+          : 0;
       this.updatePosition();
     }
 
@@ -141,8 +157,8 @@ namespace gdjs {
     }
 
     updateAlignment(): void {
-      // @ts-ignore - assume align is always a valid value.
-      this._pixiObject.align = this._object._textAlign;
+      this._pixiObject.style.align =
+        this._object._textAlign as PIXI.TextStyleAlign;
       this.updatePosition();
     }
 
@@ -188,11 +204,11 @@ namespace gdjs {
     }
 
     getWidth(): float {
-      return this._pixiObject.textWidth * this.getScale();
+      return this._pixiObject.width;
     }
 
     getHeight(): float {
-      return this._pixiObject.textHeight * this.getScale();
+      return this._pixiObject.height;
     }
   }
 

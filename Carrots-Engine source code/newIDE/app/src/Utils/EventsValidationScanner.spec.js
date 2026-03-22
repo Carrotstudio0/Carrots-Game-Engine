@@ -112,6 +112,68 @@ describe('EventsValidationScanner', () => {
       }
     });
 
+    it('detects empty required number expressions as missing parameters', () => {
+      const { project, testLayout } = makeTestProject(gd);
+      const events = testLayout.getEvents();
+
+      const event = events.insertNewEvent(
+        project,
+        'BuiltinCommonInstructions::Standard',
+        0
+      );
+      const standardEvent = gd.asStandardEvent(event);
+      const conditions = standardEvent.getConditions();
+      const compareNumbers = new gd.Instruction();
+      compareNumbers.setType('BuiltinCommonInstructions::CompareNumbers');
+      compareNumbers.setParametersCount(3);
+      compareNumbers.setParameter(0, '');
+      compareNumbers.setParameter(1, '=');
+      compareNumbers.setParameter(2, '1');
+      conditions.insert(compareNumbers, 0);
+      compareNumbers.delete();
+
+      const errors = scanProjectForValidationErrors(project);
+
+      const targetError = errors.find(
+        e =>
+          e.type === 'missing-parameter' &&
+          e.instructionType === 'BuiltinCommonInstructions::CompareNumbers' &&
+          e.parameterIndex === 0
+      );
+      expect(targetError).toBeDefined();
+    });
+
+    it('detects whitespace-only required string expressions as missing parameters', () => {
+      const { project, testLayout } = makeTestProject(gd);
+      const events = testLayout.getEvents();
+
+      const event = events.insertNewEvent(
+        project,
+        'BuiltinCommonInstructions::Standard',
+        0
+      );
+      const standardEvent = gd.asStandardEvent(event);
+      const conditions = standardEvent.getConditions();
+      const compareStrings = new gd.Instruction();
+      compareStrings.setType('BuiltinCommonInstructions::CompareStrings');
+      compareStrings.setParametersCount(3);
+      compareStrings.setParameter(0, '   ');
+      compareStrings.setParameter(1, '=');
+      compareStrings.setParameter(2, '"ready"');
+      conditions.insert(compareStrings, 0);
+      compareStrings.delete();
+
+      const errors = scanProjectForValidationErrors(project);
+
+      const targetError = errors.find(
+        e =>
+          e.type === 'missing-parameter' &&
+          e.instructionType === 'BuiltinCommonInstructions::CompareStrings' &&
+          e.parameterIndex === 0
+      );
+      expect(targetError).toBeDefined();
+    });
+
     describe('external events scanning', () => {
       it('detects errors in external events', () => {
         const { project, testExternalEvents1 } = makeTestProject(gd);

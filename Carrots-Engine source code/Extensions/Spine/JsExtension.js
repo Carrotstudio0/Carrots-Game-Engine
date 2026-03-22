@@ -55,7 +55,8 @@ module.exports = {
       .addDefaultBehavior('AnimatableCapability::AnimatableBehavior')
       .setIncludeFile('Extensions/Spine/spineruntimeobject.js')
       .addIncludeFile('Extensions/Spine/spineruntimeobject-pixi-renderer.js')
-      .addIncludeFile('Extensions/Spine/pixi-spine/pixi-spine.js')
+      .addIncludeFile('Extensions/Spine/spine-pixi-v8/spine-pixi-v8.js')
+      .addIncludeFile('Extensions/Spine/spine-pixi-v8/pixi-spine-compat.js')
       .addIncludeFile('Extensions/Spine/managers/pixi-spine-atlas-manager.js')
       .addIncludeFile('Extensions/Spine/managers/pixi-spine-manager.js')
       .setCategory('Advanced')
@@ -383,7 +384,7 @@ module.exports = {
 
         const spine = this._spine;
         if (spine) {
-          const localBounds = spine.getLocalBounds(undefined, true);
+          const localBounds = spine.getLocalBounds();
           this._initialWidth = localBounds.width * scale;
           this._initialHeight = localBounds.height * scale;
         } else {
@@ -396,7 +397,7 @@ module.exports = {
         if (spine) {
           spine.width = width;
           spine.height = height;
-          const localBounds = spine.getLocalBounds(undefined, true);
+          const localBounds = spine.getLocalBounds();
 
           this._spineOriginOffsetX = localBounds.x * spine.scale.x;
           this._spineOriginOffsetY = localBounds.y * spine.scale.y;
@@ -467,7 +468,10 @@ module.exports = {
         // if custom size is set it will be reinitialized in update method
         spine.scale.set(1, 1);
         spine.state.setAnimation(0, source, shouldLoop);
-        spine.state.tracks[0].trackTime = 0;
+        const track = spine.state.tracks[0];
+        if (track) {
+          track.trackTime = 0;
+        }
         spine.update(0);
         spine.autoUpdate = false;
       }

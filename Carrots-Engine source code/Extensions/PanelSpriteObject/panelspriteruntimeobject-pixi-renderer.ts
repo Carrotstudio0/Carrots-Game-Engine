@@ -18,6 +18,13 @@ namespace gdjs {
     _textureHeight = 0;
     _cachedWorldAlpha = 255;
 
+    private _createTexture(
+      source: PIXI.TextureSource,
+      frame?: PIXI.Rectangle
+    ): PIXI.Texture {
+      return new PIXI.Texture({ source, frame });
+    }
+
     constructor(
       runtimeObject: gdjs.PanelSpriteRuntimeObject,
       instanceContainer: gdjs.RuntimeInstanceContainer,
@@ -28,6 +35,7 @@ namespace gdjs {
       const texture = (
         instanceContainer.getGame().getImageManager() as gdjs.PixiImageManager
       ).getPIXITexture(textureName);
+      const textureSource = texture.source;
       const StretchedSprite = !tiled ? PIXI.Sprite : PIXI.TilingSprite;
       this._spritesContainer = new PIXI.Container();
       this._wrapperContainer = new PIXI.Container();
@@ -35,26 +43,24 @@ namespace gdjs {
       // All these textures are going to be replaced in the call to `setTexture`.
       // But to be safe and preserve the invariant that "these objects own their own
       // textures", we create a new texture for each sprite.
-      this._centerSprite = new StretchedSprite(
-        new PIXI.Texture(texture.baseTexture)
-      );
+      this._centerSprite = new StretchedSprite(this._createTexture(textureSource));
       this._borderSprites = [
         // Right
-        new StretchedSprite(new PIXI.Texture(texture.baseTexture)),
+        new StretchedSprite(this._createTexture(textureSource)),
         // Top-Right
-        new PIXI.Sprite(new PIXI.Texture(texture.baseTexture)),
+        new PIXI.Sprite(this._createTexture(textureSource)),
         // Top
-        new StretchedSprite(new PIXI.Texture(texture.baseTexture)),
+        new StretchedSprite(this._createTexture(textureSource)),
         // Top-Left
-        new PIXI.Sprite(new PIXI.Texture(texture.baseTexture)),
+        new PIXI.Sprite(this._createTexture(textureSource)),
         // Left
-        new StretchedSprite(new PIXI.Texture(texture.baseTexture)),
+        new StretchedSprite(this._createTexture(textureSource)),
         // Bottom-Left
-        new PIXI.Sprite(new PIXI.Texture(texture.baseTexture)),
+        new PIXI.Sprite(this._createTexture(textureSource)),
         // Bottom
-        new StretchedSprite(new PIXI.Texture(texture.baseTexture)),
+        new StretchedSprite(this._createTexture(textureSource)),
         // Bottom-Right
-        new PIXI.Sprite(new PIXI.Texture(texture.baseTexture)),
+        new PIXI.Sprite(this._createTexture(textureSource)),
       ];
 
       this.setTexture(textureName, instanceContainer);
@@ -242,7 +248,7 @@ namespace gdjs {
       const texture = instanceContainer
         .getGame()
         .getImageManager()
-        .getPIXITexture(textureName).baseTexture;
+        .getPIXITexture(textureName).source;
       this._textureWidth = texture.width;
       this._textureHeight = texture.height;
 
@@ -274,7 +280,7 @@ namespace gdjs {
         return rect;
       }
       this._centerSprite.texture.destroy(false);
-      this._centerSprite.texture = new PIXI.Texture(
+      this._centerSprite.texture = this._createTexture(
         texture,
         makeInsideTexture(
           new PIXI.Rectangle(
@@ -288,7 +294,7 @@ namespace gdjs {
 
       //Top, Bottom, Right, Left borders:
       this._borderSprites[0].texture.destroy(false);
-      this._borderSprites[0].texture = new PIXI.Texture(
+      this._borderSprites[0].texture = this._createTexture(
         texture,
         makeInsideTexture(
           new PIXI.Rectangle(
@@ -300,7 +306,7 @@ namespace gdjs {
         )
       );
       this._borderSprites[2].texture.destroy(false);
-      this._borderSprites[2].texture = new PIXI.Texture(
+      this._borderSprites[2].texture = this._createTexture(
         texture,
         makeInsideTexture(
           new PIXI.Rectangle(
@@ -312,7 +318,7 @@ namespace gdjs {
         )
       );
       this._borderSprites[4].texture.destroy(false);
-      this._borderSprites[4].texture = new PIXI.Texture(
+      this._borderSprites[4].texture = this._createTexture(
         texture,
         makeInsideTexture(
           new PIXI.Rectangle(
@@ -324,7 +330,7 @@ namespace gdjs {
         )
       );
       this._borderSprites[6].texture.destroy(false);
-      this._borderSprites[6].texture = new PIXI.Texture(
+      this._borderSprites[6].texture = this._createTexture(
         texture,
         makeInsideTexture(
           new PIXI.Rectangle(
@@ -336,7 +342,7 @@ namespace gdjs {
         )
       );
       this._borderSprites[1].texture.destroy(false);
-      this._borderSprites[1].texture = new PIXI.Texture(
+      this._borderSprites[1].texture = this._createTexture(
         texture,
         makeInsideTexture(
           new PIXI.Rectangle(
@@ -348,12 +354,12 @@ namespace gdjs {
         )
       );
       this._borderSprites[3].texture.destroy(false);
-      this._borderSprites[3].texture = new PIXI.Texture(
+      this._borderSprites[3].texture = this._createTexture(
         texture,
         makeInsideTexture(new PIXI.Rectangle(0, 0, obj._lBorder, obj._tBorder))
       );
       this._borderSprites[5].texture.destroy(false);
-      this._borderSprites[5].texture = new PIXI.Texture(
+      this._borderSprites[5].texture = this._createTexture(
         texture,
         makeInsideTexture(
           new PIXI.Rectangle(
@@ -365,7 +371,7 @@ namespace gdjs {
         )
       );
       this._borderSprites[7].texture.destroy(false);
-      this._borderSprites[7].texture = new PIXI.Texture(
+      this._borderSprites[7].texture = this._createTexture(
         texture,
         makeInsideTexture(
           new PIXI.Rectangle(

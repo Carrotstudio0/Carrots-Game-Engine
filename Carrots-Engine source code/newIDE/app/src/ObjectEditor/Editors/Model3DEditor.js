@@ -27,8 +27,8 @@ import DropIndicator from '../../UI/SortableVirtualizedItemList/DropIndicator';
 import GDevelopThemeContext from '../../UI/Theme/GDevelopThemeContext';
 import PixiResourcesLoader from '../../ObjectsRendering/PixiResourcesLoader';
 import useAlertDialog from '../../UI/Alert/useAlertDialog';
-import { type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
-import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils';
+import { type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import * as THREE from 'three';
 import { PropertyCheckbox, PropertyField } from './PropertyFields';
 import ResourceSelectorWithThumbnail from '../../ResourcesList/ResourceSelectorWithThumbnail';
@@ -355,7 +355,7 @@ const Model3DEditor = ({
       } else {
         showAlert({
           title: t`No new animation`,
-          message: t`Every animation from the GLB file is already in the list.`,
+          message: t`Every animation from the 3D model file is already in the list.`,
         });
       }
     },
@@ -810,7 +810,7 @@ const Model3DEditor = ({
                                   margin="dense"
                                   fullWidth
                                   floatingLabelText={
-                                    <Trans>GLB animation name</Trans>
+                                    <Trans>Model animation name</Trans>
                                   }
                                   translatableHintText={t`Choose an animation`}
                                 >

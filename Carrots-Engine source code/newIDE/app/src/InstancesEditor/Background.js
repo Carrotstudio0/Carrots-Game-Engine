@@ -1,5 +1,6 @@
 // @flow
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
+import { createTextureFromResource } from '../Utils/PixiCompat/EditorPixiAdapter';
 
 type Props = {
   width: number,
@@ -13,7 +14,7 @@ export default class Background {
 
   constructor({ width, height, layout }: Props) {
     this._checkeredBackground = new PIXI.TilingSprite(
-      new PIXI.Texture(PIXI.Texture.from('res/transparentback.png')),
+      createTextureFromResource('res/transparentback.png'),
       width,
       height
     );

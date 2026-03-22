@@ -1,5 +1,9 @@
 // @flow
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
+import {
+  getPixiOriginalEvent,
+  isPixiPrimaryEvent,
+} from '../PixiCompat/EditorPixiAdapter';
 
 export type PanMoveEvent = {|
   deltaX: number,
@@ -14,12 +18,47 @@ export default function panable(
   sprite: PIXI.DisplayObject,
   inertia: boolean = false
 ) {
+  const getPointerEventFromPixiEvent = (event: any): any => {
+    const originalEvent = getPixiOriginalEvent(event);
+    if (!originalEvent) {
+      return null;
+    }
+
+    if (originalEvent.nativeEvent) {
+      return originalEvent.nativeEvent;
+    }
+
+    if (originalEvent.touches && originalEvent.touches.length > 0) {
+      return originalEvent.touches[0];
+    }
+
+    if (
+      originalEvent.changedTouches &&
+      originalEvent.changedTouches.length > 0
+    ) {
+      return originalEvent.changedTouches[0];
+    }
+
+    return originalEvent;
+  };
+
+  const isMouseLikeEvent = (event: any): boolean => {
+    if (!event) return false;
+    if (event.pointerType === 'mouse') return true;
+    if (typeof MouseEvent === 'function' && event instanceof MouseEvent) {
+      return true;
+    }
+    return typeof event.type === 'string' && event.type.indexOf('mouse') === 0;
+  };
+
   // $FlowFixMe[value-as-type]
   function pointerDown(e: PIXI.FederatedPointerEvent) {
-    start(e.data.originalEvent.nativeEvent);
+    const pointerEvent = getPointerEventFromPixiEvent(e);
+    if (!pointerEvent) return;
+    start(pointerEvent);
   }
 
-  function start(t: Touch) {
+  function start(t: any) {
     if (sprite._pan) {
       if (!sprite._pan.intervalId) {
         return;
@@ -34,13 +73,15 @@ export default function panable(
         date: new Date(),
       },
     };
-    sprite.addEventListener('globalpointermove', pointerMove);
+    sprite.on('globalpointermove', pointerMove);
   }
 
   // $FlowFixMe[value-as-type]
   function pointerMove(e: PIXI.FederatedPointerEvent) {
-    let touch = e.data.originalEvent.nativeEvent;
-    if (!e.data.isPrimary) {
+    const touch = getPointerEventFromPixiEvent(e);
+    if (!touch) return;
+
+    if (!isPixiPrimaryEvent(e)) {
       end(e, touch);
       return;
     }
@@ -48,7 +89,7 @@ export default function panable(
   }
 
   // $FlowFixMe[value-as-type]
-  function move(e: PIXI.FederatedPointerEvent, t: Touch) {
+  function move(e: PIXI.FederatedPointerEvent, t: any) {
     let now = new Date();
     let interval = now - sprite._pan.p.date;
     if (interval < 12) {
@@ -58,7 +99,7 @@ export default function panable(
     let dy = t.clientY - sprite._pan.p.y;
     let distance = Math.sqrt(dx * dx + dy * dy);
     if (!sprite._pan.pp) {
-      let threshold = t instanceof window.MouseEvent ? 2 : 7;
+      let threshold = isMouseLikeEvent(t) ? 2 : 7;
       if (distance > threshold) {
         sprite.emit('panstart');
       } else {
@@ -87,12 +128,19 @@ export default function panable(
 
   // $FlowFixMe[value-as-type]
   function pointerUp(e: PIXI.FederatedPointerEvent) {
-    end(e, e.data.originalEvent.nativeEvent);
+    const pointerEvent = getPointerEventFromPixiEvent(e);
+    if (!pointerEvent) {
+      sprite.off('globalpointermove', pointerMove);
+      sprite.emit('panend');
+      sprite._pan = null;
+      return;
+    }
+    end(e, pointerEvent);
   }
 
   // $FlowFixMe[value-as-type]
-  function end(e: PIXI.FederatedPointerEvent, t: Touch) {
-    sprite.removeEventListener('globalpointermove', pointerMove);
+  function end(e: PIXI.FederatedPointerEvent, t: any) {
+    sprite.off('globalpointermove', pointerMove);
     if (!sprite._pan || !sprite._pan.pp) {
       sprite._pan = null;
       return;
@@ -127,7 +175,7 @@ export default function panable(
   }
 
   sprite.eventMode = 'static';
-  sprite.addEventListener('pointerdown', pointerDown);
-  sprite.addEventListener('pointerup', pointerUp);
-  sprite.addEventListener('pointerupoutside', pointerUp);
+  sprite.on('pointerdown', pointerDown);
+  sprite.on('pointerup', pointerUp);
+  sprite.on('pointerupoutside', pointerUp);
 }

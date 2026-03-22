@@ -1,5 +1,5 @@
 // @flow
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
 import Rectangle from '../Utils/Rectangle';
 import { type InstanceMeasurer } from './InstancesRenderer';
 const gd: libGDevelop = global.gd;
@@ -132,17 +132,16 @@ export default class SelectionRectangle {
 
     this.pixiRectangle.visible = true;
     this.pixiRectangle.clear();
-    this.pixiRectangle.beginFill(0x6868e8);
-    this.pixiRectangle.lineStyle(1, 0x6868e8, 1);
-    this.pixiRectangle.fill.alpha = 0.1;
     this.pixiRectangle.alpha = 0.8;
-    this.pixiRectangle.drawRect(
-      Math.min(x1, x2),
-      Math.min(y1, y2),
-      Math.abs(x2 - x1),
-      Math.abs(y2 - y1)
-    );
-    this.pixiRectangle.endFill();
+    this.pixiRectangle
+      .rect(
+        Math.min(x1, x2),
+        Math.min(y1, y2),
+        Math.abs(x2 - x1),
+        Math.abs(y2 - y1)
+      )
+      .fill({ color: 0x6868e8, alpha: 0.1 })
+      .stroke({ width: 1, color: 0x6868e8, alpha: 1 });
   }
 
   delete() {

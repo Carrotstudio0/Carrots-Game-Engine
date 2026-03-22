@@ -20,7 +20,9 @@ namespace gdjs {
           node.style[styleName] = value;
         }
       } else if (key === 'onClick') {
-        node.addEventListener('click', attrs[key]!);
+        node.addEventListener('click', (event) =>
+          attrs.onClick?.(event as MouseEvent)
+        );
       } else {
         node.setAttribute(key, '' + attrs[key]);
       }

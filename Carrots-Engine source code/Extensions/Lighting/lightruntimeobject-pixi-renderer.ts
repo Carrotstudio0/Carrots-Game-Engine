@@ -1,5 +1,12 @@
 namespace gdjs {
   const logger = new gdjs.Logger('Light object');
+  const updatePixiBuffer = (
+    buffer: ReturnType<PIXI.Geometry['getBuffer']> | ReturnType<PIXI.Geometry['getIndex']>,
+    data: Float32Array | Uint16Array
+  ) => {
+    buffer.data = data;
+    buffer.update(data.byteLength);
+  };
 
   /**
    * Pixi renderer for light runtime objects.
@@ -13,10 +20,11 @@ namespace gdjs {
     _color: [number, number, number];
     _texture: PIXI.Texture | null = null;
     _center: Float32Array;
+    _uniformGroup: PIXI.UniformGroup | null = null;
     _defaultVertexBuffer: Float32Array;
     _vertexBuffer: Float32Array;
     _indexBuffer: Uint16Array;
-    _light: PIXI.Mesh<PIXI.Shader> | null = null;
+    _light: PIXI.Mesh<PIXI.Geometry, PIXI.Shader> | null = null;
     _isPreview: boolean;
     _debugMode: boolean = false;
     _debugLight: PIXI.Container | null = null;
@@ -152,7 +160,10 @@ namespace gdjs {
       return null;
     }
 
-    getRendererObject(): PIXI.Mesh | null | PIXI.Container {
+    getRendererObject():
+      | PIXI.Mesh<PIXI.Geometry, PIXI.Shader>
+      | PIXI.Container
+      | null {
       if (this._debugLight) {
         return this._debugLight;
       }
@@ -181,16 +192,17 @@ namespace gdjs {
           this._color[2] = this._object._color[2];
           const radiusBorderWidth = 2;
           this._debugGraphics.clear();
-          this._debugGraphics.lineStyle(
-            radiusBorderWidth,
-            gdjs.rgbToHexNumber(this._color[0], this._color[1], this._color[2]),
-            0.8
-          );
-          this._debugGraphics.drawCircle(
-            0,
-            0,
-            Math.max(1, this._radius - radiusBorderWidth)
-          );
+          this._debugGraphics
+            .circle(0, 0, Math.max(1, this._radius - radiusBorderWidth))
+            .stroke({
+              width: radiusBorderWidth,
+              color: gdjs.rgbToHexNumber(
+                this._color[0],
+                this._color[1],
+                this._color[2]
+              ),
+              alpha: 0.8,
+            });
         }
         return;
       }
@@ -207,7 +219,7 @@ namespace gdjs {
       if (this._object.getInstanceContainer().getGame().isInGameEdition()) {
         return;
       }
-      if (!PIXI.utils.isWebGLSupported()) {
+      if (PIXI.isWebGLSupported && !PIXI.isWebGLSupported()) {
         logger.warn(
           'This device does not support webgl, which is required for Lighting Extension.'
         );
@@ -218,27 +230,31 @@ namespace gdjs {
         this._texture === null
           ? LightRuntimeObjectPixiRenderer.defaultFragmentShader
           : LightRuntimeObjectPixiRenderer.texturedFragmentShader;
-      const shaderUniforms = {
-        center: this._center,
-        radius: this._radius,
-        color: this._color,
+      this._uniformGroup = new PIXI.UniformGroup({
+        center: { value: this._center, type: 'vec2<f32>' },
+        radius: { value: this._radius, type: 'f32' },
+        color: { value: this._color, type: 'vec3<f32>' },
+      });
+      const shaderResources: { [key: string]: any } = {
+        lightUniforms: this._uniformGroup,
       };
       if (this._texture) {
-        // @ts-ignore
-        shaderUniforms.uSampler = this._texture;
+        shaderResources.uSampler = this._texture.source;
       }
-      const shader = PIXI.Shader.from(
-        LightRuntimeObjectPixiRenderer.defaultVertexShader,
-        fragmentShader,
-        shaderUniforms
-      );
+      const shader = PIXI.Shader.from({
+        gl: {
+          vertex: LightRuntimeObjectPixiRenderer.defaultVertexShader,
+          fragment: fragmentShader,
+        },
+        resources: shaderResources,
+      });
       const geometry = new PIXI.Geometry();
-      geometry
-        .addAttribute('aVertexPosition', this._vertexBuffer, 2)
-        .addIndex(this._indexBuffer);
+      geometry.addAttribute('aVertexPosition', this._vertexBuffer);
+      geometry.addIndex(this._indexBuffer);
       if (!this._light) {
-        this._light = new PIXI.Mesh(geometry, shader);
-        this._light.blendMode = PIXI.BLEND_MODES.ADD;
+        const light = new PIXI.Mesh(geometry, shader);
+        light.blendMode = 'add';
+        this._light = light;
       } else {
         this._light.shader = shader;
         // @ts-ignore - replacing the read-only geometry
@@ -251,7 +267,11 @@ namespace gdjs {
         return;
       }
       this._radius = this._object.getRadius();
-      this._light.shader.uniforms.radius = this._radius;
+      if (!this._uniformGroup) {
+        return;
+      }
+      this._uniformGroup.uniforms.radius = this._radius;
+      this._uniformGroup.update();
     }
 
     updateColor(): void {
@@ -264,7 +284,11 @@ namespace gdjs {
         objectColor[1] / 255,
         objectColor[2] / 255,
       ];
-      this._light.shader.uniforms.color = this._color;
+      if (!this._uniformGroup) {
+        return;
+      }
+      this._uniformGroup.uniforms.color = this._color;
+      this._uniformGroup.update();
     }
 
     updateTexture(): void {
@@ -307,7 +331,6 @@ namespace gdjs {
       if (!computedVertices.length) {
         debugGraphics.clear();
         debugGraphics
-          .lineStyle(1, 16711680, 1)
           .moveTo(this._object.x, this._object.y)
           .lineTo(this._object.x - this._radius, this._object.y + this._radius)
           .lineTo(this._object.x + this._radius, this._object.y + this._radius)
@@ -319,7 +342,8 @@ namespace gdjs {
           .lineTo(this._object.x - this._radius, this._object.y - this._radius)
           .moveTo(this._object.x, this._object.y)
           .lineTo(this._object.x - this._radius, this._object.y - this._radius)
-          .lineTo(this._object.x - this._radius, this._object.y + this._radius);
+          .lineTo(this._object.x - this._radius, this._object.y + this._radius)
+          .stroke({ width: 1, color: 16711680, alpha: 1 });
         return;
       }
       const vertices = new Array(2 * computedVertices.length + 2);
@@ -330,20 +354,21 @@ namespace gdjs {
         vertices[i + 1] = computedVertices[i / 2 - 1][1];
       }
       debugGraphics.clear();
-      debugGraphics.moveTo(vertices[2], vertices[3]);
       const verticesCount = vertices.length;
       for (let i = 2; i < verticesCount; i += 2) {
         const lineColor = i % 4 === 0 ? 16711680 : 65280;
         const lastX = i + 2 >= verticesCount ? 2 : i + 2;
         const lastY = i + 3 >= verticesCount ? 3 : i + 3;
         debugGraphics
-          .lineStyle(1, lineColor, 1)
-          .lineTo(vertices[i], vertices[i + 1])
+          .moveTo(vertices[i], vertices[i + 1])
           .lineTo(vertices[lastX], vertices[lastY])
           .moveTo(vertices[0], vertices[1])
           .lineTo(vertices[i], vertices[i + 1])
           .moveTo(vertices[0], vertices[1])
-          .lineTo(vertices[lastX], vertices[lastY]);
+          .lineTo(vertices[i], vertices[i + 1])
+          .moveTo(vertices[0], vertices[1])
+          .lineTo(vertices[lastX], vertices[lastY])
+          .stroke({ width: 1, color: lineColor, alpha: 1 });
       }
     }
 
@@ -365,13 +390,18 @@ namespace gdjs {
         this._defaultVertexBuffer[5] = this._object.y - this._radius;
         this._defaultVertexBuffer[6] = this._object.x - this._radius;
         this._defaultVertexBuffer[7] = this._object.y - this._radius;
-        this._light.shader.uniforms.center = this._center;
-        this._light.geometry
-          .getBuffer('aVertexPosition')
-          .update(this._defaultVertexBuffer);
-        this._light.geometry
-          .getIndex()
-          .update(LightRuntimeObjectPixiRenderer._defaultIndexBuffer);
+        if (this._uniformGroup) {
+          this._uniformGroup.uniforms.center = this._center;
+          this._uniformGroup.update();
+        }
+        updatePixiBuffer(
+          this._light.geometry.getBuffer('aVertexPosition'),
+          this._defaultVertexBuffer
+        );
+        updatePixiBuffer(
+          this._light.geometry.getIndex(),
+          LightRuntimeObjectPixiRenderer._defaultIndexBuffer
+        );
         return;
       }
       const verticesCount = vertices.length;
@@ -421,19 +451,25 @@ namespace gdjs {
           this._indexBuffer[i + 2] = 1;
         }
       }
-      this._light.shader.uniforms.center = this._center;
+      if (this._uniformGroup) {
+        this._uniformGroup.uniforms.center = this._center;
+        this._uniformGroup.update();
+      }
       if (!isSubArrayUsed) {
-        this._light.geometry
-          .getBuffer('aVertexPosition')
-          .update(this._vertexBuffer);
-        this._light.geometry.getIndex().update(this._indexBuffer);
+        updatePixiBuffer(
+          this._light.geometry.getBuffer('aVertexPosition'),
+          this._vertexBuffer
+        );
+        updatePixiBuffer(this._light.geometry.getIndex(), this._indexBuffer);
       } else {
-        this._light.geometry
-          .getBuffer('aVertexPosition')
-          // @ts-ignore
-          .update(vertexBufferSubArray);
-        // @ts-ignore
-        this._light.geometry.getIndex().update(indexBufferSubArray);
+        updatePixiBuffer(
+          this._light.geometry.getBuffer('aVertexPosition'),
+          vertexBufferSubArray as Float32Array
+        );
+        updatePixiBuffer(
+          this._light.geometry.getIndex(),
+          indexBufferSubArray as Uint16Array
+        );
       }
     }
 

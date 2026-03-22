@@ -1,7 +1,8 @@
 /* eslint-env worker */
 // @flow
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
 const isNativeMobileApp = false;
 
@@ -62,6 +63,22 @@ let width = 256;
 let height = 256;
 let offscreenCanvas = null;
 
+const getFileExtension = path => {
+  if (!path) return '';
+  const withoutHash = path.split('#')[0];
+  const withoutQuery = withoutHash.split('?')[0];
+  const extensionSeparatorIndex = withoutQuery.lastIndexOf('.');
+  if (extensionSeparatorIndex === -1) return '';
+  return withoutQuery.substring(extensionSeparatorIndex + 1).toLowerCase();
+};
+
+const enableLegacyLightsIfSupported = renderer => {
+  const rendererWithLegacyLights = renderer;
+  if ('useLegacyLights' in rendererWithLegacyLights) {
+    rendererWithLegacyLights.useLegacyLights = true;
+  }
+};
+
 // Set up the renderer when worker is initialized
 const initRenderer = () => {
   // $FlowFixMe[incompatible-type] - OffscreenCanvas is not in Flow types
@@ -73,8 +90,9 @@ const initRenderer = () => {
     canvas: offscreenCanvas,
     antialias: true,
     alpha: true,
+    stencil: true,
   });
-  renderer.useLegacyLights = true; // Use legacy lights as in the editor.
+  enableLegacyLightsIfSupported(renderer);
 
   renderer.setSize(width, height, false);
 
@@ -102,12 +120,16 @@ const renderModel = async resourceUrl => {
 
   // Load the model
   return new Promise((resolve, reject) => {
-    const loader = new GLTFLoader();
+    const extension = getFileExtension(resourceUrl);
+    const loader =
+      extension === 'fbx'
+        ? new FBXLoader()
+        : new GLTFLoader();
     loader.withCredentials = checkIfCredentialsRequired(resourceUrl);
 
     loader.load(
       resourceUrl,
-      gltf => {
+      loadedModel => {
         if (!renderer) {
           throw new Error('Renderer not initialized');
         }
@@ -116,7 +138,7 @@ const renderModel = async resourceUrl => {
           throw new Error('Offscreen canvas not initialized');
         }
 
-        const model = gltf.scene;
+        const model = loadedModel.scene ? loadedModel.scene : loadedModel;
         model.traverse(removeMetalnessFromMesh);
 
         // We can't just rely on model.boundingBox because it doesn't take into account

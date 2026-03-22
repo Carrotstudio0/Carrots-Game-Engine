@@ -1205,8 +1205,6 @@ const ObjectsList = React.forwardRef<Props, ObjectsListInterface>(
         expandFolders,
         onAddNewObject,
         selectedObjectFolderOrObjectsWithContext,
-        onExportAssets,
-        onImportAssets,
       ]
     );
 

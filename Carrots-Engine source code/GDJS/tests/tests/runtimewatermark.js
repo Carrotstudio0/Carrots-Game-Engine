@@ -19,7 +19,7 @@ describe('gdjs.RuntimeWatermark integration tests', () => {
       clock.restore();
     });
 
-    it('should correctly display elements in the right order (with username)', () => {
+    it('should correctly display elements in the right order (with username)', async () => {
       const runtimeGame = gdjs.getPixiRuntimeGame({
         propertiesOverrides: {
           authorUsernames: ['HelperWesley'],
@@ -29,7 +29,7 @@ describe('gdjs.RuntimeWatermark integration tests', () => {
 
       // Make sure the renderer is created (to test the real DOM element creation/update)
       const gameContainer = document.createElement('div');
-      runtimeGame.getRenderer().createStandardCanvas(gameContainer);
+      await runtimeGame.getRenderer().createStandardCanvas(gameContainer);
 
       const watermark = runtimeGame._watermark;
 
@@ -110,7 +110,7 @@ describe('gdjs.RuntimeWatermark integration tests', () => {
       expect(watermark._backgroundElement.style.display).to.be('none');
     });
 
-    it('should correctly display elements in the right order (without username)', () => {
+    it('should correctly display elements in the right order (without username)', async () => {
       const runtimeGame = gdjs.getPixiRuntimeGame({
         propertiesOverrides: {
           authorUsernames: [],
@@ -120,7 +120,7 @@ describe('gdjs.RuntimeWatermark integration tests', () => {
 
       // Make sure the renderer is created (to test the real DOM element creation/update)
       const gameContainer = document.createElement('div');
-      runtimeGame.getRenderer().createStandardCanvas(gameContainer);
+      await runtimeGame.getRenderer().createStandardCanvas(gameContainer);
 
       const watermark = runtimeGame._watermark;
 

@@ -757,6 +757,65 @@ namespace gdjs {
     }
 
     /**
+     * Submit a serializable computation to the multithreading worker pool.
+     */
+    runInWorker<T = unknown>(
+      handlerName: string,
+      payload: unknown,
+      options?: gdjs.WorkerTaskOptions
+    ): gdjs.WorkerTaskHandle<T> {
+      return this._runtimeGame
+        .getMultithreadManager()
+        .runTask<T>(handlerName, payload, options);
+    }
+
+    /**
+     * Create an async task backed by a multithreaded worker job.
+     */
+    createWorkerTask<T = unknown>(
+      handlerName: string,
+      payload: unknown,
+      options?: gdjs.WorkerTaskOptions
+    ): gdjs.WorkerTask<T> {
+      return new gdjs.WorkerTask<T>(
+        this.runInWorker<T>(handlerName, payload, options)
+      );
+    }
+
+    /**
+     * Submit a multithreaded task and invoke the callback on the next frame once it settles.
+     */
+    addWorkerTask<T = unknown>(
+      handlerName: string,
+      payload: unknown,
+      callback: (
+        runtimeScene: gdjs.RuntimeScene,
+        result: T | null,
+        workerTask: gdjs.WorkerTask<T>,
+        longLivedObjectsList: gdjs.LongLivedObjectsList
+      ) => void,
+      callbackId = '',
+      longLivedObjectsList = new gdjs.LongLivedObjectsList(),
+      options?: gdjs.WorkerTaskOptions
+    ): gdjs.WorkerTask<T> {
+      const workerTask = this.createWorkerTask<T>(handlerName, payload, options);
+      this._asyncTasksManager.addTask(
+        workerTask,
+        (runtimeScene, asyncObjectsList) => {
+          callback(
+            runtimeScene,
+            workerTask.getResult(),
+            workerTask,
+            asyncObjectsList
+          );
+        },
+        callbackId,
+        longLivedObjectsList
+      );
+      return workerTask;
+    }
+
+    /**
      * Return the value of the scene change that is requested.
      */
     getRequestedChange(): SceneChangeRequest {

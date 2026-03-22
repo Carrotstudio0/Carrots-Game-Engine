@@ -1,6 +1,6 @@
 // @flow
 import transformRect from '../Utils/TransformRect';
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
 import { type InstanceMeasurer } from './InstancesRenderer';
 import Rectangle from '../Utils/Rectangle';
 
@@ -78,17 +78,16 @@ export default class HighlightedInstance {
 
     this.highlightRectangle.visible = true;
     this.highlightRectangle.clear();
-    this.highlightRectangle.beginFill(0xeeeeff);
-    this.highlightRectangle.fill.alpha = 0.1;
     this.highlightRectangle.alpha = 0.8;
-    this.highlightRectangle.lineStyle(1, 0x000000, 1);
-    this.highlightRectangle.drawRect(
-      highlightRectangle.left,
-      highlightRectangle.top,
-      highlightRectangle.width(),
-      highlightRectangle.height()
-    );
-    this.highlightRectangle.endFill();
+    this.highlightRectangle
+      .rect(
+        highlightRectangle.left,
+        highlightRectangle.top,
+        highlightRectangle.width(),
+        highlightRectangle.height()
+      )
+      .fill({ color: 0xeeeeff, alpha: 0.1 })
+      .stroke({ width: 1, color: 0x000000, alpha: 1 });
 
     const tooltipInfo =
       highlightedInstance.getObjectName() +
@@ -123,14 +122,14 @@ export default class HighlightedInstance {
 
     const padding = 5;
     this.tooltipBackground.clear();
-    this.tooltipBackground.beginFill(0x000000, 0.8);
-    this.tooltipBackground.drawRoundedRect(
-      this.tooltipText.x - padding,
-      this.tooltipText.y - padding,
-      this.tooltipText.width + padding * 2,
-      this.tooltipText.height - padding,
-      4
-    );
-    this.tooltipBackground.endFill();
+    this.tooltipBackground
+      .roundRect(
+        this.tooltipText.x - padding,
+        this.tooltipText.y - padding,
+        this.tooltipText.width + padding * 2,
+        this.tooltipText.height - padding,
+        4
+      )
+      .fill({ color: 0x000000, alpha: 0.8 });
   }
 }

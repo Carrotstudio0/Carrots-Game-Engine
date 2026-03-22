@@ -610,7 +610,7 @@ namespace gdjs {
             const renderTarget = this._ensureSSRExcludeMaskTarget(
               width,
               height,
-              threeRenderer.outputColorSpace
+              threeRenderer.outputColorSpace as THREE.ColorSpace
             );
             const previousRenderTarget = threeRenderer.getRenderTarget();
             const previousAutoClear = threeRenderer.autoClear;
@@ -837,7 +837,7 @@ namespace gdjs {
             const renderTarget = this._ensureSSRoughnessTarget(
               width,
               height,
-              threeRenderer.outputColorSpace
+              threeRenderer.outputColorSpace as THREE.ColorSpace
             );
 
             const previousRenderTarget = threeRenderer.getRenderTarget();

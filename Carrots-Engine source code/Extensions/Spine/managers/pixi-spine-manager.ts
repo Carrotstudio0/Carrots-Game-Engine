@@ -15,7 +15,7 @@ namespace gdjs {
   export class SpineManager implements gdjs.ResourceManager {
     private _spineAtlasManager: SpineAtlasManager;
     private _resourceLoader: ResourceLoader;
-    private _loadedSpines = new gdjs.ResourceCache<pixi_spine.ISkeletonData>();
+    private _loadedSpines = new gdjs.ResourceCache<pixi_spine.SkeletonData>();
 
     /**
      * @param resourceLoader The resources loader of the game.
@@ -34,7 +34,7 @@ namespace gdjs {
     }
 
     async processResource(resourceName: string): Promise<void> {
-      // Do nothing because pixi-spine parses resources by itself.
+      // Do nothing, resources are loaded on demand.
     }
 
     async loadResource(resourceName: string): Promise<void> {
@@ -75,17 +75,18 @@ namespace gdjs {
         PIXI.Assets.add({
           alias: resource.name,
           src: url,
-          data: { spineAtlas },
         });
-        const loadedJson = await PIXI.Assets.load(resource.name);
-
-        if (loadedJson.spineData) {
-          this._loadedSpines.set(resource, loadedJson.spineData);
-        } else {
-          logger.error(
-            `Loader cannot process spine resource ${resource.name} correctly.`
-          );
-        }
+        const loadedSkeletonAsset = await PIXI.Assets.load(resource.name);
+        const atlasAttachmentLoader = new pixi_spine.AtlasAttachmentLoader(
+          spineAtlas
+        );
+        const parser =
+          loadedSkeletonAsset instanceof Uint8Array
+            ? new pixi_spine.SkeletonBinary(atlasAttachmentLoader)
+            : new pixi_spine.SkeletonJson(atlasAttachmentLoader);
+        parser.scale = 1;
+        const skeletonData = parser.readSkeletonData(loadedSkeletonAsset);
+        this._loadedSpines.set(resource, skeletonData);
       } catch (error) {
         logger.error(
           `Error while preloading spine resource ${resource.name}: ${error}`
@@ -102,7 +103,7 @@ namespace gdjs {
      * @param resourceName The name of the spine skeleton.
      * @returns the spine skeleton if loaded, `null` otherwise.
      */
-    getSpine(resourceName: string): pixi_spine.ISkeletonData | null {
+    getSpine(resourceName: string): pixi_spine.SkeletonData | null {
       return this._loadedSpines.getFromName(resourceName);
     }
 

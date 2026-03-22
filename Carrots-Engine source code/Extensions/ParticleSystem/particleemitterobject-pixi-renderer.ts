@@ -246,12 +246,6 @@ namespace gdjs {
         const line2Angle = emitterAngle + sprayConeAngle / 2;
         const length = 64;
 
-        this.helperGraphics.beginFill(0, 0);
-        this.helperGraphics.lineStyle(
-          3,
-          this.runtimeObject.getParticleColorEnd(),
-          1
-        );
         this.helperGraphics.moveTo(0, 0);
         this.helperGraphics.lineTo(
           Math.cos(line1Angle) * length,
@@ -262,14 +256,16 @@ namespace gdjs {
           Math.cos(line2Angle) * length,
           Math.sin(line2Angle) * length
         );
-        this.helperGraphics.endFill();
+        this.helperGraphics.stroke({
+          width: 3,
+          color: this.runtimeObject.getParticleColorEnd(),
+          alpha: 1,
+        });
 
-        this.helperGraphics.lineStyle(0, 0x000000, 1);
-        this.helperGraphics.beginFill(
-          this.runtimeObject.getParticleColorStart()
-        );
-        this.helperGraphics.drawCircle(0, 0, 8);
-        this.helperGraphics.endFill();
+        this.helperGraphics.circle(0, 0, 8).fill({
+          color: this.runtimeObject.getParticleColorStart(),
+          alpha: 1,
+        });
       }
     }
 
@@ -418,7 +414,11 @@ namespace gdjs {
         .getGame()
         .getImageManager()
         .getPIXITexture(texture);
-      return pixiTexture.valid && pixiTexture !== invalidPixiTexture;
+      return (
+        pixiTexture.width > 0 &&
+        pixiTexture.height > 0 &&
+        pixiTexture !== invalidPixiTexture
+      );
     }
 
     setTextureName(
@@ -433,7 +433,11 @@ namespace gdjs {
         .getGame()
         .getImageManager()
         .getPIXITexture(texture);
-      if (pixiTexture.valid && pixiTexture !== invalidPixiTexture) {
+      if (
+        pixiTexture.width > 0 &&
+        pixiTexture.height > 0 &&
+        pixiTexture !== invalidPixiTexture
+      ) {
         // Access private members of the behavior to apply changes right away.
         const behavior: any = this.emitter.getBehavior('textureSingle');
         behavior.texture = pixiTexture;

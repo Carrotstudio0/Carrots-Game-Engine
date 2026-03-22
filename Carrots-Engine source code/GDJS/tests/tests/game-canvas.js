@@ -9,8 +9,8 @@ describe('gdjs.RuntimeGameRenderer canvas tests', () => {
         gameContainer = document.createElement('div');
     });
 
-    it('should correctly create standard canvas and domElementsContainer', () => {
-        renderer.createStandardCanvas(gameContainer);
+    it('should correctly create standard canvas and domElementsContainer', async () => {
+        await renderer.createStandardCanvas(gameContainer);
 
         const actualGameCanvas = renderer.getCanvas();
         const actualDomElementsContainer = renderer.getDomElementContainer();
@@ -21,10 +21,10 @@ describe('gdjs.RuntimeGameRenderer canvas tests', () => {
         expect(actualDomElementsContainer.parentElement).to.be(gameContainer);
     });
 
-    it('should correctly initialize external canvas and create domElementsContainer', () => {
+    it('should correctly initialize external canvas and create domElementsContainer', async () => {
         const gameCanvas = document.createElement('canvas');
         gameContainer.appendChild(gameCanvas);
-        renderer.initializeRenderers(gameCanvas);
+        await renderer.initializeRenderers(gameCanvas);
         renderer.initializeCanvas(gameCanvas);
 
         const actualGameCanvas = renderer.getCanvas();
@@ -36,8 +36,8 @@ describe('gdjs.RuntimeGameRenderer canvas tests', () => {
         expect(actualDomElementsContainer.parentElement).to.be(gameContainer);
     });
 
-    it('should remove canvas and domElementsContainer on dispose', () => {
-        renderer.createStandardCanvas(gameContainer);
+    it('should remove canvas and domElementsContainer on dispose', async () => {
+        await renderer.createStandardCanvas(gameContainer);
 
         const actualGameCanvas = renderer.getCanvas();
         const actualDomElementsContainer = renderer.getDomElementContainer();

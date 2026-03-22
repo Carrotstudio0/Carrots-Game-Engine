@@ -1,9 +1,10 @@
 // @flow
 
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
 import ViewPosition from './ViewPosition';
 import { type TileMapTileSelection } from './TileSetVisualizer';
 import panable, { type PanMoveEvent } from '../Utils/PixiSimpleGesture/pan';
+import { bindPixiEvent } from '../Utils/PixiCompat/EditorPixiAdapter';
 
 type Coordinates = {| x: number, y: number |};
 
@@ -49,7 +50,7 @@ class ClickInterceptor {
     this.interceptingSprite.alpha = 0;
     this.interceptingSprite.eventMode = 'static';
     this.pointerPathCoordinates = null;
-    this.interceptingSprite.addEventListener('panmove', (event: PanMoveEvent) =>
+    bindPixiEvent(this.interceptingSprite, 'panmove', (event: PanMoveEvent) =>
       this.onPanMove(
         event.deltaX,
         event.deltaY,
@@ -58,7 +59,8 @@ class ClickInterceptor {
       )
     );
 
-    this.interceptingSprite.addEventListener(
+    bindPixiEvent(
+      this.interceptingSprite,
       'pointerdown',
       // $FlowFixMe[value-as-type]
       (e: PIXI.FederatedPointerEvent) => {
@@ -78,7 +80,8 @@ class ClickInterceptor {
         );
       }
     );
-    this.interceptingSprite.addEventListener(
+    bindPixiEvent(
+      this.interceptingSprite,
       'pointerup',
       // $FlowFixMe[value-as-type]
       (e: PIXI.FederatedMouseEvent) => {
@@ -96,7 +99,8 @@ class ClickInterceptor {
     // It's important to listen to pointerleave event, as it can happen that
     // the user moves the touch/pointer outside the canvas - in which case pointerup
     // is NOT called.
-    this.interceptingSprite.addEventListener(
+    bindPixiEvent(
+      this.interceptingSprite,
       'pointerleave',
       // $FlowFixMe[value-as-type]
       (e: PIXI.FederatedMouseEvent) => {
@@ -109,7 +113,8 @@ class ClickInterceptor {
         this._endClickInterception();
       }
     );
-    this.interceptingSprite.addEventListener(
+    bindPixiEvent(
+      this.interceptingSprite,
       'pointermove',
       // $FlowFixMe[value-as-type]
       (e: PIXI.FederatedPointerEvent) => {

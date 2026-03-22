@@ -112,7 +112,7 @@ namespace gdjs {
       makeFilter(target: EffectsTarget, effectData: EffectData): Filter {
         const pixiFilter = this.makePIXIFilter(target, effectData);
         if (target.isLightingLayer && target.isLightingLayer()) {
-          pixiFilter.blendMode = PIXI.BLEND_MODES.ADD;
+          pixiFilter.blendMode = 'add';
         }
         return new PixiFilter(pixiFilter, this);
       }

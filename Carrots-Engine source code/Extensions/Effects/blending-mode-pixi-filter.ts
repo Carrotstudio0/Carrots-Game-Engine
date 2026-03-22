@@ -1,4 +1,19 @@
 namespace gdjs {
+  const blendModes = ['normal', 'add', 'multiply', 'screen'] as const;
+
+  const toPixiBlendMode = (value: number): PIXI.BLEND_MODES =>
+    blendModes[Math.max(0, Math.min(blendModes.length - 1, Math.round(value)))] ||
+    'normal';
+
+  const fromPixiBlendMode = (value: PIXI.BLEND_MODES | number): number => {
+    if (typeof value === 'number') {
+      return value;
+    }
+
+    const index = blendModes.indexOf(value as (typeof blendModes)[number]);
+    return index === -1 ? 0 : index;
+  };
+
   interface BlendingModeFilterNetworkSyncData {
     a: number;
     bm: number;
@@ -20,7 +35,7 @@ namespace gdjs {
         if (parameterName === 'alpha') {
           blendingModeFilter.alpha = value;
         } else if (parameterName === 'blendmode') {
-          blendingModeFilter.blendMode = value;
+          blendingModeFilter.blendMode = toPixiBlendMode(value);
         }
       }
       getDoubleParameter(filter: PIXI.Filter, parameterName: string): number {
@@ -29,7 +44,7 @@ namespace gdjs {
           return blendingModeFilter.alpha;
         }
         if (parameterName === 'blendmode') {
-          return blendingModeFilter.blendMode;
+          return fromPixiBlendMode(blendingModeFilter.blendMode);
         }
         return 0;
       }
@@ -57,7 +72,7 @@ namespace gdjs {
         const blendingModeFilter = filter as unknown as PIXI.AlphaFilter;
         return {
           a: blendingModeFilter.alpha,
-          bm: blendingModeFilter.blendMode,
+          bm: fromPixiBlendMode(blendingModeFilter.blendMode),
         };
       }
       updateFromNetworkSyncData(
@@ -66,7 +81,7 @@ namespace gdjs {
       ) {
         const blendingModeFilter = filter as unknown as PIXI.AlphaFilter;
         blendingModeFilter.alpha = data.a;
-        blendingModeFilter.blendMode = data.bm;
+        blendingModeFilter.blendMode = toPixiBlendMode(data.bm);
       }
     })()
   );

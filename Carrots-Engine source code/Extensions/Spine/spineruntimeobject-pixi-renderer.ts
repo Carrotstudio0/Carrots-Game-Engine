@@ -2,17 +2,7 @@ namespace gdjs {
   const isSpine = (obj: any): obj is pixi_spine.Spine =>
     obj instanceof pixi_spine.Spine;
 
-  // See https://github.com/pixijs/spine/issues/562
-  // IPointAttachment is not declared and exported but its implementation does exist and it is used in runtime
-  interface IPointAttachment extends pixi_spine.IVertexAttachment {
-    computeWorldPosition(
-      bone: pixi_spine.IBone,
-      point: pixi_spine.Vector2
-    ): pixi_spine.Vector2;
-    computeWorldRotation(bone: pixi_spine.IBone): number;
-  }
-
-  interface IExtendedBone extends pixi_spine.IBone {
+  interface IExtendedBone extends pixi_spine.Bone {
     scaleX: number;
     scaleY: number;
     rotation: number;
@@ -20,9 +10,9 @@ namespace gdjs {
   }
 
   const isPointAttachment = (
-    attachment: pixi_spine.IAttachment
-  ): attachment is IPointAttachment =>
-    !!attachment && attachment.type === pixi_spine.AttachmentType.Point;
+    attachment: pixi_spine.Attachment | null
+  ): attachment is pixi_spine.PointAttachment =>
+    !!attachment && attachment instanceof pixi_spine.PointAttachment;
 
   /**
    * @category Renderers > Spine
@@ -71,7 +61,7 @@ namespace gdjs {
     getOriginOffset(): PIXI.Point {
       if (!isSpine(this._rendererObject)) return new PIXI.Point(0, 0);
 
-      const localBounds = this._rendererObject.getLocalBounds(undefined, true);
+      const localBounds = this._rendererObject.getLocalBounds();
 
       return new PIXI.Point(
         localBounds.x * this._rendererObject.scale.x,
@@ -146,24 +136,23 @@ namespace gdjs {
     setMixing(from: string, to: string, duration: number): void {
       if (!isSpine(this._rendererObject)) return;
 
-      this._rendererObject.stateData.setMix(from, to, duration);
+      this._rendererObject.state.data.setMix(from, to, duration);
     }
 
     setAnimation(animation: string, loop: boolean): void {
-      if (isSpine(this._rendererObject)) {
-        const onCompleteListener: pixi_spine.IAnimationStateListener = {
+      const rendererObject = this._rendererObject;
+      if (isSpine(rendererObject)) {
+        const onCompleteListener: pixi_spine.AnimationStateListener = {
           complete: () => {
             this._isAnimationComplete = true;
-            (this._rendererObject as pixi_spine.Spine).state.removeListener(
-              onCompleteListener
-            );
+            rendererObject.state.removeListener(onCompleteListener);
           },
         };
 
         this._isAnimationComplete = false;
-        this._rendererObject.state.addListener(onCompleteListener);
-        this._rendererObject.state.setAnimation(0, animation, loop);
-        this._rendererObject.update(0);
+        rendererObject.state.addListener(onCompleteListener);
+        rendererObject.state.setAnimation(0, animation, loop);
+        rendererObject.update(0);
       }
     }
 
@@ -172,7 +161,7 @@ namespace gdjs {
         return 0;
       }
       const animation =
-        this._rendererObject.spineData.findAnimation(sourceAnimationName);
+        this._rendererObject.skeleton.data.findAnimation(sourceAnimationName);
       return animation ? animation.duration : 0;
     }
 
@@ -186,8 +175,7 @@ namespace gdjs {
       }
       // This should be fine because only 1 track is used.
       const track = tracks[0];
-      // @ts-ignore TrackEntry.getAnimationTime is not exposed.
-      return track.getAnimationTime();
+      return track ? track.getAnimationTime() : 0;
     }
 
     setAnimationElapsedTime(time: number): void {
@@ -199,7 +187,9 @@ namespace gdjs {
         return;
       }
       const track = tracks[0];
-      track.trackTime = time;
+      if (track) {
+        track.trackTime = time;
+      }
     }
 
     isAnimationComplete(): boolean {
@@ -340,7 +330,7 @@ namespace gdjs {
 
     getSkin(): string {
       if (!isSpine(this._rendererObject)) return '';
-      return this._rendererObject.skeleton.skin.name;
+      return this._rendererObject.skeleton.skin?.name || '';
     }
 
     getAvailableSkins(): string[] {
@@ -368,7 +358,7 @@ namespace gdjs {
       attachmentName: string,
       slotName: string,
       renderObject: pixi_spine.Spine
-    ): { slot: pixi_spine.ISlot; attachment: IPointAttachment } {
+    ): { slot: pixi_spine.Slot; attachment: pixi_spine.PointAttachment } {
       const slot = renderObject.skeleton.findSlot(slotName);
       if (!slot) {
         throw new Error(

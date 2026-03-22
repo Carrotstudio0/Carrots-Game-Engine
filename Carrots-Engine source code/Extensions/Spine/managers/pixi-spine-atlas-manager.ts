@@ -50,7 +50,7 @@ namespace gdjs {
     }
 
     async processResource(resourceName: string): Promise<void> {
-      // Do nothing because pixi-spine parses resources by itself.
+      // Do nothing, resources are loaded on demand.
     }
 
     async loadResource(resourceName: string): Promise<void> {
@@ -125,14 +125,15 @@ namespace gdjs {
         );
 
       const images = embeddedResourcesNames.reduce<{
-        [key: string]: PIXI.Texture;
+        [key: string]: PIXI.TextureSource;
       }>((imagesMap, embeddedResourceName) => {
         const mappedResourceName = game.resolveEmbeddedResource(
           resource.name,
           embeddedResourceName
         );
-        imagesMap[embeddedResourceName] =
+        const texture =
           this._imageManager.getOrLoadPIXITexture(mappedResourceName);
+        imagesMap[embeddedResourceName] = texture.source || texture.baseTexture;
 
         return imagesMap;
       }, {});
@@ -149,27 +150,7 @@ namespace gdjs {
           : 'anonymous',
       });
       PIXI.Assets.add({ alias: resource.name, src: url, data: { images } });
-      PIXI.Assets.load<pixi_spine.TextureAtlas | string>(resource.name).then(
-        (atlas) => {
-          /**
-           * Ideally atlas of TextureAtlas should be passed here
-           * but there is known issue in case of preloaded images (see https://github.com/pixijs/spine/issues/537)
-           *
-           * Here covered all possible ways to make it work fine if issue is fixed in pixi-spine or after migration to spine-pixi
-           */
-          if (typeof atlas === 'string') {
-            new pixi_spine.TextureAtlas(
-              atlas,
-              (textureName, textureCb) =>
-                //@ts-ignore
-                textureCb(images[textureName].baseTexture),
-              onLoad
-            );
-          } else {
-            onLoad(atlas);
-          }
-        }
-      );
+      PIXI.Assets.load<pixi_spine.TextureAtlas>(resource.name).then(onLoad);
     }
 
     /**

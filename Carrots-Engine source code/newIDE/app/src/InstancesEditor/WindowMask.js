@@ -1,5 +1,5 @@
 // @flow
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
 import transformRect from '../Utils/TransformRect';
 import ViewPosition from './ViewPosition';
 import { type InstancesEditorSettings } from './InstancesEditorSettings';
@@ -55,16 +55,15 @@ export default class WindowMask {
 
     this.pixiRectangle.visible = true;
     this.pixiRectangle.clear();
-    this.pixiRectangle.beginFill(0x000000);
-    this.pixiRectangle.lineStyle(1, 0x000000, 1);
     this.pixiRectangle.alpha = 1;
-    this.pixiRectangle.fill.alpha = 0;
-    this.pixiRectangle.drawRect(
-      displayedRectangle.left,
-      displayedRectangle.top,
-      displayedRectangle.width(),
-      displayedRectangle.height()
-    );
-    this.pixiRectangle.endFill();
+    this.pixiRectangle
+      .rect(
+        displayedRectangle.left,
+        displayedRectangle.top,
+        displayedRectangle.width(),
+        displayedRectangle.height()
+      )
+      .fill({ color: 0x000000, alpha: 0 })
+      .stroke({ width: 1, color: 0x000000, alpha: 1 });
   }
 }

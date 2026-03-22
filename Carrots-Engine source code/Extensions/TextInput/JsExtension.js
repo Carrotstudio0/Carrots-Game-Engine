@@ -886,14 +886,14 @@ module.exports = {
         // textOffsetY does not include the paddingY because browsers display the text, even if it is supposed to be cut off by vertical padding.
         const textOffsetY = borderWidth;
         this._pixiTextMask.clear();
-        this._pixiTextMask.beginFill(0xdddddd, 1);
-        this._pixiTextMask.drawRect(
-          textOffsetX,
-          textOffsetY,
-          width - 2 * textOffsetX,
-          height - 2 * textOffsetY
-        );
-        this._pixiTextMask.endFill();
+        this._pixiTextMask
+          .rect(
+            textOffsetX,
+            textOffsetY,
+            width - 2 * textOffsetX,
+            height - 2 * textOffsetY
+          )
+          .fill({ color: 0xdddddd, alpha: 1 });
 
         const isTextArea = object.content.inputType === 'text area';
         const textAlign = object.content.textAlign
@@ -920,17 +920,17 @@ module.exports = {
         const borderOpacity = object.content.borderOpacity;
 
         this._pixiGraphics.clear();
-        this._pixiGraphics.lineStyle(
-          borderWidth,
-          objectsRenderingService.rgbOrHexToHexNumber(borderColor),
-          borderOpacity / 255
-        );
-        this._pixiGraphics.beginFill(
-          objectsRenderingService.rgbOrHexToHexNumber(fillColor),
-          fillOpacity / 255
-        );
-        this._pixiGraphics.drawRect(0, 0, width, height);
-        this._pixiGraphics.endFill();
+        this._pixiGraphics
+          .rect(0, 0, width, height)
+          .fill({
+            color: objectsRenderingService.rgbOrHexToHexNumber(fillColor),
+            alpha: fillOpacity / 255,
+          })
+          .stroke({
+            width: borderWidth,
+            color: objectsRenderingService.rgbOrHexToHexNumber(borderColor),
+            alpha: borderOpacity / 255,
+          });
 
         // Do not hide completely an object so it can still be manipulated
         const alphaForDisplay = Math.max(

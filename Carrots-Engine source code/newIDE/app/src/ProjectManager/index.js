@@ -1062,7 +1062,7 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
         if (!project || !sceneWorkflowMetadata) return;
         const normalized = normalizeSceneWorkflowMetadataForProject(
           sceneWorkflowMetadata,
-          projectSceneNames
+          getProjectSceneNames()
         );
         if (JSON.stringify(normalized) !== JSON.stringify(sceneWorkflowMetadata)) {
           updateSceneWorkflowMetadata(() => normalized);
@@ -1072,6 +1072,7 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
         project,
         projectSceneNamesKey,
         sceneWorkflowMetadata,
+        getProjectSceneNames,
         normalizeSceneWorkflowMetadataForProject,
         updateSceneWorkflowMetadata,
       ]
@@ -1221,113 +1222,124 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
       [project, getSceneOrderFromMetadata]
     );
 
-    const insertAt = (
-      list: Array<any>,
-      index: ?number,
-      item: any
-    ): Array<any> => {
-      const next = [...list];
-      const insertionIndex =
-        index === undefined || index === null
-          ? next.length
-          : Math.max(0, Math.min(index, next.length));
-      next.splice(insertionIndex, 0, item);
-      return next;
-    };
+    const insertAt = React.useCallback(
+      (list: Array<any>, index: ?number, item: any): Array<any> => {
+        const next = [...list];
+        const insertionIndex =
+          index === undefined || index === null
+            ? next.length
+            : Math.max(0, Math.min(index, next.length));
+        next.splice(insertionIndex, 0, item);
+        return next;
+      },
+      []
+    );
 
-    const removeSceneFromFolders = (
-      sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
-      sceneName: string
-    ) => ({
-      ...sceneFolders,
-      rootSceneNames: sceneFolders.rootSceneNames.filter(
-        name => name !== sceneName
-      ),
-      folders: sceneFolders.folders.map(folder => ({
-        ...folder,
-        sceneNames: folder.sceneNames.filter(name => name !== sceneName),
-      })),
-    });
+    const removeSceneFromFolders = React.useCallback(
+      (
+        sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
+        sceneName: string
+      ) => ({
+        ...sceneFolders,
+        rootSceneNames: sceneFolders.rootSceneNames.filter(
+          name => name !== sceneName
+        ),
+        folders: sceneFolders.folders.map(folder => ({
+          ...folder,
+          sceneNames: folder.sceneNames.filter(name => name !== sceneName),
+        })),
+      }),
+      []
+    );
 
-    const updateSceneFoldersForSceneMove = (
-      sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
-      sceneName: string,
-      destinationFolderId: ?string,
-      destinationIndex: ?number
-    ) => {
-      const withoutScene = removeSceneFromFolders(sceneFolders, sceneName);
-      if (destinationFolderId) {
+    const updateSceneFoldersForSceneMove = React.useCallback(
+      (
+        sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
+        sceneName: string,
+        destinationFolderId: ?string,
+        destinationIndex: ?number
+      ) => {
+        const withoutScene = removeSceneFromFolders(sceneFolders, sceneName);
+        if (destinationFolderId) {
+          return {
+            ...withoutScene,
+            folders: withoutScene.folders.map(folder =>
+              folder.id === destinationFolderId
+                ? {
+                    ...folder,
+                    sceneNames: insertAt(
+                      folder.sceneNames,
+                      destinationIndex,
+                      sceneName
+                    ),
+                  }
+                : folder
+            ),
+          };
+        }
         return {
           ...withoutScene,
-          folders: withoutScene.folders.map(folder =>
-            folder.id === destinationFolderId
-              ? {
-                  ...folder,
-                  sceneNames: insertAt(
-                    folder.sceneNames,
-                    destinationIndex,
-                    sceneName
-                  ),
-                }
-              : folder
+          rootSceneNames: insertAt(
+            withoutScene.rootSceneNames,
+            destinationIndex,
+            sceneName
           ),
         };
-      }
-      return {
-        ...withoutScene,
-        rootSceneNames: insertAt(
-          withoutScene.rootSceneNames,
-          destinationIndex,
-          sceneName
-        ),
-      };
-    };
+      },
+      [insertAt, removeSceneFromFolders]
+    );
 
-    const removeFolderFromParents = (
-      sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
-      folderId: string
-    ) => ({
-      ...sceneFolders,
-      rootFolderIds: sceneFolders.rootFolderIds.filter(id => id !== folderId),
-      folders: sceneFolders.folders.map(folder => ({
-        ...folder,
-        childFolderIds: folder.childFolderIds.filter(id => id !== folderId),
-      })),
-    });
+    const removeFolderFromParents = React.useCallback(
+      (
+        sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
+        folderId: string
+      ) => ({
+        ...sceneFolders,
+        rootFolderIds: sceneFolders.rootFolderIds.filter(id => id !== folderId),
+        folders: sceneFolders.folders.map(folder => ({
+          ...folder,
+          childFolderIds: folder.childFolderIds.filter(id => id !== folderId),
+        })),
+      }),
+      []
+    );
 
-    const updateSceneFoldersForFolderMove = (
-      sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
-      folderId: string,
-      destinationFolderId: ?string,
-      destinationIndex: ?number
-    ) => {
-      const withoutFolder = removeFolderFromParents(sceneFolders, folderId);
-      if (destinationFolderId) {
+    const updateSceneFoldersForFolderMove = React.useCallback(
+      (
+        sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
+        folderId: string,
+        destinationFolderId: ?string,
+        destinationIndex: ?number
+      ) => {
+        const withoutFolder = removeFolderFromParents(sceneFolders, folderId);
+        if (destinationFolderId) {
+          return {
+            ...withoutFolder,
+            folders: withoutFolder.folders.map(folder =>
+              folder.id === destinationFolderId
+                ? {
+                    ...folder,
+                    childFolderIds: insertAt(
+                      folder.childFolderIds,
+                      destinationIndex,
+                      folderId
+                    ),
+                  }
+                : folder
+            ),
+          };
+        }
         return {
           ...withoutFolder,
-          folders: withoutFolder.folders.map(folder =>
-            folder.id === destinationFolderId
-              ? {
-                  ...folder,
-                  childFolderIds: insertAt(
-                    folder.childFolderIds,
-                    destinationIndex,
-                    folderId
-                  ),
-                }
-              : folder
+          rootFolderIds: insertAt(
+            withoutFolder.rootFolderIds,
+            destinationIndex,
+            folderId
           ),
         };
-      }
-      return {
-        ...withoutFolder,
-        rootFolderIds: insertAt(
-          withoutFolder.rootFolderIds,
-          destinationIndex,
-          folderId
-        ),
-      };
-    };
+      },
+      [insertAt, removeFolderFromParents]
+    );
 
     const onAddSceneFolder = React.useCallback(
       (parentFolderId: ?string, defaultName: string) => {
@@ -1361,7 +1373,11 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
           return nextMetadata;
         });
       },
-      [updateSceneWorkflowMetadata, applySceneOrderToProject]
+      [
+        updateSceneWorkflowMetadata,
+        applySceneOrderToProject,
+        updateSceneFoldersForFolderMove,
+      ]
     );
 
     const onCreateSceneFolderWithScene = React.useCallback(
@@ -1401,7 +1417,11 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
           return nextMetadata;
         });
       },
-      [updateSceneWorkflowMetadata, applySceneOrderToProject]
+      [
+        updateSceneWorkflowMetadata,
+        applySceneOrderToProject,
+        updateSceneFoldersForSceneMove,
+      ]
     );
 
     const onRenameSceneFolder = React.useCallback(
@@ -1474,6 +1494,7 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
         showDeleteConfirmation,
         updateSceneWorkflowMetadata,
         applySceneOrderToProject,
+        removeFolderFromParents,
       ]
     );
 
@@ -1494,7 +1515,11 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
           return nextMetadata;
         });
       },
-      [updateSceneWorkflowMetadata, applySceneOrderToProject]
+      [
+        updateSceneWorkflowMetadata,
+        applySceneOrderToProject,
+        updateSceneFoldersForSceneMove,
+      ]
     );
 
     const onSceneCreated = React.useCallback(
@@ -1548,7 +1573,11 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
           return nextMetadata;
         });
       },
-      [updateSceneWorkflowMetadata, applySceneOrderToProject]
+      [
+        updateSceneWorkflowMetadata,
+        applySceneOrderToProject,
+        updateSceneFoldersForSceneMove,
+      ]
     );
 
     const scenePtrNameMapRef = React.useRef<?Map<string, string>>(null);
@@ -2566,6 +2595,8 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
         updateSceneWorkflowMetadata,
         applySceneOrderToProject,
         onTreeModified,
+        updateSceneFoldersForFolderMove,
+        updateSceneFoldersForSceneMove,
       ]
     );
 

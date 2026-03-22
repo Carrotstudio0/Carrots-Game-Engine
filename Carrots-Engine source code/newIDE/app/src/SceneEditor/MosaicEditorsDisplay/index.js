@@ -260,9 +260,7 @@ const MosaicEditorsDisplay: React.ComponentType<{
         },
         instancesHandlers: {
           getContentAABB: editor ? editor.getContentAABB : () => null,
-          getSelectionAABB: editor
-            ? editor.selectedInstances.getSelectionAABB
-            : () => new Rectangle(),
+          getSelectionAABB: editor ? editor.getSelectionAABB : () => new Rectangle(),
           addInstances: editor ? editor.addInstances : () => [],
           clearHighlightedInstance: editor
             ? editor.clearHighlightedInstance

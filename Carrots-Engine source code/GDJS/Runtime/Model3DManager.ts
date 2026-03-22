@@ -7,9 +7,44 @@ namespace gdjs {
   const logger = new gdjs.Logger('Model3DManager');
 
   const resourceKinds: Array<ResourceKind> = ['model3D'];
+  type LoadedModel3D = THREE_ADDONS.GLTF;
+
+  const getFileExtension = (fileName: string): string => {
+    if (!fileName) return '';
+    const withoutHash = fileName.split('#')[0];
+    const withoutQuery = withoutHash.split('?')[0];
+    const extensionSeparatorIndex = withoutQuery.lastIndexOf('.');
+    if (extensionSeparatorIndex === -1) return '';
+    return withoutQuery.substring(extensionSeparatorIndex + 1).toLowerCase();
+  };
+
+  const getDirectoryPath = (path: string): string => {
+    if (!path) return '';
+    const withoutHash = path.split('#')[0];
+    const withoutQuery = withoutHash.split('?')[0];
+    const lastPathSeparatorIndex = withoutQuery.lastIndexOf('/');
+    if (lastPathSeparatorIndex === -1) return '';
+    return withoutQuery.substring(0, lastPathSeparatorIndex + 1);
+  };
+
+  const toLoadedModel3D = (
+    scene: THREE.Object3D,
+    animations: THREE.AnimationClip[] = []
+  ): LoadedModel3D => {
+    return {
+      scene,
+      animations,
+      cameras: [],
+      scenes: [],
+      asset: {},
+      userData: {},
+      // @ts-ignore
+      parser: null,
+    };
+  };
 
   /**
-   * Load GLB files (using `Three.js`), using the "model3D" resources
+   * Load 3D model files (using `Three.js`), using the "model3D" resources
    * registered in the game resources.
    * @category Resources > 3D Models
    */
@@ -17,16 +52,15 @@ namespace gdjs {
     /**
      * Map associating a resource name to the loaded Three.js model.
      */
-    private _loadedThreeModels = new gdjs.ResourceCache<THREE_ADDONS.GLTF>();
+    private _loadedThreeModels = new gdjs.ResourceCache<LoadedModel3D>();
     private _downloadedArrayBuffers = new gdjs.ResourceCache<ArrayBuffer>();
 
     _resourceLoader: gdjs.ResourceLoader;
 
-    _loader: THREE_ADDONS.GLTFLoader | null = null;
     _dracoLoader: THREE_ADDONS.DRACOLoader | null = null;
 
     //@ts-ignore Can only be null if THREE is not loaded.
-    _invalidModel: THREE_ADDONS.GLTF;
+    _invalidModel: LoadedModel3D;
 
     /**
      * @param resourceLoader The resources loader of the game.
@@ -35,11 +69,8 @@ namespace gdjs {
       this._resourceLoader = resourceLoader;
 
       if (typeof THREE !== 'undefined') {
-        this._loader = new THREE_ADDONS.GLTFLoader();
-
         this._dracoLoader = new THREE_ADDONS.DRACOLoader();
         this._dracoLoader.setDecoderPath('./pixi-renderers/draco/gltf/');
-        this._loader.setDRACOLoader(this._dracoLoader);
 
         /**
          * The invalid model is a box with magenta (#ff00ff) faces, to be
@@ -52,16 +83,7 @@ namespace gdjs {
             new THREE.MeshBasicMaterial({ color: '#ff00ff' })
           )
         );
-        this._invalidModel = {
-          scene: group,
-          animations: [],
-          cameras: [],
-          scenes: [],
-          asset: {},
-          userData: {},
-          //@ts-ignore
-          parser: null,
-        };
+        this._invalidModel = toLoadedModel3D(group);
       }
     }
 
@@ -70,15 +92,14 @@ namespace gdjs {
     }
 
     async processResource(resourceName: string): Promise<void> {
+      if (typeof THREE === 'undefined') {
+        return;
+      }
       const resource = this._resourceLoader.getResource(resourceName);
       if (!resource) {
         logger.warn(
-          'Unable to find texture for resource "' + resourceName + '".'
+          'Unable to find 3D model resource "' + resourceName + '".'
         );
-        return;
-      }
-      const loader = this._loader;
-      if (!loader) {
         return;
       }
       const data = this._downloadedArrayBuffers.get(resource);
@@ -86,9 +107,33 @@ namespace gdjs {
         return;
       }
       this._downloadedArrayBuffers.delete(resource);
+
+      const resourceUrl = this._resourceLoader.getFullUrl(resource.file);
+      const resourceBasePath = getDirectoryPath(resourceUrl);
+      const extension = getFileExtension(resource.file);
       try {
-        const gltf: THREE_ADDONS.GLTF = await loader.parseAsync(data, '');
-        this._loadedThreeModels.set(resource, gltf);
+        const loadingManager = this._createLoadingManager(resource.name);
+        if (extension === 'fbx') {
+          const fbxLoader = new THREE_ADDONS.FBXLoader(loadingManager);
+          const scene = fbxLoader.parse(data, resourceBasePath);
+          const animations = Array.isArray((scene as any).animations)
+            ? ((scene as any).animations as THREE.AnimationClip[])
+            : [];
+          this._loadedThreeModels.set(
+            resource,
+            toLoadedModel3D(scene, animations)
+          );
+        } else {
+          const gltfLoader = new THREE_ADDONS.GLTFLoader(loadingManager);
+          if (this._dracoLoader) {
+            gltfLoader.setDRACOLoader(this._dracoLoader);
+          }
+          const gltf = (await gltfLoader.parseAsync(
+            data,
+            resourceBasePath
+          )) as LoadedModel3D;
+          this._loadedThreeModels.set(resource, gltf);
+        }
       } catch (error) {
         logger.error(
           "Can't fetch the 3D model file " + resource.file + ', error: ' + error
@@ -97,15 +142,14 @@ namespace gdjs {
     }
 
     async loadResource(resourceName: string): Promise<void> {
+      if (typeof THREE === 'undefined') {
+        return;
+      }
       const resource = this._resourceLoader.getResource(resourceName);
       if (!resource) {
         logger.warn(
-          'Unable to find texture for resource "' + resourceName + '".'
+          'Unable to find 3D model resource "' + resourceName + '".'
         );
-        return;
-      }
-      const loader = this._loader;
-      if (!loader) {
         return;
       }
       if (this._loadedThreeModels.get(resource)) {
@@ -139,7 +183,7 @@ namespace gdjs {
      * @param resourceName The name of the json resource.
      * @returns a 3D model if it exists.
      */
-    getModel(resourceName: string): THREE_ADDONS.GLTF {
+    getModel(resourceName: string): LoadedModel3D {
       return (
         this._loadedThreeModels.getFromName(resourceName) || this._invalidModel
       );
@@ -152,7 +196,6 @@ namespace gdjs {
     dispose(): void {
       this._loadedThreeModels.clear();
       this._downloadedArrayBuffers.clear();
-      this._loader = null;
       this._dracoLoader = null;
 
       if (this._invalidModel) {
@@ -180,6 +223,115 @@ namespace gdjs {
       if (downloadedArrayBuffer) {
         this._downloadedArrayBuffers.delete(resourceData);
       }
+    }
+
+    private _decodeUriComponentSafe(value: string): string {
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
+    }
+
+    private _normalizeDependencyPath(value: string): string {
+      return (value || '')
+        .replace(/\\/g, '/')
+        .split('#')[0]
+        .split('?')[0]
+        .trim();
+    }
+
+    private _getDependencyLookupKeys(value: string): string[] {
+      const normalizedPath = this._normalizeDependencyPath(value);
+      if (!normalizedPath) return [];
+
+      const decodedPath = this._normalizeDependencyPath(
+        this._decodeUriComponentSafe(normalizedPath)
+      );
+      const pathFileName = normalizedPath.includes('/')
+        ? normalizedPath.substring(normalizedPath.lastIndexOf('/') + 1)
+        : normalizedPath;
+      const decodedPathFileName = decodedPath.includes('/')
+        ? decodedPath.substring(decodedPath.lastIndexOf('/') + 1)
+        : decodedPath;
+
+      const keys = new Set<string>();
+      keys.add(normalizedPath);
+      keys.add(decodedPath);
+      keys.add(pathFileName);
+      keys.add(decodedPathFileName);
+
+      return [...keys].filter((key) => !!key);
+    }
+
+    private _resolveEmbeddedDependencyUrl(
+      mainResourceName: string,
+      embeddedDependencyPath: string
+    ): string | null {
+      const game = this._resourceLoader.getRuntimeGame();
+      const dependencyLookupKeys = this._getDependencyLookupKeys(
+        embeddedDependencyPath
+      );
+      if (!dependencyLookupKeys.length) {
+        return null;
+      }
+
+      const embeddedResourcesNames = game.getEmbeddedResourcesNames(
+        mainResourceName
+      );
+      const lowerCaseDependencyLookupKeys = dependencyLookupKeys.map((key) =>
+        key.toLowerCase()
+      );
+
+      for (const embeddedResourceName of embeddedResourcesNames) {
+        const embeddedLookupKeys = this._getDependencyLookupKeys(
+          embeddedResourceName
+        );
+        const isMatchingEmbeddedResource = embeddedLookupKeys.some((key) =>
+          lowerCaseDependencyLookupKeys.includes(key.toLowerCase())
+        );
+        if (!isMatchingEmbeddedResource) {
+          continue;
+        }
+
+        const mappedResourceName = game.resolveEmbeddedResource(
+          mainResourceName,
+          embeddedResourceName
+        );
+        const mappedResource = this._resourceLoader.getResource(
+          mappedResourceName
+        );
+        if (mappedResource) {
+          return this._resourceLoader.getFullUrl(mappedResource.file);
+        }
+      }
+
+      for (const dependencyLookupKey of dependencyLookupKeys) {
+        const mappedResourceName = game.resolveEmbeddedResource(
+          mainResourceName,
+          dependencyLookupKey
+        );
+        const mappedResource = this._resourceLoader.getResource(
+          mappedResourceName
+        );
+        if (mappedResource) {
+          return this._resourceLoader.getFullUrl(mappedResource.file);
+        }
+      }
+
+      return null;
+    }
+
+    private _createLoadingManager(resourceName: string): THREE.LoadingManager {
+      const loadingManager = new THREE.LoadingManager();
+      loadingManager.setURLModifier((url) => {
+        const resolvedUrl = this._resolveEmbeddedDependencyUrl(
+          resourceName,
+          url
+        );
+        return resolvedUrl || url;
+      });
+      return loadingManager;
     }
   }
 }

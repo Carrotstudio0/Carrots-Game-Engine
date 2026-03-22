@@ -21,6 +21,10 @@ import LinearProgress from '../UI/LinearProgress';
 import Paper from '../UI/Paper';
 import GDevelopThemeContext from '../UI/Theme/GDevelopThemeContext';
 import RaisedButton from '../UI/RaisedButton';
+import {
+  extractFbxEmbeddedResourcePathsFromArrayBuffer,
+  getFbxDependencyLookupKeys,
+} from './FbxDependencyResolver';
 
 type FileToCloudProjectResourceUploaderProps = {|
   options: ChooseResourceOptions,
@@ -31,9 +35,97 @@ type FileToCloudProjectResourceUploaderProps = {|
   automaticallyOpenInput: boolean,
 |};
 
+const gd: libGDevelop = global.gd;
+
+const model3DExtensions = ['glb', 'fbx'];
+const model3DDependencyImageExtensions = [
+  'png',
+  'jpg',
+  'jpeg',
+  'webp',
+  'gif',
+  'bmp',
+  'tga',
+  'tif',
+  'tiff',
+  'dds',
+  'ktx',
+  'ktx2',
+];
+
+const getFileExtension = (filename: string): string =>
+  path
+    .extname(filename)
+    .replace(/^\./, '')
+    .toLowerCase();
+
+const isModel3DFile = (filename: string): boolean =>
+  model3DExtensions.includes(getFileExtension(filename));
+
+const isModel3DDependencyImageFile = (filename: string): boolean =>
+  model3DDependencyImageExtensions.includes(getFileExtension(filename));
+
+type Model3DDependencyResolution = {
+  [modelFileName: string]: {
+    resolved: { [dependencyPath: string]: string },
+    missing: Array<string>,
+  },
+};
+
+const resolveFbxDependenciesFromSelectedFiles = async (
+  selectedFiles: File[]
+): Promise<Model3DDependencyResolution> => {
+  const selectedFilesByName = new Map<string, File>();
+  selectedFiles.forEach(file => {
+    selectedFilesByName.set(file.name.toLowerCase(), file);
+  });
+
+  const dependencyResolution: Model3DDependencyResolution = {};
+  const fbxFiles = selectedFiles.filter(
+    file => getFileExtension(file.name) === 'fbx'
+  );
+
+  await Promise.all(
+    fbxFiles.map(async modelFile => {
+      let dependencies: Array<string> = [];
+      try {
+        dependencies = extractFbxEmbeddedResourcePathsFromArrayBuffer(
+          await modelFile.arrayBuffer()
+        );
+      } catch (error) {
+        console.warn(
+          `Unable to parse FBX dependencies for ${modelFile.name}:`,
+          error
+        );
+      }
+
+      const resolved: { [dependencyPath: string]: string } = {};
+      const missing: Array<string> = [];
+      dependencies.forEach(dependencyPath => {
+        const lookupKeys = getFbxDependencyLookupKeys(dependencyPath).map(key =>
+          key.toLowerCase()
+        );
+
+        const matchedFile = lookupKeys
+          .map(key => selectedFilesByName.get(key))
+          .find(file => !!file && isModel3DDependencyImageFile(file.name));
+        if (matchedFile) {
+          resolved[dependencyPath] = matchedFile.name;
+        } else {
+          missing.push(dependencyPath);
+        }
+      });
+
+      dependencyResolution[modelFile.name] = { resolved, missing };
+    })
+  );
+
+  return dependencyResolution;
+};
+
 const resourceKindToInputAcceptedMimes = {
   audio: ['audio/aac', 'audio/x-wav', 'audio/mpeg', 'audio/mp3', 'audio/ogg'],
-  image: ['image/jpeg', 'image/png', 'image/webp'],
+  image: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
   font: ['font/ttf', 'font/otf'],
   video: ['video/mp4', 'video/webm'],
   json: ['application/json'],
@@ -94,6 +186,10 @@ export const FileToCloudProjectResourceUploader = ({
   const [isUploading, setIsUploading] = React.useState(false);
   const [selectedFiles, setSelectedFiles] = React.useState<File[]>([]);
   const [filteredOutFiles, setFilteredOutFiles] = React.useState<File[]>([]);
+  const [
+    missingModelDependencies,
+    setMissingModelDependencies,
+  ] = React.useState<Array<string>>([]);
   const hasSelectedFiles = selectedFiles.length > 0;
   const storageProvider = React.useMemo(getStorageProvider, [
     getStorageProvider,
@@ -123,16 +219,91 @@ export const FileToCloudProjectResourceUploader = ({
         if (erroredResults.length) {
           throw erroredResults[0];
         } else if (okResults.length) {
-          onChooseResources(
-            okResults.map(({ url, resourceFile }) => {
-              const newResource = createNewResource();
+          if (options.resourceKind === 'model3D') {
+            const dependencyResolution = await resolveFbxDependenciesFromSelectedFiles(
+              selectedFiles
+            );
+
+            const resourcesByUploadedFilename = new Map<string, gdResource>();
+            const modelResources: Array<gdResource> = [];
+            const dependencyResources: Array<gdResource> = [];
+            okResults.forEach(({ url, resourceFile }) => {
+              const extension = getFileExtension(resourceFile.name);
+              const isModelResource = isModel3DFile(resourceFile.name);
+              const isDependencyResource =
+                model3DDependencyImageExtensions.includes(extension);
+              if (!isModelResource && !isDependencyResource) {
+                return;
+              }
+
+              const newResource = isModelResource
+                ? createNewResource()
+                : new gd.ImageResource();
               newResource.setFile(url || '');
               newResource.setName(resourceFile.name);
               newResource.setOrigin('cloud-project-resource', url || '');
+              resourcesByUploadedFilename.set(
+                resourceFile.name.toLowerCase(),
+                newResource
+              );
 
-              return newResource;
-            })
-          );
+              if (isModelResource) {
+                modelResources.push(newResource);
+              } else {
+                dependencyResources.push(newResource);
+              }
+            });
+
+            const unresolvedDependencyMessages = [];
+            modelResources.forEach(modelResource => {
+              if (getFileExtension(modelResource.getName()) !== 'fbx') {
+                return;
+              }
+              const modelResolution = dependencyResolution[modelResource.getName()];
+              if (!modelResolution) {
+                return;
+              }
+
+              const embeddedResourcesMapping = {};
+              Object.entries(modelResolution.resolved).forEach(
+                ([dependencyPath, localFilename]) => {
+                  const dependencyResource = resourcesByUploadedFilename.get(
+                    localFilename.toLowerCase()
+                  );
+                  if (dependencyResource) {
+                    embeddedResourcesMapping[dependencyPath] =
+                      dependencyResource.getName();
+                  }
+                }
+              );
+              if (Object.keys(embeddedResourcesMapping).length) {
+                modelResource.setMetadata(
+                  JSON.stringify({ embeddedResourcesMapping })
+                );
+              }
+              if (modelResolution.missing.length) {
+                unresolvedDependencyMessages.push(
+                  `${modelResource.getName()}: ${modelResolution.missing.join(
+                    ', '
+                  )}`
+                );
+              }
+            });
+
+            setMissingModelDependencies(unresolvedDependencyMessages);
+            onChooseResources([...modelResources, ...dependencyResources]);
+          } else {
+            onChooseResources(
+              okResults.map(({ url, resourceFile }) => {
+                const newResource = createNewResource();
+                newResource.setFile(url || '');
+                newResource.setName(resourceFile.name);
+                newResource.setOrigin('cloud-project-resource', url || '');
+
+                return newResource;
+              })
+            );
+          }
         }
       } catch (error) {
         setError(error);
@@ -146,6 +317,7 @@ export const FileToCloudProjectResourceUploader = ({
       onChooseResources,
       createNewResource,
       cloudProjectId,
+      options.resourceKind,
     ]
   );
 
@@ -207,12 +379,16 @@ export const FileToCloudProjectResourceUploader = ({
 
   const validateFilePostPicking = React.useCallback(
     (file: File) => {
-      const acceptedExtensions = getAcceptedExtensions(
-        options.resourceKind,
-        false
-      );
+      const acceptedExtensions = getAcceptedExtensions(options.resourceKind, false);
+      const extension = getFileExtension(file.name);
+      if (
+        options.resourceKind === 'model3D' &&
+        model3DDependencyImageExtensions.includes(extension)
+      ) {
+        return true;
+      }
       return acceptedExtensions.includes(
-        path.extname(file.name).replace(/^\./, '')
+        extension
       );
     },
     [options.resourceKind]
@@ -263,6 +439,26 @@ export const FileToCloudProjectResourceUploader = ({
                 }
                 setFilteredOutFiles(newFilteredOutFiles);
                 setSelectedFiles(files);
+                if (options.resourceKind === 'model3D') {
+                  (async () => {
+                    const dependencyResolution = await resolveFbxDependenciesFromSelectedFiles(
+                      files
+                    );
+                    const missingDependencies = [];
+                    Object.entries(dependencyResolution).forEach(
+                      ([modelFileName, { missing }]) => {
+                        if (missing.length) {
+                          missingDependencies.push(
+                            `${modelFileName}: ${missing.join(', ')}`
+                          );
+                        }
+                      }
+                    );
+                    setMissingModelDependencies(missingDependencies);
+                  })();
+                } else {
+                  setMissingModelDependencies([]);
+                }
 
                 // Remove the previous error, if any, to let a new upload attempt be triggered.
                 setError(null);
@@ -273,6 +469,14 @@ export const FileToCloudProjectResourceUploader = ({
                 <Trans>
                   The following file(s) cannot be used for this kind of object:{' '}
                   {filteredOutFiles.map(file => file.name).join(', ')}
+                </Trans>
+              </AlertMessage>
+            )}
+            {missingModelDependencies.length > 0 && (
+              <AlertMessage kind="warning">
+                <Trans>
+                  Some FBX texture dependencies were not selected and will not
+                  be auto-mapped: {missingModelDependencies.join(' | ')}
                 </Trans>
               </AlertMessage>
             )}

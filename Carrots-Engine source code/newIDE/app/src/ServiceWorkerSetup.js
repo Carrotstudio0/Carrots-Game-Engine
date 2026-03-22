@@ -27,12 +27,28 @@ export function registerServiceWorker() {
     return;
   }
 
+  // In local development, a stale service worker can keep serving old bundles
+  // and cause hard-to-debug startup failures. Disable it entirely.
+  if (isDev) {
+    serviceWorker.getRegistrations().then(registrations => {
+      registrations.forEach(registration => {
+        registration.unregister();
+      });
+    });
+
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      caches.keys().then(cacheNames => {
+        cacheNames.forEach(cacheName => {
+          caches.delete(cacheName);
+        });
+      });
+    }
+
+    return;
+  }
+
   window.addEventListener('load', () => {
-    // Use a cache-buster for development so that the service worker is
-    // always reloaded when the app is reloaded.
-    const swUrl = isDev
-      ? `${PUBLIC_URL}/service-worker.js?dev=${Date.now()}`
-      : `${PUBLIC_URL}/service-worker.js`;
+    const swUrl = `${PUBLIC_URL}/service-worker.js`;
 
     serviceWorker
       .register(swUrl)

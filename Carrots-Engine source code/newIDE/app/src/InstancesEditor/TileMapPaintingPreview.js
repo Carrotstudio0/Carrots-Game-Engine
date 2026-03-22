@@ -1,6 +1,6 @@
 // @flow
 
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
 import getObjectByName from '../Utils/GetObjectByName';
 import InstancesSelection from './InstancesSelection';
 import PixiResourcesLoader from '../ObjectsRendering/PixiResourcesLoader';
@@ -18,6 +18,7 @@ import {
   isTileSetBadlyConfigured,
   type TileSet,
 } from '../Utils/TileMap';
+import { createTextureFromResource } from '../Utils/PixiCompat/EditorPixiAdapter';
 
 export const updateSceneToTileMapTransformation = (
   instance: gdInitialInstance,
@@ -291,10 +292,10 @@ class TileMapPaintingPreview {
           });
           if (!texture) return null;
         } else if (tileMapTileSelection.kind === 'erase') {
-          texture = PIXI.Texture.from(
-            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAARSURBVHgBY7h58+Z/BhgAcQA/VAcVLiw46wAAAABJRU5ErkJggg=='
+          texture = createTextureFromResource(
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAARSURBVHgBY7h58+Z/BhgAcQA/VAcVLiw46wAAAABJRU5ErkJggg==',
+            { scaleMode: 'nearest' }
           );
-          texture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
         }
       }
       const sprite = this._getTilingSpriteForRectangle({

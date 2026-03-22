@@ -1,5 +1,5 @@
 // @flow
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
 import {
   getBasicProfilingCountersText,
   type BasicProfilingCounters,
@@ -63,14 +63,14 @@ export default class ProfilerBar {
     const profilerBarHeight = this._profilerBarText.height + textPadding * 2;
 
     this._profilerBarBackground.clear();
-    this._profilerBarBackground.beginFill(0x000000, 0.8);
-    this._profilerBarBackground.drawRoundedRect(
-      profilerBarXPosition,
-      profilerBarYPosition,
-      profilerBarWidth,
-      profilerBarHeight,
-      borderRadius
-    );
-    this._profilerBarBackground.endFill();
+    this._profilerBarBackground
+      .roundRect(
+        profilerBarXPosition,
+        profilerBarYPosition,
+        profilerBarWidth,
+        profilerBarHeight,
+        borderRadius
+      )
+      .fill({ color: 0x000000, alpha: 0.8 });
   }
 }

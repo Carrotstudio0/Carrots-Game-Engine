@@ -480,18 +480,15 @@ const MainFrame = (props: Props): React.MixedElement => {
   ] = React.useState<boolean>(false);
 
   /**
-   * Checks for diagnostic errors in the project if blocking is enabled.
-   * Returns true if there are errors and the action should be blocked.
+   * Checks for compile-fatal validation errors before preview/export.
+   * These errors must always block the action because libGD export will fail.
    */
   const checkDiagnosticErrorsAndIfShouldBlock = React.useCallback(
     async (
       project: ?gdProject,
       actionType: 'preview' | 'export'
     ): Promise<boolean> => {
-      if (
-        !project ||
-        !preferences.getBlockPreviewAndExportOnDiagnosticErrors()
-      ) {
+      if (!project) {
         return false;
       }
 
@@ -522,7 +519,7 @@ const MainFrame = (props: Props): React.MixedElement => {
 
       return false;
     },
-    [preferences, showConfirmation, setDiagnosticReportDialogOpen]
+    [showConfirmation, setDiagnosticReportDialogOpen]
   );
   const [previewState, setPreviewState] = React.useState(initialPreviewState);
   const commandPaletteRef = React.useRef((null: ?CommandPaletteInterface));

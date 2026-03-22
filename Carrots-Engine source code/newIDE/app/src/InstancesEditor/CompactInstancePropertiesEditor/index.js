@@ -307,6 +307,7 @@ export const CompactInstancePropertiesEditor = ({
       editObjectInPropertiesPanel,
       initialInstancesContainer,
       instances,
+      onInstancesModified,
     ]
   );
 

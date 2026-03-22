@@ -182,6 +182,11 @@ namespace gdjs {
      * to GDevelop APIs ("dev" = development APIs).
      */
     environment?: 'dev';
+
+    /**
+     * Optional configuration for the multithreading worker pool used by the runtime.
+     */
+    multithreading?: gdjs.MultithreadManagerOptions;
   };
 
   /**
@@ -216,8 +221,10 @@ namespace gdjs {
     _upscalingMode: 'none' | 'fsr1';
     _fsrQuality: 'ultra-quality' | 'quality' | 'balanced' | 'performance';
     _fsrSharpness: float;
-    _renderingWidth: integer;
-    _renderingHeight: integer;
+    _fsrRuntimeDisabled: boolean = false;
+    _fsrRuntimeDisabledReason: string = '';
+    _renderingWidth: integer = 0;
+    _renderingHeight: integer = 0;
     _isAntialisingEnabledOnMobile: boolean;
     /**
      * Game loop management (see startGameLoop method)
@@ -271,6 +278,7 @@ namespace gdjs {
      * The capture manager, used to manage captures (screenshots, videos, etc...).
      */
     _captureManager: CaptureManager | null;
+    _multithreadManager: gdjs.MultithreadManager;
 
     /** True if the RuntimeGame has been disposed and should not be used anymore. */
     _wasDisposed: boolean = false;
@@ -379,6 +387,9 @@ namespace gdjs {
       );
       this._sceneStack = new gdjs.SceneStack(this);
       this._inputManager = new gdjs.InputManager();
+      this._multithreadManager = new gdjs.MultithreadManager(
+        this._options.multithreading
+      );
       this._captureManager = gdjs.CaptureManager
         ? new gdjs.CaptureManager(
             this._renderer,
@@ -389,23 +400,7 @@ namespace gdjs {
       this._playerId = null;
 
       this._embeddedResourcesMappings = new Map();
-      for (const resource of this._data.resources.resources) {
-        if (resource.metadata) {
-          try {
-            const metadata = JSON.parse(resource.metadata);
-            if (metadata?.embeddedResourcesMapping) {
-              this._embeddedResourcesMappings.set(
-                resource.name,
-                metadata.embeddedResourcesMapping
-              );
-            }
-          } catch {
-            logger.error(
-              'Some metadata of resources can not be successfully parsed.'
-            );
-          }
-        }
-      }
+      this._refreshEmbeddedResourcesMappings();
 
       if (this.isUsingGDevelopDevelopmentEnvironment()) {
         logger.info(
@@ -430,6 +425,7 @@ namespace gdjs {
         getGlobalResourceNames(projectData),
         projectData.layouts
       );
+      this._refreshEmbeddedResourcesMappings();
       this._upscalingMode =
         (this._data.properties.upscalingMode as
           | 'none'
@@ -448,6 +444,28 @@ namespace gdjs {
           : 0.2;
       this._fsrSharpness = Math.max(0, Math.min(1, fsrSharpness));
       this._updateRenderingSize();
+    }
+
+    private _refreshEmbeddedResourcesMappings(): void {
+      this._embeddedResourcesMappings.clear();
+      for (const resource of this._data.resources.resources) {
+        if (!resource.metadata) {
+          continue;
+        }
+        try {
+          const metadata = JSON.parse(resource.metadata);
+          if (metadata?.embeddedResourcesMapping) {
+            this._embeddedResourcesMappings.set(
+              resource.name,
+              metadata.embeddedResourcesMapping
+            );
+          }
+        } catch {
+          logger.error(
+            'Some metadata of resources can not be successfully parsed.'
+          );
+        }
+      }
     }
 
     private _updateSceneAndExtensionsData(): void {
@@ -585,6 +603,13 @@ namespace gdjs {
      */
     getInputManager(): gdjs.InputManager {
       return this._inputManager;
+    }
+
+    /**
+     * Get the multithreading manager used by the runtime.
+     */
+    getMultithreadManager(): gdjs.MultithreadManager {
+      return this._multithreadManager;
     }
 
     /**
@@ -942,10 +967,44 @@ namespace gdjs {
     }
 
     /**
+     * Return the upscaling mode effectively used by the runtime.
+     */
+    getEffectiveUpscalingMode(): 'none' | 'fsr1' {
+      return this.isFsrEnabled() ? 'fsr1' : 'none';
+    }
+
+    /**
+     * Return the reason why FSR was disabled for this session, if any.
+     */
+    getFsrDisableReason(): string {
+      return this._fsrRuntimeDisabledReason;
+    }
+
+    /**
      * Return true if FSR is enabled.
      */
     isFsrEnabled(): boolean {
-      return this._upscalingMode === 'fsr1';
+      return this._upscalingMode === 'fsr1' && !this._fsrRuntimeDisabled;
+    }
+
+    /**
+     * Disable FSR for the current session and fall back to native resolution.
+     * This keeps the project settings intact, but prevents repeated failures.
+     */
+    disableFsrForSession(reason?: string): void {
+      if (this._fsrRuntimeDisabled) return;
+
+      this._fsrRuntimeDisabled = true;
+      this._fsrRuntimeDisabledReason = reason || '';
+      const suffix = reason ? ` (${reason})` : '';
+      console.warn(
+        `FSR 1.0: Disabled for this session${suffix}. Falling back to native resolution.`
+      );
+
+      this._updateRenderingSize();
+      if (this._renderer) {
+        this._renderer.updateRendererSize();
+      }
     }
 
     /**
@@ -1360,6 +1419,7 @@ namespace gdjs {
       this._sceneStack.dispose();
       this._renderer.dispose(removeCanvas);
       this._resourcesLoader.dispose();
+      this._multithreadManager.dispose();
 
       this._wasDisposed = true;
     }
@@ -1611,16 +1671,36 @@ namespace gdjs {
         case 'performance':
           return 2.0;
         default:
-          return 1.5;
+          return 1.3;
       }
     }
 
     private _updateRenderingSize(): void {
-      if (this._upscalingMode !== 'fsr1') {
+      if (!this.isFsrEnabled()) {
         this._renderingWidth = this._gameResolutionWidth;
         this._renderingHeight = this._gameResolutionHeight;
         return;
       }
+
+      // FSR requires WebGL2 for GLSL 3.0 ES shaders. If the renderer is already
+      // created and doesn't support WebGL2, fall back to native resolution.
+      const threeRenderer = this._renderer
+        ? this._renderer.getThreeRenderer()
+        : null;
+      if (threeRenderer && !threeRenderer.capabilities.isWebGL2) {
+        if (!this._fsrRuntimeDisabled) {
+          this._fsrRuntimeDisabled = true;
+          this._fsrRuntimeDisabledReason = 'WebGL2 not supported';
+          console.warn(
+            'FSR 1.0: WebGL2 is not supported on this device. ' +
+              'Falling back to standard rendering at native resolution.'
+          );
+        }
+        this._renderingWidth = this._gameResolutionWidth;
+        this._renderingHeight = this._gameResolutionHeight;
+        return;
+      }
+
       const ratio = this._getFsrQualityRatio();
       const rawWidth = Math.max(
         2,

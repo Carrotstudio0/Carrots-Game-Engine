@@ -65,9 +65,10 @@ namespace gdjs {
         x: float,
         y: float
       ) => {
-        debugDraw.line.color = fillColor;
-        debugDraw.fill.color = fillColor;
-        debugDraw.drawCircle(x, y, 3);
+        debugDraw
+          .circle(x, y, 3)
+          .fill({ color: fillColor, alpha: 0.3 })
+          .stroke({ width: 2, color: fillColor, alpha: 1 });
 
         if (showPointsNames) {
           if (!points[name]) {
@@ -84,9 +85,7 @@ namespace gdjs {
       };
 
       debugDraw.clear();
-      debugDraw.beginFill();
       debugDraw.alpha = 0.8;
-      debugDraw.lineStyle(2, 0x0000ff, 1);
 
       // Draw AABB
       const workingPoint: FloatPoint = [0, 0];
@@ -106,10 +105,6 @@ namespace gdjs {
           continue;
         }
         const aabb = object.getAABB();
-        debugDraw.fill.alpha = 0.2;
-        debugDraw.line.color = 0x778ee8;
-        debugDraw.fill.color = 0x778ee8;
-
         const polygon: float[] = [];
         polygon.push.apply(
           polygon,
@@ -148,7 +143,10 @@ namespace gdjs {
           )
         );
 
-        debugDraw.drawPolygon(polygon);
+        debugDraw
+          .poly(polygon, true)
+          .fill({ color: 0x778ee8, alpha: 0.2 })
+          .stroke({ width: 2, color: 0x778ee8, alpha: 1 });
       }
 
       // Draw hitboxes and points
@@ -209,14 +207,11 @@ namespace gdjs {
             polygon.push(point[0]);
             polygon.push(point[1]);
           });
-          debugDraw.fill.alpha = 0;
-          debugDraw.line.alpha = 0.5;
-          debugDraw.line.color = 0xff0000;
-          debugDraw.drawPolygon(polygon);
+          debugDraw
+            .poly(polygon, true)
+            .fill({ color: 0xff0000, alpha: 0 })
+            .stroke({ width: 2, color: 0xff0000, alpha: 0.5 });
         }
-
-        // Draw points
-        debugDraw.fill.alpha = 0.3;
 
         // Draw Center point
         const centerPoint = layer.applyLayerTransformation(
@@ -313,8 +308,6 @@ namespace gdjs {
           this._debugDrawContainer.removeChild(points[name]);
         }
       }
-
-      debugDraw.endFill();
     }
 
     clearDebugDraw(): void {

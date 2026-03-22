@@ -32,8 +32,8 @@ namespace gdjs {
 
     ensureUpToDate() {
       if (this._justCreated) {
-        //Work around a PIXI.js bug:
-        this._text.updateText(false);
+        // Keep compatibility with Pixi v7 and v8 text internals.
+        this._refreshTextLayoutIfNeeded();
 
         //Width seems not to be correct when text is not rendered yet.
         this.updatePosition();
@@ -44,58 +44,52 @@ namespace gdjs {
     updateStyle(): void {
       const fontName =
         '"' + this._fontManager.getFontFamily(this._object._fontName) + '"';
-      const style = this._text.style;
-      style.fontStyle = this._object._italic ? 'italic' : 'normal';
-      style.fontWeight = this._object._bold ? 'bold' : 'normal';
-      style.fontSize = this._object._characterSize;
-      style.fontFamily = fontName;
-      if (this._object._useGradient) {
-        style.fill = this._getGradientHex();
-      } else {
-        style.fill = this._getColorHex();
-      }
-      if (this._object._gradientType === 'LINEAR_VERTICAL') {
-        style.fillGradientType = PIXI.TEXT_GRADIENT.LINEAR_VERTICAL;
-      } else {
-        style.fillGradientType = PIXI.TEXT_GRADIENT.LINEAR_HORIZONTAL;
-      }
-      // @ts-ignore
-      style.align = this._object._textAlign;
-      style.wordWrap = this._object._wrapping;
-      style.wordWrapWidth = this._object._wrappingWidth;
-      style.breakWords = true;
-      style.stroke = gdjs.rgbToHexNumber(
-        this._object._outlineColor[0],
-        this._object._outlineColor[1],
-        this._object._outlineColor[2]
-      );
-      style.strokeThickness = this._object._isOutlineEnabled
-        ? this._object._outlineThickness
-        : 0;
-      style.dropShadow = this._object._shadow;
-      style.dropShadowColor = gdjs.rgbToHexNumber(
-        this._object._shadowColor[0],
-        this._object._shadowColor[1],
-        this._object._shadowColor[2]
-      );
-      style.dropShadowAlpha = this._object._shadowOpacity / 255;
-      style.dropShadowBlur = this._object._shadowBlur;
-      style.dropShadowAngle = gdjs.toRad(this._object._shadowAngle);
-      style.dropShadowDistance = this._object._shadowDistance;
-      const extraPaddingForShadow = style.dropShadow
-        ? style.dropShadowDistance + style.dropShadowBlur
+      const style = new PIXI.TextStyle({
+        fontStyle: this._object._italic ? 'italic' : 'normal',
+        fontWeight: this._object._bold ? 'bold' : 'normal',
+        fontSize: this._object._characterSize,
+        fontFamily: fontName,
+        fill: this._object._useGradient
+          ? this._createGradientFill()
+          : this._getColorHex(),
+        align: this._object._textAlign as PIXI.TextStyleAlign | undefined,
+        wordWrap: this._object._wrapping,
+        wordWrapWidth: this._object._wrappingWidth,
+        breakWords: true,
+        stroke: {
+          color: gdjs.rgbToHexNumber(
+            this._object._outlineColor[0],
+            this._object._outlineColor[1],
+            this._object._outlineColor[2]
+          ),
+          width: this._object._isOutlineEnabled
+            ? this._object._outlineThickness
+            : 0,
+          miterLimit: 3,
+        },
+        dropShadow: this._object._shadow
+          ? {
+              color: gdjs.rgbToHexNumber(
+                this._object._shadowColor[0],
+                this._object._shadowColor[1],
+                this._object._shadowColor[2]
+              ),
+              alpha: this._object._shadowOpacity / 255,
+              blur: this._object._shadowBlur,
+              angle: gdjs.toRad(this._object._shadowAngle),
+              distance: this._object._shadowDistance,
+            }
+          : false,
+      });
+      const extraPaddingForShadow = this._object._shadow
+        ? this._object._shadowDistance + this._object._shadowBlur
         : 0;
       style.padding = Math.ceil(this._object._padding + extraPaddingForShadow);
       style.lineHeight = this._object._lineHeight;
-
-      // Prevent spikey outlines by adding a miter limit
-      style.miterLimit = 3;
+      this._text.style = style;
       this.updatePosition();
 
-      // Manually ask the PIXI object to re-render as we changed a style property
-      // see http://www.html5gamedevs.com/topic/16924-change-text-style-post-render/
-      // @ts-ignore
-      this._text.dirty = true;
+      this._refreshTextLayoutIfNeeded();
     }
 
     updatePosition(): void {
@@ -142,8 +136,8 @@ namespace gdjs {
       this._text.text =
         this._object._str.length === 0 ? ' ' : this._object._str;
 
-      //Work around a PIXI.js bug.
-      this._text.updateText(false);
+      // Keep compatibility with Pixi v7 and v8 text internals.
+      this._refreshTextLayoutIfNeeded();
     }
 
     getWidth(): float {
@@ -162,14 +156,23 @@ namespace gdjs {
       );
     }
 
-    _getGradientHex() {
-      const gradient: Array<string> = [];
+    _createGradientFill() {
+      const gradient = new PIXI.FillGradient({
+        start: { x: 0, y: 0 },
+        end:
+          this._object._gradientType === 'LINEAR_VERTICAL'
+            ? { x: 0, y: 1 }
+            : { x: 1, y: 0 },
+        textureSpace: 'local',
+      });
+      const lastColorIndex = Math.max(this._object._gradient.length - 1, 1);
       for (
         let colorIndex = 0;
         colorIndex < this._object._gradient.length;
         colorIndex++
       ) {
-        gradient.push(
+        gradient.addColorStop(
+          colorIndex / lastColorIndex,
           '#' +
             gdjs.rgbToHex(
               this._object._gradient[colorIndex][0],
@@ -218,6 +221,20 @@ namespace gdjs {
      */
     setScaleY(newScale: float): void {
       this._text.scale.y = newScale;
+    }
+
+    private _refreshTextLayoutIfNeeded(): void {
+      const textAsAny = this._text as PIXI.Text & {
+        updateText?: (respectDirty?: boolean) => void;
+        updateBounds?: () => void;
+      };
+      if (textAsAny.updateText) {
+        textAsAny.updateText(false);
+        return;
+      }
+      if (textAsAny.updateBounds) {
+        textAsAny.updateBounds();
+      }
     }
 
     destroy() {

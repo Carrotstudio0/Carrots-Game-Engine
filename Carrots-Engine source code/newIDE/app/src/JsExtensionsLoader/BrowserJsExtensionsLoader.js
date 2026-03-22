@@ -5,6 +5,9 @@ import {
   type TranslationFunction,
   loadExtension,
 } from '.';
+import '../Utils/PixiCompat/ensurePixiCompat';
+import requirePixiMultistyleText from '../Utils/PixiCompat/requirePixiMultistyleText';
+import requirePixiTilemap from '../Utils/PixiCompat/requirePixiTilemap';
 import ObjectsEditorService from '../ObjectEditor/ObjectsEditorService';
 import ObjectsRenderingService from '../ObjectsRendering/ObjectsRenderingService';
 const gd: libGDevelop = global.gd;
@@ -145,7 +148,7 @@ const jsExtensions = [
     objectsRenderingServiceModules: {
       // $FlowFixMe[incompatible-type] - this path is ignored for Flow.
       // $FlowFixMe[cannot-resolve-module]
-      'pixi-multistyle-text/dist/pixi-multistyle-text.umd': require('GDJS-for-web-app-only/Runtime/Extensions/BBText/pixi-multistyle-text/dist/pixi-multistyle-text.umd'),
+      'pixi-multistyle-text/dist/pixi-multistyle-text.umd': requirePixiMultistyleText(),
     },
   },
   {
@@ -156,7 +159,7 @@ const jsExtensions = [
     objectsRenderingServiceModules: {
       // $FlowFixMe[incompatible-type] - this path is ignored for Flow.
       // $FlowFixMe[cannot-resolve-module]
-      'pixi-tilemap/dist/pixi-tilemap.umd': require('GDJS-for-web-app-only/Runtime/Extensions/TileMap/pixi-tilemap/dist/pixi-tilemap.umd'),
+      'pixi-tilemap/dist/pixi-tilemap.umd': requirePixiTilemap(),
       // $FlowFixMe[incompatible-type] - this path is ignored for Flow.
       // $FlowFixMe[cannot-resolve-module]
       'helper/TileMapHelper': require('GDJS-for-web-app-only/Runtime/Extensions/TileMap/helper/TileMapHelper.js'),

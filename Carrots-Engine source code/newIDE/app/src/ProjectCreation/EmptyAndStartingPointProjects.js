@@ -177,15 +177,20 @@ const EmptyAndStartingPointProjects = ({
               onSelectEmptyProject={onSelectEmptyProject}
               disabled={disabled}
             />
-            {startingPointExampleShortHeaders.map(exampleShortHeader => (
-              <ExampleTile
-                exampleShortHeader={exampleShortHeader}
-                onSelect={() => onSelectExampleShortHeader(exampleShortHeader)}
-                key={exampleShortHeader.name}
-                disabled={disabled}
-                centerTitle
-              />
-            ))}
+            {startingPointExampleShortHeaders.map(
+              (exampleShortHeader, index) => (
+                <ExampleTile
+                  exampleShortHeader={exampleShortHeader}
+                  onSelect={() => onSelectExampleShortHeader(exampleShortHeader)}
+                  key={
+                    exampleShortHeader.slug ||
+                    `${exampleShortHeader.name}-${index}`
+                  }
+                  disabled={disabled}
+                  centerTitle
+                />
+              )
+            )}
           </GridList>
         </Column>
       )}

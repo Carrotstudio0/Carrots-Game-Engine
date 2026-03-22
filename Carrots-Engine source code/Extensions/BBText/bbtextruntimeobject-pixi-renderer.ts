@@ -1,4 +1,13 @@
 namespace gdjs {
+  type BBTextStyle = TextStyleExtended & {
+    fontFamily: string;
+    fontSize: string;
+    fill: number;
+    wordWrap: boolean;
+    wordWrapWidth: number;
+    align: 'left' | 'center' | 'right' | 'justify';
+  };
+
   /**
    * The PIXI.js renderer for the BBCode Text runtime object.
    * @category Renderers > BBText
@@ -16,24 +25,29 @@ namespace gdjs {
       instanceContainer: gdjs.RuntimeInstanceContainer
     ) {
       this._object = runtimeObject;
+      const defaultStyle: BBTextStyle = {
+        fontFamily: instanceContainer
+          .getGame()
+          .getFontManager()
+          .getFontFamily(runtimeObject._fontFamily),
+        fontSize: runtimeObject._fontSize + 'px',
+        fill: gdjs.rgbToHexNumber(
+          runtimeObject._color[0],
+          runtimeObject._color[1],
+          runtimeObject._color[2]
+        ),
+        tagStyle: 'bbcode',
+        wordWrap: runtimeObject._wrapping,
+        wordWrapWidth: runtimeObject._wrappingWidth,
+        align: runtimeObject._textAlign as
+          | 'left'
+          | 'center'
+          | 'right'
+          | 'justify',
+      };
 
       this._pixiObject = new MultiStyleText(runtimeObject._text, {
-        default: {
-          fontFamily: instanceContainer
-            .getGame()
-            .getFontManager()
-            .getFontFamily(runtimeObject._fontFamily),
-          fontSize: runtimeObject._fontSize + 'px',
-          fill: gdjs.rgbToHexNumber(
-            runtimeObject._color[0],
-            runtimeObject._color[1],
-            runtimeObject._color[2]
-          ),
-          tagStyle: 'bbcode',
-          wordWrap: runtimeObject._wrapping,
-          wordWrapWidth: runtimeObject._wrappingWidth,
-          align: runtimeObject._textAlign as PIXI.TextStyleAlign | undefined,
-        },
+        default: defaultStyle,
       });
       instanceContainer
         .getLayer('')

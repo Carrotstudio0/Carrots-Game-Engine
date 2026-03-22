@@ -4,6 +4,7 @@ import { type StoryDecorator } from '@storybook/react';
 import { makeTestExtensions } from '../fixtures/TestExtensions';
 import { makeTestProject, type TestProject } from '../fixtures/TestProject';
 import { getStartupTimesSummary } from '../Utils/StartupTimes';
+import { ensureGDevelopJsPlatformsInitialized } from '../Utils/GDevelopJsInitialization';
 const initializeGDevelopJs = global.initializeGDevelopJs;
 const GD_STARTUP_TIMES = global.GD_STARTUP_TIMES || [];
 
@@ -40,6 +41,7 @@ const GDevelopJsInitializer = ({ children }: GDevelopJsInitializerProps) => {
     );
     GD_STARTUP_TIMES.push(['initializeGDevelopJsCall', performance.now()]);
     initializeGDevelopJs().then(gd => {
+      ensureGDevelopJsPlatformsInitialized(gd);
       GD_STARTUP_TIMES.push(['initializeGDevelopJsDone', performance.now()]);
       // We're **updating** the global "gd" object here. This is done so that
       // the source files that are using `global.gd` have the proper reference to the

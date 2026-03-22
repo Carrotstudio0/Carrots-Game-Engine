@@ -1,4 +1,18 @@
 namespace gdjs {
+  const resetPixiRendererState = (pixiRenderer: PIXI.Renderer): void => {
+    const rendererWithCompatReset = pixiRenderer as PIXI.Renderer & {
+      reset?: () => void;
+      resetState?: () => void;
+    };
+    if (rendererWithCompatReset.reset) {
+      rendererWithCompatReset.reset();
+      return;
+    }
+    if (rendererWithCompatReset.resetState) {
+      rendererWithCompatReset.resetState();
+    }
+  };
+
   /**
    * The renderer for a gdjs.RuntimeScene using Pixi.js.
    * @category Renderers > Scene
@@ -79,44 +93,61 @@ namespace gdjs {
       return !!this._threeRenderer && this._threeRenderer.capabilities.isWebGL2;
     }
 
-    private _ensureFsrResources(): boolean {
+    private _ensureFsrResources(runtimeGame?: gdjs.RuntimeGame): boolean {
+      const game = runtimeGame || this._runtimeScene.getGame();
       if (!this._isFsrSupported() || typeof THREE === 'undefined') {
+        game.disableFsrForSession(
+          typeof THREE === 'undefined'
+            ? 'Three.js is not available'
+            : 'WebGL2 not supported'
+        );
         return false;
       }
-      if (!this._fsrPass) {
-        this._fsrPass = new gdjs.Fsr1Pass();
+      try {
+        if (!this._fsrPass) {
+          this._fsrPass = new gdjs.Fsr1Pass();
+        }
+        if (!this._fsrLowResTarget) {
+          this._fsrLowResTarget = new THREE.WebGLRenderTarget(1, 1, {
+            depthBuffer: true,
+            stencilBuffer: false,
+            minFilter: THREE.LinearFilter,
+            magFilter: THREE.LinearFilter,
+          });
+          this._fsrLowResTarget.texture.generateMipmaps = false;
+          this._fsrLowResTarget.texture.wrapS = THREE.ClampToEdgeWrapping;
+          this._fsrLowResTarget.texture.wrapT = THREE.ClampToEdgeWrapping;
+        }
+        if (!this._fsrCopyScene || !this._fsrCopyCamera || !this._fsrCopyMesh) {
+          this._fsrCopyScene = new THREE.Scene();
+          this._fsrCopyCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+          this._fsrCopyMaterial = new THREE.MeshBasicMaterial({
+            transparent: true,
+            depthTest: false,
+            depthWrite: false,
+            toneMapped: false,
+          });
+          const geometry = new THREE.PlaneGeometry(2, 2);
+          this._fsrCopyMesh = new THREE.Mesh(geometry, this._fsrCopyMaterial);
+          this._fsrCopyScene.add(this._fsrCopyMesh);
+        }
+        return true;
+      } catch (error) {
+        console.warn(
+          'FSR 1.0: Failed to create resources, falling back to standard rendering.',
+          error
+        );
+        this._disposeFsrResources();
+        game.disableFsrForSession('Failed to initialize FSR resources');
+        return false;
       }
-      if (!this._fsrLowResTarget) {
-        this._fsrLowResTarget = new THREE.WebGLRenderTarget(1, 1, {
-          depthBuffer: true,
-          stencilBuffer: false,
-          minFilter: THREE.LinearFilter,
-          magFilter: THREE.LinearFilter,
-        });
-        this._fsrLowResTarget.texture.generateMipmaps = false;
-        this._fsrLowResTarget.texture.wrapS = THREE.ClampToEdgeWrapping;
-        this._fsrLowResTarget.texture.wrapT = THREE.ClampToEdgeWrapping;
-      }
-      if (!this._fsrCopyScene || !this._fsrCopyCamera || !this._fsrCopyMesh) {
-        this._fsrCopyScene = new THREE.Scene();
-        this._fsrCopyCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-        this._fsrCopyMaterial = new THREE.MeshBasicMaterial({
-          transparent: true,
-          depthTest: false,
-          depthWrite: false,
-        });
-        const geometry = new THREE.PlaneGeometry(2, 2);
-        this._fsrCopyMesh = new THREE.Mesh(geometry, this._fsrCopyMaterial);
-        this._fsrCopyScene.add(this._fsrCopyMesh);
-      }
-      return true;
     }
 
     private _updateFsrResources(): void {
       if (!this._runtimeGameRenderer) return;
       const runtimeGame = this._runtimeScene.getGame();
       if (!runtimeGame.isFsrEnabled()) return;
-      if (!this._ensureFsrResources()) return;
+      if (!this._ensureFsrResources(runtimeGame)) return;
 
       const pixelRatio = this._runtimeGameRenderer.getPixelRatio();
       const lowResWidth = Math.max(
@@ -180,8 +211,33 @@ namespace gdjs {
         this._fsrCopyMaterial.map = texture;
         this._fsrCopyMaterial.needsUpdate = true;
       }
+      // Post-processing passes may leave WebGL state altered (blending/depth/color masks),
+      // so reset to a predictable state before blitting the composer output.
+      threeRenderer.resetState();
       threeRenderer.setRenderTarget(this._fsrLowResTarget);
       threeRenderer.render(this._fsrCopyScene, this._fsrCopyCamera);
+    }
+
+    private _getComposerOutputTexture(
+      threeEffectComposer: THREE_ADDONS.EffectComposer
+    ): THREE.Texture | null {
+      const anyComposer = threeEffectComposer as any;
+      return (
+        (anyComposer.readBuffer && anyComposer.readBuffer.texture) ||
+        (anyComposer.writeBuffer && anyComposer.writeBuffer.texture) ||
+        null
+      );
+    }
+
+    private _isComposerTextureReady(texture: THREE.Texture): boolean {
+      const image = (texture as any).image;
+      return !!(
+        image &&
+        typeof image.width === 'number' &&
+        typeof image.height === 'number' &&
+        image.width > 0 &&
+        image.height > 0
+      );
     }
 
     private _disposeFsrResources(): void {
@@ -219,7 +275,12 @@ namespace gdjs {
       const runtimeGame = this._runtimeScene.getGame();
       const threeRenderer = this._threeRenderer;
       const fsrEnabled =
-        runtimeGame.isFsrEnabled() && this._ensureFsrResources();
+        runtimeGame.isFsrEnabled() && this._ensureFsrResources(runtimeGame);
+      if (fsrEnabled) {
+        for (const runtimeLayer of this._runtimeScene._orderedLayers) {
+          runtimeLayer.getRenderer().ensureFsrRendering();
+        }
+      }
 
       // If we are in VR, we cannot render like this: we must use the special VR
       // rendering method to not display a black screen.
@@ -238,130 +299,177 @@ namespace gdjs {
       this._layerRenderingMetrics.rendered3DLayersCount = 0;
 
       if (threeRenderer) {
+        let renderedWithFsr = false;
         if (fsrEnabled && this._fsrPass && this._fsrLowResTarget) {
-          // FSR 1.0 layered rendering into a shared low-res target.
-          this._updateFsrResources();
+          try {
+            // FSR 1.0 layered rendering into a shared low-res target.
+            this._updateFsrResources();
 
-          threeRenderer.info.autoReset = false;
-          threeRenderer.info.reset();
+            threeRenderer.info.autoReset = false;
+            threeRenderer.info.reset();
 
-          /** Useful to render the background color. */
-          let isFirstRender = true;
+            /** Useful to render the background color. */
+            let isFirstRender = true;
 
-          /**
-           * true if the last layer rendered 3D objects using Three.js, false otherwise.
-           * Useful to avoid needlessly resetting the WebGL states between layers (which can be expensive).
-           */
-          let lastRenderWas3D = true;
+            /**
+             * true if the last layer rendered 3D objects using Three.js, false otherwise.
+             * Useful to avoid needlessly resetting the WebGL states between layers (which can be expensive).
+             */
+            let lastRenderWas3D = true;
 
-          // Ensure a clean state for the first frame.
-          threeRenderer.resetState();
+            // Ensure a clean state for the first frame.
+            threeRenderer.resetState();
 
-          // Render each layer one by one into the shared low-res target.
-          for (let i = 0; i < this._runtimeScene._orderedLayers.length; ++i) {
-            const runtimeLayer = this._runtimeScene._orderedLayers[i];
-            if (!runtimeLayer.isVisible()) continue;
+            // Render each layer one by one into the shared low-res target.
+            for (let i = 0; i < this._runtimeScene._orderedLayers.length; ++i) {
+              const runtimeLayer = this._runtimeScene._orderedLayers[i];
+              if (!runtimeLayer.isVisible()) continue;
 
-            const runtimeLayerRenderer = runtimeLayer.getRenderer();
-            const threeScene = runtimeLayerRenderer.getThreeScene();
-            const threeCamera = runtimeLayerRenderer.getThreeCamera();
-            const threeEffectComposer =
-              runtimeLayerRenderer.getThreeEffectComposer();
+              const runtimeLayerRenderer = runtimeLayer.getRenderer();
+              const threeScene = runtimeLayerRenderer.getThreeScene();
+              const threeCamera = runtimeLayerRenderer.getThreeCamera();
+              const threeEffectComposer =
+                runtimeLayerRenderer.getThreeEffectComposer();
 
-            const layerHas2DObjectsToRender =
-              runtimeLayerRenderer.has2DObjects();
+              const layerHas2DObjectsToRender =
+                runtimeLayerRenderer.has2DObjects();
 
-            if (layerHas2DObjectsToRender) {
-              if (lastRenderWas3D) {
-                threeRenderer.resetState();
-                pixiRenderer.reset();
+              if (layerHas2DObjectsToRender) {
+                if (lastRenderWas3D) {
+                  threeRenderer.resetState();
+                  resetPixiRendererState(pixiRenderer);
+                }
+
+                runtimeLayerRenderer.renderOnPixiRenderTexture(pixiRenderer);
+                runtimeLayerRenderer.updateThreePlaneTextureFromPixiRenderTexture(
+                  threeRenderer,
+                  pixiRenderer
+                );
+                runtimeLayerRenderer.show2DRenderingPlane(true);
+                this._layerRenderingMetrics.rendered2DLayersCount++;
+                lastRenderWas3D = false;
+              } else {
+                runtimeLayerRenderer.show2DRenderingPlane(false);
               }
 
-              runtimeLayerRenderer.renderOnPixiRenderTexture(pixiRenderer);
-              runtimeLayerRenderer.updateThreePlaneTextureFromPixiRenderTexture(
-                threeRenderer,
-                pixiRenderer
-              );
-              runtimeLayerRenderer.show2DRenderingPlane(true);
-              this._layerRenderingMetrics.rendered2DLayersCount++;
-              lastRenderWas3D = false;
-            } else {
-              runtimeLayerRenderer.show2DRenderingPlane(false);
+              if (!threeScene || !threeCamera) {
+                continue;
+              }
+
+              if (!lastRenderWas3D) {
+                resetPixiRendererState(pixiRenderer);
+                threeRenderer.resetState();
+              }
+
+              if (isFirstRender) {
+                threeRenderer.setClearColor(
+                  this._runtimeScene.getBackgroundColor()
+                );
+                threeRenderer.setRenderTarget(this._fsrLowResTarget);
+                if (this._runtimeScene.getClearCanvas()) {
+                  threeRenderer.clear();
+                }
+                isFirstRender = false;
+              }
+
+              // Avoid clearing background inside the layer scene.
+              if (threeScene.background) {
+                threeScene.background = null;
+              }
+
+              threeRenderer.setRenderTarget(this._fsrLowResTarget);
+              threeRenderer.clearDepth();
+
+              let renderedWithComposer = false;
+              if (
+                threeEffectComposer &&
+                runtimeLayerRenderer.hasPostProcessingPass()
+              ) {
+                const anyComposer = threeEffectComposer as any;
+                const previousRenderToScreen = !!anyComposer.renderToScreen;
+                try {
+                  // Force composer to render into its internal targets so we can
+                  // blend the result into the shared FSR low-res target.
+                  anyComposer.renderToScreen = false;
+                  threeEffectComposer.render();
+                } finally {
+                  anyComposer.renderToScreen = previousRenderToScreen;
+                }
+
+                const composerTexture =
+                  this._getComposerOutputTexture(threeEffectComposer);
+                if (
+                  composerTexture &&
+                  this._isComposerTextureReady(composerTexture)
+                ) {
+                  this._renderTextureToLowResTarget(
+                    threeRenderer,
+                    composerTexture
+                  );
+                  renderedWithComposer = true;
+                }
+              }
+              if (!renderedWithComposer) {
+                // Fallback to direct scene rendering if composer output is not available,
+                // to avoid a black frame for this layer.
+                threeRenderer.setRenderTarget(this._fsrLowResTarget);
+                threeRenderer.clearDepth();
+                threeRenderer.render(threeScene, threeCamera);
+              }
+
+              this._layerRenderingMetrics.rendered3DLayersCount++;
+              lastRenderWas3D = true;
             }
 
-            if (!threeScene || !threeCamera) {
-              continue;
+            // Upscale the composed low-res target to the screen.
+            // Reset state/viewport to avoid inheriting stale post-processing state.
+            threeRenderer.resetState();
+            threeRenderer.setScissorTest(false);
+            threeRenderer.setViewport(
+              0,
+              0,
+              this._fsrOutputWidth,
+              this._fsrOutputHeight
+            );
+            this._fsrPass.render(
+              threeRenderer,
+              this._fsrLowResTarget.texture
+            );
+
+            // Restore the screen framebuffer and clean up WebGL state after FSR
+            // so subsequent PixiJS renders (loading screen, debug overlays) go
+            // to the correct target.
+            threeRenderer.setRenderTarget(null);
+            threeRenderer.resetState();
+
+            const debugContainer = this._runtimeScene
+              .getDebuggerRenderer()
+              .getRendererObject();
+
+            if (debugContainer) {
+              resetPixiRendererState(pixiRenderer);
+              pixiRenderer.render(debugContainer);
+              lastRenderWas3D = false;
             }
 
             if (!lastRenderWas3D) {
-              pixiRenderer.reset();
-              threeRenderer.resetState();
+              resetPixiRendererState(pixiRenderer);
             }
-
-            if (isFirstRender) {
-              threeRenderer.setClearColor(
-                this._runtimeScene.getBackgroundColor()
-              );
-              threeRenderer.setRenderTarget(this._fsrLowResTarget);
-              if (this._runtimeScene.getClearCanvas()) {
-                threeRenderer.clear();
-              }
-              isFirstRender = false;
-            }
-
-            // Avoid clearing background inside the layer scene.
-            if (threeScene.background) {
-              threeScene.background = null;
-            }
-
-            threeRenderer.setRenderTarget(this._fsrLowResTarget);
-            threeRenderer.clearDepth();
-
-            if (threeEffectComposer && runtimeLayerRenderer.hasPostProcessingPass()) {
-              for (const pass of threeEffectComposer.passes) {
-                pass.renderToScreen = false;
-              }
-              threeEffectComposer.render();
-              const anyComposer = threeEffectComposer as any;
-              const composerTexture =
-                (anyComposer.readBuffer && anyComposer.readBuffer.texture) ||
-                (anyComposer.writeBuffer && anyComposer.writeBuffer.texture) ||
-                null;
-              if (composerTexture) {
-                this._renderTextureToLowResTarget(
-                  threeRenderer,
-                  composerTexture
-                );
-              }
-            } else {
-              threeRenderer.render(threeScene, threeCamera);
-            }
-
-            this._layerRenderingMetrics.rendered3DLayersCount++;
-            lastRenderWas3D = true;
-          }
-
-          // Upscale the composed low-res target to the screen.
-          this._fsrPass.render(
-            threeRenderer,
-            this._fsrLowResTarget.texture
-          );
-
-          const debugContainer = this._runtimeScene
-            .getDebuggerRenderer()
-            .getRendererObject();
-
-          if (debugContainer) {
+            renderedWithFsr = true;
+          } catch (error) {
+            console.warn(
+              'FSR 1.0: Rendering failed, falling back to standard rendering.',
+              error
+            );
+            this._disposeFsrResources();
+            runtimeGame.disableFsrForSession('FSR render failed');
+            threeRenderer.setRenderTarget(null);
             threeRenderer.resetState();
-            pixiRenderer.reset();
-            pixiRenderer.render(debugContainer);
-            lastRenderWas3D = false;
+            resetPixiRendererState(pixiRenderer);
           }
+        }
 
-          if (!lastRenderWas3D) {
-            pixiRenderer.reset();
-          }
-        } else {
+        if (!renderedWithFsr) {
           // Layered 2D, 3D or 2D+3D rendering.
           threeRenderer.info.autoReset = false;
           threeRenderer.info.reset();
@@ -403,7 +511,7 @@ namespace gdjs {
               if (lastRenderWas3D) {
                 // Ensure the state is clean for PixiJS to render.
                 threeRenderer.resetState();
-                pixiRenderer.reset();
+                resetPixiRendererState(pixiRenderer);
               }
 
               if (isFirstRender) {
@@ -427,7 +535,10 @@ namespace gdjs {
                   runtimeLayerRenderer.getLightingSprite()) ||
                 runtimeLayerRenderer.getRendererObject();
 
-              pixiRenderer.render(pixiContainer, { clear: false });
+              pixiRenderer.render({
+                container: pixiContainer,
+                clear: false,
+              });
               this._layerRenderingMetrics.rendered2DLayersCount++;
 
               lastRenderWas3D = false;
@@ -453,7 +564,7 @@ namespace gdjs {
                     if (lastRenderWas3D) {
                       // Ensure the state is clean for PixiJS to render.
                       threeRenderer.resetState();
-                      pixiRenderer.reset();
+                      resetPixiRendererState(pixiRenderer);
                     }
 
                     // Do the rendering of the PixiJS objects of the layer on the render texture.
@@ -477,7 +588,7 @@ namespace gdjs {
                 if (!lastRenderWas3D) {
                   // It's important to reset the internal WebGL state of PixiJS, then Three.js
                   // to ensure the 3D rendering is made properly by Three.js
-                  pixiRenderer.reset();
+                  resetPixiRendererState(pixiRenderer);
                   threeRenderer.resetState();
                 }
 
@@ -530,7 +641,7 @@ namespace gdjs {
 
           if (debugContainer) {
             threeRenderer.resetState();
-            pixiRenderer.reset();
+            resetPixiRendererState(pixiRenderer);
             pixiRenderer.render(debugContainer);
             lastRenderWas3D = false;
           }
@@ -538,7 +649,7 @@ namespace gdjs {
           if (!lastRenderWas3D) {
             // Out of caution, reset the WebGL states from PixiJS to start again
             // with a 3D rendering on the next frame.
-            pixiRenderer.reset();
+            resetPixiRendererState(pixiRenderer);
           }
 
           // Uncomment to display some debug metrics from Three.js.
@@ -561,7 +672,8 @@ namespace gdjs {
         // Render all the layers then.
         // TODO: replace by a loop like in 3D?
         pixiRenderer.background.color = this._runtimeScene.getBackgroundColor();
-        pixiRenderer.render(this._pixiContainer, {
+        pixiRenderer.render({
+          container: this._pixiContainer,
           clear: this._runtimeScene.getClearCanvas(),
         });
         this._layerRenderingMetrics.rendered2DLayersCount++;
@@ -658,8 +770,7 @@ namespace gdjs {
       if (!this._profilerText) {
         this._profilerText = new PIXI.Text(' ', {
           align: 'left',
-          stroke: '#FFF',
-          strokeThickness: 1,
+          stroke: { color: '#FFF', width: 1 },
         });
 
         // Add on top of all layers:

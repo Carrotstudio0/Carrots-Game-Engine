@@ -1,5 +1,5 @@
 // @flow
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
 import ViewPosition from './ViewPosition';
 import { type InstancesEditorSettings } from './InstancesEditorSettings';
 
@@ -42,8 +42,6 @@ export default class Grid {
 
     this.pixiGrid.visible = true;
     this.pixiGrid.clear();
-    this.pixiGrid.beginFill(gridColor);
-    this.pixiGrid.lineStyle(1, gridColor, 1);
     this.pixiGrid.alpha = gridAlpha;
 
     const sceneStartPoint = this.viewPosition.toSceneCoordinates(0, 0);
@@ -201,6 +199,10 @@ export default class Grid {
       }
     }
 
-    this.pixiGrid.endFill();
+    this.pixiGrid.stroke({
+      width: 1,
+      color: gridColor,
+      alpha: 1,
+    });
   }
 }

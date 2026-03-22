@@ -1947,7 +1947,7 @@ namespace gdjs {
         this._runtimeScene
           .getGame()
           .getEffectsManager()
-          // @ts-expect-error - the effects manager is typed with the PIXI object.
+          // @ts-ignore - the effects manager is typed with the PIXI object.
           .clearEffects(rendererObject)
       );
     }

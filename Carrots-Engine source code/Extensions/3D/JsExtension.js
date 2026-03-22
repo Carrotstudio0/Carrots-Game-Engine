@@ -5439,13 +5439,22 @@ module.exports = {
         const height = this.getHeight();
 
         this._pixiFallbackObject.clear();
-        this._pixiFallbackObject.beginFill(0x0033ff);
-        this._pixiFallbackObject.lineStyle(1, 0xffd900, 1);
-        this._pixiFallbackObject.moveTo(-width / 2, -height / 2);
-        this._pixiFallbackObject.lineTo(width / 2, -height / 2);
-        this._pixiFallbackObject.lineTo(width / 2, height / 2);
-        this._pixiFallbackObject.lineTo(-width / 2, height / 2);
-        this._pixiFallbackObject.endFill();
+        this._pixiFallbackObject
+          .poly(
+            [
+              -width / 2,
+              -height / 2,
+              width / 2,
+              -height / 2,
+              width / 2,
+              height / 2,
+              -width / 2,
+              height / 2,
+            ],
+            true
+          )
+          .fill({ color: 0x0033ff, alpha: 1 })
+          .stroke({ width: 1, color: 0xffd900, alpha: 1 });
 
         this._pixiFallbackObject.position.x = this._instance.getX() + width / 2;
         this._pixiFallbackObject.position.y =
@@ -5961,13 +5970,21 @@ module.exports = {
         const height = this.getHeight();
 
         this._pixiObject.clear();
-        this._pixiObject.beginFill(0x999999, 0.2);
-        this._pixiObject.lineStyle(1, 0xffd900, 0);
-        this._pixiObject.moveTo(-width / 2, -height / 2);
-        this._pixiObject.lineTo(width / 2, -height / 2);
-        this._pixiObject.lineTo(width / 2, height / 2);
-        this._pixiObject.lineTo(-width / 2, height / 2);
-        this._pixiObject.endFill();
+        this._pixiObject
+          .poly(
+            [
+              -width / 2,
+              -height / 2,
+              width / 2,
+              -height / 2,
+              width / 2,
+              height / 2,
+              -width / 2,
+              height / 2,
+            ],
+            true
+          )
+          .fill({ color: 0x999999, alpha: 0.2 });
 
         this._pixiObject.position.x = this._instance.getX() + width / 2;
         this._pixiObject.position.y = this._instance.getY() + height / 2;
@@ -6225,18 +6242,16 @@ module.exports = {
         const maxX = width - centerX;
         const maxY = height - centerY;
         this._pixiObject.clear();
-        this._pixiObject.beginFill(0x0033ff);
-        this._pixiObject.lineStyle(1, 0xffd900, 1);
-        this._pixiObject.moveTo(minX, minY);
-        this._pixiObject.lineTo(maxX, minY);
-        this._pixiObject.lineTo(maxX, maxY);
-        this._pixiObject.lineTo(minX, maxY);
-        this._pixiObject.endFill();
+        this._pixiObject
+          .poly([minX, minY, maxX, minY, maxX, maxY, minX, maxY], true)
+          .fill({ color: 0x0033ff, alpha: 1 })
+          .stroke({ width: 1, color: 0xffd900, alpha: 1 });
 
         this._pixiObject.moveTo(minX, minY);
         this._pixiObject.lineTo(maxX, maxY);
         this._pixiObject.moveTo(maxX, minY);
         this._pixiObject.lineTo(minX, maxY);
+        this._pixiObject.stroke({ width: 1, color: 0xffd900, alpha: 1 });
 
         const originPoint = this.getOriginPoint();
         this._pixiObject.position.x =
@@ -6649,13 +6664,9 @@ module.exports = {
         const maxX = width - centerX;
         const maxY = height - centerY;
         this._pixiObject.clear();
-        this._pixiObject.beginFill(0x999999, 0.2);
-        this._pixiObject.lineStyle(1, 0xffd900, 0);
-        this._pixiObject.moveTo(minX, minY);
-        this._pixiObject.lineTo(maxX, minY);
-        this._pixiObject.lineTo(maxX, maxY);
-        this._pixiObject.lineTo(minX, maxY);
-        this._pixiObject.endFill();
+        this._pixiObject
+          .poly([minX, minY, maxX, minY, maxX, maxY, minX, maxY], true)
+          .fill({ color: 0x999999, alpha: 0.2 });
 
         const originPoint = this.getOriginPoint();
         this._pixiObject.position.x =

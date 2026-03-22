@@ -1,5 +1,5 @@
 // @flow
-import * as PIXI from 'pixi.js-legacy';
+import * as PIXI from 'pixi.js';
 
 type Props = {
   getLastCursorSceneCoordinates: () => [number, number] | null,
@@ -76,14 +76,14 @@ export default class StatusBar {
     const statusBarHeight = this._statusBarText.height + textPadding * 2;
 
     this._statusBarBackground.clear();
-    this._statusBarBackground.beginFill(0x000000, 0.8);
-    this._statusBarBackground.drawRoundedRect(
-      statusBarXPosition,
-      statusBarYPosition,
-      statusBarWidth,
-      statusBarHeight,
-      borderRadius
-    );
-    this._statusBarBackground.endFill();
+    this._statusBarBackground
+      .roundRect(
+        statusBarXPosition,
+        statusBarYPosition,
+        statusBarWidth,
+        statusBarHeight,
+        borderRadius
+      )
+      .fill({ color: 0x000000, alpha: 0.8 });
   }
 }

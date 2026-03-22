@@ -86,7 +86,7 @@ describe('gdjs.TextInputRuntimeObject (using a PixiJS RuntimeGame with DOM eleme
 
     // Make sure the renderer is created (to test the real DOM element creation/update)
     const gameContainer = document.createElement('div');
-    runtimeGame.getRenderer().createStandardCanvas(gameContainer);
+    await runtimeGame.getRenderer().createStandardCanvas(gameContainer);
 
     const object = makeTextInputRuntimeObject(runtimeScene);
     runtimeScene.addObject(object);

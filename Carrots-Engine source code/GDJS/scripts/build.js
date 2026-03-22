@@ -1,6 +1,7 @@
 const { build } = require('esbuild');
 const path = require('path');
 const shell = require('shelljs');
+const { checkVendorLibs } = require('./build-vendor-libs');
 const {
   getAllInOutFilePaths,
   isUntransformedFile,
@@ -28,6 +29,16 @@ if (!args.out) {
 require('fs').mkdirSync(bundledOutPath, { recursive: true });
 
 (async () => {
+  try {
+    await checkVendorLibs();
+  } catch (error) {
+    shell.echo(
+      `❌ ${error && error.message ? error.message : 'Vendor libraries check failed.'}`
+    );
+    shell.exit(1);
+    return;
+  }
+
   // Generate the output file paths
   const {
     allGDJSInOutFilePaths,

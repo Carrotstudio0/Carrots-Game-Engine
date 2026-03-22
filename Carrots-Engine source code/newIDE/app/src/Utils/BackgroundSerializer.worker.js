@@ -1,6 +1,8 @@
 /* eslint-env worker */
 // @flow
 
+import { ensureGDevelopJsPlatformsInitialized } from './GDevelopJsInitialization';
+
 let modulePromise /*: ?Promise<libGDevelop>*/ = null;
 
 const log = (message /*: string */) => {
@@ -42,6 +44,7 @@ const getLibGDevelop = (versionWithHash /*: string */) => {
         },
       })
         .then(module => {
+          ensureGDevelopJsPlatformsInitialized(module);
           resolve(module);
         })
         .catch(reject);
