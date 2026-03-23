@@ -55,6 +55,8 @@ export const addDefaultLightToLayer = (layer: gdLayer): void => {
   ambientLight.setStringParameter('top', 'Z+');
   ambientLight.setDoubleParameter('elevation', 40);
   ambientLight.setDoubleParameter('rotation', 300);
+
+  addDefaultSkyToLayer(layer);
 };
 
 export const addDefaultLightToAllLayers = (layout: gdLayout): void => {
@@ -63,6 +65,37 @@ export const addDefaultLightToAllLayers = (layout: gdLayout): void => {
     addDefaultLightToLayer(layer);
   }
 };
+
+export function addDefaultSkyToLayer(layer: gdLayer): void {
+  if (layer.getEffects().hasEffectNamed('3D Procedural Sky')) return;
+
+  const sky = layer.getEffects().insertNewEffect('3D Procedural Sky', 0);
+  sky.setEffectType('Scene3D::Sky');
+  sky.setStringParameter('skyTintColor', '255;254;250');
+  sky.setStringParameter('sunColor', '255;250;235');
+  sky.setStringParameter('cloudColor', '244;246;250');
+  sky.setDoubleParameter('sunIntensity', 1.35);
+  sky.setDoubleParameter('sunElevation', 70);
+  sky.setDoubleParameter('sunAzimuth', 82);
+  sky.setDoubleParameter('exposure', 0.68);
+  sky.setDoubleParameter('turbidity', 4.2);
+  sky.setDoubleParameter('rayleigh', 1.35);
+  sky.setDoubleParameter('mieCoefficient', 0.009);
+  sky.setDoubleParameter('mieDirectionalG', 0.92);
+  sky.setDoubleParameter('cloudCoverage', 0.44);
+  sky.setDoubleParameter('cloudOpacity', 0.46);
+  sky.setDoubleParameter('cloudScale', 1.35);
+  sky.setDoubleParameter('cloudSoftness', 0.2);
+  // Keep clouds stable by default.
+  sky.setDoubleParameter('cloudSpeed', 0);
+}
+
+export function addDefaultSkyToAllLayers(layout: gdLayout): void {
+  for (let layerIndex = 0; layerIndex < layout.getLayersCount(); layerIndex++) {
+    const layer = layout.getLayerAt(layerIndex);
+    addDefaultSkyToLayer(layer);
+  }
+}
 
 const getCompositeSlug = (
   creationSource: NewProjectCreationSource,

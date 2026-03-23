@@ -202,15 +202,10 @@ namespace gdjs {
      * or to be rendered in a 3D scene (for a 2D+3D layer).
      */
     private _renderTexture: PIXI.RenderTexture | null = null;
-    private _lightingRenderTexture: PIXI.RenderTexture | null = null;
-
     // Width and height are tracked when a render texture is used.
     private _oldWidth: float | null = null;
     private _oldHeight: float | null = null;
-    private _oldLightingWidth: float | null = null;
-    private _oldLightingHeight: float | null = null;
     private _oldResolution: float | null = null;
-    private _oldLightingResolution: float | null = null;
 
     // For a 3D (or 2D+3D) layer:
     private _threeGroup: THREE.Group | null = null;

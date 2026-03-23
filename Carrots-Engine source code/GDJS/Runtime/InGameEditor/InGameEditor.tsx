@@ -9,7 +9,7 @@ namespace gdjs {
     tag: K,
     attrs: {
       style?: Partial<CSSStyleDeclaration>;
-      onClick?: (event?: MouseEvent) => void;
+      onClick?: (event: Event) => void;
     },
     ...nodes: (HTMLElement | string)[]
   ): HTMLElement {

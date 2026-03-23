@@ -230,7 +230,10 @@ namespace gdjs {
         this._fsrSceneTextureWidth !== width ||
         this._fsrSceneTextureHeight !== height
       ) {
-        this._fsrSceneRenderTexture.resize(width || 100, height || 100);
+        const fsrRenderTexture = this._fsrSceneRenderTexture;
+        if (fsrRenderTexture) {
+          fsrRenderTexture.resize(width || 100, height || 100);
+        }
       }
 
       this._fsrSceneTextureWidth = width;

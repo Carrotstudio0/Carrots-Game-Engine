@@ -53,11 +53,28 @@ namespace gdjs {
     if (!runtimeObject.isFaceAtIndexVisible(faceIndex))
       return getTransparentMaterial();
 
+    const resourceName = runtimeObject.getFaceAtIndexResourceName(faceIndex);
+    if (!resourceName) {
+      if (
+        runtimeObject._materialType === gdjs.Cube3DRuntimeObject.MaterialType.Basic
+      ) {
+        return new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          vertexColors: true,
+        });
+      }
+      return new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        metalness: 0,
+        vertexColors: true,
+      });
+    }
+
     return runtimeObject
       .getInstanceContainer()
       .getGame()
       .getImageManager()
-      .getThreeMaterial(runtimeObject.getFaceAtIndexResourceName(faceIndex), {
+      .getThreeMaterial(resourceName, {
         useTransparentTexture: runtimeObject.shouldUseTransparentTexture(),
         forceBasicMaterial:
           runtimeObject._materialType ===

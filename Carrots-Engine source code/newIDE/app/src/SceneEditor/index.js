@@ -108,6 +108,32 @@ const gd: libGDevelop = global.gd;
 
 const BASE_LAYER_NAME = '';
 const INSTANCES_CLIPBOARD_KIND = 'Instances';
+const primitive3DByKind = {
+  box: {
+    objectType: 'Scene3D::Cube3DObject',
+    defaultName: 'Box',
+  },
+  sphere: {
+    objectType: 'Scene3D::Sphere3DObject',
+    defaultName: 'Ball',
+  },
+  plane: {
+    objectType: 'Scene3D::Plane3DObject',
+    defaultName: 'Plane',
+  },
+  capsule: {
+    objectType: 'Scene3D::Capsule3DObject',
+    defaultName: 'Capsule',
+  },
+};
+type Primitive3DKind = $Keys<typeof primitive3DByKind>;
+const light3DByKind = {
+  spot: {
+    objectType: 'Scene3D::SpotLightObject',
+    defaultName: 'SpotLight',
+  },
+};
+type Light3DKind = $Keys<typeof light3DByKind>;
 
 interface InstancePersistentUuidData {
   persistentUuid: string;
@@ -1166,6 +1192,100 @@ export default class SceneEditor extends React.Component<Props, State> {
       newObjectInstanceSceneCoordinates: editorDisplay.viewControls.getLastCursorSceneCoordinates(),
     });
     editorDisplay.openNewObjectDialog();
+  };
+
+  _createPrimitive3DObjectAndInstanceUnderCursor = (
+    primitiveKind: Primitive3DKind
+  ) => {
+    const { editorDisplay } = this;
+    const { project, objectsContainer, globalObjectsContainer } = this.props;
+    if (!editorDisplay) {
+      return;
+    }
+
+    const primitive3D = primitive3DByKind[primitiveKind];
+    const objectType = primitive3D.objectType;
+    const objectName = newNameGenerator(
+      primitive3D.defaultName,
+      name =>
+        objectsContainer.hasObjectNamed(name) ||
+        (!!globalObjectsContainer &&
+          globalObjectsContainer.hasObjectNamed(name))
+    );
+    const isTheFirstOfItsTypeInProject = !gd.UsedObjectTypeFinder.scanProject(
+      project,
+      objectType
+    );
+
+    this.setState(
+      {
+        newObjectInstanceSceneCoordinates: editorDisplay.viewControls.getLastCursorSceneCoordinates(),
+      },
+      () => {
+        const object = objectsContainer.insertNewObject(
+          project,
+          objectType,
+          objectName,
+          objectsContainer.getObjectsCount()
+        );
+        const objectFolderOrObject = objectsContainer
+          .getRootFolder()
+          .getObjectChild(objectName);
+        if (objectFolderOrObject) {
+          this._onObjectFolderOrObjectWithContextSelected({
+            objectFolderOrObject,
+            global: false,
+          });
+        }
+        this._onObjectCreated([object], isTheFirstOfItsTypeInProject);
+      }
+    );
+  };
+
+  _createLight3DObjectAndInstanceUnderCursor = (lightKind: Light3DKind) => {
+    const { editorDisplay } = this;
+    const { project, objectsContainer, globalObjectsContainer } = this.props;
+    if (!editorDisplay) {
+      return;
+    }
+
+    const light3D = light3DByKind[lightKind];
+    const objectType = light3D.objectType;
+    const objectName = newNameGenerator(
+      light3D.defaultName,
+      name =>
+        objectsContainer.hasObjectNamed(name) ||
+        (!!globalObjectsContainer &&
+          globalObjectsContainer.hasObjectNamed(name))
+    );
+    const isTheFirstOfItsTypeInProject = !gd.UsedObjectTypeFinder.scanProject(
+      project,
+      objectType
+    );
+
+    this.setState(
+      {
+        newObjectInstanceSceneCoordinates: editorDisplay.viewControls.getLastCursorSceneCoordinates(),
+      },
+      () => {
+        const object = objectsContainer.insertNewObject(
+          project,
+          objectType,
+          objectName,
+          objectsContainer.getObjectsCount()
+        );
+        const objectFolderOrObject = objectsContainer
+          .getRootFolder()
+          .getObjectChild(objectName);
+        if (objectFolderOrObject) {
+          this._onObjectFolderOrObjectWithContextSelected({
+            objectFolderOrObject,
+            global: false,
+          });
+        }
+        this._onObjectCreated([object], isTheFirstOfItsTypeInProject);
+      }
+    );
   };
 
   addInstanceOnTheScene = (
@@ -2395,6 +2515,39 @@ export default class SceneEditor extends React.Component<Props, State> {
         {
           label: i18n._(t`Insert new...`),
           click: () => this._createNewObjectAndInstanceUnderCursor(),
+        },
+        {
+          label: i18n._(t`Insert 3D primitive`),
+          submenu: [
+            {
+              label: i18n._(t`Box`),
+              click: () => this._createPrimitive3DObjectAndInstanceUnderCursor('box'),
+            },
+            {
+              label: i18n._(t`Ball`),
+              click: () =>
+                this._createPrimitive3DObjectAndInstanceUnderCursor('sphere'),
+            },
+            {
+              label: i18n._(t`Plane`),
+              click: () =>
+                this._createPrimitive3DObjectAndInstanceUnderCursor('plane'),
+            },
+            {
+              label: i18n._(t`Capsule`),
+              click: () =>
+                this._createPrimitive3DObjectAndInstanceUnderCursor('capsule'),
+            },
+          ],
+        },
+        {
+          label: i18n._(t`Insert 3D light`),
+          submenu: [
+            {
+              label: i18n._(t`Spot Light`),
+              click: () => this._createLight3DObjectAndInstanceUnderCursor('spot'),
+            },
+          ],
         },
         { type: 'separator' },
         ...this.getContextMenuZoomItems(i18n),

@@ -3329,6 +3329,457 @@ module.exports = {
       .getCodeExtraInformation()
       .setFunctionName('setColor');
 
+    const createSimplePrimitive3DObject = ({
+      defaultWidth,
+      defaultHeight,
+      defaultDepth,
+      defaultColor,
+      defaultMaterialType,
+      defaultCastShadow,
+      defaultReceiveShadow,
+    }) => {
+      const objectConfiguration = new gd.ObjectJsImplementation();
+
+      objectConfiguration.updateProperty = function (propertyName, newValue) {
+        const objectContent = this.content;
+
+        if (
+          propertyName === 'width' ||
+          propertyName === 'height' ||
+          propertyName === 'depth'
+        ) {
+          objectContent[propertyName] = parseFloat(newValue);
+          return true;
+        }
+
+        if (propertyName === 'color') {
+          objectContent.color = newValue;
+          return true;
+        }
+
+        if (propertyName === 'materialType') {
+          const normalizedValue = newValue.toLowerCase();
+          if (normalizedValue === 'basic') {
+            objectContent.materialType = 'Basic';
+            return true;
+          }
+          if (normalizedValue === 'standardwithoutmetalness') {
+            objectContent.materialType = 'StandardWithoutMetalness';
+            return true;
+          }
+          return false;
+        }
+
+        if (
+          propertyName === 'isCastingShadow' ||
+          propertyName === 'isReceivingShadow'
+        ) {
+          objectContent[propertyName] =
+            newValue === '1' || newValue === 'true';
+          return true;
+        }
+
+        return false;
+      };
+
+      objectConfiguration.getProperties = function () {
+        const objectProperties = new gd.MapStringPropertyDescriptor();
+        const objectContent = this.content;
+
+        objectProperties
+          .getOrCreate('width')
+          .setValue((objectContent.width || 0).toString())
+          .setType('number')
+          .setLabel(_('Width'))
+          .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+          .setGroup(_('Default size'));
+
+        objectProperties
+          .getOrCreate('height')
+          .setValue((objectContent.height || 0).toString())
+          .setType('number')
+          .setLabel(_('Height'))
+          .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+          .setGroup(_('Default size'));
+
+        objectProperties
+          .getOrCreate('depth')
+          .setValue((objectContent.depth || 0).toString())
+          .setType('number')
+          .setLabel(_('Depth'))
+          .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+          .setGroup(_('Default size'));
+
+        objectProperties
+          .getOrCreate('color')
+          .setValue(objectContent.color || '255;255;255')
+          .setType('Color')
+          .setLabel(_('Color'))
+          .setGroup(_('Visual'));
+
+        objectProperties
+          .getOrCreate('materialType')
+          .setValue(objectContent.materialType || 'StandardWithoutMetalness')
+          .setType('choice')
+          .addChoice('Basic', _('Basic (no lighting, no shadows)'))
+          .addChoice(
+            'StandardWithoutMetalness',
+            _('Standard (without metalness)')
+          )
+          .setLabel(_('Material type'))
+          .setGroup(_('Lighting'));
+
+        objectProperties
+          .getOrCreate('isCastingShadow')
+          .setValue(objectContent.isCastingShadow ? 'true' : 'false')
+          .setType('boolean')
+          .setLabel(_('Shadow casting'))
+          .setGroup(_('Lighting'));
+
+        objectProperties
+          .getOrCreate('isReceivingShadow')
+          .setValue(objectContent.isReceivingShadow ? 'true' : 'false')
+          .setType('boolean')
+          .setLabel(_('Shadow receiving'))
+          .setGroup(_('Lighting'));
+
+        return objectProperties;
+      };
+
+      objectConfiguration.content = {
+        width: defaultWidth,
+        height: defaultHeight,
+        depth: defaultDepth,
+        color: defaultColor,
+        materialType: defaultMaterialType,
+        isCastingShadow: defaultCastShadow,
+        isReceivingShadow: defaultReceiveShadow,
+      };
+
+      objectConfiguration.updateInitialInstanceProperty = function (
+        instance,
+        propertyName,
+        newValue
+      ) {
+        return false;
+      };
+
+      objectConfiguration.getInitialInstanceProperties = function (instance) {
+        return new gd.MapStringPropertyDescriptor();
+      };
+
+      return objectConfiguration;
+    };
+
+    extension
+      .addObject(
+        'Sphere3DObject',
+        _('3D Ball'),
+        _('A smooth 3D sphere primitive with color and lighting settings.'),
+        'JsPlatform/Extensions/3d_box.svg',
+        createSimplePrimitive3DObject({
+          defaultWidth: 100,
+          defaultHeight: 100,
+          defaultDepth: 100,
+          defaultColor: '255;255;255',
+          defaultMaterialType: 'StandardWithoutMetalness',
+          defaultCastShadow: true,
+          defaultReceiveShadow: true,
+        })
+      )
+      .setCategory('General')
+      .addDefaultBehavior('ResizableCapability::ResizableBehavior')
+      .addDefaultBehavior('ScalableCapability::ScalableBehavior')
+      .addDefaultBehavior('FlippableCapability::FlippableBehavior')
+      .addDefaultBehavior('Scene3D::Base3DBehavior')
+      .addDefaultBehavior('Scene3D::LOD')
+      .markAsRenderedIn3D()
+      .setIncludeFile('Extensions/3D/A_RuntimeObject3D.js')
+      .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
+      .addIncludeFile('Extensions/3D/Primitive3DRuntimeObjects.js');
+
+    extension
+      .addObject(
+        'Plane3DObject',
+        _('3D Plane'),
+        _('A flat 3D plane primitive that is ideal for floors and grounds.'),
+        'JsPlatform/Extensions/3d_box.svg',
+        createSimplePrimitive3DObject({
+          defaultWidth: 300,
+          defaultHeight: 300,
+          defaultDepth: 1,
+          defaultColor: '255;255;255',
+          defaultMaterialType: 'StandardWithoutMetalness',
+          defaultCastShadow: true,
+          defaultReceiveShadow: true,
+        })
+      )
+      .setCategory('General')
+      .addDefaultBehavior('ResizableCapability::ResizableBehavior')
+      .addDefaultBehavior('ScalableCapability::ScalableBehavior')
+      .addDefaultBehavior('FlippableCapability::FlippableBehavior')
+      .addDefaultBehavior('Scene3D::Base3DBehavior')
+      .addDefaultBehavior('Scene3D::LOD')
+      .markAsRenderedIn3D()
+      .setIncludeFile('Extensions/3D/A_RuntimeObject3D.js')
+      .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
+      .addIncludeFile('Extensions/3D/Primitive3DRuntimeObjects.js');
+
+    extension
+      .addObject(
+        'Capsule3DObject',
+        _('3D Capsule'),
+        _('A capsule primitive useful for characters and rounded collisions.'),
+        'JsPlatform/Extensions/3d_box.svg',
+        createSimplePrimitive3DObject({
+          defaultWidth: 80,
+          defaultHeight: 160,
+          defaultDepth: 80,
+          defaultColor: '255;255;255',
+          defaultMaterialType: 'StandardWithoutMetalness',
+          defaultCastShadow: true,
+          defaultReceiveShadow: true,
+        })
+      )
+      .setCategory('General')
+      .addDefaultBehavior('ResizableCapability::ResizableBehavior')
+      .addDefaultBehavior('ScalableCapability::ScalableBehavior')
+      .addDefaultBehavior('FlippableCapability::FlippableBehavior')
+      .addDefaultBehavior('Scene3D::Base3DBehavior')
+      .addDefaultBehavior('Scene3D::LOD')
+      .markAsRenderedIn3D()
+      .setIncludeFile('Extensions/3D/A_RuntimeObject3D.js')
+      .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
+      .addIncludeFile('Extensions/3D/Primitive3DRuntimeObjects.js');
+
+    const SpotLightObject = new gd.ObjectJsImplementation();
+    SpotLightObject.updateProperty = function (propertyName, newValue) {
+      const objectContent = this.content;
+      if (
+        propertyName === 'width' ||
+        propertyName === 'height' ||
+        propertyName === 'depth' ||
+        propertyName === 'intensity' ||
+        propertyName === 'distance' ||
+        propertyName === 'angle' ||
+        propertyName === 'penumbra' ||
+        propertyName === 'decay' ||
+        propertyName === 'shadowBias' ||
+        propertyName === 'shadowNormalBias' ||
+        propertyName === 'shadowRadius' ||
+        propertyName === 'shadowNear' ||
+        propertyName === 'shadowFar'
+      ) {
+        objectContent[propertyName] = parseFloat(newValue);
+        return true;
+      }
+      if (propertyName === 'color') {
+        objectContent.color = newValue;
+        return true;
+      }
+      if (propertyName === 'shadowQuality') {
+        const normalizedValue = newValue.toLowerCase();
+        if (
+          normalizedValue === 'low' ||
+          normalizedValue === 'medium' ||
+          normalizedValue === 'high'
+        ) {
+          objectContent.shadowQuality = normalizedValue;
+          return true;
+        }
+        return false;
+      }
+      if (
+        propertyName === 'enabled' ||
+        propertyName === 'castShadow' ||
+        propertyName === 'guardrailsEnabled'
+      ) {
+        objectContent[propertyName] = newValue === '1' || newValue === 'true';
+        return true;
+      }
+      return false;
+    };
+    SpotLightObject.getProperties = function () {
+      const objectProperties = new gd.MapStringPropertyDescriptor();
+      const objectContent = this.content;
+
+      objectProperties
+        .getOrCreate('enabled')
+        .setValue(objectContent.enabled ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Enabled'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('color')
+        .setValue(objectContent.color || '255;255;255')
+        .setType('Color')
+        .setLabel(_('Color'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('intensity')
+        .setValue((objectContent.intensity || 1).toString())
+        .setType('number')
+        .setLabel(_('Intensity'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('distance')
+        .setValue((objectContent.distance || 600).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Distance'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('angle')
+        .setValue((objectContent.angle || 45).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getDegreeAngle())
+        .setLabel(_('Cone angle'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('penumbra')
+        .setValue((objectContent.penumbra || 0.1).toString())
+        .setType('number')
+        .setLabel(_('Penumbra'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('decay')
+        .setValue((objectContent.decay || 2).toString())
+        .setType('number')
+        .setLabel(_('Decay'))
+        .setGroup(_('Light'));
+
+      objectProperties
+        .getOrCreate('castShadow')
+        .setValue(objectContent.castShadow ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Cast shadow'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowQuality')
+        .setValue(objectContent.shadowQuality || 'medium')
+        .setType('choice')
+        .addChoice('low', _('Low quality'))
+        .addChoice('medium', _('Medium quality'))
+        .addChoice('high', _('High quality'))
+        .setLabel(_('Shadow quality'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowBias')
+        .setValue((objectContent.shadowBias || 0.001).toString())
+        .setType('number')
+        .setLabel(_('Shadow bias'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowNormalBias')
+        .setValue((objectContent.shadowNormalBias || 0.02).toString())
+        .setType('number')
+        .setLabel(_('Shadow normal bias'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowRadius')
+        .setValue((objectContent.shadowRadius || 1.5).toString())
+        .setType('number')
+        .setLabel(_('Shadow softness'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowNear')
+        .setValue((objectContent.shadowNear || 1).toString())
+        .setType('number')
+        .setLabel(_('Shadow near'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowFar')
+        .setValue((objectContent.shadowFar || 2000).toString())
+        .setType('number')
+        .setLabel(_('Shadow far'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('guardrailsEnabled')
+        .setValue(objectContent.guardrailsEnabled ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Guardrails'))
+        .setDescription(
+          _('Limit active spot lights automatically to keep performance stable.')
+        )
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+
+      objectProperties
+        .getOrCreate('width')
+        .setValue((objectContent.width || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo width'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('height')
+        .setValue((objectContent.height || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo height'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('depth')
+        .setValue((objectContent.depth || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo depth'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+
+      return objectProperties;
+    };
+    SpotLightObject.content = {
+      width: 64,
+      height: 64,
+      depth: 64,
+      enabled: true,
+      color: '255;255;255',
+      intensity: 1.2,
+      distance: 600,
+      angle: 45,
+      penumbra: 0.1,
+      decay: 2,
+      castShadow: true,
+      shadowQuality: 'medium',
+      shadowBias: 0.001,
+      shadowNormalBias: 0.02,
+      shadowRadius: 1.5,
+      shadowNear: 1,
+      shadowFar: 2000,
+      guardrailsEnabled: true,
+    };
+    SpotLightObject.updateInitialInstanceProperty = function (
+      instance,
+      propertyName,
+      newValue
+    ) {
+      return false;
+    };
+    SpotLightObject.getInitialInstanceProperties = function (instance) {
+      return new gd.MapStringPropertyDescriptor();
+    };
+
+    extension
+      .addObject(
+        'SpotLightObject',
+        _('3D Spot Light'),
+        _('A 3D spotlight object with transform gizmos and runtime lighting.'),
+        'JsPlatform/Extensions/3d_box.svg',
+        SpotLightObject
+      )
+      .setCategory('General')
+      .addDefaultBehavior('ResizableCapability::ResizableBehavior')
+      .addDefaultBehavior('ScalableCapability::ScalableBehavior')
+      .addDefaultBehavior('FlippableCapability::FlippableBehavior')
+      .addDefaultBehavior('Scene3D::Base3DBehavior')
+      .markAsRenderedIn3D()
+      .setIncludeFile('Extensions/3D/A_RuntimeObject3D.js')
+      .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
+      .addIncludeFile('Extensions/3D/SpotLightRuntimeObject.js');
+
     extension
       .addExpressionAndConditionAndAction(
         'number',
@@ -4642,6 +5093,135 @@ module.exports = {
     }
     {
       const effect = extension
+        .addEffect('Sky')
+        .setFullName(_('Sky'))
+        .setDescription(
+          _(
+            'Display a physically based sky with a natural sun and soft procedural clouds.'
+          )
+        )
+        .markAsNotWorkingForObjects()
+        .markAsOnlyWorkingFor3D()
+        .addIncludeFile('Extensions/3D/Sky.js');
+      const properties = effect.getProperties();
+      properties
+        .getOrCreate('skyTintColor')
+        .setValue('255;254;250')
+        .setLabel(_('Sky tint'))
+        .setType('color')
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('sunColor')
+        .setValue('255;250;235')
+        .setLabel(_('Sun color'))
+        .setType('color')
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('sunIntensity')
+        .setValue('1.35')
+        .setLabel(_('Sun intensity'))
+        .setType('number')
+        .setDescription(_('Strength multiplier for the sun disk.'))
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('sunElevation')
+        .setValue('70')
+        .setLabel(_('Sun elevation'))
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getDegreeAngle())
+        .setDescription(_('Sun height in degrees. 60+ gives a noon-like sun.'))
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('sunAzimuth')
+        .setValue('82')
+        .setLabel(_('Sun azimuth'))
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getDegreeAngle())
+        .setDescription(_('Sun horizontal direction in degrees.'))
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('exposure')
+        .setValue('0.68')
+        .setLabel(_('Exposure'))
+        .setType('number')
+        .setDescription(_('Global brightness after atmospheric scattering (0 to 2).'))
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('turbidity')
+        .setValue('4.2')
+        .setLabel(_('Turbidity'))
+        .setType('number')
+        .setDescription(
+          _(
+            'Amount of haze in the atmosphere (0 to 20). Higher values produce a milkier sky.'
+          )
+        )
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('rayleigh')
+        .setValue('1.35')
+        .setLabel(_('Rayleigh'))
+        .setType('number')
+        .setDescription(_('Strength of blue atmospheric scattering (0 to 6).'))
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('mieCoefficient')
+        .setValue('0.009')
+        .setLabel(_('Mie coefficient'))
+        .setType('number')
+        .setDescription(_('Aerosol density for sun glow and haze (0 to 0.1).'))
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('mieDirectionalG')
+        .setValue('0.92')
+        .setLabel(_('Mie directional G'))
+        .setType('number')
+        .setDescription(_('Forward scattering directionality (0 to 0.999).'))
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('cloudColor')
+        .setValue('244;246;250')
+        .setLabel(_('Cloud color'))
+        .setType('color')
+        .setGroup(_('Clouds'));
+      properties
+        .getOrCreate('cloudCoverage')
+        .setValue('0.44')
+        .setLabel(_('Cloud coverage'))
+        .setType('number')
+        .setDescription(_('Cloud amount from 0 (clear) to 1 (overcast).'))
+        .setGroup(_('Clouds'));
+      properties
+        .getOrCreate('cloudOpacity')
+        .setValue('0.46')
+        .setLabel(_('Cloud opacity'))
+        .setType('number')
+        .setDescription(_('Cloud opacity from 0 to 1.'))
+        .setGroup(_('Clouds'));
+      properties
+        .getOrCreate('cloudScale')
+        .setValue('1.35')
+        .setLabel(_('Cloud scale'))
+        .setType('number')
+        .setDescription(_('Cloud texture scale (0.1 to 8).'))
+        .setGroup(_('Clouds'));
+      properties
+        .getOrCreate('cloudSoftness')
+        .setValue('0.2')
+        .setLabel(_('Cloud softness'))
+        .setType('number')
+        .setDescription(_('Softness of cloud edges from 0 to 1.'))
+        .setGroup(_('Clouds'));
+      properties
+        .getOrCreate('cloudSpeed')
+        .setValue('0')
+        .setLabel(_('Cloud speed'))
+        .setType('number')
+        .setDescription(_('Cloud movement speed. 0 keeps clouds stable.'))
+        .setGroup(_('Clouds'));
+    }
+    {
+      const effect = extension
         .addEffect('Skybox')
         .setFullName(_('Skybox'))
         .setDescription(
@@ -5508,6 +6088,7 @@ module.exports = {
       _facesOrientation = 'Y';
       _backFaceUpThroughWhichAxisRotation = 'X';
       _shouldUseTransparentTexture = false;
+      _forceBasicMaterial = false;
       _tint = '';
 
       constructor(
@@ -5551,9 +6132,24 @@ module.exports = {
             return getTransparentMaterial();
           }
 
+          const faceResourceName = this._faceResourceNames[faceIndex];
+          if (!faceResourceName) {
+            if (this._forceBasicMaterial) {
+              return new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                vertexColors: true,
+              });
+            }
+            return new THREE.MeshStandardMaterial({
+              color: 0xffffff,
+              metalness: 0,
+              vertexColors: true,
+            });
+          }
+
           return await this._pixiResourcesLoader.getThreeMaterial(
             project,
-            this._faceResourceNames[faceIndex],
+            faceResourceName,
             {
               useTransparentTexture: this._shouldUseTransparentTexture,
             }
@@ -5642,6 +6238,11 @@ module.exports = {
           object.content.enableTextureTransparency || false;
         if (this._shouldUseTransparentTexture !== shouldUseTransparentTexture) {
           this._shouldUseTransparentTexture = shouldUseTransparentTexture;
+          materialsDirty = true;
+        }
+        const forceBasicMaterial = object.content.materialType === 'Basic';
+        if (this._forceBasicMaterial !== forceBasicMaterial) {
+          this._forceBasicMaterial = forceBasicMaterial;
           materialsDirty = true;
         }
         const tint = object.content.tint || '255;255;255';
@@ -5999,6 +6600,688 @@ module.exports = {
     objectsRenderingService.registerInstance3DRenderer(
       'Scene3D::Cube3DObject',
       RenderedCube3DObject3DInstance
+    );
+
+    class RenderedSimplePrimitive3DObject2DInstance extends RenderedInstance {
+      _defaultWidth = 100;
+      _defaultHeight = 100;
+      _defaultDepth = 100;
+      _drawAsCircle = false;
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        pixiResourcesLoader,
+        drawAsCircle
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          pixiResourcesLoader
+        );
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 100;
+        this._defaultHeight = object.content.height || 100;
+        this._defaultDepth = object.content.depth || 100;
+        this._drawAsCircle = drawAsCircle;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+      }
+
+      update() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        this._pixiObject.clear();
+        this._pixiObject.beginFill(0x999999, 0.22);
+        this._pixiObject.lineStyle(1, 0xffd900, 0.6);
+        if (this._drawAsCircle) {
+          const radius = Math.max(width, height) / 2;
+          this._pixiObject.drawCircle(0, 0, radius);
+        } else {
+          this._pixiObject.drawRect(-width / 2, -height / 2, width, height);
+        }
+        this._pixiObject.endFill();
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    class RenderedSimplePrimitive3DObject3DInstance extends Rendered3DInstance {
+      _defaultWidth = 100;
+      _defaultHeight = 100;
+      _defaultDepth = 100;
+      _materialType = 'StandardWithoutMetalness';
+      _color = '255;255;255';
+      _isCastingShadow = true;
+      _isReceivingShadow = true;
+      _drawAsCircle2D = false;
+      _doubleSidedMaterial = false;
+      _geometryFactory = () => new THREE.BoxGeometry(1, 1, 1);
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        threeGroup,
+        pixiResourcesLoader,
+        geometryFactory,
+        drawAsCircle2D,
+        doubleSidedMaterial
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          threeGroup,
+          pixiResourcesLoader
+        );
+        this._drawAsCircle2D = drawAsCircle2D;
+        this._doubleSidedMaterial = doubleSidedMaterial;
+        this._geometryFactory = geometryFactory;
+
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 100;
+        this._defaultHeight = object.content.height || 100;
+        this._defaultDepth = object.content.depth || 100;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+
+        this._threeObject = new THREE.Mesh(
+          this._geometryFactory(),
+          this._createThreeMaterial()
+        );
+        this._threeGroup.add(this._threeObject);
+      }
+
+      _createThreeMaterial() {
+        const color = gdjs.rgbOrHexStringToNumber(this._color || '255;255;255');
+        const side = this._doubleSidedMaterial
+          ? THREE.DoubleSide
+          : THREE.FrontSide;
+        if (this._materialType === 'Basic') {
+          return new THREE.MeshBasicMaterial({
+            color,
+            side,
+          });
+        }
+        return new THREE.MeshStandardMaterial({
+          color,
+          side,
+          roughness: 0.82,
+          metalness: 0,
+        });
+      }
+
+      _updateThreeMaterial(content) {
+        const nextMaterialType =
+          content.materialType || 'StandardWithoutMetalness';
+        const nextColor = content.color || '255;255;255';
+        const materialTypeChanged = nextMaterialType !== this._materialType;
+
+        this._materialType = nextMaterialType;
+        this._color = nextColor;
+
+        if (materialTypeChanged) {
+          const oldMaterial = this._threeObject.material;
+          this._threeObject.material = this._createThreeMaterial();
+          if (Array.isArray(oldMaterial)) {
+            oldMaterial.forEach(material => material.dispose());
+          } else if (oldMaterial) {
+            oldMaterial.dispose();
+          }
+        }
+
+        const color = gdjs.rgbOrHexStringToNumber(this._color);
+        if (this._threeObject.material && this._threeObject.material.color) {
+          this._threeObject.material.color.setHex(color);
+        }
+      }
+
+      updatePixiObject() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        this._pixiObject.clear();
+        this._pixiObject.beginFill(0x999999, 0.22);
+        this._pixiObject.lineStyle(1, 0xffd900, 0.6);
+        if (this._drawAsCircle2D) {
+          const radius = Math.max(width, height) / 2;
+          this._pixiObject.drawCircle(0, 0, radius);
+        } else {
+          this._pixiObject.drawRect(-width / 2, -height / 2, width, height);
+        }
+        this._pixiObject.endFill();
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      updateThreeObject() {
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        const content = object.content || {};
+
+        this._defaultWidth = content.width || this._defaultWidth;
+        this._defaultHeight = content.height || this._defaultHeight;
+        this._defaultDepth = content.depth || this._defaultDepth;
+
+        this._updateThreeMaterial(content);
+
+        this._isCastingShadow =
+          content.isCastingShadow === undefined ? true : !!content.isCastingShadow;
+        this._isReceivingShadow =
+          content.isReceivingShadow === undefined
+            ? true
+            : !!content.isReceivingShadow;
+        this._threeObject.castShadow = this._isCastingShadow;
+        this._threeObject.receiveShadow = this._isReceivingShadow;
+
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const depth = this.getDepth();
+        this._threeObject.position.set(
+          this._instance.getX() + width / 2,
+          this._instance.getY() + height / 2,
+          this._instance.getZ() + depth / 2
+        );
+        this._threeObject.rotation.set(
+          (this._instance.getRotationX() * Math.PI) / 180,
+          (this._instance.getRotationY() * Math.PI) / 180,
+          (this._instance.getAngle() * Math.PI) / 180
+        );
+        this._threeObject.scale.set(
+          width * (this._instance.isFlippedX() ? -1 : 1),
+          height * (this._instance.isFlippedY() ? -1 : 1),
+          depth * (this._instance.isFlippedZ() ? -1 : 1)
+        );
+      }
+
+      update() {
+        this.updatePixiObject();
+        this.updateThreeObject();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    class RenderedSphere3DObject2DInstance extends RenderedSimplePrimitive3DObject2DInstance {
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          pixiResourcesLoader,
+          true
+        );
+      }
+    }
+
+    class RenderedPlane3DObject2DInstance extends RenderedSimplePrimitive3DObject2DInstance {
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          pixiResourcesLoader,
+          false
+        );
+      }
+    }
+
+    class RenderedCapsule3DObject2DInstance extends RenderedSimplePrimitive3DObject2DInstance {
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          pixiResourcesLoader,
+          true
+        );
+      }
+    }
+
+    class RenderedSphere3DObject3DInstance extends RenderedSimplePrimitive3DObject3DInstance {
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        threeGroup,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          threeGroup,
+          pixiResourcesLoader,
+          () => new THREE.SphereGeometry(0.5, 24, 16),
+          true,
+          false
+        );
+      }
+    }
+
+    class RenderedPlane3DObject3DInstance extends RenderedSimplePrimitive3DObject3DInstance {
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        threeGroup,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          threeGroup,
+          pixiResourcesLoader,
+          () => new THREE.PlaneGeometry(1, 1, 1, 1),
+          false,
+          true
+        );
+      }
+    }
+
+    class RenderedCapsule3DObject3DInstance extends RenderedSimplePrimitive3DObject3DInstance {
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        threeGroup,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          threeGroup,
+          pixiResourcesLoader,
+          () => new THREE.CapsuleGeometry(0.5, 1, 8, 16),
+          true,
+          false
+        );
+      }
+    }
+
+    objectsRenderingService.registerInstanceRenderer(
+      'Scene3D::Sphere3DObject',
+      RenderedSphere3DObject2DInstance
+    );
+    objectsRenderingService.registerInstance3DRenderer(
+      'Scene3D::Sphere3DObject',
+      RenderedSphere3DObject3DInstance
+    );
+    objectsRenderingService.registerInstanceRenderer(
+      'Scene3D::Plane3DObject',
+      RenderedPlane3DObject2DInstance
+    );
+    objectsRenderingService.registerInstance3DRenderer(
+      'Scene3D::Plane3DObject',
+      RenderedPlane3DObject3DInstance
+    );
+    objectsRenderingService.registerInstanceRenderer(
+      'Scene3D::Capsule3DObject',
+      RenderedCapsule3DObject2DInstance
+    );
+    objectsRenderingService.registerInstance3DRenderer(
+      'Scene3D::Capsule3DObject',
+      RenderedCapsule3DObject3DInstance
+    );
+
+    class RenderedSpotLightObject2DInstance extends RenderedInstance {
+      _defaultWidth = 24;
+      _defaultHeight = 24;
+      _defaultDepth = 24;
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          pixiResourcesLoader
+        );
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 24;
+        this._defaultHeight = object.content.height || 24;
+        this._defaultDepth = object.content.depth || 24;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+      }
+
+      update() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const halfW = width / 2;
+        const halfH = height / 2;
+        this._pixiObject.clear();
+        this._pixiObject.lineStyle(2, 0xffec9e, 1);
+        this._pixiObject.beginFill(0xffec9e, 0.25);
+        this._pixiObject.drawCircle(0, 0, Math.max(8, Math.min(halfW, halfH)));
+        this._pixiObject.endFill();
+        this._pixiObject.lineStyle(1, 0xffec9e, 0.75);
+        this._pixiObject.moveTo(0, 0);
+        this._pixiObject.lineTo(0, -Math.max(20, height));
+        this._pixiObject.moveTo(-halfW * 0.55, -halfH * 0.8);
+        this._pixiObject.lineTo(0, -Math.max(20, height));
+        this._pixiObject.moveTo(halfW * 0.55, -halfH * 0.8);
+        this._pixiObject.lineTo(0, -Math.max(20, height));
+
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    class RenderedSpotLightObject3DInstance extends Rendered3DInstance {
+      _defaultWidth = 24;
+      _defaultHeight = 24;
+      _defaultDepth = 24;
+      /** @type {THREE.Mesh | null} */
+      _gizmoCoreMesh = null;
+      /** @type {THREE.Mesh | null} */
+      _gizmoConeMesh = null;
+      /** @type {THREE.Line | null} */
+      _gizmoDirectionLine = null;
+      /** @type {THREE.Mesh | null} */
+      _selectionProxyMesh = null;
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        threeGroup,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          threeGroup,
+          pixiResourcesLoader
+        );
+
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 24;
+        this._defaultHeight = object.content.height || 24;
+        this._defaultDepth = object.content.depth || 24;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+
+        const gizmoGroup = new THREE.Group();
+        gizmoGroup.rotation.order = 'ZYX';
+        this._threeObject = gizmoGroup;
+
+        this._gizmoCoreMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.12, 16, 12),
+          new THREE.MeshBasicMaterial({
+            color: 0xffec9e,
+            transparent: true,
+            opacity: 0.9,
+          })
+        );
+        this._gizmoConeMesh = new THREE.Mesh(
+          new THREE.ConeGeometry(1, 1, 24, 1, true),
+          new THREE.MeshBasicMaterial({
+            color: 0xffec9e,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.75,
+          })
+        );
+        if (this._gizmoConeMesh) {
+          this._gizmoConeMesh.rotation.x = -Math.PI / 2;
+          this._gizmoConeMesh.position.z = -0.5;
+        }
+
+        const directionLineGeometry = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 0, 0),
+          new THREE.Vector3(0, 0, -1),
+        ]);
+        this._gizmoDirectionLine = new THREE.Line(
+          directionLineGeometry,
+          new THREE.LineBasicMaterial({
+            color: 0xffec9e,
+            transparent: true,
+            opacity: 0.85,
+          })
+        );
+        this._selectionProxyMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.5, 12, 10),
+          new THREE.MeshBasicMaterial({
+            transparent: true,
+            opacity: 0.01,
+            depthWrite: false,
+          })
+        );
+
+        if (this._gizmoCoreMesh) {
+          gizmoGroup.add(this._gizmoCoreMesh);
+        }
+        if (this._gizmoConeMesh) {
+          gizmoGroup.add(this._gizmoConeMesh);
+        }
+        if (this._gizmoDirectionLine) {
+          gizmoGroup.add(this._gizmoDirectionLine);
+        }
+        if (this._selectionProxyMesh) {
+          gizmoGroup.add(this._selectionProxyMesh);
+        }
+        this._threeGroup.add(gizmoGroup);
+      }
+
+      updatePixiObject() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const halfW = width / 2;
+        const halfH = height / 2;
+        this._pixiObject.clear();
+        this._pixiObject.lineStyle(2, 0xffec9e, 1);
+        this._pixiObject.beginFill(0xffec9e, 0.25);
+        this._pixiObject.drawCircle(0, 0, Math.max(8, Math.min(halfW, halfH)));
+        this._pixiObject.endFill();
+        this._pixiObject.lineStyle(1, 0xffec9e, 0.75);
+        this._pixiObject.moveTo(0, 0);
+        this._pixiObject.lineTo(0, -Math.max(20, height));
+        this._pixiObject.moveTo(-halfW * 0.55, -halfH * 0.8);
+        this._pixiObject.lineTo(0, -Math.max(20, height));
+        this._pixiObject.moveTo(halfW * 0.55, -halfH * 0.8);
+        this._pixiObject.lineTo(0, -Math.max(20, height));
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      updateThreeObject() {
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        const content = object.content || {};
+
+        this._defaultWidth = content.width || this._defaultWidth;
+        this._defaultHeight = content.height || this._defaultHeight;
+        this._defaultDepth = content.depth || this._defaultDepth;
+
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const depth = this.getDepth();
+        this._threeObject.position.set(
+          this._instance.getX() + width / 2,
+          this._instance.getY() + height / 2,
+          this._instance.getZ() + depth / 2
+        );
+        this._threeObject.rotation.set(
+          (this._instance.getRotationX() * Math.PI) / 180,
+          (this._instance.getRotationY() * Math.PI) / 180,
+          (this._instance.getAngle() * Math.PI) / 180
+        );
+
+        const gizmoCoreMesh = this._gizmoCoreMesh;
+        const gizmoConeMesh = this._gizmoConeMesh;
+        const gizmoDirectionLine = this._gizmoDirectionLine;
+        const selectionProxyMesh = this._selectionProxyMesh;
+        if (
+          !gizmoCoreMesh ||
+          !gizmoConeMesh ||
+          !gizmoDirectionLine ||
+          !selectionProxyMesh
+        ) {
+          return;
+        }
+
+        const color = gdjs.rgbOrHexStringToNumber(content.color || '255;255;255');
+        const coreMaterial = /** @type {any} */ (gizmoCoreMesh.material);
+        const coneMaterial = /** @type {any} */ (gizmoConeMesh.material);
+        const directionLineMaterial = /** @type {any} */ (
+          gizmoDirectionLine.material
+        );
+        if (coreMaterial && coreMaterial.color) {
+          coreMaterial.color.setHex(color);
+        }
+        if (coneMaterial && coneMaterial.color) {
+          coneMaterial.color.setHex(color);
+        }
+        if (directionLineMaterial && directionLineMaterial.color) {
+          directionLineMaterial.color.setHex(color);
+        }
+
+        const coneAngleRad = Math.max(
+          0.05,
+          ((content.angle !== undefined ? content.angle : 45) * Math.PI) / 180
+        );
+        const lightDistance =
+          content.distance !== undefined ? Math.max(0, content.distance) : 600;
+        const gizmoLength = Math.max(24, Math.min(220, lightDistance * 0.2));
+        const gizmoRadius = Math.max(10, Math.tan(coneAngleRad) * gizmoLength);
+        gizmoConeMesh.scale.set(gizmoRadius, gizmoRadius, gizmoLength);
+        gizmoDirectionLine.scale.set(1, 1, gizmoLength);
+
+        const proxyScale = Math.max(
+          28,
+          Math.min(220, Math.max(width, height, depth))
+        );
+        selectionProxyMesh.scale.set(proxyScale, proxyScale, proxyScale);
+      }
+
+      update() {
+        this.updatePixiObject();
+        this.updateThreeObject();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    objectsRenderingService.registerInstanceRenderer(
+      'Scene3D::SpotLightObject',
+      RenderedSpotLightObject2DInstance
+    );
+    objectsRenderingService.registerInstance3DRenderer(
+      'Scene3D::SpotLightObject',
+      RenderedSpotLightObject3DInstance
     );
 
     const epsilon = 1 / (1 << 16);
