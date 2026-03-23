@@ -1085,8 +1085,20 @@ bool ExporterHelper::CompleteIndexFile(
     gd::String additionalSpec) {
   if (additionalSpec.empty()) additionalSpec = "{}";
 
+  auto hasJavaScriptExtension = [](const gd::String &filename) {
+    const gd::String lowerCaseFilename = filename.LowerCase();
+    return (lowerCaseFilename.size() >= 3 &&
+            lowerCaseFilename.substr(lowerCaseFilename.size() - 3) == ".js") ||
+           (lowerCaseFilename.size() >= 4 &&
+            lowerCaseFilename.substr(lowerCaseFilename.size() - 4) == ".mjs");
+  };
+
   gd::String codeFilesIncludes;
   for (auto &include : includesFiles) {
+    if (!hasJavaScriptExtension(include)) {
+      continue;
+    }
+
     gd::String scriptSrc =
         GetExportedIncludeFilename(fs, gdjsRoot, include, nonRuntimeScriptsCacheBurst);
 
@@ -1147,6 +1159,7 @@ void ExporterHelper::AddLibsInclude(bool pixiRenderers,
   InsertUnique(includesFiles, "RuntimeCustomObjectLayer.js");
   InsertUnique(includesFiles, "timer.js");
   InsertUnique(includesFiles, "runtimewatermark.js");
+  InsertUnique(includesFiles, "multithreadingmanager.js");
   InsertUnique(includesFiles, "runtimegame.js");
   InsertUnique(includesFiles, "variable.js");
   InsertUnique(includesFiles, "variablescontainer.js");

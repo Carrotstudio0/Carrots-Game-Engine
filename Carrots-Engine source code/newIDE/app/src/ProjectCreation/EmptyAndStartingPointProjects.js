@@ -137,14 +137,22 @@ const EmptyAndStartingPointProjects = ({
       const allStarterShortHeaders = exampleShortHeaders
         ? exampleShortHeaders.filter(isStartingPointExampleShortHeader)
         : [];
+      const seenExampleIds = new Set();
+      const uniqueStarterShortHeaders = allStarterShortHeaders.filter(
+        exampleShortHeader => {
+          if (seenExampleIds.has(exampleShortHeader.id)) return false;
+          seenExampleIds.add(exampleShortHeader.id);
+          return true;
+        }
+      );
 
       if (onSeeAll) {
         // only return 2 rows of items.
         const maxItemsToShow = columnsCount * 2 - 1; // -1 for the empty project tile
-        return allStarterShortHeaders.slice(0, maxItemsToShow);
+        return uniqueStarterShortHeaders.slice(0, maxItemsToShow);
       }
 
-      return allStarterShortHeaders;
+      return uniqueStarterShortHeaders;
     },
     [exampleShortHeaders, onSeeAll, columnsCount]
   );
@@ -177,15 +185,21 @@ const EmptyAndStartingPointProjects = ({
               onSelectEmptyProject={onSelectEmptyProject}
               disabled={disabled}
             />
-            {startingPointExampleShortHeaders.map(exampleShortHeader => (
+            {startingPointExampleShortHeaders.map(
+              (exampleShortHeader, index) => (
               <ExampleTile
                 exampleShortHeader={exampleShortHeader}
                 onSelect={() => onSelectExampleShortHeader(exampleShortHeader)}
-                key={exampleShortHeader.name}
+                key={
+                  exampleShortHeader.id ||
+                  exampleShortHeader.slug ||
+                  `${exampleShortHeader.name}-${index}`
+                }
                 disabled={disabled}
                 centerTitle
               />
-            ))}
+              )
+            )}
           </GridList>
         </Column>
       )}

@@ -19,14 +19,21 @@ const ChangelogDialogInnerContainer = ({
  * The container showing the ChangelogDialog only if a a new version
  * of GDevelop is detected.
  */
-const ChangelogDialogContainer = (props: {||}): React.Node => (
-  <PreferencesContext.Consumer>
-    {({ values, verifyIfIsNewVersion }) => (
-      <ChangelogDialogInnerContainer
-        defaultOpen={verifyIfIsNewVersion() && values.autoDisplayChangelog}
-      />
-    )}
-  </PreferencesContext.Consumer>
-);
+const ChangelogDialogContainer = (): React.Node => {
+  const { values, verifyIfIsNewVersion } = React.useContext(PreferencesContext);
+  const [defaultOpen, setDefaultOpen] = React.useState(false);
+  const didCheckForNewVersion = React.useRef(false);
+
+  React.useEffect(() => {
+    if (didCheckForNewVersion.current) return;
+
+    didCheckForNewVersion.current = true;
+    const shouldOpen =
+      verifyIfIsNewVersion() && !!values.autoDisplayChangelog;
+    setDefaultOpen(shouldOpen);
+  }, [values.autoDisplayChangelog, verifyIfIsNewVersion]);
+
+  return <ChangelogDialogInnerContainer defaultOpen={defaultOpen} />;
+};
 
 export default ChangelogDialogContainer;

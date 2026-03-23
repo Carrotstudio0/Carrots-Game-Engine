@@ -223,6 +223,15 @@ namespace gdjs {
     _fsrSharpness: float;
     _fsrRuntimeDisabled: boolean = false;
     _fsrRuntimeDisabledReason: string = '';
+    _fsrAdaptiveScale: float = 1.0;
+    _fsrAdaptiveScaleMin: float = 0.75;
+    _fsrAdaptiveScaleMax: float = 1.5;
+    _fsrAdaptiveSharpnessBoost: float = 0.0;
+    _fsrAdaptiveFrameTimeEma: float = 1000 / 60;
+    _fsrAdaptiveElapsedSinceAdjustment: float = 0;
+    _fsrAdaptiveSlowFramesCount: integer = 0;
+    _fsrAdaptiveFastFramesCount: integer = 0;
+    _fsrAdaptiveInitialized: boolean = false;
     _renderingWidth: integer = 0;
     _renderingHeight: integer = 0;
     _isAntialisingEnabledOnMobile: boolean;
@@ -372,6 +381,7 @@ namespace gdjs {
           ? this._data.properties.fsrSharpness
           : 0.2;
       this._fsrSharpness = Math.max(0, Math.min(1, fsrSharpness));
+      this._resetFsrAdaptiveState(true);
       this._updateRenderingSize();
       this._isAntialisingEnabledOnMobile =
         this._data.properties.antialisingEnabledOnMobile;
@@ -458,6 +468,7 @@ namespace gdjs {
           ? this._data.properties.fsrSharpness
           : 0.2;
       this._fsrSharpness = Math.max(0, Math.min(1, fsrSharpness));
+      this._resetFsrAdaptiveState(true);
       this._updateRenderingSize();
     }
 
@@ -956,7 +967,10 @@ namespace gdjs {
      * Return the FSR sharpness (0..1).
      */
     getFsrSharpness(): float {
-      return this._fsrSharpness;
+      return Math.max(
+        0,
+        Math.min(1, this._fsrSharpness + this._fsrAdaptiveSharpnessBoost)
+      );
     }
 
     /**
@@ -989,6 +1003,7 @@ namespace gdjs {
 
       this._fsrRuntimeDisabled = true;
       this._fsrRuntimeDisabledReason = reason || '';
+      this._resetFsrAdaptiveState(true);
       const suffix = reason ? ` (${reason})` : '';
       console.warn(
         `FSR 1.0: Disabled for this session${suffix}. Falling back to native resolution.`
@@ -1340,6 +1355,10 @@ namespace gdjs {
             const elapsedTime = accumulatedElapsedTime;
             accumulatedElapsedTime = 0;
 
+            if (!this._paused) {
+              this._updateAdaptiveFsrQuality(elapsedTime);
+            }
+
             // Manage resize events.
             if (this._notifyScenesForGameResolutionResize) {
               if (this._inGameEditor) {
@@ -1653,6 +1672,42 @@ namespace gdjs {
       );
     }
 
+    private _resetFsrAdaptiveState(resetScale: boolean): void {
+      const bounds = this._getFsrAdaptiveScaleBounds();
+      this._fsrAdaptiveScaleMin = bounds.min;
+      this._fsrAdaptiveScaleMax = bounds.max;
+
+      if (resetScale) {
+        this._fsrAdaptiveScale = 1.0;
+      } else {
+        this._fsrAdaptiveScale = Math.max(
+          this._fsrAdaptiveScaleMin,
+          Math.min(this._fsrAdaptiveScaleMax, this._fsrAdaptiveScale)
+        );
+      }
+      this._fsrAdaptiveSharpnessBoost = 0.0;
+      this._fsrAdaptiveFrameTimeEma = 1000 / 60;
+      this._fsrAdaptiveElapsedSinceAdjustment = 0;
+      this._fsrAdaptiveSlowFramesCount = 0;
+      this._fsrAdaptiveFastFramesCount = 0;
+      this._fsrAdaptiveInitialized = false;
+    }
+
+    private _getFsrAdaptiveScaleBounds(): { min: float; max: float } {
+      switch (this._fsrQuality) {
+        case 'ultra-quality':
+          return { min: 0.82, max: 1.25 };
+        case 'quality':
+          return { min: 0.76, max: 1.35 };
+        case 'balanced':
+          return { min: 0.72, max: 1.45 };
+        case 'performance':
+          return { min: 0.68, max: 1.6 };
+        default:
+          return { min: 0.75, max: 1.5 };
+      }
+    }
+
     private _getFsrQualityRatio(): float {
       switch (this._fsrQuality) {
         case 'ultra-quality':
@@ -1668,10 +1723,118 @@ namespace gdjs {
       }
     }
 
+    private _getFsrTargetFrameTime(): float {
+      if (this._maxFPS > 0) {
+        return Math.max(1000 / this._maxFPS, 1000 / 144);
+      }
+      return 1000 / 60;
+    }
+
+    private _updateAdaptiveFsrQuality(elapsedTime: float): void {
+      if (!this.isFsrEnabled()) {
+        this._resetFsrAdaptiveState(true);
+        return;
+      }
+
+      // Keep startup/loading deterministic - adapt only once the first scene is
+      // actually loaded and playable.
+      if (!this._sceneStack.wasFirstSceneLoaded()) {
+        this._resetFsrAdaptiveState(false);
+        return;
+      }
+
+      // Ignore long stutters/tab wake-ups. They don't represent GPU load.
+      if (elapsedTime <= 0 || elapsedTime > 250 || this._hasJustResumed) {
+        this._fsrAdaptiveElapsedSinceAdjustment = 0;
+        this._fsrAdaptiveSlowFramesCount = 0;
+        this._fsrAdaptiveFastFramesCount = 0;
+        this._fsrAdaptiveInitialized = false;
+        return;
+      }
+
+      if (!this._fsrAdaptiveInitialized) {
+        this._fsrAdaptiveFrameTimeEma = elapsedTime;
+        this._fsrAdaptiveInitialized = true;
+      } else {
+        const alpha = 0.08;
+        this._fsrAdaptiveFrameTimeEma +=
+          (elapsedTime - this._fsrAdaptiveFrameTimeEma) * alpha;
+      }
+
+      const targetFrameTime = this._getFsrTargetFrameTime();
+      const slowThreshold = targetFrameTime * 1.08;
+      const fastThreshold = targetFrameTime * 0.8;
+
+      if (this._fsrAdaptiveFrameTimeEma > slowThreshold) {
+        this._fsrAdaptiveSlowFramesCount++;
+        this._fsrAdaptiveFastFramesCount = 0;
+      } else if (this._fsrAdaptiveFrameTimeEma < fastThreshold) {
+        this._fsrAdaptiveFastFramesCount++;
+        this._fsrAdaptiveSlowFramesCount = 0;
+      } else {
+        this._fsrAdaptiveSlowFramesCount = Math.max(
+          0,
+          this._fsrAdaptiveSlowFramesCount - 1
+        );
+        this._fsrAdaptiveFastFramesCount = Math.max(
+          0,
+          this._fsrAdaptiveFastFramesCount - 1
+        );
+      }
+
+      this._fsrAdaptiveElapsedSinceAdjustment += elapsedTime;
+      if (this._fsrAdaptiveElapsedSinceAdjustment < 800) {
+        return;
+      }
+
+      const previousScale = this._fsrAdaptiveScale;
+      let nextScale = previousScale;
+      if (this._fsrAdaptiveSlowFramesCount >= 14) {
+        // Increase scale factor => lower internal resolution => recover fps fast.
+        nextScale = Math.min(this._fsrAdaptiveScaleMax, previousScale * 1.075);
+      } else if (this._fsrAdaptiveFastFramesCount >= 34) {
+        // Decrease scale factor => improve image quality progressively.
+        nextScale = Math.max(this._fsrAdaptiveScaleMin, previousScale * 0.965);
+      }
+
+      if (nextScale === previousScale) {
+        return;
+      }
+
+      this._fsrAdaptiveScale = nextScale;
+      this._fsrAdaptiveSharpnessBoost = Math.max(
+        0,
+        Math.min(0.5, (nextScale - 1) * 0.55)
+      );
+      this._fsrAdaptiveElapsedSinceAdjustment = 0;
+      this._fsrAdaptiveSlowFramesCount = 0;
+      this._fsrAdaptiveFastFramesCount = 0;
+
+      const previousWidth = this._renderingWidth;
+      const previousHeight = this._renderingHeight;
+      this._updateRenderingSize();
+
+      if (
+        previousWidth !== this._renderingWidth ||
+        previousHeight !== this._renderingHeight
+      ) {
+        this._renderer.updateRendererSize();
+        this._notifyScenesForGameResolutionResize = true;
+        logger.info(
+          `FSR 1.0 adaptive: scale=${nextScale.toFixed(
+            3
+          )}, internal=${this._renderingWidth}x${this._renderingHeight}, sharpness=${this.getFsrSharpness().toFixed(
+            3
+          )}`
+        );
+      }
+    }
+
     private _updateRenderingSize(): void {
       if (!this.isFsrEnabled()) {
         this._renderingWidth = this._gameResolutionWidth;
         this._renderingHeight = this._gameResolutionHeight;
+        this._fsrAdaptiveSharpnessBoost = 0;
         return;
       }
 
@@ -1691,10 +1854,11 @@ namespace gdjs {
         }
         this._renderingWidth = this._gameResolutionWidth;
         this._renderingHeight = this._gameResolutionHeight;
+        this._fsrAdaptiveSharpnessBoost = 0;
         return;
       }
 
-      const ratio = this._getFsrQualityRatio();
+      const ratio = Math.max(1, this._getFsrQualityRatio() * this._fsrAdaptiveScale);
       const rawWidth = Math.max(
         2,
         Math.floor(this._gameResolutionWidth / ratio)

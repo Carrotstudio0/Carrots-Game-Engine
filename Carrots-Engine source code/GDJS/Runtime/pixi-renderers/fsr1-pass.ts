@@ -29,13 +29,19 @@ namespace gdjs {
     private _fullscreenGeometry: THREE.PlaneGeometry;
     private _easuScene: THREE.Scene;
     private _rcasScene: THREE.Scene;
+    private _upscaleScene: THREE.Scene;
     private _easuMaterial: THREE.ShaderMaterial;
     private _rcasMaterial: THREE.ShaderMaterial;
+    private _upscaleMaterial: THREE.ShaderMaterial;
     private _easuMesh: THREE.Mesh;
     private _rcasMesh: THREE.Mesh;
+    private _upscaleMesh: THREE.Mesh;
     private _intermediateTarget: THREE.WebGLRenderTarget | null = null;
     private _inputSize: THREE.Vector2 = new THREE.Vector2(1, 1);
     private _outputSize: THREE.Vector2 = new THREE.Vector2(1, 1);
+    private _compatibilityMode: boolean = false;
+    private _compatibilityWarningDisplayed: boolean = false;
+    private _compatibilityFailureWarningDisplayed: boolean = false;
 
     constructor() {
       if (typeof THREE === 'undefined') {
@@ -73,12 +79,29 @@ namespace gdjs {
         glslVersion: THREE.GLSL3,
       });
 
+      this._upscaleMaterial = new THREE.ShaderMaterial({
+        vertexShader: Fsr1Pass._getFullscreenVertexShader(),
+        fragmentShader: Fsr1Pass._getUpscaleFragmentShader(),
+        uniforms: {
+          u_inputTexture: { value: null },
+        },
+        depthWrite: false,
+        depthTest: false,
+        glslVersion: THREE.GLSL3,
+      });
+
       this._easuScene = new THREE.Scene();
       this._rcasScene = new THREE.Scene();
+      this._upscaleScene = new THREE.Scene();
       this._easuMesh = new THREE.Mesh(this._fullscreenGeometry, this._easuMaterial);
       this._rcasMesh = new THREE.Mesh(this._fullscreenGeometry, this._rcasMaterial);
+      this._upscaleMesh = new THREE.Mesh(
+        this._fullscreenGeometry,
+        this._upscaleMaterial
+      );
       this._easuScene.add(this._easuMesh);
       this._rcasScene.add(this._rcasMesh);
+      this._upscaleScene.add(this._upscaleMesh);
     }
 
     setSize(inputSize: THREE.Vector2, outputSize: THREE.Vector2) {
@@ -152,20 +175,76 @@ namespace gdjs {
         this.setSize(this._inputSize, this._outputSize);
       }
 
-      this._easuMaterial.uniforms.u_inputTexture.value = inputTexture;
-      renderer.setRenderTarget(this._intermediateTarget);
-      renderer.render(this._easuScene, this._camera);
+      const renderCompatibilityPath = (
+        target: THREE.WebGLRenderTarget | null
+      ) => {
+        this._upscaleMaterial.uniforms.u_inputTexture.value = inputTexture;
+        renderer.setRenderTarget(target);
+        renderer.render(this._upscaleScene, this._camera);
+      };
 
-      this._rcasMaterial.uniforms.u_inputTexture.value =
-        this._intermediateTarget!.texture;
-      renderer.setRenderTarget(outputTarget);
-      renderer.render(this._rcasScene, this._camera);
+      const renderRcasPath = (
+        target: THREE.WebGLRenderTarget | null
+      ): void => {
+        this._rcasMaterial.uniforms.u_inputTexture.value =
+          this._intermediateTarget!.texture;
+        renderer.setRenderTarget(target);
+        renderer.render(this._rcasScene, this._camera);
+      };
+
+      try {
+        if (this._compatibilityMode) {
+          renderCompatibilityPath(this._intermediateTarget);
+        } else {
+          this._easuMaterial.uniforms.u_inputTexture.value = inputTexture;
+          renderer.setRenderTarget(this._intermediateTarget);
+          renderer.render(this._easuScene, this._camera);
+        }
+
+        renderRcasPath(outputTarget);
+      } catch (error) {
+        if (!this._compatibilityMode) {
+          this._compatibilityMode = true;
+          if (!this._compatibilityWarningDisplayed) {
+            this._compatibilityWarningDisplayed = true;
+            console.warn(
+              '[Fsr1Pass] EASU path failed, switching to compatibility upscale+RCAS path.',
+              error
+            );
+          }
+
+          try {
+            renderCompatibilityPath(this._intermediateTarget);
+            renderRcasPath(outputTarget);
+            return;
+          } catch (compatibilityError) {
+            if (!this._compatibilityFailureWarningDisplayed) {
+              this._compatibilityFailureWarningDisplayed = true;
+              console.warn(
+                '[Fsr1Pass] Compatibility RCAS path failed, falling back to linear upscale.',
+                compatibilityError
+              );
+            }
+          }
+        } else {
+          if (!this._compatibilityFailureWarningDisplayed) {
+            this._compatibilityFailureWarningDisplayed = true;
+            console.warn(
+              '[Fsr1Pass] Compatibility path failed, falling back to linear upscale.',
+              error
+            );
+          }
+        }
+
+        renderCompatibilityPath(outputTarget);
+      }
     }
 
     dispose() {
       this._fullscreenGeometry.dispose();
       this._easuMaterial.dispose();
       this._rcasMaterial.dispose();
+      this._upscaleMaterial.dispose();
       if (this._intermediateTarget) {
         this._intermediateTarget.dispose();
         this._intermediateTarget = null;
@@ -180,6 +259,21 @@ namespace gdjs {
         void main() {
           vUv = uv;
           gl_Position = vec4(position.xy, 0.0, 1.0);
+        }
+      `;
+    }
+
+    private static _getUpscaleFragmentShader(): string {
+      return `#version 300 es
+        precision highp float;
+        precision highp int;
+
+        uniform sampler2D u_inputTexture;
+        in vec2 vUv;
+        out vec4 fragColor;
+
+        void main() {
+          fragColor = texture(u_inputTexture, vUv);
         }
       `;
     }
@@ -400,7 +494,11 @@ namespace gdjs {
         }
 
         void FsrRcasInputF(inout float r, inout float g, inout float b) {
-          // No-op for this implementation.
+          // RCAS is numerically safer with non-negative inputs.
+          // Some post-processing chains can briefly generate undershoot values.
+          r = max(r, 0.0);
+          g = max(g, 0.0);
+          b = max(b, 0.0);
         }
 
         void FsrRcasF(out vec3 pix, ivec2 ip, float sharpness) {

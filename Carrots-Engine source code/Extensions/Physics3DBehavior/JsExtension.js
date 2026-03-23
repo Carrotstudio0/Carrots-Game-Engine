@@ -100,6 +100,9 @@ module.exports = {
         }
 
         if (propertyName === 'meshShapeResourceName') {
+          if (!behaviorContent.hasChild('meshShapeResourceName')) {
+            behaviorContent.addChild('meshShapeResourceName').setStringValue('');
+          }
           behaviorContent
             .getChild('meshShapeResourceName')
             .setStringValue(newValue);
@@ -667,7 +670,9 @@ module.exports = {
         behaviorProperties
           .getOrCreate('meshShapeResourceName')
           .setValue(
-            behaviorContent.getChild('meshShapeResourceName').getStringValue()
+            behaviorContent.hasChild('meshShapeResourceName')
+              ? behaviorContent.getChild('meshShapeResourceName').getStringValue()
+              : ''
           )
           .setType('resource')
           .addExtraInfo('model3D')
