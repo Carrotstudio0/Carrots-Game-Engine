@@ -16,8 +16,8 @@ const styles = {
     display: 'flex',
     overflowX: 'overlay',
     overflowY: 'hidden',
-    paddingLeft: 8,
-    paddingRight: 8,
+    paddingLeft: 6,
+    paddingRight: 6,
     alignItems: 'center',
     position: 'relative', // to ensure it is displayed above any global iframe.
   },
@@ -27,7 +27,7 @@ export const Toolbar: React.ComponentType<ToolbarProps> = React.memo<ToolbarProp
   ({
     children,
     borderBottomColor,
-    height = 40,
+    height = 34,
     paddingBottom,
     hidden,
   }: ToolbarProps) => {
@@ -46,7 +46,7 @@ export const Toolbar: React.ComponentType<ToolbarProps> = React.memo<ToolbarProp
           borderBottom: borderBottomColor
             ? `2px solid ${borderBottomColor}`
             : '1px solid rgba(255, 177, 92, 0.24)',
-          boxShadow: '0 8px 20px rgba(0, 0, 0, 0.22)',
+          boxShadow: '0 5px 12px rgba(0, 0, 0, 0.18)',
           ...(paddingBottom ? { paddingBottom } : undefined),
 
           // Hiding the titlebar should still keep its position in the layout to avoid layout shifts:

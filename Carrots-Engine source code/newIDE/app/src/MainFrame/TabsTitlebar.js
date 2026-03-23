@@ -1,8 +1,7 @@
 // @flow
 import * as React from 'react';
+import { t } from '@lingui/macro';
 
-import MenuIcon from '../UI/CustomSvgIcons/Menu';
-import IconButton from '../UI/IconButton';
 import {
   TitleBarLeftSafeMargins,
   TitleBarRightSafeMargins,
@@ -14,6 +13,16 @@ import TabsTitlebarTooltip from './TabsTitlebarTooltip';
 import Window from '../Utils/Window';
 import { isMacLike } from '../Utils/Platform';
 import GDevelopThemeContext from '../UI/Theme/GDevelopThemeContext';
+import ElementWithMenu from '../UI/Menu/ElementWithMenu';
+import TextButton from '../UI/TextButton';
+import CompactSearchBar from '../UI/CompactSearchBar';
+import { type MenuItemTemplate } from '../UI/Menu/Menu.flow';
+import {
+  adaptFromDeclarativeTemplate,
+  buildMainMenuDeclarativeTemplate,
+  type MainMenuCallbacks,
+  type BuildMainMenuProps,
+} from './MainMenu';
 
 const WINDOW_DRAGGABLE_PART_CLASS_NAME = 'title-bar-draggable-part';
 const WINDOW_NON_DRAGGABLE_PART_CLASS_NAME = 'title-bar-non-draggable-part';
@@ -24,25 +33,76 @@ const styles = {
     flexShrink: 0,
     alignItems: 'center',
     position: 'relative', // to ensure it is displayed above any global iframe
-    minHeight: 42,
-    paddingRight: 6,
+    minHeight: 34,
+    paddingRight: 4,
   },
-  menuIcon: {
+  topRail: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    pointerEvents: 'none',
+  },
+  headerMenusContainer: {
+    display: 'flex',
+    alignItems: 'center',
     marginLeft: 4,
     marginRight: 4,
-    // Make the icon slightly bigger to be centered on the row, so it aligns
-    // with the project manager icon.
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: 'rgba(26, 33, 29, 0.8)',
-    transition: 'background-color 120ms ease',
+    gap: 2,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  headerPrimaryMenus: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 1,
+    flexShrink: 0,
+  },
+  headerQuickMenus: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 1,
+    flexShrink: 0,
+  },
+  headerSearchContainer: {
+    width: 220,
+    minWidth: 150,
+    maxWidth: 260,
+    marginLeft: 4,
+    marginRight: 4,
+    flexShrink: 1,
+  },
+  headerProjectName: {
+    fontSize: 12,
+    fontWeight: 700,
+    marginLeft: 2,
+    marginRight: 6,
+    maxWidth: 150,
+    padding: '2px 8px',
+    borderRadius: 7,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  headerMenuButton: {
+    minWidth: 40,
+    marginLeft: 1,
+    marginRight: 1,
   },
 };
 
+export type TabsTitlebarQuickAccessMenu = {|
+  label: string,
+  submenu: Array<MenuItemTemplate>,
+|};
+
 type TabsTitlebarProps = {|
   hidden: boolean,
-  toggleProjectManager: () => void,
+  mainMenuCallbacks: MainMenuCallbacks,
+  buildMainMenuProps: BuildMainMenuProps,
+  quickAccessMenus: Array<TabsTitlebarQuickAccessMenu>,
+  onSearchInProject: (query: string) => void,
   renderTabs: (
     onEditorTabHovered: (?EditorTab, {| isLabelTruncated: boolean |}) => void,
     onEditorTabClosing: () => void
@@ -59,8 +119,11 @@ type TabsTitlebarProps = {|
  * The titlebar containing a menu, the tabs and giving space for window controls.
  */
 export default function TabsTitlebar({
-  toggleProjectManager,
   hidden,
+  mainMenuCallbacks,
+  buildMainMenuProps,
+  quickAccessMenus,
+  onSearchInProject,
   renderTabs,
   isLeftMostPane,
   isRightMostPane,
@@ -73,6 +136,26 @@ export default function TabsTitlebar({
 
   const gdevelopTheme = React.useContext(GDevelopThemeContext);
   const isTouchscreen = useScreenType() === 'touch';
+  const [projectSearch, setProjectSearch] = React.useState('');
+  const topHeaderMenus = React.useMemo(
+    () => {
+      const allMenus = adaptFromDeclarativeTemplate(
+        buildMainMenuDeclarativeTemplate(buildMainMenuProps),
+        mainMenuCallbacks
+      );
+
+      if (!allMenus.length) return [];
+      const fileMenuIndex = isMacLike() && allMenus.length > 1 ? 1 : 0;
+      const fileMenu = allMenus[fileMenuIndex];
+      const helpMenu = allMenus[allMenus.length - 1];
+      return helpMenu === fileMenu ? [fileMenu] : [fileMenu, helpMenu];
+    },
+    [buildMainMenuProps, mainMenuCallbacks]
+  );
+  const currentProjectName =
+    buildMainMenuProps.project && buildMainMenuProps.project.getName
+      ? buildMainMenuProps.project.getName()
+      : '';
   const [tooltipData, setTooltipData] = React.useState<?{|
     element: HTMLElement,
     editorTab: EditorTab,
@@ -145,6 +228,13 @@ export default function TabsTitlebar({
     }
   }, []);
 
+  const triggerSearchInProject = React.useCallback(
+    () => {
+      onSearchInProject(projectSearch);
+    },
+    [onSearchInProject, projectSearch]
+  );
+
   return (
     <div
       style={{
@@ -153,7 +243,7 @@ export default function TabsTitlebar({
           gdevelopTheme.paper.backgroundColor.dark
         } 0%, ${gdevelopTheme.paper.backgroundColor.medium} 130%)`,
         borderBottom: `1px solid ${gdevelopTheme.toolbar.separatorColor}`,
-        boxShadow: '0 8px 18px rgba(0, 0, 0, 0.2)',
+        boxShadow: '0 4px 10px rgba(0, 0, 0, 0.16)',
         // Hiding the titlebar should still keep its position in the layout to avoid layout shifts:
         visibility: hidden ? 'hidden' : 'visible',
         pointerEvents: hidden ? undefined : 'all',
@@ -161,22 +251,74 @@ export default function TabsTitlebar({
       className={`${WINDOW_DRAGGABLE_PART_CLASS_NAME} carrots-tabs-titlebar`}
       onDoubleClick={handleDoubleClick}
     >
+      <span
+        style={{
+          ...styles.topRail,
+          background:
+            'linear-gradient(90deg, rgba(201, 106, 18, 0.35) 0%, rgba(46, 159, 91, 0.3) 100%)',
+        }}
+      />
       {isLeftMostPane && <TitleBarLeftSafeMargins />}
       {displayMenuIcon && (
-        // $FlowFixMe[incompatible-type]
-        <IconButton
-          size="small"
-          // Even if not in the toolbar, keep this ID for backward compatibility for tutorials.
-          id="main-toolbar-project-manager-button"
-          // The whole bar is draggable, so prevent the icon to be draggable,
-          // as it can affect the ability to open the menu.
+        <span
           className={WINDOW_NON_DRAGGABLE_PART_CLASS_NAME}
-          style={styles.menuIcon}
-          color="default"
-          onClick={toggleProjectManager}
+          style={styles.headerMenusContainer}
         >
-          <MenuIcon />
-        </IconButton>
+          {currentProjectName ? (
+            <span
+              style={{
+                ...styles.headerProjectName,
+                color: '#ffd29a',
+                background: 'rgba(201, 106, 18, 0.18)',
+                border: '1px solid rgba(255, 177, 92, 0.34)',
+                boxShadow: '0 1px 8px rgba(0, 0, 0, 0.16)',
+              }}
+              title={currentProjectName}
+            >
+              {currentProjectName}
+            </span>
+          ) : null}
+          <span style={styles.headerPrimaryMenus}>
+            {topHeaderMenus.map((menuItem, index) => (
+              <ElementWithMenu
+                key={`main-menu-${index}`}
+                element={
+                  <TextButton
+                    // $FlowFixMe[prop-missing]
+                    label={menuItem.label || ''}
+                    onClick={() => {}}
+                    style={styles.headerMenuButton}
+                  />
+                }
+                // $FlowFixMe[prop-missing]
+                buildMenuTemplate={() => menuItem.submenu || []}
+              />
+            ))}
+          </span>
+          <span style={styles.headerSearchContainer}>
+            <CompactSearchBar
+              value={projectSearch}
+              onChange={setProjectSearch}
+              onRequestSearch={triggerSearchInProject}
+              placeholder={t`Search in project`}
+            />
+          </span>
+          <span style={styles.headerQuickMenus}>
+            {quickAccessMenus.map((menu, index) => (
+              <ElementWithMenu
+                key={`quick-menu-${menu.label}-${index}`}
+                element={
+                  <TextButton
+                    label={menu.label}
+                    onClick={() => {}}
+                    style={styles.headerMenuButton}
+                  />
+                }
+                buildMenuTemplate={() => menu.submenu}
+              />
+            ))}
+          </span>
+        </span>
       )}
       {renderTabs(onEditorTabHovered, onEditorTabClosing)}
       {isRightMostPane && <TitleBarRightSafeMargins />}

@@ -1,8 +1,40 @@
 namespace gdjs {
+  type Primitive3DMaterialTypeString =
+    | 'Basic'
+    | 'StandardWithoutMetalness'
+    | 'Matte'
+    | 'Standard'
+    | 'Glossy'
+    | 'Metallic';
+
+  type Primitive3DMaterialProfile = {
+    roughness: number;
+    metalness: number;
+    envMapIntensity: number;
+  };
+
+  const getPrimitive3DMaterialProfile = (
+    materialType: gdjs.Primitive3DRuntimeObject.MaterialType
+  ): Primitive3DMaterialProfile => {
+    switch (materialType) {
+      case gdjs.Primitive3DRuntimeObject.MaterialType.Matte:
+        return { roughness: 0.94, metalness: 0.01, envMapIntensity: 0.85 };
+      case gdjs.Primitive3DRuntimeObject.MaterialType.Standard:
+        return { roughness: 0.56, metalness: 0.08, envMapIntensity: 1.05 };
+      case gdjs.Primitive3DRuntimeObject.MaterialType.Glossy:
+        return { roughness: 0.2, metalness: 0.16, envMapIntensity: 1.25 };
+      case gdjs.Primitive3DRuntimeObject.MaterialType.Metallic:
+        return { roughness: 0.24, metalness: 0.9, envMapIntensity: 1.35 };
+      case gdjs.Primitive3DRuntimeObject.MaterialType.StandardWithoutMetalness:
+      default:
+        return { roughness: 0.78, metalness: 0, envMapIntensity: 1 };
+    }
+  };
+
   export interface Primitive3DObjectData extends Object3DData {
     content: Object3DDataContent & {
       color?: string;
-      materialType?: 'Basic' | 'StandardWithoutMetalness';
+      materialType?: Primitive3DMaterialTypeString;
       isCastingShadow?: boolean;
       isReceivingShadow?: boolean;
     };
@@ -56,11 +88,15 @@ namespace gdjs {
         });
       }
 
+      const profile = getPrimitive3DMaterialProfile(
+        this._runtimeObject._materialType
+      );
       return new THREE.MeshStandardMaterial({
         color,
         side,
-        roughness: 0.82,
-        metalness: 0,
+        roughness: profile.roughness,
+        metalness: profile.metalness,
+        envMapIntensity: profile.envMapIntensity,
       });
     }
 
@@ -97,7 +133,7 @@ namespace gdjs {
   export abstract class Primitive3DRuntimeObject extends gdjs.RuntimeObject3D {
     private _renderer: Primitive3DRuntimeObjectRenderer;
     _materialType: gdjs.Primitive3DRuntimeObject.MaterialType =
-      gdjs.Primitive3DRuntimeObject.MaterialType.StandardWithoutMetalness;
+      gdjs.Primitive3DRuntimeObject.MaterialType.Standard;
     _isCastingShadow: boolean = true;
     _isReceivingShadow: boolean = true;
     private _color: string = '255;255;255';
@@ -267,10 +303,21 @@ namespace gdjs {
     private _convertMaterialType(
       materialTypeString: string | undefined
     ): gdjs.Primitive3DRuntimeObject.MaterialType {
-      if (materialTypeString === 'StandardWithoutMetalness') {
-        return gdjs.Primitive3DRuntimeObject.MaterialType.StandardWithoutMetalness;
+      switch (materialTypeString) {
+        case 'Basic':
+          return gdjs.Primitive3DRuntimeObject.MaterialType.Basic;
+        case 'StandardWithoutMetalness':
+          return gdjs.Primitive3DRuntimeObject.MaterialType.StandardWithoutMetalness;
+        case 'Matte':
+          return gdjs.Primitive3DRuntimeObject.MaterialType.Matte;
+        case 'Glossy':
+          return gdjs.Primitive3DRuntimeObject.MaterialType.Glossy;
+        case 'Metallic':
+          return gdjs.Primitive3DRuntimeObject.MaterialType.Metallic;
+        case 'Standard':
+        default:
+          return gdjs.Primitive3DRuntimeObject.MaterialType.Standard;
       }
-      return gdjs.Primitive3DRuntimeObject.MaterialType.Basic;
     }
   }
 
@@ -278,6 +325,10 @@ namespace gdjs {
     export enum MaterialType {
       Basic,
       StandardWithoutMetalness,
+      Matte,
+      Standard,
+      Glossy,
+      Metallic,
     }
   }
 

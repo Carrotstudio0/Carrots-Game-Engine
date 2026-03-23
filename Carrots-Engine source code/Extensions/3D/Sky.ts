@@ -388,9 +388,9 @@ namespace gdjs {
 
                   vec3 texColor = skyBase + nightBase + sunDiskColor;
 
-                  vec2 cloudUv = direction.xz / max(direction.y + 0.22, 0.04);
+                  vec2 cloudUv = direction.xy / max(direction.z + 0.22, 0.04);
                   cloudUv *= max(0.1, cloudScale);
-                  cloudUv += vec2(cloudTime * 0.045, 0.0);
+                  cloudUv += vec2(cloudTime * 0.045, cloudTime * 0.006);
 
                   float noisePrimary = fbm(cloudUv * 0.65);
                   float noiseDetail = fbm(cloudUv * 1.9 + vec2(17.0, 5.0));
@@ -404,7 +404,7 @@ namespace gdjs {
                     cloudNoise
                   );
 
-                  float cloudSkyVisibility = smoothstep(-0.08, 0.35, direction.y);
+                  float cloudSkyVisibility = smoothstep(-0.08, 0.35, direction.z);
                   float cloudBlend = clamp(
                     cloudMask * cloudOpacity * cloudSkyVisibility,
                     0.0,
@@ -414,7 +414,7 @@ namespace gdjs {
                   float sunScatter = pow(max(dot(direction, vSunDirection), 0.0), 18.0);
                   vec3 cloudBaseColor =
                     cloudColor *
-                    (0.78 + 0.22 * clamp(direction.y * 0.8 + 0.2, 0.0, 1.0));
+                    (0.78 + 0.22 * clamp(direction.z * 0.8 + 0.2, 0.0, 1.0));
                   vec3 cloudLitColor =
                     cloudBaseColor +
                     sunColor * (0.18 * sunScatter * (0.4 + sunIntensity));

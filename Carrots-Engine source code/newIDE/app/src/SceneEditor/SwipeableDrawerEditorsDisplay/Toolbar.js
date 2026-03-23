@@ -14,6 +14,7 @@ import TrashIcon from '../../UI/CustomSvgIcons/Trash';
 import GridIcon from '../../UI/CustomSvgIcons/Grid';
 import ZoomInIcon from '../../UI/CustomSvgIcons/ZoomIn';
 import EditSceneIcon from '../../UI/CustomSvgIcons/EditScene';
+import EventsIcon from '../../UI/CustomSvgIcons/Events';
 import CompactToggleButtons from '../../UI/CompactToggleButtons';
 import Grid2d from '../../UI/CustomSvgIcons/Grid2d';
 import Grid3d from '../../UI/CustomSvgIcons/Grid3d';
@@ -24,6 +25,8 @@ type Props = {|
   toggleObjectsList: () => void,
   toggleObjectGroupsList: () => void,
   toggleProperties: () => void,
+  onOpenSceneEvents: () => void,
+  sceneEventsEnabled: boolean,
   toggleInstancesList: () => void,
   toggleLayersList: () => void,
   toggleProjectPanel: () => void,
@@ -96,6 +99,15 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function(props) {
           },
         ]}
       />
+      <IconButton
+        size="small"
+        color="default"
+        onClick={props.onOpenSceneEvents}
+        disabled={!props.sceneEventsEnabled}
+        tooltip={t`Open Scene Events`}
+      >
+        <EventsIcon />
+      </IconButton>
       <IconButton
         size="small"
         color="default"

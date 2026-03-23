@@ -718,7 +718,10 @@ export default class SceneEditor extends React.Component<Props, State> {
     if (editorDisplay.getName() === 'mosaic') {
       this.props.setToolbar(
         <MosaicEditorsDisplayToolbar
-          gameEditorMode={this.state.instancesEditorSettings.gameEditorMode}
+          gameEditorMode={
+            this.state.instancesEditorSettings.gameEditorMode ||
+            this.props.gameEditorMode
+          }
           setGameEditorMode={this.setGameEditorMode}
           selectedInstancesCount={
             this.instancesSelection.getSelectedInstances().length
@@ -730,6 +733,8 @@ export default class SceneEditor extends React.Component<Props, State> {
             'object-groups-list'
           )}
           onOpenScenesManager={this.openScenesManager}
+          onOpenSceneEvents={this.openCurrentSceneEvents}
+          sceneEventsEnabled={!!this.props.layout}
           onOpenExtensionsManager={this.openExtensionsManager}
           toggleProperties={this.toggleProperties}
           isPropertiesShown={editorDisplay.isEditorVisible('properties')}
@@ -773,6 +778,8 @@ export default class SceneEditor extends React.Component<Props, State> {
           toggleObjectsList={this.toggleObjectsList}
           toggleObjectGroupsList={this.toggleObjectGroupsList}
           toggleProperties={this.toggleProperties}
+          onOpenSceneEvents={this.openCurrentSceneEvents}
+          sceneEventsEnabled={!!this.props.layout}
           deleteSelection={this.deleteSelection}
           toggleInstancesList={this.toggleInstancesList}
           toggleLayersList={this.toggleLayersList}
@@ -853,6 +860,16 @@ export default class SceneEditor extends React.Component<Props, State> {
 
   openScenesManager = () => {
     this.props.onOpenProjectManager();
+  };
+
+  openCurrentSceneEvents = () => {
+    const { layout } = this.props;
+    if (!layout) {
+      this.props.onOpenProjectManager();
+      return;
+    }
+
+    this.props.onOpenEvents(layout.getName());
   };
 
   openExtensionsManager = () => {
@@ -3177,6 +3194,7 @@ export default class SceneEditor extends React.Component<Props, State> {
                     onEventsBasedObjectChildrenEdited={
                       this.props.onEventsBasedObjectChildrenEdited
                     }
+                    onOpenEvents={this.props.onOpenEvents}
                   />
                   <React.Fragment>
                     {editedObjectWithContext && (

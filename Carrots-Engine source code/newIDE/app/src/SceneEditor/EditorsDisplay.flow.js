@@ -158,6 +158,7 @@ export type SceneEditorsDisplayProps = {|
   onRestartInGameEditor: (reason: string) => void,
   showRestartInGameEditorAfterErrorButton: boolean,
   onEventsBasedObjectChildrenEdited: gdEventsBasedObject => void,
+  onOpenEvents: (sceneName: string) => void,
 |};
 
 export type SceneEditorsDisplayInterface = {|

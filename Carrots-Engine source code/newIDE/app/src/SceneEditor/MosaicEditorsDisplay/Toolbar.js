@@ -5,12 +5,14 @@ import * as React from 'react';
 import { ToolbarGroup } from '../../UI/Toolbar';
 import ToolbarSeparator from '../../UI/ToolbarSeparator';
 import IconButton from '../../UI/IconButton';
+import TextButton from '../../UI/TextButton';
 import ElementWithMenu from '../../UI/Menu/ElementWithMenu';
 import ToolbarCommands from '../ToolbarCommands';
 import { type MenuItemTemplate } from '../../UI/Menu/Menu.flow';
 import ObjectIcon from '../../UI/CustomSvgIcons/Object';
 import ObjectGroupIcon from '../../UI/CustomSvgIcons/ObjectGroup';
 import SceneIcon from '../../UI/CustomSvgIcons/Scene';
+import EventsIcon from '../../UI/CustomSvgIcons/Events';
 import ExtensionIcon from '../../UI/CustomSvgIcons/Extension';
 import EditIcon from '../../UI/CustomSvgIcons/Edit';
 import InstancesListIcon from '../../UI/CustomSvgIcons/InstancesList';
@@ -48,6 +50,8 @@ type Props = {|
   toggleObjectGroupsList: () => void,
   isObjectGroupsListShown: boolean,
   onOpenScenesManager: () => void,
+  onOpenSceneEvents: () => void,
+  sceneEventsEnabled: boolean,
   onOpenExtensionsManager: () => void,
   toggleProperties: () => void,
   isPropertiesShown: boolean,
@@ -139,8 +143,8 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
           selected={props.isInstancesListShown}
           tooltip={
             props.isInstancesListShown
-              ? t`Close Scene Objects Panel`
-              : t`Open Scene Objects Panel`
+              ? t`Close Hierarchy Panel`
+              : t`Open Hierarchy Panel`
           }
         >
           <InstancesListIcon />
@@ -212,8 +216,8 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
           selected={props.isObjectsListShown}
           tooltip={
             props.isObjectsListShown
-              ? t`Close Hierarchy Panel`
-              : t`Open Hierarchy Panel`
+              ? t`Close Objects Panel`
+              : t`Open Objects Panel`
           }
         >
           <ObjectIcon />
@@ -241,6 +245,14 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
         >
           <SceneIcon />
         </IconButton>
+        <TextButton
+          id="scene-toolbar-open-events-button"
+          label={<Trans>Events</Trans>}
+          icon={<EventsIcon />}
+          onClick={props.onOpenSceneEvents}
+          disabled={!props.sceneEventsEnabled}
+          style={{ minWidth: 78 }}
+        />
         <IconButton
           size="small"
           color="default"

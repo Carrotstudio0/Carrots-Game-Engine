@@ -1,5 +1,13 @@
 namespace gdjs {
   type Model3DAnimation = { name: string; source: string; loop: boolean };
+  type Model3DMaterialTypeString =
+    | 'Basic'
+    | 'StandardWithoutMetalness'
+    | 'KeepOriginal'
+    | 'Matte'
+    | 'Standard'
+    | 'Glossy'
+    | 'Metallic';
 
   type Model3DObjectNetworkSyncDataType = {
     mt: number;
@@ -28,7 +36,7 @@ namespace gdjs {
       rotationY: number;
       rotationZ: number;
       keepAspectRatio: boolean;
-      materialType: 'Basic' | 'StandardWithoutMetalness' | 'KeepOriginal';
+      materialType: Model3DMaterialTypeString;
       originLocation:
         | 'ModelOrigin'
         | 'ObjectCenter'
@@ -78,7 +86,7 @@ namespace gdjs {
 
     _modelResourceName: string;
     _materialType: gdjs.Model3DRuntimeObject.MaterialType =
-      gdjs.Model3DRuntimeObject.MaterialType.Basic;
+      gdjs.Model3DRuntimeObject.MaterialType.Standard;
 
     /**
      * The local point of the model that will be at the object position.
@@ -334,12 +342,22 @@ namespace gdjs {
     _convertMaterialType(
       materialTypeString: string
     ): gdjs.Model3DRuntimeObject.MaterialType {
-      if (materialTypeString === 'KeepOriginal') {
-        return gdjs.Model3DRuntimeObject.MaterialType.KeepOriginal;
-      } else if (materialTypeString === 'StandardWithoutMetalness') {
-        return gdjs.Model3DRuntimeObject.MaterialType.StandardWithoutMetalness;
-      } else {
-        return gdjs.Model3DRuntimeObject.MaterialType.Basic;
+      switch (materialTypeString) {
+        case 'Basic':
+          return gdjs.Model3DRuntimeObject.MaterialType.Basic;
+        case 'KeepOriginal':
+          return gdjs.Model3DRuntimeObject.MaterialType.KeepOriginal;
+        case 'StandardWithoutMetalness':
+          return gdjs.Model3DRuntimeObject.MaterialType.StandardWithoutMetalness;
+        case 'Matte':
+          return gdjs.Model3DRuntimeObject.MaterialType.Matte;
+        case 'Glossy':
+          return gdjs.Model3DRuntimeObject.MaterialType.Glossy;
+        case 'Metallic':
+          return gdjs.Model3DRuntimeObject.MaterialType.Metallic;
+        case 'Standard':
+        default:
+          return gdjs.Model3DRuntimeObject.MaterialType.Standard;
       }
     }
 
@@ -510,6 +528,10 @@ namespace gdjs {
       Basic,
       StandardWithoutMetalness,
       KeepOriginal,
+      Matte,
+      Standard,
+      Glossy,
+      Metallic,
     }
   }
   gdjs.registerObject('Scene3D::Model3DObject', gdjs.Model3DRuntimeObject);

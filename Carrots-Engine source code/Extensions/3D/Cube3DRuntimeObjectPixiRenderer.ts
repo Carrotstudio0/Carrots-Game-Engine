@@ -46,6 +46,50 @@ namespace gdjs {
     return transparentMaterial;
   };
 
+  type Cube3DMaterialProfile = {
+    roughness: number;
+    metalness: number;
+    envMapIntensity: number;
+  };
+
+  const getCube3DMaterialProfile = (
+    materialType: gdjs.Cube3DRuntimeObject.MaterialType
+  ): Cube3DMaterialProfile => {
+    switch (materialType) {
+      case gdjs.Cube3DRuntimeObject.MaterialType.Matte:
+        return { roughness: 0.94, metalness: 0.01, envMapIntensity: 0.85 };
+      case gdjs.Cube3DRuntimeObject.MaterialType.Standard:
+        return { roughness: 0.56, metalness: 0.08, envMapIntensity: 1.05 };
+      case gdjs.Cube3DRuntimeObject.MaterialType.Glossy:
+        return { roughness: 0.2, metalness: 0.16, envMapIntensity: 1.25 };
+      case gdjs.Cube3DRuntimeObject.MaterialType.Metallic:
+        return { roughness: 0.24, metalness: 0.9, envMapIntensity: 1.35 };
+      case gdjs.Cube3DRuntimeObject.MaterialType.StandardWithoutMetalness:
+      default:
+        return { roughness: 0.78, metalness: 0, envMapIntensity: 1 };
+    }
+  };
+
+  const applyCube3DMaterialProfile = (
+    material: THREE.Material,
+    materialType: gdjs.Cube3DRuntimeObject.MaterialType
+  ) => {
+    if (materialType === gdjs.Cube3DRuntimeObject.MaterialType.Basic) {
+      return;
+    }
+
+    const standardMaterial = material as THREE.MeshStandardMaterial;
+    if (!('roughness' in standardMaterial) || !('metalness' in standardMaterial)) {
+      return;
+    }
+
+    const profile = getCube3DMaterialProfile(materialType);
+    standardMaterial.roughness = profile.roughness;
+    standardMaterial.metalness = profile.metalness;
+    standardMaterial.envMapIntensity = profile.envMapIntensity;
+    standardMaterial.needsUpdate = true;
+  };
+
   const getFaceMaterial = (
     runtimeObject: gdjs.Cube3DRuntimeObject,
     faceIndex: integer
@@ -63,14 +107,17 @@ namespace gdjs {
           vertexColors: true,
         });
       }
+      const profile = getCube3DMaterialProfile(runtimeObject._materialType);
       return new THREE.MeshStandardMaterial({
         color: 0xffffff,
-        metalness: 0,
+        roughness: profile.roughness,
+        metalness: profile.metalness,
+        envMapIntensity: profile.envMapIntensity,
         vertexColors: true,
       });
     }
 
-    return runtimeObject
+    const sharedMaterial = runtimeObject
       .getInstanceContainer()
       .getGame()
       .getImageManager()
@@ -81,6 +128,12 @@ namespace gdjs {
           gdjs.Cube3DRuntimeObject.MaterialType.Basic,
         vertexColors: true,
       });
+    if (runtimeObject._materialType === gdjs.Cube3DRuntimeObject.MaterialType.Basic) {
+      return sharedMaterial;
+    }
+    const material = sharedMaterial.clone();
+    applyCube3DMaterialProfile(material, runtimeObject._materialType);
+    return material;
   };
 
   class Cube3DRuntimeObjectPixiRenderer extends gdjs.RuntimeObject3DRenderer {

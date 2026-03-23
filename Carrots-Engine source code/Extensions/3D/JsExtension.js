@@ -2482,6 +2482,35 @@ module.exports = {
         .setFunctionName('setCrossfadeDuration');
     }
 
+    const parse3DMaterialType = materialTypeValue => {
+      const normalizedValue = (materialTypeValue || '')
+        .toString()
+        .toLowerCase();
+      if (normalizedValue === 'basic') return 'Basic';
+      if (normalizedValue === 'standardwithoutmetalness')
+        return 'StandardWithoutMetalness';
+      if (normalizedValue === 'matte') return 'Matte';
+      if (normalizedValue === 'standard') return 'Standard';
+      if (normalizedValue === 'glossy') return 'Glossy';
+      if (normalizedValue === 'metallic') return 'Metallic';
+      return null;
+    };
+
+    const normalize3DMaterialType = materialTypeValue =>
+      parse3DMaterialType(materialTypeValue) || 'Standard';
+
+    const add3DMaterialChoices = propertyDescriptor =>
+      propertyDescriptor
+        .addChoice('Standard', _('Standard PBR (balanced)'))
+        .addChoice('Matte', _('Matte (soft highlights)'))
+        .addChoice('Glossy', _('Glossy (strong highlights)'))
+        .addChoice('Metallic', _('Metallic (reflective metal)'))
+        .addChoice(
+          'StandardWithoutMetalness',
+          _('Standard (legacy without metalness)')
+        )
+        .addChoice('Basic', _('Basic (no lighting, no shadows)'));
+
     const Cube3DObject = new gd.ObjectJsImplementation();
     Cube3DObject.updateProperty = function (propertyName, newValue) {
       const objectContent = this.content;
@@ -2510,16 +2539,10 @@ module.exports = {
         return false;
       }
       if (propertyName === 'materialType') {
-        const normalizedValue = newValue.toLowerCase();
-        if (normalizedValue === 'basic') {
-          objectContent.materialType = 'Basic';
-          return true;
-        }
-        if (normalizedValue === 'standardwithoutmetalness') {
-          objectContent.materialType = 'StandardWithoutMetalness';
-          return true;
-        }
-        return false;
+        const parsedMaterialType = parse3DMaterialType(newValue);
+        if (!parsedMaterialType) return false;
+        objectContent.materialType = parsedMaterialType;
+        return true;
       }
       if (
         propertyName === 'frontFaceResourceName' ||
@@ -2550,7 +2573,8 @@ module.exports = {
         propertyName === 'isCastingShadow' ||
         propertyName === 'isReceivingShadow'
       ) {
-        objectContent[propertyName] = newValue === '1';
+        objectContent[propertyName] =
+          newValue === '1' || newValue === 'true';
         return true;
       }
 
@@ -2772,13 +2796,10 @@ module.exports = {
 
       objectProperties
         .getOrCreate('materialType')
-        .setValue(objectContent.materialType || 'StandardWithoutMetalness')
-        .setType('choice')
-        .addChoice('Basic', _('Basic (no lighting, no shadows)'))
-        .addChoice(
-          'StandardWithoutMetalness',
-          _('Standard (without metalness)')
-        )
+        .setValue(normalize3DMaterialType(objectContent.materialType))
+        .setType('choice');
+
+      add3DMaterialChoices(objectProperties.getOrCreate('materialType'))
         .setLabel(_('Material type'))
         .setGroup(_('Lighting'));
 
@@ -2823,7 +2844,7 @@ module.exports = {
       rightFaceResourceRepeat: false,
       topFaceResourceRepeat: false,
       bottomFaceResourceRepeat: false,
-      materialType: 'StandardWithoutMetalness',
+      materialType: 'Standard',
       tint: '255;255;255',
       isCastingShadow: true,
       isReceivingShadow: true,
@@ -3358,16 +3379,10 @@ module.exports = {
         }
 
         if (propertyName === 'materialType') {
-          const normalizedValue = newValue.toLowerCase();
-          if (normalizedValue === 'basic') {
-            objectContent.materialType = 'Basic';
-            return true;
-          }
-          if (normalizedValue === 'standardwithoutmetalness') {
-            objectContent.materialType = 'StandardWithoutMetalness';
-            return true;
-          }
-          return false;
+          const parsedMaterialType = parse3DMaterialType(newValue);
+          if (!parsedMaterialType) return false;
+          objectContent.materialType = parsedMaterialType;
+          return true;
         }
 
         if (
@@ -3419,13 +3434,10 @@ module.exports = {
 
         objectProperties
           .getOrCreate('materialType')
-          .setValue(objectContent.materialType || 'StandardWithoutMetalness')
-          .setType('choice')
-          .addChoice('Basic', _('Basic (no lighting, no shadows)'))
-          .addChoice(
-            'StandardWithoutMetalness',
-            _('Standard (without metalness)')
-          )
+          .setValue(normalize3DMaterialType(objectContent.materialType))
+          .setType('choice');
+
+        add3DMaterialChoices(objectProperties.getOrCreate('materialType'))
           .setLabel(_('Material type'))
           .setGroup(_('Lighting'));
 
@@ -3482,7 +3494,7 @@ module.exports = {
           defaultHeight: 100,
           defaultDepth: 100,
           defaultColor: '255;255;255',
-          defaultMaterialType: 'StandardWithoutMetalness',
+          defaultMaterialType: 'Standard',
           defaultCastShadow: true,
           defaultReceiveShadow: true,
         })
@@ -3509,7 +3521,7 @@ module.exports = {
           defaultHeight: 300,
           defaultDepth: 1,
           defaultColor: '255;255;255',
-          defaultMaterialType: 'StandardWithoutMetalness',
+          defaultMaterialType: 'Standard',
           defaultCastShadow: true,
           defaultReceiveShadow: true,
         })
@@ -3536,7 +3548,7 @@ module.exports = {
           defaultHeight: 160,
           defaultDepth: 80,
           defaultColor: '255;255;255',
-          defaultMaterialType: 'StandardWithoutMetalness',
+          defaultMaterialType: 'Standard',
           defaultCastShadow: true,
           defaultReceiveShadow: true,
         })
@@ -5865,6 +5877,104 @@ module.exports = {
       return newTransparentMaterial;
     };
 
+    const get3DMaterialProfile = materialType => {
+      if (materialType === 'Matte') {
+        return { roughness: 0.94, metalness: 0.01, envMapIntensity: 0.85 };
+      }
+      if (materialType === 'Standard') {
+        return { roughness: 0.56, metalness: 0.08, envMapIntensity: 1.05 };
+      }
+      if (materialType === 'Glossy') {
+        return { roughness: 0.2, metalness: 0.16, envMapIntensity: 1.25 };
+      }
+      if (materialType === 'Metallic') {
+        return { roughness: 0.24, metalness: 0.9, envMapIntensity: 1.35 };
+      }
+      return { roughness: 0.78, metalness: 0, envMapIntensity: 1 };
+    };
+
+    const apply3DMaterialProfile = (materialType, material) => {
+      if (!material || materialType === 'Basic') return;
+      if (material.roughness === undefined || material.metalness === undefined) {
+        return;
+      }
+
+      const profile = get3DMaterialProfile(materialType);
+      material.roughness = profile.roughness;
+      material.metalness = profile.metalness;
+      if (material.envMapIntensity !== undefined) {
+        material.envMapIntensity = profile.envMapIntensity;
+      }
+      material.needsUpdate = true;
+    };
+
+    const create3DMaterial = ({
+      materialType,
+      color,
+      side,
+      vertexColors,
+    }) => {
+      if (materialType === 'Basic') {
+        return new THREE.MeshBasicMaterial({
+          color,
+          side,
+          vertexColors,
+        });
+      }
+      const profile = get3DMaterialProfile(materialType);
+      return new THREE.MeshStandardMaterial({
+        color,
+        side,
+        vertexColors,
+        roughness: profile.roughness,
+        metalness: profile.metalness,
+        envMapIntensity: profile.envMapIntensity,
+      });
+    };
+
+    const normalize3DMaterialType = materialTypeValue => {
+      const normalizedValue = (materialTypeValue || '')
+        .toString()
+        .toLowerCase();
+      if (normalizedValue === 'basic') return 'Basic';
+      if (normalizedValue === 'standardwithoutmetalness')
+        return 'StandardWithoutMetalness';
+      if (normalizedValue === 'matte') return 'Matte';
+      if (normalizedValue === 'standard') return 'Standard';
+      if (normalizedValue === 'glossy') return 'Glossy';
+      if (normalizedValue === 'metallic') return 'Metallic';
+      return 'Standard';
+    };
+
+    const normalizeModel3DMaterialType = materialTypeValue => {
+      const normalizedValue = (materialTypeValue || '')
+        .toString()
+        .toLowerCase();
+      if (normalizedValue === 'keeporiginal') return 'KeepOriginal';
+      return normalize3DMaterialType(materialTypeValue);
+    };
+
+    const convertToBasicPreviewMaterial = material => {
+      const basicMaterial = new THREE.MeshBasicMaterial();
+      basicMaterial.name = material.name || '';
+      if (material.color) {
+        basicMaterial.color = material.color;
+      }
+      if (material.map) {
+        basicMaterial.map = material.map;
+      }
+      if (material.transparent !== undefined) {
+        basicMaterial.transparent = material.transparent;
+      }
+      if (material.opacity !== undefined) {
+        basicMaterial.opacity = material.opacity;
+      }
+      if (material.side !== undefined) {
+        basicMaterial.side = material.side;
+      }
+      return basicMaterial;
+    };
+
     class RenderedCube3DObject2DInstance extends RenderedInstance {
       /** @type {number} */
       _defaultWidth;
@@ -6088,7 +6198,7 @@ module.exports = {
       _facesOrientation = 'Y';
       _backFaceUpThroughWhichAxisRotation = 'X';
       _shouldUseTransparentTexture = false;
-      _forceBasicMaterial = false;
+      _materialType = 'Standard';
       _tint = '';
 
       constructor(
@@ -6134,26 +6244,28 @@ module.exports = {
 
           const faceResourceName = this._faceResourceNames[faceIndex];
           if (!faceResourceName) {
-            if (this._forceBasicMaterial) {
-              return new THREE.MeshBasicMaterial({
-                color: 0xffffff,
-                vertexColors: true,
-              });
-            }
-            return new THREE.MeshStandardMaterial({
+            return create3DMaterial({
+              materialType: this._materialType,
               color: 0xffffff,
-              metalness: 0,
+              side: THREE.FrontSide,
               vertexColors: true,
             });
           }
 
-          return await this._pixiResourcesLoader.getThreeMaterial(
+          const baseMaterial = await this._pixiResourcesLoader.getThreeMaterial(
             project,
             faceResourceName,
             {
               useTransparentTexture: this._shouldUseTransparentTexture,
+              forceBasicMaterial: this._materialType === 'Basic',
             }
           );
+          if (this._materialType === 'Basic') {
+            return baseMaterial;
+          }
+          const material = baseMaterial.clone();
+          apply3DMaterialProfile(this._materialType, material);
+          return material;
         };
 
         const materials = await Promise.all([
@@ -6240,9 +6352,9 @@ module.exports = {
           this._shouldUseTransparentTexture = shouldUseTransparentTexture;
           materialsDirty = true;
         }
-        const forceBasicMaterial = object.content.materialType === 'Basic';
-        if (this._forceBasicMaterial !== forceBasicMaterial) {
-          this._forceBasicMaterial = forceBasicMaterial;
+        const materialType = normalize3DMaterialType(object.content.materialType);
+        if (this._materialType !== materialType) {
+          this._materialType = materialType;
           materialsDirty = true;
         }
         const tint = object.content.tint || '255;255;255';
@@ -6671,7 +6783,7 @@ module.exports = {
       _defaultWidth = 100;
       _defaultHeight = 100;
       _defaultDepth = 100;
-      _materialType = 'StandardWithoutMetalness';
+      _materialType = 'Standard';
       _color = '255;255;255';
       _isCastingShadow = true;
       _isReceivingShadow = true;
@@ -6725,23 +6837,16 @@ module.exports = {
         const side = this._doubleSidedMaterial
           ? THREE.DoubleSide
           : THREE.FrontSide;
-        if (this._materialType === 'Basic') {
-          return new THREE.MeshBasicMaterial({
-            color,
-            side,
-          });
-        }
-        return new THREE.MeshStandardMaterial({
+        return create3DMaterial({
+          materialType: this._materialType,
           color,
           side,
-          roughness: 0.82,
-          metalness: 0,
+          vertexColors: false,
         });
       }
 
       _updateThreeMaterial(content) {
-        const nextMaterialType =
-          content.materialType || 'StandardWithoutMetalness';
+        const nextMaterialType = normalize3DMaterialType(content.materialType);
         const nextColor = content.color || '255;255;255';
         const materialTypeChanged = nextMaterialType !== this._materialType;
 
@@ -7600,6 +7705,7 @@ module.exports = {
 
       /** @type {THREE.Object3D | null} */
       _clonedModel3D = null;
+      _materialType = 'Standard';
 
       constructor(
         project,
@@ -7664,6 +7770,48 @@ module.exports = {
 
       getCenterPoint() {
         return this._centerPoint || this._modelOriginPoint;
+      }
+
+      _applyMaterialTypeOnModel() {
+        if (!this._clonedModel3D || this._materialType === 'KeepOriginal') {
+          return;
+        }
+
+        const remapMaterial = sourceMaterial => {
+          if (this._materialType === 'Basic') {
+            return convertToBasicPreviewMaterial(sourceMaterial);
+          }
+
+          const clonedMaterial = sourceMaterial.clone();
+          apply3DMaterialProfile(this._materialType, clonedMaterial);
+          return clonedMaterial;
+        };
+
+        this._clonedModel3D.traverse(node => {
+          const mesh = /** @type {THREE.Mesh} */ (node);
+          if (!mesh.material) {
+            return;
+          }
+
+          if (Array.isArray(mesh.material)) {
+            for (let index = 0; index < mesh.material.length; index++) {
+              mesh.material[index] = remapMaterial(mesh.material[index]);
+            }
+          } else {
+            mesh.material = remapMaterial(mesh.material);
+          }
+        });
+      }
+
+      _reloadModel(modelResourceName) {
+        this._pixiResourcesLoader
+          .get3DModel(this._project, modelResourceName)
+          .then((model3d) => {
+            if (this._wasDestroyed) return;
+            this._clonedModel3D = THREE_ADDONS.SkeletonUtils.clone(model3d.scene);
+            this._applyMaterialTypeOnModel();
+            this._updateDefaultTransformation();
+          });
       }
 
       _updateDefaultTransformation() {
@@ -7870,19 +8018,22 @@ module.exports = {
         if (defaultTransformationDirty) this._updateDefaultTransformation();
 
         const modelResourceName = object.getModelResourceName();
+        let modelNeedsReload = false;
         if (this._modelResourceName !== modelResourceName) {
           this._modelResourceName = modelResourceName;
+          modelNeedsReload = true;
+        }
 
-          this._pixiResourcesLoader
-            .get3DModel(this._project, modelResourceName)
-            .then((model3d) => {
-              if (this._wasDestroyed) return;
-              this._clonedModel3D = THREE_ADDONS.SkeletonUtils.clone(
-                model3d.scene
-              );
+        const materialType = normalizeModel3DMaterialType(
+          object.getMaterialType()
+        );
+        if (this._materialType !== materialType) {
+          this._materialType = materialType;
+          modelNeedsReload = true;
+        }
 
-              this._updateDefaultTransformation();
-            });
+        if (modelNeedsReload) {
+          this._reloadModel(modelResourceName);
         }
 
         this._updateThreeObjectPosition();

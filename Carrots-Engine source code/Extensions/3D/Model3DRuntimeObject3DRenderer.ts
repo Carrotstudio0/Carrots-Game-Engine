@@ -3,30 +3,71 @@ namespace gdjs {
 
   const epsilon = 1 / (1 << 16);
 
-  const removeMetalness = (material: THREE.Material): void => {
-    //@ts-ignore
-    if (material.metalness) {
-      //@ts-ignore
-      material.metalness = 0;
+  type Model3DMaterialProfile = {
+    roughness: number;
+    metalness: number;
+    envMapIntensity: number;
+  };
+
+  const getModel3DMaterialProfile = (
+    materialType: gdjs.Model3DRuntimeObject.MaterialType
+  ): Model3DMaterialProfile => {
+    switch (materialType) {
+      case gdjs.Model3DRuntimeObject.MaterialType.Matte:
+        return { roughness: 0.94, metalness: 0.01, envMapIntensity: 0.85 };
+      case gdjs.Model3DRuntimeObject.MaterialType.Standard:
+        return { roughness: 0.56, metalness: 0.08, envMapIntensity: 1.05 };
+      case gdjs.Model3DRuntimeObject.MaterialType.Glossy:
+        return { roughness: 0.2, metalness: 0.16, envMapIntensity: 1.25 };
+      case gdjs.Model3DRuntimeObject.MaterialType.Metallic:
+        return { roughness: 0.24, metalness: 0.9, envMapIntensity: 1.35 };
+      case gdjs.Model3DRuntimeObject.MaterialType.StandardWithoutMetalness:
+      default:
+        return { roughness: 0.78, metalness: 0, envMapIntensity: 1 };
     }
   };
 
-  const removeMetalnessFromMesh = (node: THREE.Object3D) => {
+  const applyModel3DMaterialProfile = (
+    material: THREE.Material,
+    profile: Model3DMaterialProfile
+  ) => {
+    const standardMaterial = material as THREE.MeshStandardMaterial;
+    if (!('roughness' in standardMaterial) || !('metalness' in standardMaterial)) {
+      return;
+    }
+
+    standardMaterial.roughness = profile.roughness;
+    standardMaterial.metalness = profile.metalness;
+    standardMaterial.envMapIntensity = profile.envMapIntensity;
+    standardMaterial.needsUpdate = true;
+  };
+
+  const applyMaterialProfileToMesh = (
+    node: THREE.Object3D,
+    profile: Model3DMaterialProfile
+  ) => {
     const mesh = node as THREE.Mesh;
     if (!mesh.material) {
       return;
     }
+
     if (Array.isArray(mesh.material)) {
       for (let index = 0; index < mesh.material.length; index++) {
-        removeMetalness(mesh.material[index]);
+        const clonedMaterial = mesh.material[index].clone();
+        applyModel3DMaterialProfile(clonedMaterial, profile);
+        mesh.material[index] = clonedMaterial;
       }
     } else {
-      removeMetalness(mesh.material);
+      const clonedMaterial = mesh.material.clone();
+      applyModel3DMaterialProfile(clonedMaterial, profile);
+      mesh.material = clonedMaterial;
     }
   };
 
-  const traverseToRemoveMetalnessFromMeshes = (node: THREE.Object3D) =>
-    node.traverse(removeMetalnessFromMesh);
+  const traverseToApplyMaterialProfileFromMeshes = (
+    node: THREE.Object3D,
+    profile: Model3DMaterialProfile
+  ) => node.traverse(child => applyMaterialProfileToMesh(child, profile));
 
   const convertToBasicMaterial = (
     material: THREE.Material
@@ -338,15 +379,23 @@ namespace gdjs {
     private _replaceMaterials(threeObject: THREE.Object3D) {
       if (
         this._model3DRuntimeObject._materialType ===
-        gdjs.Model3DRuntimeObject.MaterialType.StandardWithoutMetalness
+        gdjs.Model3DRuntimeObject.MaterialType.KeepOriginal
       ) {
-        traverseToRemoveMetalnessFromMeshes(threeObject);
-      } else if (
+        return;
+      }
+
+      if (
         this._model3DRuntimeObject._materialType ===
         gdjs.Model3DRuntimeObject.MaterialType.Basic
       ) {
         traverseToSetBasicMaterialFromMeshes(threeObject);
+        return;
       }
+
+      const profile = getModel3DMaterialProfile(
+        this._model3DRuntimeObject._materialType
+      );
+      traverseToApplyMaterialProfileFromMeshes(threeObject, profile);
     }
 
     getAnimationCount() {
