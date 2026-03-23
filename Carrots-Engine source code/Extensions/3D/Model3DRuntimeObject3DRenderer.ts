@@ -105,6 +105,32 @@ namespace gdjs {
   const traverseToSetBasicMaterialFromMeshes = (node: THREE.Object3D) =>
     node.traverse(setBasicMaterialTo);
 
+  type Model3DIKTargetMode = 'bone' | 'position';
+
+  type Model3DIKChainDefinition = {
+    name: string;
+    enabled: boolean;
+    effectorBoneName: string;
+    targetMode: Model3DIKTargetMode;
+    targetBoneName: string;
+    targetPosition: FloatPoint3D;
+    linkBoneNames: string[];
+    iterationCount: number;
+    blendFactor: number;
+    minAngle: number;
+    maxAngle: number;
+  };
+
+  type Model3DIKResolvedChain = {
+    definition: Model3DIKChainDefinition;
+    effectorBone: THREE.Bone;
+    targetBone: THREE.Bone | null;
+    linkBones: THREE.Bone[];
+  };
+
+  const clampNumber = (value: number, min: number, max: number): number =>
+    Math.max(min, Math.min(max, value));
+
   class Model3DRuntimeObject3DRenderer extends gdjs.RuntimeObject3DRenderer {
     private _model3DRuntimeObject: gdjs.Model3DRuntimeObject;
     /**
@@ -114,6 +140,19 @@ namespace gdjs {
     private _originalModel: THREE_ADDONS.GLTF;
     private _animationMixer: THREE.AnimationMixer;
     private _action: THREE.AnimationAction | null;
+    private _ikChains: Map<string, Model3DIKChainDefinition>;
+    private _resolvedIKChains: Map<string, Model3DIKResolvedChain>;
+    private _bonesByName: Map<string, THREE.Bone>;
+
+    private _ikScratchTargetPosition = new THREE.Vector3();
+    private _ikScratchLinkPosition = new THREE.Vector3();
+    private _ikScratchEffectorPosition = new THREE.Vector3();
+    private _ikScratchToEffector = new THREE.Vector3();
+    private _ikScratchToTarget = new THREE.Vector3();
+    private _ikScratchRotationAxis = new THREE.Vector3();
+    private _ikScratchLinkWorldQuaternion = new THREE.Quaternion();
+    private _ikScratchLinkWorldQuaternionInverse = new THREE.Quaternion();
+    private _ikScratchDeltaQuaternion = new THREE.Quaternion();
 
     /**
      * The model origin evaluated according to the object configuration.
@@ -152,10 +191,14 @@ namespace gdjs {
 
       this._animationMixer = new THREE.AnimationMixer(model);
       this._action = null;
+      this._ikChains = new Map();
+      this._resolvedIKChains = new Map();
+      this._bonesByName = new Map();
     }
 
     updateAnimation(timeDelta: float) {
       this._animationMixer.update(timeDelta);
+      this._updateIK();
     }
 
     updatePosition() {
@@ -361,6 +404,7 @@ namespace gdjs {
       this._threeObject = threeObject;
       this.updatePosition();
       this._updateShadow();
+      this._rebuildIKChainCache();
 
       // Start the current animation on the new 3D object.
       this._animationMixer = new THREE.AnimationMixer(root);
@@ -396,6 +440,335 @@ namespace gdjs {
         this._model3DRuntimeObject._materialType
       );
       traverseToApplyMaterialProfileFromMeshes(threeObject, profile);
+    }
+
+    configureIKChain(
+      chainName: string,
+      effectorBoneName: string,
+      targetBoneName: string,
+      linkBoneNames: string[],
+      iterationCount: number,
+      blendFactor: number,
+      minAngle: number,
+      maxAngle: number
+    ): boolean {
+      const normalizedChainName = chainName.trim();
+      const normalizedEffectorBoneName = effectorBoneName.trim();
+      const normalizedTargetBoneName = targetBoneName.trim();
+      const normalizedLinkBoneNames = linkBoneNames
+        .map((linkBoneName) => linkBoneName.trim())
+        .filter((linkBoneName) => !!linkBoneName);
+
+      if (
+        !normalizedChainName ||
+        !normalizedEffectorBoneName ||
+        normalizedLinkBoneNames.length === 0
+      ) {
+        return false;
+      }
+
+      const previousChain = this._ikChains.get(normalizedChainName);
+      let minAngleDegrees = Number.isFinite(minAngle) ? Math.max(0, minAngle) : 0;
+      let maxAngleDegrees = Number.isFinite(maxAngle) ? Math.max(0, maxAngle) : 0;
+      if (maxAngleDegrees > 0 && minAngleDegrees > maxAngleDegrees) {
+        const temp = minAngleDegrees;
+        minAngleDegrees = maxAngleDegrees;
+        maxAngleDegrees = temp;
+      }
+
+      const chain: Model3DIKChainDefinition = {
+        name: normalizedChainName,
+        enabled: previousChain ? previousChain.enabled : true,
+        effectorBoneName: normalizedEffectorBoneName,
+        targetMode: normalizedTargetBoneName ? 'bone' : 'position',
+        targetBoneName: normalizedTargetBoneName,
+        targetPosition: previousChain
+          ? previousChain.targetPosition
+          : [this._object.getX(), this._object.getY(), this._object.getZ()],
+        linkBoneNames: normalizedLinkBoneNames,
+        iterationCount: this._sanitizeIKIterationCount(iterationCount),
+        blendFactor: this._sanitizeIKBlendFactor(blendFactor),
+        minAngle: minAngleDegrees,
+        maxAngle: maxAngleDegrees,
+      };
+      this._ikChains.set(normalizedChainName, chain);
+      this._resolveIKChains();
+      return true;
+    }
+
+    setIKTargetPosition(
+      chainName: string,
+      targetX: float,
+      targetY: float,
+      targetZ: float
+    ): boolean {
+      const chain = this._ikChains.get(chainName.trim());
+      if (!chain) {
+        return false;
+      }
+
+      chain.targetMode = 'position';
+      chain.targetBoneName = '';
+      chain.targetPosition = [targetX, targetY, targetZ];
+      this._resolveIKChains();
+      return true;
+    }
+
+    setIKTargetBone(chainName: string, targetBoneName: string): boolean {
+      const chain = this._ikChains.get(chainName.trim());
+      const normalizedTargetBoneName = targetBoneName.trim();
+      if (!chain || !normalizedTargetBoneName) {
+        return false;
+      }
+
+      chain.targetMode = 'bone';
+      chain.targetBoneName = normalizedTargetBoneName;
+      this._resolveIKChains();
+      return true;
+    }
+
+    setIKEnabled(chainName: string, enabled: boolean): boolean {
+      const chain = this._ikChains.get(chainName.trim());
+      if (!chain) {
+        return false;
+      }
+      chain.enabled = enabled;
+      return true;
+    }
+
+    setIKIterationCount(chainName: string, iterationCount: number): boolean {
+      const chain = this._ikChains.get(chainName.trim());
+      if (!chain) {
+        return false;
+      }
+      chain.iterationCount = this._sanitizeIKIterationCount(iterationCount);
+      return true;
+    }
+
+    setIKBlendFactor(chainName: string, blendFactor: number): boolean {
+      const chain = this._ikChains.get(chainName.trim());
+      if (!chain) {
+        return false;
+      }
+      chain.blendFactor = this._sanitizeIKBlendFactor(blendFactor);
+      return true;
+    }
+
+    setIKAngleLimits(
+      chainName: string,
+      minAngleDegrees: number,
+      maxAngleDegrees: number
+    ): boolean {
+      const chain = this._ikChains.get(chainName.trim());
+      if (!chain) {
+        return false;
+      }
+      let normalizedMinAngle = Number.isFinite(minAngleDegrees)
+        ? Math.max(0, minAngleDegrees)
+        : 0;
+      let normalizedMaxAngle = Number.isFinite(maxAngleDegrees)
+        ? Math.max(0, maxAngleDegrees)
+        : 0;
+      if (normalizedMaxAngle > 0 && normalizedMinAngle > normalizedMaxAngle) {
+        const temp = normalizedMinAngle;
+        normalizedMinAngle = normalizedMaxAngle;
+        normalizedMaxAngle = temp;
+      }
+      chain.minAngle = normalizedMinAngle;
+      chain.maxAngle = normalizedMaxAngle;
+      return true;
+    }
+
+    removeIKChain(chainName: string): void {
+      const normalizedChainName = chainName.trim();
+      this._ikChains.delete(normalizedChainName);
+      this._resolvedIKChains.delete(normalizedChainName);
+    }
+
+    clearIKChains(): void {
+      this._ikChains.clear();
+      this._resolvedIKChains.clear();
+    }
+
+    hasIKChain(chainName: string): boolean {
+      return this._ikChains.has(chainName.trim());
+    }
+
+    getIKChainCount(): number {
+      return this._ikChains.size;
+    }
+
+    private _sanitizeIKIterationCount(iterationCount: number): number {
+      if (!Number.isFinite(iterationCount)) {
+        return 8;
+      }
+      return clampNumber(Math.round(iterationCount), 1, 32);
+    }
+
+    private _sanitizeIKBlendFactor(blendFactor: number): number {
+      if (!Number.isFinite(blendFactor)) {
+        return 1;
+      }
+      return clampNumber(blendFactor, 0, 1);
+    }
+
+    private _rebuildIKChainCache(): void {
+      this._bonesByName.clear();
+      this._threeObject.traverse((child) => {
+        const maybeBone = child as any;
+        if (maybeBone && maybeBone.isBone) {
+          const bone = child as THREE.Bone;
+          this._bonesByName.set(bone.name, bone);
+        }
+      });
+      this._resolveIKChains();
+    }
+
+    private _resolveIKChains(): void {
+      this._resolvedIKChains.clear();
+      for (const chain of this._ikChains.values()) {
+        const effectorBone = this._bonesByName.get(chain.effectorBoneName);
+        if (!effectorBone) continue;
+
+        const linkBones = chain.linkBoneNames
+          .map((linkBoneName) => this._bonesByName.get(linkBoneName))
+          .filter((linkBone): linkBone is THREE.Bone => !!linkBone);
+        if (linkBones.length === 0) continue;
+
+        const targetBone =
+          chain.targetMode === 'bone'
+            ? this._bonesByName.get(chain.targetBoneName) || null
+            : null;
+
+        this._resolvedIKChains.set(chain.name, {
+          definition: chain,
+          effectorBone,
+          targetBone,
+          linkBones,
+        });
+      }
+    }
+
+    private _updateIK(): void {
+      if (this._resolvedIKChains.size === 0) return;
+
+      this._threeObject.updateMatrixWorld(true);
+      for (const resolvedChain of this._resolvedIKChains.values()) {
+        const { definition } = resolvedChain;
+        if (!definition.enabled) continue;
+
+        if (definition.targetMode === 'bone' && !resolvedChain.targetBone) {
+          continue;
+        }
+
+        const targetPosition = this._ikScratchTargetPosition;
+        if (definition.targetMode === 'bone' && resolvedChain.targetBone) {
+          resolvedChain.targetBone.getWorldPosition(targetPosition);
+        } else {
+          const [targetX, targetY, targetZ] = definition.targetPosition;
+          targetPosition.set(targetX, targetY, targetZ);
+        }
+
+        this._solveIKChain(resolvedChain, targetPosition);
+      }
+    }
+
+    private _solveIKChain(
+      resolvedChain: Model3DIKResolvedChain,
+      targetPosition: THREE.Vector3
+    ): void {
+      const { definition } = resolvedChain;
+      const minAngle = gdjs.toRad(definition.minAngle);
+      const maxAngle =
+        definition.maxAngle > 0 ? gdjs.toRad(definition.maxAngle) : Math.PI;
+
+      for (
+        let iterationIndex = 0;
+        iterationIndex < definition.iterationCount;
+        iterationIndex++
+      ) {
+        let hasRotatedBone = false;
+        for (const linkBone of resolvedChain.linkBones) {
+          linkBone.getWorldPosition(this._ikScratchLinkPosition);
+          resolvedChain.effectorBone.getWorldPosition(
+            this._ikScratchEffectorPosition
+          );
+
+          this._ikScratchToEffector
+            .copy(this._ikScratchEffectorPosition)
+            .sub(this._ikScratchLinkPosition);
+          this._ikScratchToTarget
+            .copy(targetPosition)
+            .sub(this._ikScratchLinkPosition);
+
+          if (
+            this._ikScratchToEffector.lengthSq() < epsilon ||
+            this._ikScratchToTarget.lengthSq() < epsilon
+          ) {
+            continue;
+          }
+
+          this._ikScratchToEffector.normalize();
+          this._ikScratchToTarget.normalize();
+
+          const dot = clampNumber(
+            this._ikScratchToEffector.dot(this._ikScratchToTarget),
+            -1,
+            1
+          );
+          let angle = Math.acos(dot);
+          if (!Number.isFinite(angle) || angle < 1e-5) {
+            continue;
+          }
+
+          if (minAngle > 0 && angle < minAngle) {
+            angle = minAngle;
+          }
+          if (maxAngle > 0 && angle > maxAngle) {
+            angle = maxAngle;
+          }
+          angle *= definition.blendFactor;
+          if (angle < 1e-6) {
+            continue;
+          }
+
+          this._ikScratchRotationAxis.crossVectors(
+            this._ikScratchToEffector,
+            this._ikScratchToTarget
+          );
+          if (this._ikScratchRotationAxis.lengthSq() < epsilon) {
+            continue;
+          }
+          this._ikScratchRotationAxis.normalize();
+
+          linkBone.getWorldQuaternion(this._ikScratchLinkWorldQuaternion);
+          this._ikScratchLinkWorldQuaternionInverse
+            .copy(this._ikScratchLinkWorldQuaternion)
+            .invert();
+          this._ikScratchRotationAxis.applyQuaternion(
+            this._ikScratchLinkWorldQuaternionInverse
+          );
+
+          this._ikScratchDeltaQuaternion.setFromAxisAngle(
+            this._ikScratchRotationAxis,
+            angle
+          );
+          linkBone.quaternion.multiply(this._ikScratchDeltaQuaternion);
+          linkBone.updateMatrixWorld(true);
+          hasRotatedBone = true;
+        }
+
+        resolvedChain.effectorBone.getWorldPosition(this._ikScratchEffectorPosition);
+        if (
+          this._ikScratchEffectorPosition.distanceToSquared(targetPosition) <
+          epsilon
+        ) {
+          break;
+        }
+        if (!hasRotatedBone) {
+          break;
+        }
+      }
     }
 
     getAnimationCount() {

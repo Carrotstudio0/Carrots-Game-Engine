@@ -74,6 +74,12 @@ namespace gdjs {
     }
   };
 
+  const parseIKLinkBoneNames = (linkBoneNames: string): string[] =>
+    linkBoneNames
+      .split(',')
+      .map((boneName) => boneName.trim())
+      .filter((boneName) => !!boneName);
+
   /**
    * A 3D object which displays a 3D model.
    * @category Objects > 3D Model
@@ -449,6 +455,81 @@ namespace gdjs {
     setCrossfadeDuration(duration: number): void {
       if (this._crossfadeDuration === duration) return;
       this._crossfadeDuration = duration;
+    }
+
+    configureIKChain(
+      chainName: string,
+      effectorBoneName: string,
+      targetBoneName: string,
+      linkBoneNames: string,
+      iterationCount: number,
+      blendFactor: number,
+      minAngle: number,
+      maxAngle: number
+    ): void {
+      this._renderer.configureIKChain(
+        chainName,
+        effectorBoneName,
+        targetBoneName,
+        parseIKLinkBoneNames(linkBoneNames),
+        iterationCount,
+        blendFactor,
+        minAngle,
+        maxAngle
+      );
+    }
+
+    setIKTargetPosition(
+      chainName: string,
+      targetX: float,
+      targetY: float,
+      targetZ: float
+    ): void {
+      this._renderer.setIKTargetPosition(chainName, targetX, targetY, targetZ);
+    }
+
+    setIKTargetBone(chainName: string, targetBoneName: string): void {
+      this._renderer.setIKTargetBone(chainName, targetBoneName);
+    }
+
+    setIKEnabled(chainName: string, enabled: boolean): void {
+      this._renderer.setIKEnabled(chainName, enabled);
+    }
+
+    setIKIterationCount(chainName: string, iterationCount: number): void {
+      this._renderer.setIKIterationCount(chainName, iterationCount);
+    }
+
+    setIKBlendFactor(chainName: string, blendFactor: number): void {
+      this._renderer.setIKBlendFactor(chainName, blendFactor);
+    }
+
+    setIKAngleLimits(
+      chainName: string,
+      minAngleDegrees: number,
+      maxAngleDegrees: number
+    ): void {
+      this._renderer.setIKAngleLimits(
+        chainName,
+        minAngleDegrees,
+        maxAngleDegrees
+      );
+    }
+
+    removeIKChain(chainName: string): void {
+      this._renderer.removeIKChain(chainName);
+    }
+
+    clearIKChains(): void {
+      this._renderer.clearIKChains();
+    }
+
+    hasIKChain(chainName: string): boolean {
+      return this._renderer.hasIKChain(chainName);
+    }
+
+    getIKChainCount(): number {
+      return this._renderer.getIKChainCount();
     }
 
     isAnimationPaused() {

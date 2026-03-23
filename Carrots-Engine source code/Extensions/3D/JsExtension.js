@@ -2480,6 +2480,176 @@ module.exports = {
         .addParameter('object', _('3D model'), 'Model3DObject', false)
         .addParameter('number', _('Crossfade duration (in seconds)'), '', false)
         .setFunctionName('setCrossfadeDuration');
+
+      object
+        .addScopedAction(
+          'ConfigureIKChain',
+          _('Configure IK chain'),
+          _(
+            'Create or update an IK chain for this model using bone names.'
+          ),
+          _(
+            'Configure IK chain _PARAM1_ on _PARAM0_ (effector: _PARAM2_, target: _PARAM3_)'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('string', _('Effector bone name'), '', false)
+        .addParameter('string', _('Target bone name (optional)'), '', false)
+        .addParameter(
+          'string',
+          _(
+            'Link bones (comma-separated, from near effector to upper/root)'
+          ),
+          '',
+          false
+        )
+        .addParameter('number', _('Iterations (1-32)'), '', false)
+        .addParameter('number', _('Blend factor (0-1)'), '', false)
+        .addParameter('number', _('Min angle per step (degrees)'), '', false)
+        .addParameter('number', _('Max angle per step (degrees)'), '', false)
+        .setFunctionName('configureIKChain');
+
+      object
+        .addScopedAction(
+          'SetIKTargetPosition',
+          _('Set IK target position'),
+          _('Set IK target in world coordinates for a chain.'),
+          _(
+            'Set IK target position of chain _PARAM1_ on _PARAM0_ to _PARAM2_; _PARAM3_; _PARAM4_'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('number', _('Target X'), '', false)
+        .addParameter('number', _('Target Y'), '', false)
+        .addParameter('number', _('Target Z'), '', false)
+        .setFunctionName('setIKTargetPosition');
+
+      object
+        .addScopedAction(
+          'SetIKTargetBone',
+          _('Set IK target bone'),
+          _('Use another bone as IK target for a chain.'),
+          _('Set IK target bone of chain _PARAM1_ on _PARAM0_ to _PARAM2_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('string', _('Target bone name'), '', false)
+        .setFunctionName('setIKTargetBone');
+
+      object
+        .addScopedAction(
+          'SetIKEnabled',
+          _('Enable/disable IK chain'),
+          _('Enable or disable one IK chain.'),
+          _('Set IK chain _PARAM1_ on _PARAM0_ to _PARAM2_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('yesorno', _('Enabled'))
+        .setFunctionName('setIKEnabled');
+
+      object
+        .addScopedAction(
+          'SetIKIterationCount',
+          _('Set IK iteration count'),
+          _('Set IK solving iterations for a chain.'),
+          _('Set IK iterations of chain _PARAM1_ on _PARAM0_ to _PARAM2_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('number', _('Iterations (1-32)'), '', false)
+        .setFunctionName('setIKIterationCount');
+
+      object
+        .addScopedAction(
+          'SetIKBlendFactor',
+          _('Set IK blend factor'),
+          _('Set IK blend factor for a chain.'),
+          _('Set IK blend factor of chain _PARAM1_ on _PARAM0_ to _PARAM2_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('number', _('Blend factor (0-1)'), '', false)
+        .setFunctionName('setIKBlendFactor');
+
+      object
+        .addScopedAction(
+          'SetIKAngleLimits',
+          _('Set IK angle limits'),
+          _('Set minimum and maximum IK step angles for a chain.'),
+          _(
+            'Set IK angle limits of chain _PARAM1_ on _PARAM0_ to min _PARAM2_ and max _PARAM3_'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('number', _('Min angle (degrees)'), '', false)
+        .addParameter('number', _('Max angle (degrees)'), '', false)
+        .setFunctionName('setIKAngleLimits');
+
+      object
+        .addScopedAction(
+          'RemoveIKChain',
+          _('Remove IK chain'),
+          _('Remove one IK chain from this model.'),
+          _('Remove IK chain _PARAM1_ from _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .setFunctionName('removeIKChain');
+
+      object
+        .addScopedAction(
+          'ClearIKChains',
+          _('Clear IK chains'),
+          _('Remove all IK chains from this model.'),
+          _('Clear all IK chains from _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('clearIKChains');
+
+      object
+        .addScopedCondition(
+          'HasIKChain',
+          _('IK chain exists'),
+          _('Check whether an IK chain exists on this model.'),
+          _('IK chain _PARAM1_ exists on _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .setFunctionName('hasIKChain');
     }
 
     const parse3DMaterialType = materialTypeValue => {
