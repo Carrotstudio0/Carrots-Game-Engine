@@ -1,5 +1,13 @@
 namespace gdjs {
   type Model3DAnimation = { name: string; source: string; loop: boolean };
+  type Model3DMaterialTypeString =
+    | 'Basic'
+    | 'StandardWithoutMetalness'
+    | 'KeepOriginal'
+    | 'Matte'
+    | 'Standard'
+    | 'Glossy'
+    | 'Metallic';
 
   type Model3DObjectNetworkSyncDataType = {
     mt: number;
@@ -28,7 +36,7 @@ namespace gdjs {
       rotationY: number;
       rotationZ: number;
       keepAspectRatio: boolean;
-      materialType: 'Basic' | 'StandardWithoutMetalness' | 'KeepOriginal';
+      materialType: Model3DMaterialTypeString;
       originLocation:
         | 'ModelOrigin'
         | 'ObjectCenter'
@@ -66,6 +74,12 @@ namespace gdjs {
     }
   };
 
+  const parseIKLinkBoneNames = (linkBoneNames: string): string[] =>
+    linkBoneNames
+      .split(',')
+      .map((boneName) => boneName.trim())
+      .filter((boneName) => !!boneName);
+
   /**
    * A 3D object which displays a 3D model.
    * @category Objects > 3D Model
@@ -74,11 +88,14 @@ namespace gdjs {
     extends gdjs.RuntimeObject3D
     implements gdjs.Animatable
   {
+    private static readonly _defaultOriginPoint: FloatPoint3D = [0, 0, 0];
+    private static readonly _defaultCenterPoint: FloatPoint3D = [0.5, 0.5, 0.5];
+
     _renderer: gdjs.Model3DRuntimeObjectRenderer;
 
     _modelResourceName: string;
     _materialType: gdjs.Model3DRuntimeObject.MaterialType =
-      gdjs.Model3DRuntimeObject.MaterialType.Basic;
+      gdjs.Model3DRuntimeObject.MaterialType.Standard;
 
     /**
      * The local point of the model that will be at the object position.
@@ -334,12 +351,22 @@ namespace gdjs {
     _convertMaterialType(
       materialTypeString: string
     ): gdjs.Model3DRuntimeObject.MaterialType {
-      if (materialTypeString === 'KeepOriginal') {
-        return gdjs.Model3DRuntimeObject.MaterialType.KeepOriginal;
-      } else if (materialTypeString === 'StandardWithoutMetalness') {
-        return gdjs.Model3DRuntimeObject.MaterialType.StandardWithoutMetalness;
-      } else {
-        return gdjs.Model3DRuntimeObject.MaterialType.Basic;
+      switch (materialTypeString) {
+        case 'Basic':
+          return gdjs.Model3DRuntimeObject.MaterialType.Basic;
+        case 'KeepOriginal':
+          return gdjs.Model3DRuntimeObject.MaterialType.KeepOriginal;
+        case 'StandardWithoutMetalness':
+          return gdjs.Model3DRuntimeObject.MaterialType.StandardWithoutMetalness;
+        case 'Matte':
+          return gdjs.Model3DRuntimeObject.MaterialType.Matte;
+        case 'Glossy':
+          return gdjs.Model3DRuntimeObject.MaterialType.Glossy;
+        case 'Metallic':
+          return gdjs.Model3DRuntimeObject.MaterialType.Metallic;
+        case 'Standard':
+        default:
+          return gdjs.Model3DRuntimeObject.MaterialType.Standard;
       }
     }
 
@@ -433,6 +460,133 @@ namespace gdjs {
       this._crossfadeDuration = duration;
     }
 
+    configureIKChain(
+      chainName: string,
+      effectorBoneName: string,
+      targetBoneName: string,
+      linkBoneNames: string,
+      iterationCount: number,
+      blendFactor: number,
+      minAngle: number,
+      maxAngle: number
+    ): void {
+      this._renderer.configureIKChain(
+        chainName,
+        effectorBoneName,
+        targetBoneName,
+        parseIKLinkBoneNames(linkBoneNames),
+        iterationCount,
+        blendFactor,
+        minAngle,
+        maxAngle
+      );
+    }
+
+    setIKTargetPosition(
+      chainName: string,
+      targetX: float,
+      targetY: float,
+      targetZ: float
+    ): void {
+      this._renderer.setIKTargetPosition(chainName, targetX, targetY, targetZ);
+    }
+
+    setIKTargetBone(chainName: string, targetBoneName: string): void {
+      this._renderer.setIKTargetBone(chainName, targetBoneName);
+    }
+
+    setIKEnabled(chainName: string, enabled: boolean): void {
+      this._renderer.setIKEnabled(chainName, enabled);
+    }
+
+    setIKIterationCount(chainName: string, iterationCount: number): void {
+      this._renderer.setIKIterationCount(chainName, iterationCount);
+    }
+
+    setIKBlendFactor(chainName: string, blendFactor: number): void {
+      this._renderer.setIKBlendFactor(chainName, blendFactor);
+    }
+
+    setIKAngleLimits(
+      chainName: string,
+      minAngleDegrees: number,
+      maxAngleDegrees: number
+    ): void {
+      this._renderer.setIKAngleLimits(
+        chainName,
+        minAngleDegrees,
+        maxAngleDegrees
+      );
+    }
+
+    setIKTargetTolerance(chainName: string, tolerance: number): void {
+      this._renderer.setIKTargetTolerance(chainName, tolerance);
+    }
+
+    setIKLinkAngleLimits(
+      chainName: string,
+      linkBoneName: string,
+      minAngleXDegrees: number,
+      maxAngleXDegrees: number,
+      minAngleYDegrees: number,
+      maxAngleYDegrees: number,
+      minAngleZDegrees: number,
+      maxAngleZDegrees: number
+    ): void {
+      this._renderer.setIKLinkAngleLimits(
+        chainName,
+        linkBoneName,
+        minAngleXDegrees,
+        maxAngleXDegrees,
+        minAngleYDegrees,
+        maxAngleYDegrees,
+        minAngleZDegrees,
+        maxAngleZDegrees
+      );
+    }
+
+    clearIKLinkAngleLimits(chainName: string, linkBoneName: string): void {
+      this._renderer.clearIKLinkAngleLimits(chainName, linkBoneName);
+    }
+
+    clearIKLinkConstraints(chainName: string): void {
+      this._renderer.clearIKLinkConstraints(chainName);
+    }
+
+    setIKGizmosEnabled(enabled: boolean): void {
+      this._renderer.setIKGizmosEnabled(enabled);
+    }
+
+    areIKGizmosEnabled(): boolean {
+      return this._renderer.areIKGizmosEnabled();
+    }
+
+    removeIKChain(chainName: string): void {
+      this._renderer.removeIKChain(chainName);
+    }
+
+    clearIKChains(): void {
+      this._renderer.clearIKChains();
+    }
+
+    hasIKChain(chainName: string): boolean {
+      return this._renderer.hasIKChain(chainName);
+    }
+
+    getIKChainCount(): number {
+      return this._renderer.getIKChainCount();
+    }
+
+    override onDeletedFromScene(): void {
+      this._renderer.onDestroy();
+      super.onDeletedFromScene();
+    }
+
+    override onDestroyed(): void {
+      this._renderer.onDestroy();
+      super.onDestroyed();
+    }
+
     isAnimationPaused() {
       return this._animationPaused;
     }
@@ -474,33 +628,59 @@ namespace gdjs {
     }
 
     getCenterX(): float {
-      const centerPoint = this._renderer.getCenterPoint();
+      const centerPoint = this._getCenterPointForRuntimeAccess();
       return this.getWidth() * centerPoint[0];
     }
 
     getCenterY(): float {
-      const centerPoint = this._renderer.getCenterPoint();
+      const centerPoint = this._getCenterPointForRuntimeAccess();
       return this.getHeight() * centerPoint[1];
     }
 
     getCenterZ(): float {
-      const centerPoint = this._renderer.getCenterPoint();
+      const centerPoint = this._getCenterPointForRuntimeAccess();
       return this.getDepth() * centerPoint[2];
     }
 
     getDrawableX(): float {
-      const originPoint = this._renderer.getOriginPoint();
+      const originPoint = this._getOriginPointForRuntimeAccess();
       return this.getX() - this.getWidth() * originPoint[0];
     }
 
     getDrawableY(): float {
-      const originPoint = this._renderer.getOriginPoint();
+      const originPoint = this._getOriginPointForRuntimeAccess();
       return this.getY() - this.getHeight() * originPoint[1];
     }
 
     getDrawableZ(): float {
-      const originPoint = this._renderer.getOriginPoint();
+      const originPoint = this._getOriginPointForRuntimeAccess();
       return this.getZ() - this.getDepth() * originPoint[2];
+    }
+
+    private _getCenterPointForRuntimeAccess(): FloatPoint3D {
+      const renderer = (this as any)._renderer as
+        | gdjs.Model3DRuntimeObjectRenderer
+        | undefined;
+      if (renderer && typeof renderer.getCenterPoint === 'function') {
+        return renderer.getCenterPoint();
+      }
+      if (this._centerPoint) {
+        return this._centerPoint;
+      }
+      return gdjs.Model3DRuntimeObject._defaultCenterPoint;
+    }
+
+    private _getOriginPointForRuntimeAccess(): FloatPoint3D {
+      const renderer = (this as any)._renderer as
+        | gdjs.Model3DRuntimeObjectRenderer
+        | undefined;
+      if (renderer && typeof renderer.getOriginPoint === 'function') {
+        return renderer.getOriginPoint();
+      }
+      if (this._originPoint) {
+        return this._originPoint;
+      }
+      return gdjs.Model3DRuntimeObject._defaultOriginPoint;
     }
   }
 
@@ -510,6 +690,10 @@ namespace gdjs {
       Basic,
       StandardWithoutMetalness,
       KeepOriginal,
+      Matte,
+      Standard,
+      Glossy,
+      Metallic,
     }
   }
   gdjs.registerObject('Scene3D::Model3DObject', gdjs.Model3DRuntimeObject);

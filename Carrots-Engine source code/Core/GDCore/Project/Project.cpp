@@ -851,6 +851,9 @@ void Project::UnserializeFrom(const SerializerElement& element) {
           currentPlatformName.empty())
         currentPlatform = platform;
     } else {
+      // Compatibility: this platform name can be found in old projects but is
+      // no longer registered in modern runtimes.
+      if (name == "GDevelop JS platform") continue;
       std::cout << "Platform \"" << name << "\" is unknown." << std::endl;
     }
   }

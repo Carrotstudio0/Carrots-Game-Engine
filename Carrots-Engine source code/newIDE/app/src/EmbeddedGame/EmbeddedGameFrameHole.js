@@ -70,6 +70,8 @@ export const EmbeddedGameFrameHole = (props: Props): React.MixedElement => {
   return (
     <div
       style={{
+        flex: 1,
+        minHeight: 0,
         height: `calc(100% - ${props.marginBottom || 0}px)`,
         display: 'flex',
         justifyContent: 'flex-end',

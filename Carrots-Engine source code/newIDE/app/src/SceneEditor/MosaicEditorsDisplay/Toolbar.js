@@ -5,12 +5,14 @@ import * as React from 'react';
 import { ToolbarGroup } from '../../UI/Toolbar';
 import ToolbarSeparator from '../../UI/ToolbarSeparator';
 import IconButton from '../../UI/IconButton';
+import TextButton from '../../UI/TextButton';
 import ElementWithMenu from '../../UI/Menu/ElementWithMenu';
 import ToolbarCommands from '../ToolbarCommands';
 import { type MenuItemTemplate } from '../../UI/Menu/Menu.flow';
 import ObjectIcon from '../../UI/CustomSvgIcons/Object';
 import ObjectGroupIcon from '../../UI/CustomSvgIcons/ObjectGroup';
 import SceneIcon from '../../UI/CustomSvgIcons/Scene';
+import EventsIcon from '../../UI/CustomSvgIcons/Events';
 import ExtensionIcon from '../../UI/CustomSvgIcons/Extension';
 import EditIcon from '../../UI/CustomSvgIcons/Edit';
 import InstancesListIcon from '../../UI/CustomSvgIcons/InstancesList';
@@ -24,6 +26,7 @@ import TrashIcon from '../../UI/CustomSvgIcons/Trash';
 import GridIcon from '../../UI/CustomSvgIcons/Grid';
 import ZoomInIcon from '../../UI/CustomSvgIcons/ZoomIn';
 import EditSceneIcon from '../../UI/CustomSvgIcons/EditScene';
+import RectangleIcon from '../../UI/CustomSvgIcons/Rectangle';
 import {
   OPEN_INSTANCES_PANEL_BUTTON_ID,
   OPEN_LAYERS_PANEL_BUTTON_ID,
@@ -48,6 +51,8 @@ type Props = {|
   toggleObjectGroupsList: () => void,
   isObjectGroupsListShown: boolean,
   onOpenScenesManager: () => void,
+  onOpenSceneEvents: () => void,
+  sceneEventsEnabled: boolean,
   onOpenExtensionsManager: () => void,
   toggleProperties: () => void,
   isPropertiesShown: boolean,
@@ -71,6 +76,9 @@ type Props = {|
   toggleWindowMask: () => void,
   isGridShown: boolean,
   toggleGrid: () => void,
+  toggleSelectedPhysicsHitboxes: () => void,
+  canToggleSelectedPhysicsHitboxes: boolean,
+  areSelectedPhysicsHitboxesShown: boolean,
   openSetupGrid: () => void,
   getContextMenuZoomItems: I18nType => Array<MenuItemTemplate>,
   setZoomFactor: number => void,
@@ -139,8 +147,8 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
           selected={props.isInstancesListShown}
           tooltip={
             props.isInstancesListShown
-              ? t`Close Scene Objects Panel`
-              : t`Open Scene Objects Panel`
+              ? t`Close Hierarchy Panel`
+              : t`Open Hierarchy Panel`
           }
         >
           <InstancesListIcon />
@@ -212,8 +220,8 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
           selected={props.isObjectsListShown}
           tooltip={
             props.isObjectsListShown
-              ? t`Close Hierarchy Panel`
-              : t`Open Hierarchy Panel`
+              ? t`Close Objects Panel`
+              : t`Open Objects Panel`
           }
         >
           <ObjectIcon />
@@ -241,6 +249,14 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
         >
           <SceneIcon />
         </IconButton>
+        <TextButton
+          id="scene-toolbar-open-events-button"
+          label={<Trans>Events</Trans>}
+          icon={<EventsIcon />}
+          onClick={props.onOpenSceneEvents}
+          disabled={!props.sceneEventsEnabled}
+          style={{ minWidth: 78 }}
+        />
         <IconButton
           size="small"
           color="default"
@@ -263,6 +279,21 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
           }
         >
           <EditIcon />
+        </IconButton>
+        <ToolbarSeparator />
+        <IconButton
+          size="small"
+          color="default"
+          onClick={props.toggleSelectedPhysicsHitboxes}
+          disabled={!props.canToggleSelectedPhysicsHitboxes}
+          selected={props.areSelectedPhysicsHitboxesShown}
+          tooltip={
+            props.areSelectedPhysicsHitboxesShown
+              ? t`Hide 3D physics hitboxes`
+              : t`Show 3D physics hitboxes`
+          }
+        >
+          <RectangleIcon />
         </IconButton>
         <ToolbarSeparator />
         <ElementWithMenu

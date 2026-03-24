@@ -4,7 +4,6 @@ import { Trans } from '@lingui/macro';
 import * as React from 'react';
 import LocalFileSystem from '../LocalFileSystem';
 import optionalRequire from '../../../Utils/OptionalRequire';
-import { findGDJS } from '../../../GameEngineFinder/LocalGDJSFinder';
 import LocalNetworkPreviewDialog from './LocalNetworkPreviewDialog';
 import assignIn from 'lodash/assignIn';
 import {
@@ -22,6 +21,7 @@ import {
 import Window from '../../../Utils/Window';
 import { getIDEVersionWithHash } from '../../../Version';
 import { setEmbeddedGameFramePreviewLocation } from '../../../EmbeddedGame/EmbeddedGameFrame';
+const { findGDJS } = require('../../../GameEngineFinder/LocalGDJSFinder');
 const electron = optionalRequire('electron');
 const path = optionalRequire('path');
 const ipcRenderer = electron ? electron.ipcRenderer : null;

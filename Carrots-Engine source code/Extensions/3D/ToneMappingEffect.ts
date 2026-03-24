@@ -51,14 +51,12 @@ namespace gdjs {
           _effectEnabled: boolean;
           _mode: string;
           _exposure: number;
-          _oldUseLegacyLights: boolean | null;
 
           constructor() {
             this._isEnabled = false;
             this._effectEnabled = true;
             this._mode = 'ACESFilmic';
             this._exposure = 1.0;
-            this._oldUseLegacyLights = null;
             void effectData;
           }
 
@@ -75,35 +73,6 @@ namespace gdjs {
               .getThreeRenderer();
           }
 
-          private _setPhysicalLighting(renderer: THREE.WebGLRenderer): void {
-            const rendererWithLegacyLights = renderer as THREE.WebGLRenderer & {
-              useLegacyLights?: boolean;
-            };
-            if (
-              this._oldUseLegacyLights === null &&
-              typeof rendererWithLegacyLights.useLegacyLights === 'boolean'
-            ) {
-              this._oldUseLegacyLights =
-                rendererWithLegacyLights.useLegacyLights;
-            }
-            if (typeof rendererWithLegacyLights.useLegacyLights === 'boolean') {
-              rendererWithLegacyLights.useLegacyLights = false;
-            }
-          }
-
-          private _restoreLegacyLighting(renderer: THREE.WebGLRenderer): void {
-            const rendererWithLegacyLights = renderer as THREE.WebGLRenderer & {
-              useLegacyLights?: boolean;
-            };
-            if (
-              this._oldUseLegacyLights !== null &&
-              typeof rendererWithLegacyLights.useLegacyLights === 'boolean'
-            ) {
-              rendererWithLegacyLights.useLegacyLights =
-                this._oldUseLegacyLights;
-            }
-          }
-
           private _applyToneMapping(target: EffectsTarget): boolean {
             const renderer = this._getRenderer(target);
             if (!renderer) {
@@ -114,7 +83,6 @@ namespace gdjs {
             renderer.toneMapping = getToneMappingConstant(mode);
             renderer.toneMappingExposure = Math.max(0, this._exposure);
             renderer.outputColorSpace = THREE.SRGBColorSpace;
-            this._setPhysicalLighting(renderer);
             return true;
           }
 
@@ -125,7 +93,6 @@ namespace gdjs {
             }
 
             renderer.toneMapping = THREE.NoToneMapping;
-            this._restoreLegacyLighting(renderer);
             return true;
           }
 

@@ -4958,6 +4958,8 @@ const MainFrame = (props: Props): React.MixedElement => {
     // $FlowFixMe[incompatible-type]
     setPreviewedLayout: setPreviewedLayout,
     openExternalEvents: openExternalEvents,
+    openExternalLayout: openExternalLayout,
+    openEventsFunctionsExtension: openEventsFunctionsExtension,
     openLayout: openLayout,
     openTemplateFromTutorial: openTemplateFromTutorial,
     openTemplateFromCourseChapter: openTemplateFromCourseChapter,
@@ -5020,6 +5022,8 @@ const MainFrame = (props: Props): React.MixedElement => {
     projectPath: currentFileMetadata
       ? getProjectDirectory(currentFileMetadata.fileIdentifier)
       : null,
+    buildMainMenuProps,
+    mainMenuCallbacks,
   };
 
   const hasEditorsInLeftPane = hasEditorsInPane(state.editorTabs, 'left');

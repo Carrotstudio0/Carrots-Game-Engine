@@ -43,12 +43,16 @@ void AbstractEventsBasedEntity::UnserializeFrom(
   fullName = element.GetStringAttribute("fullName");
   isPrivate = element.GetBoolAttribute("private");
 
-  const gd::SerializerElement& eventsFunctionsElement =
-      element.GetChild("eventsFunctions");
-  eventsFunctionsContainer.UnserializeEventsFunctionsFrom(
-      project, eventsFunctionsElement);
-  propertyDescriptors.UnserializeElementsFrom(
-      "propertyDescriptor", element.GetChild("propertyDescriptors"));
+  if (element.HasChild("eventsFunctions")) {
+    const gd::SerializerElement& eventsFunctionsElement =
+        element.GetChild("eventsFunctions");
+    eventsFunctionsContainer.UnserializeEventsFunctionsFrom(
+        project, eventsFunctionsElement);
+  }
+  if (element.HasChild("propertyDescriptors")) {
+    propertyDescriptors.UnserializeElementsFrom(
+        "propertyDescriptor", element.GetChild("propertyDescriptors"));
+  }
   if (element.HasChild("propertiesFolderStructure")) {
     propertyDescriptors.UnserializeFoldersFrom(
         project, element.GetChild("propertiesFolderStructure", 0));

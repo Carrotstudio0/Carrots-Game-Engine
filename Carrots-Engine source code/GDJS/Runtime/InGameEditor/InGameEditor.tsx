@@ -9,7 +9,7 @@ namespace gdjs {
     tag: K,
     attrs: {
       style?: Partial<CSSStyleDeclaration>;
-      onClick?: (event?: MouseEvent) => void;
+      onClick?: (event: Event) => void;
     },
     ...nodes: (HTMLElement | string)[]
   ): HTMLElement {
@@ -306,6 +306,7 @@ namespace gdjs {
   const F_KEY = 70;
   const G_KEY = 71;
   const H_KEY = 72;
+  const I_KEY = 73;
   const J_KEY = 74;
   const L_KEY = 76;
   const O_KEY = 79;
@@ -417,6 +418,12 @@ namespace gdjs {
     position: { x: float; y: float; z: float };
     rotation: { x: float; y: float; z: float };
     scale: { x: float; y: float; z: float };
+  };
+
+  type BoneControlData = {
+    object: gdjs.RuntimeObject;
+    bone: THREE.Bone;
+    helper: ObjectSkeletonHelper;
   };
 
   const defaultEffectsData: EffectData[] = [
@@ -812,6 +819,7 @@ namespace gdjs {
     // The controls shown to manipulate the selection.
     private _selectionControls: {
       object: gdjs.RuntimeObject;
+      boneControl: BoneControlData | null;
       dummyThreeObject: THREE.Object3D;
       threeTransformControls: THREE_ADDONS.TransformControls;
     } | null = null;
@@ -860,6 +868,11 @@ namespace gdjs {
     private _selection = new Selection();
     private _selectionBoxes: Map<RuntimeObject, ObjectSelectionBoxHelper> =
       new Map();
+    private _skeletonHelpers: Map<RuntimeObject, ObjectSkeletonHelper> =
+      new Map();
+    private _boneControlUnderCursor: BoneControlData | null = null;
+    private _selectedBoneControl: BoneControlData | null = null;
+    private _isIKModeEnabled = false;
     private _objectMover = new ObjectMover(this);
 
     private _wasMouseLeftButtonPressed = false;
@@ -961,6 +974,9 @@ namespace gdjs {
         switchToOrbitCamera: () =>
           this._getEditorCamera().switchToOrbitAroundZ0(4000),
         isFreeCamera: () => this._getEditorCamera().isFreeCamera(),
+        isIKModeEnabled: () => this._isIKModeEnabled,
+        toggleIKMode: () => this._toggleIKMode(),
+        hasIKTargetSelection: () => this._canEnableIKModeForSelection(),
         getSvgIconUrl: (iconName: string) => getSvgIconUrl(game, iconName),
         hasSelection: () => this._selection.getSelectedObjects().length > 0,
         hasSelectionControlsShown: () => !!this._selectionControls,
@@ -1168,6 +1184,13 @@ namespace gdjs {
       this._selectedLayerName = '';
       // Clear any reference to `RuntimeObject` from the unloaded scene.
       this._selectionBoxes.clear();
+      this._skeletonHelpers.forEach((helper) => {
+        helper.removeFromParent();
+      });
+      this._skeletonHelpers.clear();
+      this._boneControlUnderCursor = null;
+      this._selectedBoneControl = null;
+      this._isIKModeEnabled = false;
       this._selectionControls = null;
       this._draggedNewObject = null;
       this._draggedSelectedObject = null;
@@ -2093,6 +2116,7 @@ namespace gdjs {
           object.deleteFromScene();
         });
         this._selection.clear();
+        this._selectedBoneControl = null;
         this._sendSelectionUpdate({
           removedObjects,
         });
@@ -2100,6 +2124,7 @@ namespace gdjs {
 
       if (inputManager.wasKeyJustPressed(ESC_KEY)) {
         this._selection.clear();
+        this._selectedBoneControl = null;
         this._sendSelectionUpdate();
       }
 
@@ -2112,8 +2137,10 @@ namespace gdjs {
       ) {
         if (!isShiftPressed(inputManager)) {
           this._selection.clear();
+          this._selectedBoneControl = null;
         }
         let objectToEdit: gdjs.RuntimeObject | null = null;
+        const boneControlUnderCursor = this._boneControlUnderCursor;
         if (objectUnderCursor) {
           const layer = this.getEditorLayer(objectUnderCursor.getLayer());
           if (
@@ -2142,6 +2169,17 @@ namespace gdjs {
               time: Date.now(),
             };
           }
+        }
+        if (
+          this._isIKModeEnabledForSelection() &&
+          boneControlUnderCursor &&
+          this._selection
+            .getSelectedObjects()
+            .includes(boneControlUnderCursor.object)
+        ) {
+          this._selectedBoneControl = boneControlUnderCursor;
+        } else if (!isShiftPressed(inputManager)) {
+          this._selectedBoneControl = null;
         }
         this._sendSelectionUpdate({
           objectToEdit,
@@ -2195,6 +2233,10 @@ namespace gdjs {
       this._selectionBoxes.forEach((box) => {
         box.update();
       });
+
+      this._updateSkeletonHelpers({
+        selectedObjects,
+      });
     }
 
     private _createBoundingBoxIfNeeded(object: RuntimeObject): void {
@@ -2213,6 +2255,80 @@ namespace gdjs {
       const objectBoxHelper = new ObjectSelectionBoxHelper(object);
       threeGroup.add(objectBoxHelper.container);
       this._selectionBoxes.set(object, objectBoxHelper);
+    }
+
+    private _updateSkeletonHelpers({
+      selectedObjects,
+    }: {
+      selectedObjects: Array<gdjs.RuntimeObject>;
+    }): void {
+      if (!this._isIKModeEnabledForSelection()) {
+        if (this._selectedBoneControl) {
+          this._selectedBoneControl = null;
+        }
+        this._skeletonHelpers.forEach((helper) => {
+          helper.removeFromParent();
+        });
+        this._skeletonHelpers.clear();
+        return;
+      }
+
+      const helpersToKeep = new Set<gdjs.RuntimeObject>();
+
+      selectedObjects.forEach((object) => {
+        if (this._createSkeletonHelperIfNeeded(object)) {
+          helpersToKeep.add(object);
+        }
+      });
+
+      const skeletonHelpersToRemove: RuntimeObject[] = [];
+      this._skeletonHelpers.forEach((helper, object) => {
+        if (!helpersToKeep.has(object)) {
+          skeletonHelpersToRemove.push(object);
+        } else {
+          helper.setColor(
+            selectedObjects.includes(object) ? '#f2a63c' : '#4ca3ff'
+          );
+          helper.update();
+        }
+      });
+      skeletonHelpersToRemove.forEach((object) => {
+        const helper = this._skeletonHelpers.get(object);
+        if (!helper) return;
+        helper.removeFromParent();
+        this._skeletonHelpers.delete(object);
+      });
+
+      if (
+        this._selectedBoneControl &&
+        !helpersToKeep.has(this._selectedBoneControl.object)
+      ) {
+        this._selectedBoneControl = null;
+      }
+    }
+
+    private _createSkeletonHelperIfNeeded(object: RuntimeObject): boolean {
+      if (this._skeletonHelpers.has(object)) {
+        return true;
+      }
+      const currentScene = this._currentScene;
+      if (!currentScene || !is3D(object)) return false;
+
+      const objectLayer = this.getEditorLayer(object.getLayer());
+      if (!objectLayer) return false;
+
+      const threeGroup = objectLayer.getRenderer().getThreeGroup();
+      if (!threeGroup) return false;
+
+      const skeletonHelper = new ObjectSkeletonHelper(object);
+      if (!skeletonHelper.hasBones()) {
+        skeletonHelper.removeFromParent();
+        return false;
+      }
+
+      threeGroup.add(skeletonHelper.container);
+      this._skeletonHelpers.set(object, skeletonHelper);
+      return true;
     }
 
     private _getTransformControlsMode(): 'translate' | 'rotate' | 'scale' {
@@ -2240,6 +2356,59 @@ namespace gdjs {
       this._setTransformControlsSpace(
         this._transformControlsSpace === 'local' ? 'world' : 'local'
       );
+    }
+
+    private _hasBones(object: RuntimeObject): boolean {
+      if (!is3D(object)) return false;
+
+      const threeObject = object.get3DRendererObject();
+      if (!threeObject) return false;
+
+      let hasBones = false;
+      threeObject.traverse((child) => {
+        if ((child as any).isBone) {
+          hasBones = true;
+        }
+      });
+      return hasBones;
+    }
+
+    private _canEnableIKModeForSelection(): boolean {
+      const selectedObjects = this._selection.getSelectedObjects();
+      return selectedObjects.some((object) => this._hasBones(object));
+    }
+
+    private _isIKModeEnabledForSelection(): boolean {
+      return this._isIKModeEnabled && this._canEnableIKModeForSelection();
+    }
+
+    private _setIKModeEnabled(enabled: boolean): void {
+      const normalizedEnabled = !!enabled;
+      if (this._isIKModeEnabled === normalizedEnabled) return;
+
+      this._isIKModeEnabled = normalizedEnabled;
+      this._boneControlUnderCursor = null;
+      this._selectedBoneControl = null;
+      if (!normalizedEnabled) {
+        this._skeletonHelpers.forEach((helper) => {
+          helper.removeFromParent();
+        });
+        this._skeletonHelpers.clear();
+      }
+      this._forceUpdateSelectionControls();
+    }
+
+    private _toggleIKMode(): void {
+      if (!this._isIKModeEnabled && !this._canEnableIKModeForSelection()) {
+        return;
+      }
+      this._setIKModeEnabled(!this._isIKModeEnabled);
+    }
+
+    private _syncIKModeWithSelection(): void {
+      if (this._isIKModeEnabled && !this._canEnableIKModeForSelection()) {
+        this._setIKModeEnabled(false);
+      }
     }
 
     private _setTransformSnapEnabled(
@@ -2697,6 +2866,15 @@ namespace gdjs {
       const { threeTransformControls, dummyThreeObject } =
         this._selectionControls;
       this._applyTransformControlsSettings(threeTransformControls);
+      if (this._selectionControls.boneControl) {
+        this._updateDummyLocation(
+          dummyThreeObject,
+          this._selectionControls.object,
+          threeTransformControls,
+          this._selectionControls.boneControl
+        );
+        return;
+      }
 
       const lastEditableSelectedObject = this._selection.getLastSelectedObject({
         ignoreIf: (object) =>
@@ -2737,6 +2915,22 @@ namespace gdjs {
         ignoreIf: (object) =>
           this.isInstanceLocked(object) || this.isInstanceSealed(object),
       });
+      const selectedObjects = this._selection.getSelectedObjects();
+      const isIKModeEnabledForSelection = this._isIKModeEnabledForSelection();
+      const activeBoneControl =
+        isIKModeEnabledForSelection &&
+        this._selectedBoneControl &&
+        selectedObjects.includes(this._selectedBoneControl.object) &&
+        !this.isInstanceLocked(this._selectedBoneControl.object) &&
+        !this.isInstanceSealed(this._selectedBoneControl.object)
+          ? this._selectedBoneControl
+          : null;
+      if (!activeBoneControl && this._selectedBoneControl) {
+        this._selectedBoneControl = null;
+      }
+      const transformTargetObject = activeBoneControl
+        ? activeBoneControl.object
+        : lastEditableSelectedObject;
 
       // Space or multiple touches will hide the selection controls as they are
       // used to move the camera.
@@ -2747,9 +2941,10 @@ namespace gdjs {
       // or if nothing movable is selected.
       if (
         this._selectionControls &&
-        (!lastEditableSelectedObject ||
-          (lastEditableSelectedObject &&
-            this._selectionControls.object !== lastEditableSelectedObject) ||
+        (!transformTargetObject ||
+          (transformTargetObject &&
+            this._selectionControls.object !== transformTargetObject) ||
+          this._selectionControls.boneControl !== activeBoneControl ||
           this._shouldDragSelectedObject() ||
           shouldHideSelectionControls)
       ) {
@@ -2758,14 +2953,14 @@ namespace gdjs {
 
       // Create the selection controls on the last object that can be manipulated.
       if (
-        lastEditableSelectedObject &&
+        transformTargetObject &&
         !this._selectionControls &&
         !this._shouldDragSelectedObject() &&
         !shouldHideSelectionControls &&
-        lastEditableSelectedObject.get3DRendererObject()
+        transformTargetObject.get3DRendererObject()
       ) {
         const cameraLayer = this.getCameraLayer(
-          lastEditableSelectedObject.getLayer()
+          transformTargetObject.getLayer()
         );
         if (cameraLayer) {
           const runtimeLayerRender = cameraLayer
@@ -2808,8 +3003,9 @@ namespace gdjs {
             const dummyThreeObject = new THREE.Object3D();
             this._updateDummyLocation(
               dummyThreeObject,
-              lastEditableSelectedObject,
-              threeTransformControls
+              transformTargetObject,
+              threeTransformControls,
+              activeBoneControl
             );
             threeScene.add(dummyThreeObject);
 
@@ -2824,20 +3020,41 @@ namespace gdjs {
             const initialDummyRotation = new THREE.Euler();
             const initialDummyScale = new THREE.Vector3();
             threeTransformControls.addEventListener('change', (e) => {
+              if (activeBoneControl) {
+                if (!threeTransformControls.dragging) {
+                  this._selectionControlsMovementTotalDelta = null;
+                  this._updateDummyLocation(
+                    dummyThreeObject,
+                    transformTargetObject,
+                    threeTransformControls,
+                    activeBoneControl
+                  );
+                  return;
+                }
+                this._applyDummyLocationToBone(
+                  dummyThreeObject,
+                  activeBoneControl.bone
+                );
+                this._selectionControlsMovementTotalDelta = null;
+                this._hasSelectionActuallyMoved = true;
+                return;
+              }
+
               if (!threeTransformControls.dragging) {
                 this._selectionControlsMovementTotalDelta = null;
 
                 this._updateDummyLocation(
                   dummyThreeObject,
-                  lastEditableSelectedObject,
-                  threeTransformControls
+                  transformTargetObject,
+                  threeTransformControls,
+                  null
                 );
                 // Reset the initial position to the current position, so that
                 // it's ready to be dragged again.
-                initialObjectX = lastEditableSelectedObject.getX();
-                initialObjectY = lastEditableSelectedObject.getY();
-                initialObjectZ = is3D(lastEditableSelectedObject)
-                  ? lastEditableSelectedObject.getZ()
+                initialObjectX = transformTargetObject.getX();
+                initialObjectY = transformTargetObject.getY();
+                initialObjectZ = is3D(transformTargetObject)
+                  ? transformTargetObject.getZ()
                   : 0;
                 initialDummyPosition.copy(dummyThreeObject.position);
                 initialDummyRotation.copy(dummyThreeObject.rotation);
@@ -2863,7 +3080,7 @@ namespace gdjs {
                   let intersectionX: float = 0;
                   let intersectionY: float = 0;
                   let intersectionZ: float = 0;
-                  if (is3D(lastEditableSelectedObject)) {
+                  if (is3D(transformTargetObject)) {
                     const cursor = this._getCursorIn3D(
                       this._selection.getSelectedObjects()
                     );
@@ -2959,7 +3176,8 @@ namespace gdjs {
             });
 
             this._selectionControls = {
-              object: lastEditableSelectedObject,
+              object: transformTargetObject,
+              boneControl: activeBoneControl,
               dummyThreeObject,
               threeTransformControls,
             };
@@ -2968,12 +3186,13 @@ namespace gdjs {
       }
 
       if (
-        lastEditableSelectedObject &&
+        transformTargetObject &&
         this._selectionControls &&
         !this._draggedNewObject &&
         !this._draggedSelectedObject
       ) {
-        const { threeTransformControls } = this._selectionControls;
+        const { threeTransformControls, boneControl, dummyThreeObject } =
+          this._selectionControls;
         this._applyTransformControlsSettings(
           threeTransformControls,
           inputManager
@@ -3012,14 +3231,16 @@ namespace gdjs {
           this._editorGrid.setNormal(gridNormal);
         }
         this._editorGrid.setPosition(
-          lastEditableSelectedObject.getX(),
-          lastEditableSelectedObject.getY(),
-          is3D(lastEditableSelectedObject)
-            ? lastEditableSelectedObject.getZ()
-            : 0
+          boneControl ? dummyThreeObject.position.x : transformTargetObject.getX(),
+          boneControl ? dummyThreeObject.position.y : transformTargetObject.getY(),
+          boneControl
+            ? dummyThreeObject.position.z
+            : is3D(transformTargetObject)
+              ? transformTargetObject.getZ()
+              : 0
         );
         const cameraLayer = this.getCameraLayer(
-          lastEditableSelectedObject.getLayer()
+          transformTargetObject.getLayer()
         );
         const threeScene = cameraLayer
           ? cameraLayer.getRenderer().getThreeScene()
@@ -3036,8 +3257,18 @@ namespace gdjs {
     private _updateDummyLocation(
       dummyThreeObject: THREE.Object3D,
       lastEditableSelectedObject: gdjs.RuntimeObject,
-      threeTransformControls: THREE_ADDONS.TransformControls
+      threeTransformControls: THREE_ADDONS.TransformControls,
+      boneControl: BoneControlData | null = null
     ) {
+      if (boneControl) {
+        const { bone } = boneControl;
+        bone.updateMatrixWorld(true);
+        bone.getWorldPosition(dummyThreeObject.position);
+        bone.getWorldQuaternion(dummyThreeObject.quaternion);
+        dummyThreeObject.scale.set(1, 1, 1);
+        return;
+      }
+
       const threeObject = lastEditableSelectedObject.get3DRendererObject();
       if (!threeObject) return;
       dummyThreeObject.position.copy(threeObject.position);
@@ -3067,6 +3298,34 @@ namespace gdjs {
       }
     }
 
+    private _applyDummyLocationToBone(
+      dummyThreeObject: THREE.Object3D,
+      bone: THREE.Bone
+    ) {
+      const parent = bone.parent;
+      if (!parent) {
+        bone.position.copy(dummyThreeObject.position);
+        bone.quaternion.copy(dummyThreeObject.quaternion);
+        bone.updateMatrixWorld(true);
+        return;
+      }
+
+      const parentWorldQuaternion = new THREE.Quaternion();
+      const parentWorldQuaternionInverse = new THREE.Quaternion();
+      const localPosition = new THREE.Vector3();
+      parent.getWorldQuaternion(parentWorldQuaternion);
+      parentWorldQuaternionInverse.copy(parentWorldQuaternion).invert();
+
+      localPosition.copy(dummyThreeObject.position);
+      parent.worldToLocal(localPosition);
+      bone.position.copy(localPosition);
+
+      bone.quaternion
+        .copy(parentWorldQuaternionInverse)
+        .multiply(dummyThreeObject.quaternion);
+      bone.updateMatrixWorld(true);
+    }
+
     private _removeSelectionControls(): void {
       if (!this._selectionControls) {
         return;
@@ -3092,6 +3351,13 @@ namespace gdjs {
           box.removeFromParent();
         });
         this._selectionBoxes.clear();
+        this._skeletonHelpers.forEach((helper) => {
+          helper.removeFromParent();
+        });
+        this._skeletonHelpers.clear();
+        this._boneControlUnderCursor = null;
+        this._selectedBoneControl = null;
+        this._isIKModeEnabled = false;
       }
     }
 
@@ -3779,6 +4045,7 @@ namespace gdjs {
       // are not considered by raycasting.
       this._raycaster.layers.set(0);
       this._selectionBoxes.forEach((box) => box.setLayer(1));
+      const excludedSkeletonHelpers: ObjectSkeletonHelper[] = [];
       if (this._threeInnerArea) {
         for (const child of this._threeInnerArea.children) {
           child.layers.set(1);
@@ -3792,6 +4059,11 @@ namespace gdjs {
               draggedRendererObject.layers.set(1);
               draggedRendererObject.traverse((object) => object.layers.set(1));
             }
+          }
+          const skeletonHelper = this._skeletonHelpers.get(excludedObject);
+          if (skeletonHelper) {
+            skeletonHelper.setLayer(1);
+            excludedSkeletonHelpers.push(skeletonHelper);
           }
         }
       }
@@ -3828,6 +4100,7 @@ namespace gdjs {
 
       // Reset selection boxes layers so they are properly displayed.
       this._selectionBoxes.forEach((box) => box.setLayer(0));
+      excludedSkeletonHelpers.forEach((helper) => helper.setLayer(0));
       if (this._threeInnerArea) {
         for (const child of this._threeInnerArea.children) {
           child.layers.set(0);
@@ -3890,6 +4163,7 @@ namespace gdjs {
     getObjectUnderCursor(): gdjs.RuntimeObject | null {
       const closestIntersect = this._getClosestIntersectionUnderCursor();
       if (!closestIntersect) {
+        this._boneControlUnderCursor = null;
         const editedInstanceContainer = this.getEditedInstanceContainer();
         if (!editedInstanceContainer) {
           return null;
@@ -3920,6 +4194,9 @@ namespace gdjs {
         }
         return topObject2D;
       }
+      this._boneControlUnderCursor = this._isIKModeEnabledForSelection()
+        ? this._getBoneControlData(closestIntersect.object)
+        : null;
       return this._getObject3D(closestIntersect.object);
     }
 
@@ -3949,6 +4226,21 @@ namespace gdjs {
             ).getOwner();
           }
           return rootRuntimeObject;
+        }
+        threeObject = threeObject.parent || null;
+      }
+      return null;
+    }
+
+    private _getBoneControlData(
+      initialThreeObject: THREE.Object3D
+    ): BoneControlData | null {
+      let threeObject: THREE.Object3D | null = initialThreeObject;
+      while (threeObject) {
+        // @ts-ignore
+        const boneControlData = threeObject.gdjsBoneControlData;
+        if (boneControlData) {
+          return boneControlData as BoneControlData;
         }
         threeObject = threeObject.parent || null;
       }
@@ -4025,6 +4317,10 @@ namespace gdjs {
         inputManager.wasKeyJustPressed(J_KEY)
       ) {
         this._toggleTransformSnap('scale');
+        wasHandledByLetterShortcut = true;
+      }
+      if (canUseLetterShortcuts && inputManager.wasKeyJustPressed(I_KEY)) {
+        this._toggleIKMode();
         wasHandledByLetterShortcut = true;
       }
 
@@ -4151,6 +4447,7 @@ namespace gdjs {
       this._handleSelectionMovement();
       this._updateSelectionBox();
       this._handleSelection({ objectUnderCursor });
+      this._syncIKModeWithSelection();
       this._updateSelectionOutline({ objectUnderCursor });
       // Custom objects only update their position at the end of the frame
       // because they don't override position setters like built-in objects do.
@@ -4204,6 +4501,7 @@ namespace gdjs {
       moveButton: HTMLButtonElement;
       rotateButton: HTMLButtonElement;
       scaleButton: HTMLButtonElement;
+      ikModeButton: HTMLButtonElement;
       spaceButton: HTMLButtonElement;
       spaceButtonLabel: HTMLSpanElement;
       translationSnapButton: HTMLButtonElement;
@@ -4248,6 +4546,9 @@ namespace gdjs {
     private _switchToFreeCamera: () => void;
     private _switchToOrbitCamera: () => void;
     private _isFreeCamera: () => boolean;
+    private _isIKModeEnabled: () => boolean;
+    private _toggleIKMode: () => void;
+    private _hasIKTargetSelection: () => boolean;
     private _getSvgIconUrl: (iconName: string) => string;
     private _hasSelection: () => boolean;
     private _hasSelectionControlsShown: () => boolean;
@@ -4530,6 +4831,9 @@ namespace gdjs {
       switchToFreeCamera,
       switchToOrbitCamera,
       isFreeCamera,
+      isIKModeEnabled,
+      toggleIKMode,
+      hasIKTargetSelection,
       getSvgIconUrl,
       hasSelection,
       hasSelectionControlsShown,
@@ -4561,6 +4865,9 @@ namespace gdjs {
       switchToFreeCamera: () => void;
       switchToOrbitCamera: () => void;
       isFreeCamera: () => boolean;
+      isIKModeEnabled: () => boolean;
+      toggleIKMode: () => void;
+      hasIKTargetSelection: () => boolean;
       getSvgIconUrl: (iconName: string) => string;
       hasSelection: () => boolean;
       hasSelectionControlsShown: () => boolean;
@@ -4590,6 +4897,9 @@ namespace gdjs {
       this._switchToFreeCamera = switchToFreeCamera;
       this._switchToOrbitCamera = switchToOrbitCamera;
       this._isFreeCamera = isFreeCamera;
+      this._isIKModeEnabled = isIKModeEnabled;
+      this._toggleIKMode = toggleIKMode;
+      this._hasIKTargetSelection = hasIKTargetSelection;
       this._getSvgIconUrl = getSvgIconUrl;
       this._hasSelection = hasSelection;
       this._hasSelectionControlsShown = hasSelectionControlsShown;
@@ -4689,6 +4999,15 @@ namespace gdjs {
                     svgIconUrl: this._getSvgIconUrl('InGameEditor-ResizeIcon'),
                   })}
                   <span class="InGameEditor-Toolbar-Button-Shortcut">R</span>
+                </button>
+                <button
+                  class="InGameEditor-Toolbar-Button InGameEditor-Toolbar-Button-Text"
+                  id="ik-mode-button"
+                  onClick={this._toggleIKMode}
+                  title="Toggle IK mode for bone posing (I)"
+                >
+                  <span class="InGameEditor-Toolbar-Button-Label">IK</span>
+                  <span class="InGameEditor-Toolbar-Button-Shortcut">I</span>
                 </button>
               </div>
               <div class="InGameEditor-Toolbar-Divider" />
@@ -4825,6 +5144,7 @@ namespace gdjs {
           moveButton: container.querySelector('#move-button')!,
           rotateButton: container.querySelector('#rotate-button')!,
           scaleButton: container.querySelector('#scale-button')!,
+          ikModeButton: container.querySelector('#ik-mode-button')!,
           spaceButton: container.querySelector('#space-button')!,
           spaceButtonLabel: container.querySelector(
             '#space-button .InGameEditor-Toolbar-Button-Label'
@@ -4875,6 +5195,8 @@ namespace gdjs {
 
       const hasSelectionControls = this._hasSelectionControlsShown();
       const hasEditableSelection = this._hasEditableSelection();
+      const hasIKTargetSelection = this._hasIKTargetSelection();
+      const isIKModeEnabled = this._isIKModeEnabled();
 
       this._renderedElements.container.tabIndex = 0;
       this._renderedElements.container.style.transform = 'translateY(0)';
@@ -4908,6 +5230,10 @@ namespace gdjs {
       this._setButtonDisabled(this._renderedElements.moveButton, false);
       this._setButtonDisabled(this._renderedElements.rotateButton, false);
       this._setButtonDisabled(this._renderedElements.scaleButton, false);
+      this._setButtonDisabled(
+        this._renderedElements.ikModeButton,
+        !hasIKTargetSelection
+      );
       this._setButtonDisabled(this._renderedElements.spaceButton, false);
       this._setButtonDisabled(
         this._renderedElements.translationSnapButton,
@@ -4962,6 +5288,10 @@ namespace gdjs {
       this._renderedElements.scaleButton.classList.toggle(
         'InGameEditor-Toolbar-Button-Active',
         transformControlsMode === 'scale'
+      );
+      this._renderedElements.ikModeButton.classList.toggle(
+        'InGameEditor-Toolbar-Button-Active',
+        isIKModeEnabled
       );
       this._renderedElements.spaceButton.classList.toggle(
         'InGameEditor-Toolbar-Button-Active',
@@ -5051,6 +5381,11 @@ namespace gdjs {
       this._renderedElements.translationSnapButton.title = `Toggle position snap (G) - Step: ${translationSnapText}`;
       this._renderedElements.rotationSnapButton.title = `Toggle rotation snap (H) - Step: ${rotationSnapText} deg`;
       this._renderedElements.scaleSnapButton.title = `Toggle scale snap (J) - Step: ${scaleSnapText}`;
+      this._renderedElements.ikModeButton.title = hasIKTargetSelection
+        ? isIKModeEnabled
+          ? 'IK mode enabled. Click bone handles to pose (I).'
+          : 'Toggle IK mode for bone posing (I)'
+        : 'Select a skinned 3D model to enable IK mode';
       this._renderedElements.focusButton.title = hasSelectionControls
         ? 'Focus on selection (F)'
         : 'Select an object to enable focus';
@@ -6319,6 +6654,137 @@ namespace gdjs {
       );
     }
   };
+
+  class ObjectSkeletonHelper {
+    object: gdjs.RuntimeObject;
+    container: THREE.Group;
+    skeletonHelper: THREE.SkeletonHelper;
+    private _handles: THREE.Mesh[] = [];
+
+    constructor(object: gdjs.RuntimeObject) {
+      this.object = object;
+      this.container = new THREE.Group();
+      this.container.rotation.order = 'ZYX';
+      const threeObject = object.get3DRendererObject() || new THREE.Group();
+      this.skeletonHelper = new THREE.SkeletonHelper(threeObject);
+      const skeletonMaterials = Array.isArray(this.skeletonHelper.material)
+        ? this.skeletonHelper.material
+        : [this.skeletonHelper.material];
+      for (const skeletonMaterial of skeletonMaterials) {
+        const configurableSkeletonMaterial = skeletonMaterial as THREE.Material & {
+          depthTest?: boolean;
+          transparent?: boolean;
+          opacity?: number;
+          fog?: boolean;
+        };
+        configurableSkeletonMaterial.depthTest = false;
+        configurableSkeletonMaterial.transparent = true;
+        configurableSkeletonMaterial.opacity = 0.85;
+        configurableSkeletonMaterial.fog = false;
+      }
+      this.container.add(this.skeletonHelper);
+
+      const handleGeometry = new THREE.SphereGeometry(3, 10, 10);
+      const handleMaterial = new THREE.MeshBasicMaterial({
+        color: '#4ca3ff',
+        depthTest: false,
+        transparent: true,
+        opacity: 0.95,
+      });
+
+      threeObject.traverse((child) => {
+        const maybeBone = child as any;
+        if (!maybeBone || !maybeBone.isBone) return;
+
+        const handle = new THREE.Mesh(handleGeometry, handleMaterial.clone());
+        handle.rotation.order = 'ZYX';
+        handle.renderOrder = 9999;
+        // @ts-ignore
+        handle.gdjsRuntimeObject = object;
+        // @ts-ignore
+        handle.gdjsBoneControlData = {
+          object,
+          bone: child as THREE.Bone,
+          helper: this,
+        } as BoneControlData;
+        this.container.add(handle);
+        this._handles.push(handle);
+      });
+    }
+
+    hasBones(): boolean {
+      return this._handles.length > 0;
+    }
+
+    update() {
+      this.skeletonHelper.update();
+      for (const handle of this._handles) {
+        // @ts-ignore
+        const bone = handle.gdjsBoneControlData
+          ? // @ts-ignore
+            (handle.gdjsBoneControlData.bone as THREE.Bone)
+          : null;
+        if (!bone) continue;
+
+        bone.updateMatrixWorld(true);
+        bone.getWorldPosition(handle.position);
+      }
+    }
+
+    removeFromParent() {
+      this.container.removeFromParent();
+      this.skeletonHelper.geometry.dispose();
+      const skeletonMaterials = Array.isArray(this.skeletonHelper.material)
+        ? this.skeletonHelper.material
+        : [this.skeletonHelper.material];
+      for (const skeletonMaterial of skeletonMaterials) {
+        skeletonMaterial.dispose();
+      }
+      for (const handle of this._handles) {
+        handle.geometry.dispose();
+        const handleMaterials = Array.isArray(handle.material)
+          ? handle.material
+          : [handle.material];
+        for (const handleMaterial of handleMaterials) {
+          handleMaterial.dispose();
+        }
+      }
+      this._handles.length = 0;
+    }
+
+    setLayer(layer: number): void {
+      this.skeletonHelper.layers.set(layer);
+      for (const handle of this._handles) {
+        handle.layers.set(layer);
+      }
+    }
+
+    setColor(color: THREE.ColorRepresentation) {
+      const skeletonMaterials = Array.isArray(this.skeletonHelper.material)
+        ? this.skeletonHelper.material
+        : [this.skeletonHelper.material];
+      for (const skeletonMaterial of skeletonMaterials) {
+        const colorMaterial = skeletonMaterial as THREE.Material & {
+          color?: THREE.Color;
+          needsUpdate?: boolean;
+        };
+        if (colorMaterial.color) {
+          colorMaterial.color.set(color);
+        }
+        colorMaterial.needsUpdate = true;
+      }
+      for (const handle of this._handles) {
+        const handleMaterials = Array.isArray(handle.material)
+          ? handle.material
+          : [handle.material];
+        for (const handleMaterial of handleMaterials) {
+          const material = handleMaterial as THREE.MeshBasicMaterial;
+          material.color.set(color);
+          material.needsUpdate = true;
+        }
+      }
+    }
+  }
 
   class ObjectSelectionBoxHelper {
     object: gdjs.RuntimeObject;

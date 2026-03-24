@@ -26,10 +26,16 @@ namespace gdjs {
     private _fsrCopyCamera: THREE.OrthographicCamera | null = null;
     private _fsrCopyMesh: THREE.Mesh | null = null;
     private _fsrCopyMaterial: THREE.MeshBasicMaterial | null = null;
+    private _fsrSceneRenderTexture: PIXI.RenderTexture | null = null;
+    private _fsrSceneTexture: THREE.DataTexture | null = null;
     private _fsrLowResWidth: integer = 0;
     private _fsrLowResHeight: integer = 0;
     private _fsrOutputWidth: integer = 0;
     private _fsrOutputHeight: integer = 0;
+    private _fsrSceneTextureWidth: integer = 0;
+    private _fsrSceneTextureHeight: integer = 0;
+    private _fsrSceneTextureResolution: float = 0;
+    private _fsrRenderErrorCount: integer = 0;
 
     constructor(
       runtimeScene: gdjs.RuntimeScene,
@@ -112,6 +118,30 @@ namespace gdjs {
       return true;
     }
 
+    private _ensureFsrSceneResources(
+      pixiRenderer: PIXI.Renderer | null
+    ): boolean {
+      if (!pixiRenderer || pixiRenderer.type !== PIXI.RENDERER_TYPE.WEBGL) {
+        return false;
+      }
+      if (!this._ensureFsrResources() || typeof THREE === 'undefined') {
+        return false;
+      }
+
+      if (!this._fsrSceneTexture) {
+        const data = new Uint8Array(4);
+        this._fsrSceneTexture = new THREE.DataTexture(data, 1, 1);
+        this._fsrSceneTexture.needsUpdate = true;
+        this._fsrSceneTexture.generateMipmaps = false;
+        this._fsrSceneTexture.minFilter = THREE.LinearFilter;
+        this._fsrSceneTexture.magFilter = THREE.LinearFilter;
+        this._fsrSceneTexture.wrapS = THREE.ClampToEdgeWrapping;
+        this._fsrSceneTexture.wrapT = THREE.ClampToEdgeWrapping;
+      }
+
+      return true;
+    }
+
     private _updateFsrResources(): void {
       if (!this._runtimeGameRenderer) return;
       const runtimeGame = this._runtimeScene.getGame();
@@ -163,6 +193,105 @@ namespace gdjs {
       }
     }
 
+    private _updateFsrSceneResources(pixiRenderer: PIXI.Renderer): void {
+      if (!this._runtimeGameRenderer) return;
+      if (!this._ensureFsrSceneResources(pixiRenderer)) return;
+
+      const runtimeGame = this._runtimeScene.getGame();
+      const gameResolutionWidth = runtimeGame.getGameResolutionWidth();
+      const gameResolutionHeight = runtimeGame.getGameResolutionHeight();
+      const renderingWidth = runtimeGame.getRenderingWidth();
+      const renderingHeight = runtimeGame.getRenderingHeight();
+      const pixelRatio = this._runtimeGameRenderer.getPixelRatio();
+      const fsrScaleX =
+        gameResolutionWidth > 0 ? renderingWidth / gameResolutionWidth : 1;
+      const fsrScaleY =
+        gameResolutionHeight > 0 ? renderingHeight / gameResolutionHeight : 1;
+      const fsrScale = Math.min(fsrScaleX, fsrScaleY);
+      const width = gameResolutionWidth || pixiRenderer.screen.width;
+      const height = gameResolutionHeight || pixiRenderer.screen.height;
+      const resolution = Math.max(0.01, fsrScale * pixelRatio);
+
+      const needsRecreate =
+        !this._fsrSceneRenderTexture ||
+        this._fsrSceneTextureResolution !== resolution;
+      if (needsRecreate) {
+        if (this._fsrSceneRenderTexture) {
+          this._fsrSceneRenderTexture.destroy(true);
+        }
+        this._fsrSceneRenderTexture = PIXI.RenderTexture.create({
+          width: width || 100,
+          height: height || 100,
+          resolution,
+        });
+        this._fsrSceneRenderTexture.baseTexture.scaleMode =
+          PIXI.SCALE_MODES.LINEAR;
+      } else if (
+        this._fsrSceneTextureWidth !== width ||
+        this._fsrSceneTextureHeight !== height
+      ) {
+        const fsrRenderTexture = this._fsrSceneRenderTexture;
+        if (fsrRenderTexture) {
+          fsrRenderTexture.resize(width || 100, height || 100);
+        }
+      }
+
+      this._fsrSceneTextureWidth = width;
+      this._fsrSceneTextureHeight = height;
+      this._fsrSceneTextureResolution = resolution;
+    }
+
+    private _renderSceneToFsrTexture(pixiRenderer: PIXI.Renderer): void {
+      if (!this._fsrSceneRenderTexture) {
+        return;
+      }
+
+      const oldRenderTexture = pixiRenderer.renderTexture.current || undefined;
+      const oldSourceFrame = pixiRenderer.renderTexture.sourceFrame;
+      pixiRenderer.renderTexture.bind(this._fsrSceneRenderTexture);
+
+      if (this._runtimeScene.getClearCanvas()) {
+        const rgb = gdjs.hexNumberToRGBArray(
+          this._runtimeScene.getBackgroundColor()
+        );
+        pixiRenderer.renderTexture.clear([rgb[0], rgb[1], rgb[2], 1]);
+      }
+
+      pixiRenderer.render(this._pixiContainer, {
+        renderTexture: this._fsrSceneRenderTexture,
+        clear: false,
+      });
+      pixiRenderer.renderTexture.bind(
+        oldRenderTexture,
+        oldSourceFrame,
+        undefined
+      );
+    }
+
+    private _updateFsrSceneTextureFromPixiRenderTexture(
+      threeRenderer: THREE.WebGLRenderer,
+      pixiRenderer: PIXI.Renderer
+    ): boolean {
+      if (!this._fsrSceneTexture || !this._fsrSceneRenderTexture) {
+        return false;
+      }
+
+      const glTexture =
+        this._fsrSceneRenderTexture.baseTexture._glTextures[
+          pixiRenderer.CONTEXT_UID
+        ];
+      if (!glTexture) {
+        return false;
+      }
+
+      const texture = threeRenderer.properties.get(this._fsrSceneTexture);
+      if (!texture) {
+        return false;
+      }
+      texture.__webglTexture = glTexture.texture;
+      return true;
+    }
+
     private _renderTextureToLowResTarget(
       threeRenderer: THREE.WebGLRenderer,
       texture: THREE.Texture
@@ -201,12 +330,74 @@ namespace gdjs {
         this._fsrCopyMaterial.dispose();
         this._fsrCopyMaterial = null;
       }
+      if (this._fsrSceneRenderTexture) {
+        this._fsrSceneRenderTexture.destroy(true);
+        this._fsrSceneRenderTexture = null;
+      }
+      if (this._fsrSceneTexture) {
+        this._fsrSceneTexture.dispose();
+        this._fsrSceneTexture = null;
+      }
       this._fsrCopyScene = null;
       this._fsrCopyCamera = null;
       this._fsrLowResWidth = 0;
       this._fsrLowResHeight = 0;
       this._fsrOutputWidth = 0;
       this._fsrOutputHeight = 0;
+      this._fsrSceneTextureWidth = 0;
+      this._fsrSceneTextureHeight = 0;
+      this._fsrSceneTextureResolution = 0;
+      this._fsrRenderErrorCount = 0;
+    }
+
+    private _canRenderSceneWithLayeredFsr(): boolean {
+      for (let i = 0; i < this._runtimeScene._orderedLayers.length; ++i) {
+        const runtimeLayer = this._runtimeScene._orderedLayers[i];
+        if (!runtimeLayer.isVisible()) continue;
+
+        const runtimeLayerRenderer = runtimeLayer.getRenderer();
+        const has2DObjects = runtimeLayerRenderer.has2DObjects();
+        const has3DObjects = runtimeLayerRenderer.has3DObjects();
+        if (!has2DObjects && !has3DObjects) continue;
+
+        // FSR layered rendering requires each visible layer with objects to have
+        // a Three.js scene/camera available (2D layers are forced through a 3D
+        // plane when FSR is enabled).
+        if (
+          !runtimeLayerRenderer.getThreeScene() ||
+          !runtimeLayerRenderer.getThreeCamera()
+        ) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    private _canRenderSceneWithDirectFsr(): boolean {
+      const runtimeGame = this._runtimeScene.getGame();
+      if (runtimeGame.isInGameEdition()) {
+        return false;
+      }
+
+      for (let i = 0; i < this._runtimeScene._orderedLayers.length; ++i) {
+        const runtimeLayer = this._runtimeScene._orderedLayers[i];
+        if (!runtimeLayer.isVisible()) continue;
+
+        const runtimeLayerRenderer = runtimeLayer.getRenderer();
+        const shouldRenderLayerIn3D =
+          runtimeLayer.getRenderingType() !==
+            gdjs.RuntimeLayerRenderingType.TWO_D &&
+          runtimeLayerRenderer.has3DObjects();
+        if (
+          shouldRenderLayerIn3D ||
+          runtimeLayerRenderer.hasPostProcessingPass()
+        ) {
+          return false;
+        }
+      }
+
+      return true;
     }
 
     render() {
@@ -218,8 +409,13 @@ namespace gdjs {
 
       const runtimeGame = this._runtimeScene.getGame();
       const threeRenderer = this._threeRenderer;
-      const fsrEnabled =
-        runtimeGame.isFsrEnabled() && this._ensureFsrResources();
+      let fsrEnabled = runtimeGame.isFsrEnabled();
+      const canUseDirectFsr = fsrEnabled && this._canRenderSceneWithDirectFsr();
+      if (fsrEnabled) {
+        fsrEnabled =
+          this._ensureFsrResources() &&
+          (canUseDirectFsr || this._canRenderSceneWithLayeredFsr());
+      }
 
       // If we are in VR, we cannot render like this: we must use the special VR
       // rendering method to not display a black screen.
@@ -238,130 +434,211 @@ namespace gdjs {
       this._layerRenderingMetrics.rendered3DLayersCount = 0;
 
       if (threeRenderer) {
+        let fsrRenderedFrame = false;
         if (fsrEnabled && this._fsrPass && this._fsrLowResTarget) {
-          // FSR 1.0 layered rendering into a shared low-res target.
-          this._updateFsrResources();
+          try {
+            this._updateFsrResources();
 
-          threeRenderer.info.autoReset = false;
-          threeRenderer.info.reset();
+            threeRenderer.info.autoReset = false;
+            threeRenderer.info.reset();
 
-          /** Useful to render the background color. */
-          let isFirstRender = true;
+            if (canUseDirectFsr && this._ensureFsrSceneResources(pixiRenderer)) {
+              this._updateFsrSceneResources(pixiRenderer);
+              this._layerRenderingMetrics.rendered2DLayersCount =
+                this._runtimeScene._orderedLayers.filter((runtimeLayer) =>
+                  runtimeLayer.isVisible()
+                ).length;
 
-          /**
-           * true if the last layer rendered 3D objects using Three.js, false otherwise.
-           * Useful to avoid needlessly resetting the WebGL states between layers (which can be expensive).
-           */
-          let lastRenderWas3D = true;
-
-          // Ensure a clean state for the first frame.
-          threeRenderer.resetState();
-
-          // Render each layer one by one into the shared low-res target.
-          for (let i = 0; i < this._runtimeScene._orderedLayers.length; ++i) {
-            const runtimeLayer = this._runtimeScene._orderedLayers[i];
-            if (!runtimeLayer.isVisible()) continue;
-
-            const runtimeLayerRenderer = runtimeLayer.getRenderer();
-            const threeScene = runtimeLayerRenderer.getThreeScene();
-            const threeCamera = runtimeLayerRenderer.getThreeCamera();
-            const threeEffectComposer =
-              runtimeLayerRenderer.getThreeEffectComposer();
-
-            const layerHas2DObjectsToRender =
-              runtimeLayerRenderer.has2DObjects();
-
-            if (layerHas2DObjectsToRender) {
-              if (lastRenderWas3D) {
-                threeRenderer.resetState();
-                pixiRenderer.reset();
+              for (const runtimeLayer of this._runtimeScene._orderedLayers) {
+                if (runtimeLayer.isVisible() && runtimeLayer.isLightingLayer()) {
+                  runtimeLayer.getRenderer().renderOnPixiRenderTexture(
+                    pixiRenderer
+                  );
+                }
               }
 
-              runtimeLayerRenderer.renderOnPixiRenderTexture(pixiRenderer);
-              runtimeLayerRenderer.updateThreePlaneTextureFromPixiRenderTexture(
-                threeRenderer,
-                pixiRenderer
-              );
-              runtimeLayerRenderer.show2DRenderingPlane(true);
-              this._layerRenderingMetrics.rendered2DLayersCount++;
-              lastRenderWas3D = false;
-            } else {
-              runtimeLayerRenderer.show2DRenderingPlane(false);
-            }
-
-            if (!threeScene || !threeCamera) {
-              continue;
-            }
-
-            if (!lastRenderWas3D) {
-              pixiRenderer.reset();
               threeRenderer.resetState();
-            }
-
-            if (isFirstRender) {
-              threeRenderer.setClearColor(
-                this._runtimeScene.getBackgroundColor()
-              );
-              threeRenderer.setRenderTarget(this._fsrLowResTarget);
-              if (this._runtimeScene.getClearCanvas()) {
-                threeRenderer.clear();
-              }
-              isFirstRender = false;
-            }
-
-            // Avoid clearing background inside the layer scene.
-            if (threeScene.background) {
-              threeScene.background = null;
-            }
-
-            threeRenderer.setRenderTarget(this._fsrLowResTarget);
-            threeRenderer.clearDepth();
-
-            if (threeEffectComposer && runtimeLayerRenderer.hasPostProcessingPass()) {
-              for (const pass of threeEffectComposer.passes) {
-                pass.renderToScreen = false;
-              }
-              threeEffectComposer.render();
-              const anyComposer = threeEffectComposer as any;
-              const composerTexture =
-                (anyComposer.readBuffer && anyComposer.readBuffer.texture) ||
-                (anyComposer.writeBuffer && anyComposer.writeBuffer.texture) ||
-                null;
-              if (composerTexture) {
-                this._renderTextureToLowResTarget(
+              pixiRenderer.reset();
+              this._renderSceneToFsrTexture(pixiRenderer);
+              const hasSyncedSceneTexture =
+                this._updateFsrSceneTextureFromPixiRenderTexture(
                   threeRenderer,
-                  composerTexture
+                  pixiRenderer
+                );
+              if (!hasSyncedSceneTexture) {
+                throw new Error(
+                  'Unable to synchronize Pixi render texture for FSR rendering.'
                 );
               }
+
+              pixiRenderer.reset();
+              threeRenderer.resetState();
+              this._fsrPass.render(threeRenderer, this._fsrSceneTexture!);
             } else {
-              threeRenderer.render(threeScene, threeCamera);
+              // FSR 1.0 layered rendering into a shared low-res target.
+              /** Useful to render the background color. */
+              let isFirstRender = true;
+
+              /**
+               * true if the last layer rendered 3D objects using Three.js, false otherwise.
+               * Useful to avoid needlessly resetting the WebGL states between layers (which can be expensive).
+               */
+              let lastRenderWas3D = true;
+
+              // Ensure a clean state for the first frame.
+              threeRenderer.resetState();
+
+              // Render each layer one by one into the shared low-res target.
+              for (
+                let i = 0;
+                i < this._runtimeScene._orderedLayers.length;
+                ++i
+              ) {
+                const runtimeLayer = this._runtimeScene._orderedLayers[i];
+                if (!runtimeLayer.isVisible()) continue;
+
+                const runtimeLayerRenderer = runtimeLayer.getRenderer();
+                const threeScene = runtimeLayerRenderer.getThreeScene();
+                const threeCamera = runtimeLayerRenderer.getThreeCamera();
+                const threeEffectComposer =
+                  runtimeLayerRenderer.getThreeEffectComposer();
+
+                const layerHas2DObjectsToRender =
+                  runtimeLayerRenderer.has2DObjects();
+
+                if (layerHas2DObjectsToRender) {
+                  if (lastRenderWas3D) {
+                    threeRenderer.resetState();
+                    pixiRenderer.reset();
+                  }
+
+                  runtimeLayerRenderer.renderOnPixiRenderTexture(pixiRenderer);
+                  runtimeLayerRenderer.updateThreePlaneTextureFromPixiRenderTexture(
+                    threeRenderer,
+                    pixiRenderer
+                  );
+                  runtimeLayerRenderer.show2DRenderingPlane(true);
+                  this._layerRenderingMetrics.rendered2DLayersCount++;
+                  lastRenderWas3D = false;
+                } else {
+                  runtimeLayerRenderer.show2DRenderingPlane(false);
+                }
+
+                if (!threeScene || !threeCamera) {
+                  continue;
+                }
+
+                if (!lastRenderWas3D) {
+                  pixiRenderer.reset();
+                  threeRenderer.resetState();
+                }
+
+                if (isFirstRender) {
+                  threeRenderer.setClearColor(
+                    this._runtimeScene.getBackgroundColor()
+                  );
+                  threeRenderer.setRenderTarget(this._fsrLowResTarget);
+                  if (this._runtimeScene.getClearCanvas()) {
+                    threeRenderer.clear();
+                  }
+                  isFirstRender = false;
+                }
+
+                // Avoid clearing background inside the layer scene.
+                if (threeScene.background) {
+                  threeScene.background = null;
+                }
+
+                threeRenderer.setRenderTarget(this._fsrLowResTarget);
+                threeRenderer.clearDepth();
+
+                if (
+                  threeEffectComposer &&
+                  runtimeLayerRenderer.hasPostProcessingPass()
+                ) {
+                  const previousComposerRenderToScreen =
+                    threeEffectComposer.renderToScreen;
+                  let composerTexture: THREE.Texture | null = null;
+                  try {
+                    // EffectComposer decides pass.renderToScreen internally.
+                    // To render off-screen, the composer flag itself must be disabled.
+                    threeEffectComposer.renderToScreen = false;
+                    threeEffectComposer.render();
+                    const anyComposer = threeEffectComposer as any;
+                    composerTexture =
+                      (anyComposer.readBuffer &&
+                        anyComposer.readBuffer.texture) ||
+                      null;
+                  } finally {
+                    threeEffectComposer.renderToScreen =
+                      previousComposerRenderToScreen;
+                  }
+                  if (composerTexture) {
+                    this._renderTextureToLowResTarget(
+                      threeRenderer,
+                      composerTexture
+                    );
+                  } else {
+                    threeRenderer.render(threeScene, threeCamera);
+                  }
+                } else {
+                  threeRenderer.render(threeScene, threeCamera);
+                }
+
+                this._layerRenderingMetrics.rendered3DLayersCount++;
+                lastRenderWas3D = true;
+              }
+
+              // Upscale the composed low-res target to the screen.
+              this._fsrPass.render(
+                threeRenderer,
+                this._fsrLowResTarget.texture
+              );
             }
 
-            this._layerRenderingMetrics.rendered3DLayersCount++;
-            lastRenderWas3D = true;
-          }
+            const debugContainer = this._runtimeScene
+              .getDebuggerRenderer()
+              .getRendererObject();
 
-          // Upscale the composed low-res target to the screen.
-          this._fsrPass.render(
-            threeRenderer,
-            this._fsrLowResTarget.texture
-          );
+            if (debugContainer) {
+              threeRenderer.resetState();
+              pixiRenderer.reset();
+              pixiRenderer.render(debugContainer);
+            }
 
-          const debugContainer = this._runtimeScene
-            .getDebuggerRenderer()
-            .getRendererObject();
+            pixiRenderer.reset();
+            this._fsrRenderErrorCount = 0;
+            fsrRenderedFrame = true;
+          } catch (error) {
+            this._fsrRenderErrorCount++;
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            const canRetry = this._fsrRenderErrorCount < 4;
 
-          if (debugContainer) {
+            if (!canRetry) {
+              runtimeGame.disableFsrForSession(
+                `FSR 1.0 rendering pipeline failed repeatedly: ${errorMessage}`
+              );
+              this._disposeFsrResources();
+            }
+            this._layerRenderingMetrics.rendered2DLayersCount = 0;
+            this._layerRenderingMetrics.rendered3DLayersCount = 0;
+            threeRenderer.setRenderTarget(null);
             threeRenderer.resetState();
             pixiRenderer.reset();
-            pixiRenderer.render(debugContainer);
-            lastRenderWas3D = false;
+            const logMethod = canRetry ? console.warn : console.error;
+            logMethod(
+              `[RuntimeScenePixiRenderer] FSR 1.0 render failure${
+                canRetry
+                  ? ' (temporary fallback this frame).'
+                  : ' (disabled for this session).'
+              }`,
+              error
+            );
           }
+        }
 
-          if (!lastRenderWas3D) {
-            pixiRenderer.reset();
-          }
-        } else {
+        if (!fsrRenderedFrame) {
           // Layered 2D, 3D or 2D+3D rendering.
           threeRenderer.info.autoReset = false;
           threeRenderer.info.reset();

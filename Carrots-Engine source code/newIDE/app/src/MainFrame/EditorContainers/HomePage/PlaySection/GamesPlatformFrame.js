@@ -97,10 +97,9 @@ const GamesPlatformFrame = ({
       <iframe
         id={GAMES_PLATFORM_IFRAME_ID}
         src={src}
-        allow="autoplay; fullscreen *; geolocation; microphone; camera; midi; monetization; xr-spatial-tracking; gamepad; gyroscope; accelerometer; xr; keyboard-map *; focus-without-user-activation *; screen-wake-lock; clipboard-read; clipboard-write; web-share"
+        allow="autoplay; fullscreen *; geolocation; microphone; camera; midi; xr-spatial-tracking; gamepad; gyroscope; accelerometer; keyboard-map *; screen-wake-lock; clipboard-read; clipboard-write; web-share"
         sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-presentation allow-scripts allow-same-origin allow-popups-to-escape-sandbox allow-downloads"
         title="gdgames"
-        allowFullScreen
         style={styles.iframe}
         onLoad={event => {
           event.currentTarget.focus();

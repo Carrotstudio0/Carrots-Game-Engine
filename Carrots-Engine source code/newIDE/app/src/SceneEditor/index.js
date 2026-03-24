@@ -108,6 +108,34 @@ const gd: libGDevelop = global.gd;
 
 const BASE_LAYER_NAME = '';
 const INSTANCES_CLIPBOARD_KIND = 'Instances';
+const primitive3DByKind = {
+  box: {
+    objectType: 'Scene3D::Cube3DObject',
+    defaultName: 'Box',
+  },
+  sphere: {
+    objectType: 'Scene3D::Sphere3DObject',
+    defaultName: 'Ball',
+  },
+  plane: {
+    objectType: 'Scene3D::Plane3DObject',
+    defaultName: 'Plane',
+  },
+  capsule: {
+    objectType: 'Scene3D::Capsule3DObject',
+    defaultName: 'Capsule',
+  },
+};
+type Primitive3DKind = $Keys<typeof primitive3DByKind>;
+const light3DByKind = {
+  spot: {
+    objectType: 'Scene3D::SpotLightObject',
+    defaultName: 'SpotLight',
+  },
+};
+type Light3DKind = $Keys<typeof light3DByKind>;
+const PHYSICS_3D_BEHAVIOR_TYPE = 'Physics3D::Physics3DBehavior';
+const PHYSICS_3D_SHOW_COLLIDER_PROPERTY = 'showCollider';
 
 interface InstancePersistentUuidData {
   persistentUuid: string;
@@ -692,7 +720,10 @@ export default class SceneEditor extends React.Component<Props, State> {
     if (editorDisplay.getName() === 'mosaic') {
       this.props.setToolbar(
         <MosaicEditorsDisplayToolbar
-          gameEditorMode={this.state.instancesEditorSettings.gameEditorMode}
+          gameEditorMode={
+            this.state.instancesEditorSettings.gameEditorMode ||
+            this.props.gameEditorMode
+          }
           setGameEditorMode={this.setGameEditorMode}
           selectedInstancesCount={
             this.instancesSelection.getSelectedInstances().length
@@ -704,6 +735,8 @@ export default class SceneEditor extends React.Component<Props, State> {
             'object-groups-list'
           )}
           onOpenScenesManager={this.openScenesManager}
+          onOpenSceneEvents={this.openCurrentSceneEvents}
+          sceneEventsEnabled={!!this.props.layout}
           onOpenExtensionsManager={this.openExtensionsManager}
           toggleProperties={this.toggleProperties}
           isPropertiesShown={editorDisplay.isEditorVisible('properties')}
@@ -724,6 +757,13 @@ export default class SceneEditor extends React.Component<Props, State> {
           isWindowMaskShown={!!this.state.instancesEditorSettings.windowMask}
           toggleGrid={this.toggleGrid}
           isGridShown={!!this.state.instancesEditorSettings.grid}
+          toggleSelectedPhysicsHitboxes={this.toggleSelectedPhysicsHitboxes}
+          canToggleSelectedPhysicsHitboxes={
+            this.hasSelectedPhysics3DBehaviors()
+          }
+          areSelectedPhysicsHitboxesShown={
+            this.areSelectedPhysics3DHitboxesShown()
+          }
           openSetupGrid={this.openSetupGrid}
           setZoomFactor={this.setZoomFactor}
           getContextMenuZoomItems={this.getContextMenuZoomItems}
@@ -747,6 +787,8 @@ export default class SceneEditor extends React.Component<Props, State> {
           toggleObjectsList={this.toggleObjectsList}
           toggleObjectGroupsList={this.toggleObjectGroupsList}
           toggleProperties={this.toggleProperties}
+          onOpenSceneEvents={this.openCurrentSceneEvents}
+          sceneEventsEnabled={!!this.props.layout}
           deleteSelection={this.deleteSelection}
           toggleInstancesList={this.toggleInstancesList}
           toggleLayersList={this.toggleLayersList}
@@ -757,6 +799,13 @@ export default class SceneEditor extends React.Component<Props, State> {
           isWindowMaskShown={!!this.state.instancesEditorSettings.windowMask}
           toggleGrid={this.toggleGrid}
           isGridShown={!!this.state.instancesEditorSettings.grid}
+          toggleSelectedPhysicsHitboxes={this.toggleSelectedPhysicsHitboxes}
+          canToggleSelectedPhysicsHitboxes={
+            this.hasSelectedPhysics3DBehaviors()
+          }
+          areSelectedPhysicsHitboxesShown={
+            this.areSelectedPhysics3DHitboxesShown()
+          }
           openSetupGrid={this.openSetupGrid}
           setZoomFactor={this.setZoomFactor}
           getContextMenuZoomItems={this.getContextMenuZoomItems}
@@ -829,6 +878,16 @@ export default class SceneEditor extends React.Component<Props, State> {
     this.props.onOpenProjectManager();
   };
 
+  openCurrentSceneEvents = () => {
+    const { layout } = this.props;
+    if (!layout) {
+      this.props.onOpenProjectManager();
+      return;
+    }
+
+    this.props.onOpenEvents(layout.getName());
+  };
+
   openExtensionsManager = () => {
     this.props.onOpenProjectManager();
 
@@ -885,6 +944,91 @@ export default class SceneEditor extends React.Component<Props, State> {
       grid: !this.state.instancesEditorSettings.grid,
       snap: !this.state.instancesEditorSettings.grid,
     });
+  };
+
+  getSelectedObjectsWithPhysics3DBehaviors = (): Array<{|
+    object: gdObject,
+    behaviors: Array<gdBehavior>,
+  |}> => {
+    const { globalObjectsContainer, objectsContainer } = this.props;
+    const selectedObjectNames = uniq(
+      this.instancesSelection
+        .getSelectedInstances()
+        .map(instance => instance.getObjectName())
+    );
+
+    return selectedObjectNames
+      .map(objectName =>
+        getObjectByName(globalObjectsContainer, objectsContainer, objectName)
+      )
+      .filter(Boolean)
+      .map(object => {
+        const behaviors = object
+          .getAllBehaviorNames()
+          .toJSArray()
+          .map(behaviorName => object.getBehavior(behaviorName))
+          .filter(
+            behavior => behavior.getTypeName() === PHYSICS_3D_BEHAVIOR_TYPE
+          );
+
+        return { object, behaviors };
+      })
+      .filter(({ behaviors }) => behaviors.length > 0);
+  };
+
+  isPhysics3DHitboxShown = (behavior: gdBehavior): boolean => {
+    const showColliderProperty = behavior
+      .getProperties()
+      .get(PHYSICS_3D_SHOW_COLLIDER_PROPERTY);
+    if (!showColliderProperty) return false;
+
+    const value = showColliderProperty.getValue().toLowerCase();
+    return value === '1' || value === 'true';
+  };
+
+  hasSelectedPhysics3DBehaviors = (): boolean => {
+    return this.getSelectedObjectsWithPhysics3DBehaviors().length > 0;
+  };
+
+  areSelectedPhysics3DHitboxesShown = (): boolean => {
+    const selectedObjectsWithPhysics3D = this.getSelectedObjectsWithPhysics3DBehaviors();
+    if (!selectedObjectsWithPhysics3D.length) return false;
+
+    return selectedObjectsWithPhysics3D.every(({ behaviors }) =>
+      behaviors.every(behavior => this.isPhysics3DHitboxShown(behavior))
+    );
+  };
+
+  toggleSelectedPhysicsHitboxes = () => {
+    const selectedObjectsWithPhysics3D = this.getSelectedObjectsWithPhysics3DBehaviors();
+    if (!selectedObjectsWithPhysics3D.length) return;
+
+    const shouldShowHitboxes = !selectedObjectsWithPhysics3D.every(
+      ({ behaviors }) =>
+        behaviors.every(behavior => this.isPhysics3DHitboxShown(behavior))
+    );
+    const updatedObjects = [];
+
+    selectedObjectsWithPhysics3D.forEach(({ object, behaviors }) => {
+      const hasBehaviorBeenUpdated = behaviors.some(behavior =>
+        behavior.updateProperty(
+          PHYSICS_3D_SHOW_COLLIDER_PROPERTY,
+          shouldShowHitboxes ? '1' : '0'
+        )
+      );
+      if (hasBehaviorBeenUpdated) {
+        updatedObjects.push(object);
+      }
+    });
+
+    if (!updatedObjects.length) return;
+
+    if (this.props.unsavedChanges) {
+      this.props.unsavedChanges.triggerUnsavedChanges();
+    }
+    this._hotReloadObjects({ updatedObjects });
+    this.forceUpdatePropertiesEditor();
+    this.updateToolbar();
   };
 
   setGameEditorMode = (newMode: 'instances-editor' | 'embedded-game') => {
@@ -1166,6 +1310,100 @@ export default class SceneEditor extends React.Component<Props, State> {
       newObjectInstanceSceneCoordinates: editorDisplay.viewControls.getLastCursorSceneCoordinates(),
     });
     editorDisplay.openNewObjectDialog();
+  };
+
+  _createPrimitive3DObjectAndInstanceUnderCursor = (
+    primitiveKind: Primitive3DKind
+  ) => {
+    const { editorDisplay } = this;
+    const { project, objectsContainer, globalObjectsContainer } = this.props;
+    if (!editorDisplay) {
+      return;
+    }
+
+    const primitive3D = primitive3DByKind[primitiveKind];
+    const objectType = primitive3D.objectType;
+    const objectName = newNameGenerator(
+      primitive3D.defaultName,
+      name =>
+        objectsContainer.hasObjectNamed(name) ||
+        (!!globalObjectsContainer &&
+          globalObjectsContainer.hasObjectNamed(name))
+    );
+    const isTheFirstOfItsTypeInProject = !gd.UsedObjectTypeFinder.scanProject(
+      project,
+      objectType
+    );
+
+    this.setState(
+      {
+        newObjectInstanceSceneCoordinates: editorDisplay.viewControls.getLastCursorSceneCoordinates(),
+      },
+      () => {
+        const object = objectsContainer.insertNewObject(
+          project,
+          objectType,
+          objectName,
+          objectsContainer.getObjectsCount()
+        );
+        const objectFolderOrObject = objectsContainer
+          .getRootFolder()
+          .getObjectChild(objectName);
+        if (objectFolderOrObject) {
+          this._onObjectFolderOrObjectWithContextSelected({
+            objectFolderOrObject,
+            global: false,
+          });
+        }
+        this._onObjectCreated([object], isTheFirstOfItsTypeInProject);
+      }
+    );
+  };
+
+  _createLight3DObjectAndInstanceUnderCursor = (lightKind: Light3DKind) => {
+    const { editorDisplay } = this;
+    const { project, objectsContainer, globalObjectsContainer } = this.props;
+    if (!editorDisplay) {
+      return;
+    }
+
+    const light3D = light3DByKind[lightKind];
+    const objectType = light3D.objectType;
+    const objectName = newNameGenerator(
+      light3D.defaultName,
+      name =>
+        objectsContainer.hasObjectNamed(name) ||
+        (!!globalObjectsContainer &&
+          globalObjectsContainer.hasObjectNamed(name))
+    );
+    const isTheFirstOfItsTypeInProject = !gd.UsedObjectTypeFinder.scanProject(
+      project,
+      objectType
+    );
+
+    this.setState(
+      {
+        newObjectInstanceSceneCoordinates: editorDisplay.viewControls.getLastCursorSceneCoordinates(),
+      },
+      () => {
+        const object = objectsContainer.insertNewObject(
+          project,
+          objectType,
+          objectName,
+          objectsContainer.getObjectsCount()
+        );
+        const objectFolderOrObject = objectsContainer
+          .getRootFolder()
+          .getObjectChild(objectName);
+        if (objectFolderOrObject) {
+          this._onObjectFolderOrObjectWithContextSelected({
+            objectFolderOrObject,
+            global: false,
+          });
+        }
+        this._onObjectCreated([object], isTheFirstOfItsTypeInProject);
+      }
+    );
   };
 
   addInstanceOnTheScene = (
@@ -2396,6 +2634,39 @@ export default class SceneEditor extends React.Component<Props, State> {
           label: i18n._(t`Insert new...`),
           click: () => this._createNewObjectAndInstanceUnderCursor(),
         },
+        {
+          label: i18n._(t`Insert 3D primitive`),
+          submenu: [
+            {
+              label: i18n._(t`Box`),
+              click: () => this._createPrimitive3DObjectAndInstanceUnderCursor('box'),
+            },
+            {
+              label: i18n._(t`Ball`),
+              click: () =>
+                this._createPrimitive3DObjectAndInstanceUnderCursor('sphere'),
+            },
+            {
+              label: i18n._(t`Plane`),
+              click: () =>
+                this._createPrimitive3DObjectAndInstanceUnderCursor('plane'),
+            },
+            {
+              label: i18n._(t`Capsule`),
+              click: () =>
+                this._createPrimitive3DObjectAndInstanceUnderCursor('capsule'),
+            },
+          ],
+        },
+        {
+          label: i18n._(t`Insert 3D light`),
+          submenu: [
+            {
+              label: i18n._(t`Spot Light`),
+              click: () => this._createLight3DObjectAndInstanceUnderCursor('spot'),
+            },
+          ],
+        },
         { type: 'separator' },
         ...this.getContextMenuZoomItems(i18n),
         { type: 'separator' },
@@ -3024,6 +3295,7 @@ export default class SceneEditor extends React.Component<Props, State> {
                     onEventsBasedObjectChildrenEdited={
                       this.props.onEventsBasedObjectChildrenEdited
                     }
+                    onOpenEvents={this.props.onOpenEvents}
                   />
                   <React.Fragment>
                     {editedObjectWithContext && (

@@ -185,4 +185,82 @@ describe('gdjs.RuntimeScene integration tests', function () {
       expect(runtimeScene.hasLayer('MyOtherLayer')).to.be(true);
     });
   });
+
+  describe('Pre-render lifecycle (using TestObjectWithFakeRenderer)', function () {
+    it('should still run updatePreRender for hidden objects with a renderer', function () {
+      const runtimeGame = gdjs.getPixiRuntimeGame();
+      const runtimeScene = new gdjs.RuntimeScene(runtimeGame);
+      runtimeScene.loadFromScene({
+        sceneData: {
+          layers: [
+            {
+              name: '',
+              visibility: true,
+              cameras: [],
+              effects: [],
+              ambientLightColorR: 127,
+              ambientLightColorB: 127,
+              ambientLightColorG: 127,
+              isLightingLayer: false,
+              followBaseLayerCamera: false,
+            },
+          ],
+          variables: [],
+          r: 0,
+          v: 0,
+          b: 0,
+          mangledName: 'Scene1',
+          name: 'Scene1',
+          stopSoundsOnStartup: false,
+          title: '',
+          behaviorsSharedData: [],
+          objects: [
+            {
+              type: 'TestObjectWithFakeRenderer::TestObjectWithFakeRenderer',
+              name: 'FakeRendererObject',
+              behaviors: [],
+              effects: [],
+              variables: [],
+            },
+          ],
+          instances: [],
+          usedResources: [],
+          uiSettings: {
+            grid: false,
+            gridType: 'rectangular',
+            gridWidth: 10,
+            gridHeight: 10,
+            gridDepth: 10,
+            gridOffsetX: 0,
+            gridOffsetY: 0,
+            gridOffsetZ: 0,
+            gridColor: 0,
+            gridAlpha: 1,
+            snap: false,
+          },
+        },
+        usedExtensionsWithVariablesData: [],
+      });
+
+      const object = runtimeScene.createObject('FakeRendererObject');
+      if (!object) {
+        throw new Error('object should have been created');
+      }
+
+      const sharedRendererObject = { visible: true };
+      object.getRendererObject = function () {
+        return sharedRendererObject;
+      };
+      let updatePreRenderCallCount = 0;
+      object.updatePreRender = function () {
+        updatePreRenderCallCount++;
+      };
+
+      object.hide(true);
+      runtimeScene.render();
+
+      expect(updatePreRenderCallCount).to.be(1);
+      expect(sharedRendererObject.visible).to.be(false);
+    });
+  });
 });

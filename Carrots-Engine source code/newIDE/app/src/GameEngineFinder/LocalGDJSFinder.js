@@ -1,58 +1,92 @@
 // @flow
-// Note: this file don't use export/imports nor Flow to allow its usage from Node.js
+// Note: this file does not use import/export syntax so it can be used from Node.js.
 
 const optionalRequire = require('../Utils/OptionalRequire');
 const remote = optionalRequire('@electron/remote');
-const app = remote ? remote.app : null;
+const electron = optionalRequire('electron');
+const app = remote ? remote.app : electron ? electron.app : null;
 const fs = optionalRequire('fs');
 const path = optionalRequire('path');
 const process = optionalRequire('process');
-var isDarwin = process && /^darwin/.test(process.platform);
 
-const tryPath = (
-  path /*: string*/,
-  onExists /*: string => void*/,
-  onNoAccess /*: Function*/
-) =>
-  fs.access(path, fs.constants.R_OK, err => {
-    if (!err) onExists(path);
-    else onNoAccess();
+const hasReadAccess = (targetPath /*: string */) /*: Promise<boolean> */ =>
+  new Promise(resolve => {
+    fs.access(targetPath, fs.constants.R_OK, err => resolve(!err));
   });
 
-const findGDJS = () /*: Promise<{|gdjsRoot: string|}> */ => {
-  if (!path || !process || !fs) return Promise.reject(new Error('Unsupported'));
+const isValidGdjsRoot = async (
+  candidatePath /*: string */
+) /*: Promise<boolean> */ => {
+  if (!candidatePath) return false;
+
+  const runtimePath = path.join(candidatePath, 'Runtime');
+  const runtimeExtensionsPath = path.join(runtimePath, 'Extensions');
+  const [hasRuntime, hasRuntimeExtensions] = await Promise.all([
+    hasReadAccess(runtimePath),
+    hasReadAccess(runtimeExtensionsPath),
+  ]);
+
+  return hasRuntime && hasRuntimeExtensions;
+};
+
+const deduplicatePaths = (paths /*: Array<string> */) /*: Array<string> */ => {
+  const uniquePaths = [];
+  const seen = new Set();
+  for (const candidatePath of paths) {
+    if (!candidatePath) continue;
+    const normalizedPath = path.resolve(candidatePath);
+    if (seen.has(normalizedPath)) continue;
+    seen.add(normalizedPath);
+    uniquePaths.push(normalizedPath);
+  }
+  return uniquePaths;
+};
+
+const getCandidateGdjsRoots = (
+  appPath /*: string */
+) /*: Array<string> */ => {
+  const resourcesPath =
+    process.resourcesPath || path.join(appPath, '..', 'resources');
+
+  return deduplicatePaths([
+    // Packaged Electron app (`extraResources -> resources/GDJS`).
+    path.join(resourcesPath, 'GDJS'),
+    // Some environments expose appPath inside app.asar.
+    path.join(appPath, '..', 'GDJS'),
+    // Development layout used by newIDE/app scripts.
+    path.join(appPath, '..', '..', 'app', 'resources', 'GDJS'),
+    // Fallback when launched from repository root.
+    path.join(process.cwd(), 'newIDE', 'app', 'resources', 'GDJS'),
+    // Legacy fallback for unusual packaging layouts.
+    path.join(appPath, '..', '..', 'GDJS'),
+  ]);
+};
+
+const findGDJS = async () /*: Promise<{|gdjsRoot: string|}> */ => {
+  if (!path || !process || !fs) {
+    throw new Error('Unsupported');
+  }
 
   const appPath = app ? app.getAppPath() : process.cwd();
+  const candidatePaths = getCandidateGdjsRoots(appPath);
 
-  // The app path is [...]/*.app/Contents/Resources/app.asar on macOS
-  // and [...]/resources/app.asar on other OSes.
-  const pathToRoot = isDarwin ? '../../../../' : path.join('..', '..');
-  const rootPath = path.join(appPath, pathToRoot);
+  for (const candidatePath of candidatePaths) {
+    if (await isValidGdjsRoot(candidatePath)) {
+      return { gdjsRoot: candidatePath };
+    }
+  }
 
-  return new Promise((resolve, reject) => {
-    // $FlowFixMe[missing-local-annot]
-    const onFound = gdjsRoot => resolve({ gdjsRoot });
-    const onNotFound = () => reject(new Error('Could not find GDJS'));
-
-    // First try to find GDJS in the parent folder (when newIDE is inside IDE)
-    tryPath(path.join(rootPath, '..', 'JsPlatform'), onFound, () => {
-      // Or in the resources (for a standalone newIDE)
-      tryPath(path.join(appPath, '..', 'GDJS'), onFound, () => {
-        // Or in the resources when developing with Electron
-        const devPath = path.join(
-          appPath,
-          '..',
-          '..',
-          'app',
-          'resources',
-          'GDJS'
-        );
-        tryPath(devPath, onFound, onNotFound);
-      });
-    });
-  });
+  throw new Error(
+    'Could not find GDJS runtime. Checked paths: ' + candidatePaths.join(', ')
+  );
 };
 
-module.exports = {
+const exportedApi = {
   findGDJS,
 };
+
+if (typeof module !== 'undefined' && module && module.exports) {
+  module.exports = exportedApi;
+} else if (typeof exports !== 'undefined') {
+  exports.findGDJS = findGDJS;
+}

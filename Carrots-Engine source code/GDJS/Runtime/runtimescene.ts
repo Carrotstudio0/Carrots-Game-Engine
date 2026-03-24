@@ -6,6 +6,217 @@
 namespace gdjs {
   const logger = new gdjs.Logger('RuntimeScene');
   const setupWarningLogger = new gdjs.Logger('RuntimeScene (setup warnings)');
+  const renderSnapshotWorkerHandlerName = 'GDJS::Render::cullSnapshot::v1';
+  const renderSnapshotNumericStride = 7;
+  const renderSnapshotXOffset = 0;
+  const renderSnapshotYOffset = 1;
+  const renderSnapshotAABBMinXOffset = 2;
+  const renderSnapshotAABBMinYOffset = 3;
+  const renderSnapshotAABBMaxXOffset = 4;
+  const renderSnapshotAABBMaxYOffset = 5;
+  const renderSnapshotLayerIndexOffset = 6;
+  const renderSnapshotLayerBoundsStride = 4;
+  const renderSnapshotLayerMinXOffset = 0;
+  const renderSnapshotLayerMinYOffset = 1;
+  const renderSnapshotLayerMaxXOffset = 2;
+  const renderSnapshotLayerMaxYOffset = 3;
+  const renderSnapshotFlagHasRendererObject = 1 << 0;
+  const renderSnapshotFlagHidden = 1 << 1;
+  const renderSnapshotFlagHasAABB = 1 << 2;
+  const renderSnapshotMinWorkerObjectCount = 128;
+  const renderSnapshotIsolationEnabled = false;
+  const renderSnapshotEnableWorkerCulling = false;
+  let hasRegisteredRenderSnapshotWorkerHandler = false;
+
+  type RuntimeRenderSnapshot = {
+    version: integer;
+    objectCount: integer;
+    layerCount: integer;
+    numericData: Float32Array;
+    flags: Uint8Array;
+    objects: Array<gdjs.RuntimeObject | null>;
+    layerNames: string[];
+    layerBounds: Float32Array;
+  };
+
+  type RenderSnapshotWorkerCullingPayload = {
+    snapshotVersion: integer;
+    objectCount: integer;
+    layerCount: integer;
+    numericStride: integer;
+    numericDataBuffer: ArrayBuffer;
+    flagsBuffer: ArrayBuffer;
+    layerBoundsBuffer: ArrayBuffer;
+  };
+
+  type RenderSnapshotWorkerCullingResult = {
+    snapshotVersion: integer;
+    objectCount: integer;
+    visibilityBuffer: ArrayBuffer;
+  };
+
+  const isRenderSnapshotWorkerCullingResult = (
+    value: unknown
+  ): value is RenderSnapshotWorkerCullingResult => {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+
+    const result = value as {
+      snapshotVersion?: unknown;
+      objectCount?: unknown;
+      visibilityBuffer?: unknown;
+    };
+    return (
+      typeof result.snapshotVersion === 'number' &&
+      typeof result.objectCount === 'number' &&
+      result.visibilityBuffer instanceof ArrayBuffer
+    );
+  };
+
+  const ensureRenderSnapshotWorkerHandlerRegistered = (): void => {
+    if (hasRegisteredRenderSnapshotWorkerHandler) {
+      return;
+    }
+    if (
+      typeof gdjs.registerWorkerTaskHandler !== 'function' ||
+      typeof gdjs.hasWorkerTaskHandler !== 'function'
+    ) {
+      return;
+    }
+    if (!gdjs.hasWorkerTaskHandler(renderSnapshotWorkerHandlerName)) {
+      gdjs.registerWorkerTaskHandler(
+        renderSnapshotWorkerHandlerName,
+        function (payload: unknown) {
+          const renderSnapshotNumericStride = 7;
+          const renderSnapshotAABBMinXOffset = 2;
+          const renderSnapshotAABBMinYOffset = 3;
+          const renderSnapshotAABBMaxXOffset = 4;
+          const renderSnapshotAABBMaxYOffset = 5;
+          const renderSnapshotLayerIndexOffset = 6;
+          const renderSnapshotLayerBoundsStride = 4;
+          const renderSnapshotLayerMinXOffset = 0;
+          const renderSnapshotLayerMinYOffset = 1;
+          const renderSnapshotLayerMaxXOffset = 2;
+          const renderSnapshotLayerMaxYOffset = 3;
+          const renderSnapshotFlagHasRendererObject = 1 << 0;
+          const renderSnapshotFlagHidden = 1 << 1;
+          const renderSnapshotFlagHasAABB = 1 << 2;
+
+          const cullingPayload =
+            payload && typeof payload === 'object'
+              ? (payload as {
+                  snapshotVersion?: unknown;
+                  objectCount?: unknown;
+                  layerCount?: unknown;
+                  numericStride?: unknown;
+                  numericDataBuffer?: unknown;
+                  flagsBuffer?: unknown;
+                  layerBoundsBuffer?: unknown;
+                })
+              : null;
+          if (!cullingPayload) {
+            throw new Error('Invalid render snapshot culling payload.');
+          }
+
+          const snapshotVersion =
+            typeof cullingPayload.snapshotVersion === 'number'
+              ? Math.floor(cullingPayload.snapshotVersion)
+              : 0;
+          const objectCount =
+            typeof cullingPayload.objectCount === 'number'
+              ? Math.max(0, Math.floor(cullingPayload.objectCount))
+              : 0;
+          const layerCount =
+            typeof cullingPayload.layerCount === 'number'
+              ? Math.max(0, Math.floor(cullingPayload.layerCount))
+              : 0;
+          const numericStride =
+            typeof cullingPayload.numericStride === 'number'
+              ? Math.floor(cullingPayload.numericStride)
+              : renderSnapshotNumericStride;
+          if (
+            numericStride !== renderSnapshotNumericStride ||
+            !(cullingPayload.numericDataBuffer instanceof ArrayBuffer) ||
+            !(cullingPayload.flagsBuffer instanceof ArrayBuffer) ||
+            !(cullingPayload.layerBoundsBuffer instanceof ArrayBuffer)
+          ) {
+            throw new Error('Malformed render snapshot culling buffers.');
+          }
+
+          const numericData = new Float32Array(cullingPayload.numericDataBuffer);
+          const flags = new Uint8Array(cullingPayload.flagsBuffer);
+          const layerBounds = new Float32Array(cullingPayload.layerBoundsBuffer);
+          const requiredNumericLength = objectCount * numericStride;
+          const requiredLayerBoundsLength =
+            layerCount * renderSnapshotLayerBoundsStride;
+          if (
+            numericData.length < requiredNumericLength ||
+            flags.length < objectCount ||
+            layerBounds.length < requiredLayerBoundsLength
+          ) {
+            throw new Error('Render snapshot culling buffers are truncated.');
+          }
+
+          const visibilityMask = new Uint8Array(objectCount);
+          for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
+            const flagsValue = flags[objectIndex];
+            const hasRendererObject =
+              (flagsValue & renderSnapshotFlagHasRendererObject) !== 0;
+            const isHidden = (flagsValue & renderSnapshotFlagHidden) !== 0;
+            const hasAABB = (flagsValue & renderSnapshotFlagHasAABB) !== 0;
+            if (!hasRendererObject || isHidden) {
+              visibilityMask[objectIndex] = 0;
+              continue;
+            }
+            if (!hasAABB) {
+              visibilityMask[objectIndex] = 1;
+              continue;
+            }
+
+            const numericOffset = objectIndex * numericStride;
+            const layerIndex = Math.floor(
+              numericData[numericOffset + renderSnapshotLayerIndexOffset]
+            );
+            if (layerIndex < 0 || layerIndex >= layerCount) {
+              visibilityMask[objectIndex] = 1;
+              continue;
+            }
+
+            const layerOffset = layerIndex * renderSnapshotLayerBoundsStride;
+            const minX = numericData[numericOffset + renderSnapshotAABBMinXOffset];
+            const minY = numericData[numericOffset + renderSnapshotAABBMinYOffset];
+            const maxX = numericData[numericOffset + renderSnapshotAABBMaxXOffset];
+            const maxY = numericData[numericOffset + renderSnapshotAABBMaxYOffset];
+            const layerMinX = layerBounds[layerOffset + renderSnapshotLayerMinXOffset];
+            const layerMinY = layerBounds[layerOffset + renderSnapshotLayerMinYOffset];
+            const layerMaxX = layerBounds[layerOffset + renderSnapshotLayerMaxXOffset];
+            const layerMaxY = layerBounds[layerOffset + renderSnapshotLayerMaxYOffset];
+
+            visibilityMask[objectIndex] =
+              minX > layerMaxX ||
+              minY > layerMaxY ||
+              maxX < layerMinX ||
+              maxY < layerMinY
+                ? 0
+                : 1;
+          }
+
+          return {
+            __gdjsTransferableWorkerTaskResult: true,
+            value: {
+              snapshotVersion,
+              objectCount,
+              visibilityBuffer: visibilityMask.buffer,
+            },
+            transferables: [visibilityMask.buffer],
+          };
+        }
+      );
+    }
+
+    hasRegisteredRenderSnapshotWorkerHandler = true;
+  };
 
   /**
    * A scene being played, containing instances of objects rendered on screen.
@@ -53,6 +264,12 @@ namespace gdjs {
 
     _cachedGameResolutionWidth: integer;
     _cachedGameResolutionHeight: integer;
+    private _renderSnapshotRead: RuntimeRenderSnapshot;
+    private _renderSnapshotWrite: RuntimeRenderSnapshot;
+    private _renderSnapshotVersion: integer = 0;
+    private _renderSnapshotVisibilityByVersion = new Map<integer, Uint8Array>();
+    private _renderSnapshotCullingQueue: gdjs.WorkerTaskQueue | null = null;
+    private _renderSnapshotCullingInFlightVersion: integer = 0;
 
     /**
      * A network ID associated to the scene to be used
@@ -82,6 +299,12 @@ namespace gdjs {
       this._cachedGameResolutionHeight = runtimeGame
         ? runtimeGame.getGameResolutionHeight()
         : 0;
+      this._renderSnapshotRead = this._createEmptyRenderSnapshot();
+      this._renderSnapshotWrite = this._createEmptyRenderSnapshot();
+      if (renderSnapshotIsolationEnabled && renderSnapshotEnableWorkerCulling) {
+        ensureRenderSnapshotWorkerHandlerRegistered();
+        this._initializeRenderSnapshotCullingQueue();
+      }
 
       this._renderer = new gdjs.RuntimeSceneRenderer(
         this,
@@ -94,6 +317,278 @@ namespace gdjs {
 
       // The callback function to call when the profiler is stopped.
       this.onGameResolutionResized();
+    }
+
+    private _createEmptyRenderSnapshot(initialCapacity = 0): RuntimeRenderSnapshot {
+      const objectCapacity = Math.max(0, initialCapacity);
+      return {
+        version: 0,
+        objectCount: 0,
+        layerCount: 0,
+        numericData: new Float32Array(objectCapacity * renderSnapshotNumericStride),
+        flags: new Uint8Array(objectCapacity),
+        objects: new Array<gdjs.RuntimeObject | null>(objectCapacity),
+        layerNames: [],
+        layerBounds: new Float32Array(0),
+      };
+    }
+
+    private _initializeRenderSnapshotCullingQueue(): void {
+      if (
+        !renderSnapshotIsolationEnabled ||
+        !renderSnapshotEnableWorkerCulling ||
+        !this._runtimeGame ||
+        this._renderSnapshotCullingQueue ||
+        typeof gdjs.hasWorkerTaskHandler !== 'function' ||
+        !gdjs.hasWorkerTaskHandler(renderSnapshotWorkerHandlerName)
+      ) {
+        return;
+      }
+
+      this._renderSnapshotCullingQueue = this.createWorkerTaskQueue({
+        name: 'scene-render-culling',
+        maxConcurrentTasks: 1,
+        autoStart: true,
+        workerRole: 'generic',
+        priority: 'high',
+        allowMainThreadFallback: true,
+      });
+    }
+
+    private _ensureRenderSnapshotObjectCapacity(
+      snapshot: RuntimeRenderSnapshot,
+      requiredObjectCount: integer
+    ): void {
+      if (requiredObjectCount <= snapshot.flags.length) {
+        return;
+      }
+
+      const previousCapacity = snapshot.flags.length;
+      const nextCapacity = Math.max(
+        requiredObjectCount,
+        Math.max(32, previousCapacity * 2)
+      );
+      const nextNumericData = new Float32Array(
+        nextCapacity * renderSnapshotNumericStride
+      );
+      nextNumericData.set(
+        snapshot.numericData.subarray(
+          0,
+          previousCapacity * renderSnapshotNumericStride
+        )
+      );
+      snapshot.numericData = nextNumericData;
+
+      const nextFlags = new Uint8Array(nextCapacity);
+      nextFlags.set(snapshot.flags.subarray(0, previousCapacity));
+      snapshot.flags = nextFlags;
+
+      const nextObjects = new Array<gdjs.RuntimeObject | null>(nextCapacity);
+      for (let i = 0; i < previousCapacity; i++) {
+        nextObjects[i] = snapshot.objects[i] || null;
+      }
+      snapshot.objects = nextObjects;
+    }
+
+    private _swapRenderSnapshots(): void {
+      const previousReadSnapshot = this._renderSnapshotRead;
+      this._renderSnapshotRead = this._renderSnapshotWrite;
+      this._renderSnapshotWrite = previousReadSnapshot;
+      this._renderSnapshotVersion++;
+      this._renderSnapshotRead.version = this._renderSnapshotVersion;
+    }
+
+    private _buildRenderSnapshot(): void {
+      const allInstancesList = this.getAdhocListOfAllInstances();
+      const objectCount = allInstancesList.length;
+      const writeSnapshot = this._renderSnapshotWrite;
+      this._ensureRenderSnapshotObjectCapacity(writeSnapshot, objectCount);
+
+      writeSnapshot.objectCount = objectCount;
+      writeSnapshot.layerCount = 0;
+      writeSnapshot.layerNames.length = 0;
+      for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
+        const object = allInstancesList[objectIndex];
+        const numericOffset = objectIndex * renderSnapshotNumericStride;
+        writeSnapshot.objects[objectIndex] = object;
+
+        writeSnapshot.numericData[numericOffset + renderSnapshotXOffset] =
+          object.getX();
+        writeSnapshot.numericData[numericOffset + renderSnapshotYOffset] =
+          object.getY();
+
+        const rendererObject = object.getRendererObject();
+        let objectFlags = 0;
+        if (rendererObject) {
+          objectFlags |= renderSnapshotFlagHasRendererObject;
+        }
+        if (object.isHidden()) {
+          objectFlags |= renderSnapshotFlagHidden;
+        }
+        writeSnapshot.numericData[
+          numericOffset + renderSnapshotLayerIndexOffset
+        ] = 0;
+        writeSnapshot.numericData[
+          numericOffset + renderSnapshotAABBMinXOffset
+        ] = 0;
+        writeSnapshot.numericData[
+          numericOffset + renderSnapshotAABBMinYOffset
+        ] = 0;
+        writeSnapshot.numericData[
+          numericOffset + renderSnapshotAABBMaxXOffset
+        ] = 0;
+        writeSnapshot.numericData[
+          numericOffset + renderSnapshotAABBMaxYOffset
+        ] = 0;
+
+        writeSnapshot.flags[objectIndex] = objectFlags;
+      }
+
+      for (
+        let objectIndex = objectCount;
+        objectIndex < writeSnapshot.objects.length;
+        objectIndex++
+      ) {
+        writeSnapshot.objects[objectIndex] = null;
+      }
+
+      this._swapRenderSnapshots();
+      this._scheduleRenderSnapshotCulling(this._renderSnapshotRead);
+    }
+
+    private _scheduleRenderSnapshotCulling(snapshot: RuntimeRenderSnapshot): void {
+      if (!renderSnapshotEnableWorkerCulling) {
+        return;
+      }
+      if (
+        snapshot.objectCount < renderSnapshotMinWorkerObjectCount ||
+        this._renderSnapshotCullingInFlightVersion !== 0
+      ) {
+        return;
+      }
+      this._initializeRenderSnapshotCullingQueue();
+      if (!this._renderSnapshotCullingQueue) {
+        return;
+      }
+
+      const numericLength = snapshot.objectCount * renderSnapshotNumericStride;
+      const numericDataCopy = new Float32Array(numericLength);
+      numericDataCopy.set(snapshot.numericData.subarray(0, numericLength));
+
+      const flagsCopy = new Uint8Array(snapshot.objectCount);
+      flagsCopy.set(snapshot.flags.subarray(0, snapshot.objectCount));
+
+      const layerBoundsLength =
+        snapshot.layerCount * renderSnapshotLayerBoundsStride;
+      const layerBoundsCopy = new Float32Array(layerBoundsLength);
+      layerBoundsCopy.set(snapshot.layerBounds.subarray(0, layerBoundsLength));
+
+      this._renderSnapshotCullingInFlightVersion = snapshot.version;
+      const queuedTask = this._renderSnapshotCullingQueue.enqueue<RenderSnapshotWorkerCullingResult>(
+        renderSnapshotWorkerHandlerName,
+        {
+          snapshotVersion: snapshot.version,
+          objectCount: snapshot.objectCount,
+          layerCount: snapshot.layerCount,
+          numericStride: renderSnapshotNumericStride,
+          numericDataBuffer: numericDataCopy.buffer,
+          flagsBuffer: flagsCopy.buffer,
+          layerBoundsBuffer: layerBoundsCopy.buffer,
+        } as RenderSnapshotWorkerCullingPayload,
+        {
+          transferables: [
+            numericDataCopy.buffer,
+            flagsCopy.buffer,
+            layerBoundsCopy.buffer,
+          ],
+          workerRole: 'generic',
+          priority: 'high',
+        }
+      );
+
+      queuedTask.promise.then(
+        (result) => {
+          this._renderSnapshotCullingInFlightVersion = 0;
+          if (!isRenderSnapshotWorkerCullingResult(result)) {
+            return;
+          }
+
+          const visibilityMask = new Uint8Array(result.visibilityBuffer);
+          if (visibilityMask.length !== result.objectCount) {
+            return;
+          }
+
+          this._renderSnapshotVisibilityByVersion.set(
+            result.snapshotVersion,
+            visibilityMask
+          );
+          if (this._renderSnapshotVisibilityByVersion.size > 4) {
+            const oldestSnapshotVersion = this._renderSnapshotVisibilityByVersion
+              .keys()
+              .next().value;
+            if (typeof oldestSnapshotVersion === 'number') {
+              this._renderSnapshotVisibilityByVersion.delete(
+                oldestSnapshotVersion
+              );
+            }
+          }
+        },
+        (error) => {
+          this._renderSnapshotCullingInFlightVersion = 0;
+          logger.warn('Render snapshot worker culling failed.', error);
+        }
+      );
+    }
+
+    private _isObjectVisibleFromRenderSnapshot(
+      snapshot: RuntimeRenderSnapshot,
+      objectIndex: integer
+    ): boolean {
+      const flagsValue = snapshot.flags[objectIndex];
+      const hasRendererObject =
+        (flagsValue & renderSnapshotFlagHasRendererObject) !== 0;
+      if (!hasRendererObject) {
+        return false;
+      }
+      if ((flagsValue & renderSnapshotFlagHidden) !== 0) {
+        return false;
+      }
+      if ((flagsValue & renderSnapshotFlagHasAABB) === 0) {
+        return true;
+      }
+
+      const numericOffset = objectIndex * renderSnapshotNumericStride;
+      const layerIndex = Math.floor(
+        snapshot.numericData[numericOffset + renderSnapshotLayerIndexOffset]
+      );
+      if (layerIndex < 0 || layerIndex >= snapshot.layerCount) {
+        return true;
+      }
+
+      const layerOffset = layerIndex * renderSnapshotLayerBoundsStride;
+      const minX =
+        snapshot.numericData[numericOffset + renderSnapshotAABBMinXOffset];
+      const minY =
+        snapshot.numericData[numericOffset + renderSnapshotAABBMinYOffset];
+      const maxX =
+        snapshot.numericData[numericOffset + renderSnapshotAABBMaxXOffset];
+      const maxY =
+        snapshot.numericData[numericOffset + renderSnapshotAABBMaxYOffset];
+      const layerMinX =
+        snapshot.layerBounds[layerOffset + renderSnapshotLayerMinXOffset];
+      const layerMinY =
+        snapshot.layerBounds[layerOffset + renderSnapshotLayerMinYOffset];
+      const layerMaxX =
+        snapshot.layerBounds[layerOffset + renderSnapshotLayerMaxXOffset];
+      const layerMaxY =
+        snapshot.layerBounds[layerOffset + renderSnapshotLayerMaxYOffset];
+
+      return !(
+        minX > layerMaxX ||
+        minY > layerMaxY ||
+        maxX < layerMinX ||
+        maxY < layerMinY
+      );
     }
 
     addLayer(layerData: LayerData) {
@@ -336,6 +831,15 @@ namespace gdjs {
       // It should not be necessary to reset these variables, but this help
       // ensuring that all memory related to the RuntimeScene is released immediately.
       super._destroy();
+      if (this._renderSnapshotCullingQueue) {
+        this._renderSnapshotCullingQueue.dispose();
+        this._renderSnapshotCullingQueue = null;
+      }
+      this._renderSnapshotCullingInFlightVersion = 0;
+      this._renderSnapshotVisibilityByVersion.clear();
+      this._renderSnapshotVersion = 0;
+      this._renderSnapshotRead = this._createEmptyRenderSnapshot();
+      this._renderSnapshotWrite = this._createEmptyRenderSnapshot();
       this._variables = new gdjs.VariablesContainer();
       this._variablesByExtensionName = new Map<
         string,
@@ -444,6 +948,15 @@ namespace gdjs {
       if (this._profiler) {
         this._profiler.end('callbacks and extensions (post-events)');
       }
+      if (renderSnapshotIsolationEnabled) {
+        if (this._profiler) {
+          this._profiler.begin('render snapshot');
+        }
+        this._buildRenderSnapshot();
+        if (this._profiler) {
+          this._profiler.end('render snapshot');
+        }
+      }
 
       this.render();
       this._isJustResumed = false;
@@ -459,6 +972,12 @@ namespace gdjs {
      * Render the scene (but do not execute the game logic).
      */
     render() {
+      if (
+        renderSnapshotIsolationEnabled &&
+        this._renderSnapshotRead.version === 0
+      ) {
+        this._buildRenderSnapshot();
+      }
       if (this._profiler) {
         this._profiler.begin('objects (pre-render, effects update)');
       }
@@ -500,66 +1019,47 @@ namespace gdjs {
      * object is too far from the camera of its layer ("culling").
      */
     _updateObjectsPreRender() {
-      if (this._timeManager.isFirstFrame()) {
+      if (!renderSnapshotIsolationEnabled) {
         super._updateObjectsPreRender();
         return;
-      } else {
-        // After first frame, optimise rendering by setting only objects
-        // near camera as visible.
-        // TODO: For compatibility, pass a scale of `2`,
-        // meaning that size of cameras will be multiplied by 2 and so objects
-        // will be hidden if they are outside of this *larger* camera area.
-        // This is useful for:
-        // - objects not properly reporting their visibility AABB,
-        // (so we have a "safety margin") but these objects should be fixed
-        // instead.
-        // - objects having effects rendering outside of their visibility AABB.
+      }
+      const snapshot = this._renderSnapshotRead;
+      if (snapshot.version === 0 || snapshot.objectCount === 0) {
+        super._updateObjectsPreRender();
+        return;
+      }
 
-        // TODO (3D) culling - add support for 3D object culling?
-        this._updateLayersCameraCoordinates(2);
-        const allInstancesList = this.getAdhocListOfAllInstances();
-        for (let i = 0, len = allInstancesList.length; i < len; ++i) {
-          const object = allInstancesList[i];
-          const rendererObject = object.getRendererObject();
-          if (rendererObject) {
-            if (object.isHidden()) {
-              rendererObject.visible = false;
-            } else {
-              const cameraCoords =
-                this._layersCameraCoordinates[object.getLayer()];
-              if (!cameraCoords) {
-                continue;
-              }
-              const aabb = object.getVisibilityAABB();
-              rendererObject.visible =
-                // If no AABB is returned, the object should always be visible
-                !aabb ||
-                // If an AABB is there, it must be at least partially inside
-                // the camera bounds.
-                !(
-                  aabb.min[0] > cameraCoords[2] ||
-                  aabb.min[1] > cameraCoords[3] ||
-                  aabb.max[0] < cameraCoords[0] ||
-                  aabb.max[1] < cameraCoords[1]
-                );
-            }
+      const visibilityFromWorker =
+        this._renderSnapshotVisibilityByVersion.get(snapshot.version) || null;
 
-            // Update effects, only for visible objects.
-            if (rendererObject.visible) {
-              this._runtimeGame
-                .getEffectsManager()
-                .updatePreRender(object.getRendererEffects(), object);
-
-              // Perform pre-render update only if the object is visible
-              // (including if there is no visibility AABB returned previously).
-              object.updatePreRender(this);
-            }
-          } else {
-            // Perform pre-render update, always for objects not having an
-            // associated renderer object (so it must handle visibility on its own).
-            object.updatePreRender(this);
-          }
+      for (let objectIndex = 0; objectIndex < snapshot.objectCount; objectIndex++) {
+        const object = snapshot.objects[objectIndex];
+        if (!object) {
+          continue;
         }
+
+        const rendererObject = object.getRendererObject();
+        if (!rendererObject) {
+          // Objects without renderer object own their visibility/update flow.
+          object.updatePreRender(this);
+          continue;
+        }
+
+        const isVisible =
+          visibilityFromWorker && objectIndex < visibilityFromWorker.length
+            ? visibilityFromWorker[objectIndex] === 1
+            : this._isObjectVisibleFromRenderSnapshot(snapshot, objectIndex);
+        rendererObject.visible = isVisible;
+
+        if (!isVisible) {
+          object.updatePreRender(this);
+          continue;
+        }
+
+        this._runtimeGame
+          .getEffectsManager()
+          .updatePreRender(object.getRendererEffects(), object);
+        object.updatePreRender(this);
       }
     }
 
@@ -754,6 +1254,74 @@ namespace gdjs {
      */
     getAsyncTasksManager() {
       return this._asyncTasksManager;
+    }
+
+    /**
+     * Submit a serializable computation to the multithreading worker pool.
+     */
+    runInWorker<T = unknown>(
+      handlerName: string,
+      payload: unknown,
+      options?: gdjs.WorkerTaskOptions
+    ): gdjs.WorkerTaskHandle<T> {
+      return this._runtimeGame
+        .getMultithreadManager()
+        .runTask<T>(handlerName, payload, options);
+    }
+
+    /**
+     * Create a lightweight queue to dispatch many small worker tasks.
+     */
+    createWorkerTaskQueue(
+      options?: gdjs.WorkerTaskQueueOptions
+    ): gdjs.WorkerTaskQueue {
+      return this._runtimeGame.getMultithreadManager().createTaskQueue(options);
+    }
+
+    /**
+     * Create an async task backed by a multithreaded worker job.
+     */
+    createWorkerTask<T = unknown>(
+      handlerName: string,
+      payload: unknown,
+      options?: gdjs.WorkerTaskOptions
+    ): gdjs.WorkerTask<T> {
+      return new gdjs.WorkerTask<T>(
+        this.runInWorker<T>(handlerName, payload, options)
+      );
+    }
+
+    /**
+     * Submit a multithreaded task and invoke the callback on the next frame once it settles.
+     */
+    addWorkerTask<T = unknown>(
+      handlerName: string,
+      payload: unknown,
+      callback: (
+        runtimeScene: gdjs.RuntimeScene,
+        result: T | null,
+        workerTask: gdjs.WorkerTask<T>,
+        longLivedObjectsList: gdjs.LongLivedObjectsList
+      ) => void,
+      callbackId = '',
+      longLivedObjectsList = new gdjs.LongLivedObjectsList(),
+      options?: gdjs.WorkerTaskOptions
+    ): gdjs.WorkerTask<T> {
+      const workerTask = this.createWorkerTask<T>(handlerName, payload, options);
+      this._asyncTasksManager.addTask(
+        workerTask,
+        (runtimeScene, asyncObjectsList) => {
+          callback(
+            runtimeScene,
+            workerTask.getResult(),
+            workerTask,
+            asyncObjectsList
+          );
+        },
+        callbackId,
+        longLivedObjectsList
+      );
+      return workerTask;
     }
 
     /**

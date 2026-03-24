@@ -14,6 +14,8 @@ import TrashIcon from '../../UI/CustomSvgIcons/Trash';
 import GridIcon from '../../UI/CustomSvgIcons/Grid';
 import ZoomInIcon from '../../UI/CustomSvgIcons/ZoomIn';
 import EditSceneIcon from '../../UI/CustomSvgIcons/EditScene';
+import EventsIcon from '../../UI/CustomSvgIcons/Events';
+import RectangleIcon from '../../UI/CustomSvgIcons/Rectangle';
 import CompactToggleButtons from '../../UI/CompactToggleButtons';
 import Grid2d from '../../UI/CustomSvgIcons/Grid2d';
 import Grid3d from '../../UI/CustomSvgIcons/Grid3d';
@@ -24,6 +26,8 @@ type Props = {|
   toggleObjectsList: () => void,
   toggleObjectGroupsList: () => void,
   toggleProperties: () => void,
+  onOpenSceneEvents: () => void,
+  sceneEventsEnabled: boolean,
   toggleInstancesList: () => void,
   toggleLayersList: () => void,
   toggleProjectPanel: () => void,
@@ -39,6 +43,9 @@ type Props = {|
   toggleWindowMask: () => void,
   isGridShown: boolean,
   toggleGrid: () => void,
+  toggleSelectedPhysicsHitboxes: () => void,
+  canToggleSelectedPhysicsHitboxes: boolean,
+  areSelectedPhysicsHitboxesShown: boolean,
   openSetupGrid: () => void,
   getContextMenuZoomItems: I18nType => Array<MenuItemTemplate>,
   setZoomFactor: number => void,
@@ -96,6 +103,29 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function(props) {
           },
         ]}
       />
+      <IconButton
+        size="small"
+        color="default"
+        onClick={props.onOpenSceneEvents}
+        disabled={!props.sceneEventsEnabled}
+        tooltip={t`Open Scene Events`}
+      >
+        <EventsIcon />
+      </IconButton>
+      <IconButton
+        size="small"
+        color="default"
+        onClick={props.toggleSelectedPhysicsHitboxes}
+        disabled={!props.canToggleSelectedPhysicsHitboxes}
+        selected={props.areSelectedPhysicsHitboxesShown}
+        tooltip={
+          props.areSelectedPhysicsHitboxesShown
+            ? t`Hide 3D physics hitboxes`
+            : t`Show 3D physics hitboxes`
+        }
+      >
+        <RectangleIcon />
+      </IconButton>
       <IconButton
         size="small"
         color="default"

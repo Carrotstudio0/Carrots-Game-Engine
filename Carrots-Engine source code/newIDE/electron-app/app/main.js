@@ -39,6 +39,7 @@ const {
   closePreviewWindowsForParent,
   closeAllPreviewWindows,
 } = require('./PreviewWindow');
+const { registerGitSyncIpcHandlers } = require('./GitSync');
 const {
   setupLocalGDJSDevelopmentWatcher,
   closeLocalGDJSDevelopmentWatcher,
@@ -69,11 +70,26 @@ let windowCounter = 0; // Counter for creating unique session partitions
 // so have to ignore one more).
 const args = parseArgs(process.argv.slice(isDev ? 2 : 1), {
   // "Officially" supported arguments and their types:
-  boolean: ['dev-tools', 'disable-update-check'],
+  boolean: ['dev-tools', 'disable-update-check', 'safe-gpu'],
   string: '_', // Files are always strings
 });
 
 const devTools = !!args['dev-tools'];
+const safeGpuMode =
+  !!args['safe-gpu'] || process.env.CARROTS_ENGINE_SAFE_GPU === '1';
+if (safeGpuMode) {
+  app.disableHardwareAcceleration();
+  log.warn(
+    'Safe GPU mode is enabled. Hardware acceleration has been disabled.'
+  );
+}
+
+process.on('uncaughtException', error => {
+  log.error('[MainProcess] Uncaught exception:', error);
+});
+process.on('unhandledRejection', reason => {
+  log.error('[MainProcess] Unhandled rejection:', reason);
+});
 
 // See registerGdideProtocol (used for HTML modules support)
 protocol.registerSchemesAsPrivileged([{ scheme: 'gdide' }]);
@@ -96,7 +112,7 @@ if (!gotTheLock) {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
     // User tried to launch app again - create a new window instead
     const secondInstanceArgs = parseArgs(commandLine.slice(isDev ? 2 : 1), {
-      boolean: ['dev-tools', 'disable-update-check'],
+      boolean: ['dev-tools', 'disable-update-check', 'safe-gpu'],
       string: '_',
     });
 
@@ -104,6 +120,10 @@ if (!gotTheLock) {
     createNewWindow(secondInstanceArgs);
   });
 }
+
+app.on('child-process-gone', (_event, details) => {
+  log.error('[MainProcess] Child process gone:', details);
+});
 
 // Quit when all windows are closed.
 app.on('window-all-closed', function() {
@@ -197,6 +217,29 @@ function createNewWindow(windowArgs = args) {
     `Created window with Electron ID: ${windowId}, window number: ${windowNumber}, isPrimary: ${isPrimaryWindow}`
   );
 
+  let rendererRecoveryAttempts = 0;
+  const recoverRendererIfPossible = trigger => {
+    if (newWindow.isDestroyed()) return;
+
+    const maxRecoveryAttempts = 2;
+    if (rendererRecoveryAttempts >= maxRecoveryAttempts) {
+      log.error(
+        `[Window ${windowId}] Renderer failed again after ${rendererRecoveryAttempts} recovery attempts (${trigger}).`
+      );
+      return;
+    }
+
+    rendererRecoveryAttempts++;
+    log.warn(
+      `[Window ${windowId}] Attempting renderer recovery (${rendererRecoveryAttempts}/${maxRecoveryAttempts}) after ${trigger}.`
+    );
+    try {
+      newWindow.webContents.reloadIgnoringCache();
+    } catch (error) {
+      log.error(`[Window ${windowId}] Renderer recovery failed:`, error);
+    }
+  };
+
   // Track this window
   mainWindows.add(newWindow);
 
@@ -210,6 +253,7 @@ function createNewWindow(windowArgs = args) {
 
   // Log process ID to verify separate renderer processes
   newWindow.webContents.once('did-finish-load', () => {
+    rendererRecoveryAttempts = 0;
     newWindow.webContents
       .executeJavaScript('process.pid')
       .then(pid => {
@@ -220,6 +264,26 @@ function createNewWindow(windowArgs = args) {
       .catch(err => {
         log.warn('Could not get renderer process PID:', err);
       });
+  });
+
+  newWindow.webContents.on('render-process-gone', (_event, details) => {
+    log.error(`[Window ${windowId}] Renderer process gone:`, details);
+    if (details && details.reason === 'clean-exit') {
+      return;
+    }
+    recoverRendererIfPossible('render-process-gone');
+  });
+
+  newWindow.webContents.on('unresponsive', () => {
+    log.warn(`[Window ${windowId}] Renderer became unresponsive.`);
+  });
+
+  newWindow.on('unresponsive', () => {
+    log.warn(`[Window ${windowId}] BrowserWindow became unresponsive.`);
+  });
+
+  newWindow.on('responsive', () => {
+    log.info(`[Window ${windowId}] Renderer is responsive again.`);
   });
 
   if (isDev)
@@ -660,6 +724,7 @@ app.on('ready', function() {
   });
 
   setUpDiscordRichPresence(ipcMain);
+  registerGitSyncIpcHandlers(ipcMain);
 
   // npm script execution in external terminal (cross-platform)
   ipcMain.on('run-npm-script', (event, { projectPath, npmScript }) => {

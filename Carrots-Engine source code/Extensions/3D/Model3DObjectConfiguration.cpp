@@ -21,7 +21,7 @@ using namespace std;
 
 Model3DObjectConfiguration::Model3DObjectConfiguration()
     : width(100), height(100), depth(100), rotationX(90), rotationY(0),
-      rotationZ(90), modelResourceName(""), materialType("StandardWithoutMetalness"),
+      rotationZ(90), modelResourceName(""), materialType("Standard"),
       originLocation("ModelOrigin"), centerLocation("ModelOrigin"),
       keepAspectRatio(true), crossfadeDuration(0.1f), isCastingShadow(true), isReceivingShadow(true) {}
 
@@ -59,6 +59,14 @@ bool Model3DObjectConfiguration::UpdateProperty(const gd::String &propertyName,
     auto normalizedValue = newValue.LowerCase();
     if (normalizedValue == "basic")
       materialType = "Basic";
+    else if (normalizedValue == "matte")
+      materialType = "Matte";
+    else if (normalizedValue == "standard")
+      materialType = "Standard";
+    else if (normalizedValue == "glossy")
+      materialType = "Glossy";
+    else if (normalizedValue == "metallic")
+      materialType = "Metallic";
     else if (normalizedValue == "standardwithoutmetalness")
       materialType = "StandardWithoutMetalness";
     else if (normalizedValue == "keeporiginal")
@@ -98,7 +106,7 @@ bool Model3DObjectConfiguration::UpdateProperty(const gd::String &propertyName,
     return true;
   }
   if (propertyName == "keepAspectRatio") {
-    keepAspectRatio = newValue == "1";
+    keepAspectRatio = newValue == "1" || newValue == "true";
     return true;
   }
   if(propertyName == "crossfadeDuration") {
@@ -107,12 +115,12 @@ bool Model3DObjectConfiguration::UpdateProperty(const gd::String &propertyName,
   }
   if(propertyName == "isCastingShadow")
   {
-    isCastingShadow = newValue == "1";
+    isCastingShadow = newValue == "1" || newValue == "true";
     return true;
   }
   if(propertyName == "isReceivingShadow")
   {
-    isReceivingShadow = newValue == "1";
+    isReceivingShadow = newValue == "1" || newValue == "true";
     return true;
   }
 
@@ -181,10 +189,14 @@ Model3DObjectConfiguration::GetProperties() const {
       .SetLabel(_("3D model"));
 
   objectProperties["materialType"]
-      .SetValue(materialType.empty() ? "Basic" : materialType)
+      .SetValue(materialType.empty() ? "Standard" : materialType)
       .SetType("choice")
-      .AddChoice("Basic", _("Basic (no lighting, no shadows)"))
+      .AddChoice("Standard", _("Standard PBR (balanced)"))
+      .AddChoice("Matte", _("Matte (soft highlights)"))
+      .AddChoice("Glossy", _("Glossy (strong highlights)"))
+      .AddChoice("Metallic", _("Metallic (reflective metal)"))
       .AddChoice("StandardWithoutMetalness", _("Standard (without metalness)"))
+      .AddChoice("Basic", _("Basic (no lighting, no shadows)"))
       .AddChoice("KeepOriginal", _("Keep original"))
       .SetLabel(_("Material"))
       .SetGroup(_("Lighting"));

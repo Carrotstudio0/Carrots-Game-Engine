@@ -38,31 +38,23 @@ import { useDoNowOrAfterRender } from '../../Utils/UseDoNowOrAfterRender';
 import { preventGameFramePointerEvents } from '../../EmbeddedGame/EmbeddedGameFrame';
 import { EmbeddedGameFrameHole } from '../../EmbeddedGame/EmbeddedGameFrameHole';
 
+const SCENE_EDITOR_MOSAIC_LAYOUT_KEY = 'scene-editor-unity-layout-v1';
+
 const initialMosaicEditorNodes = {
   direction: 'column',
-  splitPercentage: 72,
+  splitPercentage: 74,
   first: {
     direction: 'row',
     splitPercentage: 18,
-    first: 'objects-list',
+    first: 'instances-list',
     second: {
       direction: 'row',
-      splitPercentage: 76,
+      splitPercentage: 77,
       first: 'instances-editor',
       second: 'properties',
     },
   },
-  second: {
-    direction: 'row',
-    splitPercentage: 65,
-    first: 'project-resources',
-    second: {
-      direction: 'row',
-      splitPercentage: 55,
-      first: 'console',
-      second: 'build',
-    },
-  },
+  second: 'project-resources',
 };
 
 const noop = () => {};
@@ -78,7 +70,7 @@ const defaultPanelConfigByEditor = {
     position: 'left',
   },
   'instances-list': {
-    position: 'bottom',
+    position: 'left',
   },
   'layers-list': {
     position: 'left',
@@ -400,7 +392,7 @@ const MosaicEditorsDisplay: React.ComponentType<{
       },
       'instances-list': {
         type: 'secondary',
-        title: t`Scene Objects`,
+        title: t`Hierarchy`,
         renderEditor: () => (
           <InstancesList
             instances={initialInstances}
@@ -471,7 +463,7 @@ const MosaicEditorsDisplay: React.ComponentType<{
             },
       'objects-list': {
         type: 'secondary',
-        title: t`Hierarchy`,
+        title: t`Objects`,
         toolbarControls: [<CloseButton key="close" />],
         renderEditor: () => (
           <I18n>
@@ -601,7 +593,8 @@ const MosaicEditorsDisplay: React.ComponentType<{
         centralNodeId="instances-editor"
         initialNodes={
           // $FlowFixMe[incompatible-type]
-          getDefaultEditorMosaicNode('scene-editor') || initialMosaicEditorNodes
+          getDefaultEditorMosaicNode(SCENE_EDITOR_MOSAIC_LAYOUT_KEY) ||
+          initialMosaicEditorNodes
         }
         isTransparent={gameEditorMode === 'embedded-game'}
         onDragOrResizedStarted={() => {
@@ -612,7 +605,7 @@ const MosaicEditorsDisplay: React.ComponentType<{
         }}
         onOpenedEditorsChanged={props.onOpenedEditorsChanged}
         onPersistNodes={node =>
-          setDefaultEditorMosaicNode('scene-editor', node)
+          setDefaultEditorMosaicNode(SCENE_EDITOR_MOSAIC_LAYOUT_KEY, node)
         }
         ref={editorMosaicRef}
       />
