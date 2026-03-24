@@ -2502,7 +2502,7 @@ module.exports = {
         .addParameter(
           'string',
           _(
-            'Link bones (comma-separated, from near effector to upper/root)'
+            'Link bones (optional, comma-separated from near effector to upper/root)'
           ),
           '',
           false
@@ -2612,6 +2612,77 @@ module.exports = {
 
       object
         .addScopedAction(
+          'SetIKTargetTolerance',
+          _('Set IK target tolerance'),
+          _(
+            'Set the convergence tolerance of one IK chain (smaller value = more precise, potentially more expensive).'
+          ),
+          _('Set IK target tolerance of chain _PARAM1_ on _PARAM0_ to _PARAM2_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('number', _('Tolerance (world units)'), '', false)
+        .setFunctionName('setIKTargetTolerance');
+
+      object
+        .addScopedAction(
+          'SetIKLinkAngleLimits',
+          _('Set IK link angle limits'),
+          _('Set per-axis angle constraints for one IK link bone.'),
+          _(
+            'Set IK link limits of _PARAM2_ in chain _PARAM1_ on _PARAM0_ (X: _PARAM3_/_PARAM4_, Y: _PARAM5_/_PARAM6_, Z: _PARAM7_/_PARAM8_)'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('string', _('Link bone name'), '', false)
+        .addParameter('number', _('Min X (degrees)'), '', false)
+        .addParameter('number', _('Max X (degrees)'), '', false)
+        .addParameter('number', _('Min Y (degrees)'), '', false)
+        .addParameter('number', _('Max Y (degrees)'), '', false)
+        .addParameter('number', _('Min Z (degrees)'), '', false)
+        .addParameter('number', _('Max Z (degrees)'), '', false)
+        .setFunctionName('setIKLinkAngleLimits');
+
+      object
+        .addScopedAction(
+          'ClearIKLinkAngleLimits',
+          _('Clear IK link angle limits'),
+          _('Remove per-axis angle constraints for one IK link bone.'),
+          _(
+            'Clear IK link limits of _PARAM2_ in chain _PARAM1_ on _PARAM0_'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('string', _('Link bone name'), '', false)
+        .setFunctionName('clearIKLinkAngleLimits');
+
+      object
+        .addScopedAction(
+          'ClearIKLinkConstraints',
+          _('Clear IK link constraints'),
+          _('Remove all link constraints from one IK chain.'),
+          _('Clear IK link constraints of chain _PARAM1_ on _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .setFunctionName('clearIKLinkConstraints');
+
+      object
+        .addScopedAction(
           'RemoveIKChain',
           _('Remove IK chain'),
           _('Remove one IK chain from this model.'),
@@ -2650,6 +2721,35 @@ module.exports = {
         .addParameter('object', _('3D model'), 'Model3DObject', false)
         .addParameter('string', _('Chain name'), '', false)
         .setFunctionName('hasIKChain');
+
+      object
+        .addScopedAction(
+          'SetIKGizmosEnabled',
+          _('Enable IK gizmos'),
+          _(
+            'Show or hide runtime IK gizmos (target handles and chain lines) for this model.'
+          ),
+          _('Set IK gizmos on _PARAM0_ to _PARAM1_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('yesorno', _('Enabled'))
+        .setFunctionName('setIKGizmosEnabled');
+
+      object
+        .addScopedCondition(
+          'AreIKGizmosEnabled',
+          _('IK gizmos enabled'),
+          _('Check whether runtime IK gizmos are enabled on this model.'),
+          _('IK gizmos are enabled on _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('areIKGizmosEnabled');
     }
 
     const parse3DMaterialType = materialTypeValue => {

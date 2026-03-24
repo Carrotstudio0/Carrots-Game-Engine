@@ -1140,6 +1140,20 @@ namespace gdjs {
         this.physicsBodyUpdater.updateObjectFromBody();
       }
 
+      capturePhysicsSnapshot(
+        snapshotBuffer: Float32Array,
+        snapshotOffset: integer
+      ): boolean {
+        if (!this.physicsBodyUpdater.capturePhysicsSnapshot) {
+          return false;
+        }
+
+        return this.physicsBodyUpdater.capturePhysicsSnapshot(
+          snapshotBuffer,
+          snapshotOffset
+        );
+      }
+
       updateBodyFromObject() {
         this.physicsBodyUpdater.updateBodyFromObject();
       }

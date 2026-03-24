@@ -6667,10 +6667,21 @@ namespace gdjs {
       this.container.rotation.order = 'ZYX';
       const threeObject = object.get3DRendererObject() || new THREE.Group();
       this.skeletonHelper = new THREE.SkeletonHelper(threeObject);
-      this.skeletonHelper.material.depthTest = false;
-      this.skeletonHelper.material.transparent = true;
-      this.skeletonHelper.material.opacity = 0.85;
-      this.skeletonHelper.material.fog = false;
+      const skeletonMaterials = Array.isArray(this.skeletonHelper.material)
+        ? this.skeletonHelper.material
+        : [this.skeletonHelper.material];
+      for (const skeletonMaterial of skeletonMaterials) {
+        const configurableSkeletonMaterial = skeletonMaterial as THREE.Material & {
+          depthTest?: boolean;
+          transparent?: boolean;
+          opacity?: number;
+          fog?: boolean;
+        };
+        configurableSkeletonMaterial.depthTest = false;
+        configurableSkeletonMaterial.transparent = true;
+        configurableSkeletonMaterial.opacity = 0.85;
+        configurableSkeletonMaterial.fog = false;
+      }
       this.container.add(this.skeletonHelper);
 
       const handleGeometry = new THREE.SphereGeometry(3, 10, 10);
@@ -6723,10 +6734,20 @@ namespace gdjs {
     removeFromParent() {
       this.container.removeFromParent();
       this.skeletonHelper.geometry.dispose();
-      this.skeletonHelper.material.dispose();
+      const skeletonMaterials = Array.isArray(this.skeletonHelper.material)
+        ? this.skeletonHelper.material
+        : [this.skeletonHelper.material];
+      for (const skeletonMaterial of skeletonMaterials) {
+        skeletonMaterial.dispose();
+      }
       for (const handle of this._handles) {
         handle.geometry.dispose();
-        handle.material.dispose();
+        const handleMaterials = Array.isArray(handle.material)
+          ? handle.material
+          : [handle.material];
+        for (const handleMaterial of handleMaterials) {
+          handleMaterial.dispose();
+        }
       }
       this._handles.length = 0;
     }
@@ -6739,12 +6760,28 @@ namespace gdjs {
     }
 
     setColor(color: THREE.ColorRepresentation) {
-      this.skeletonHelper.material.color.set(color);
-      this.skeletonHelper.material.needsUpdate = true;
+      const skeletonMaterials = Array.isArray(this.skeletonHelper.material)
+        ? this.skeletonHelper.material
+        : [this.skeletonHelper.material];
+      for (const skeletonMaterial of skeletonMaterials) {
+        const colorMaterial = skeletonMaterial as THREE.Material & {
+          color?: THREE.Color;
+          needsUpdate?: boolean;
+        };
+        if (colorMaterial.color) {
+          colorMaterial.color.set(color);
+        }
+        colorMaterial.needsUpdate = true;
+      }
       for (const handle of this._handles) {
-        const material = handle.material as THREE.MeshBasicMaterial;
-        material.color.set(color);
-        material.needsUpdate = true;
+        const handleMaterials = Array.isArray(handle.material)
+          ? handle.material
+          : [handle.material];
+        for (const handleMaterial of handleMaterials) {
+          const material = handleMaterial as THREE.MeshBasicMaterial;
+          material.color.set(color);
+          material.needsUpdate = true;
+        }
       }
     }
   }

@@ -128,6 +128,8 @@ namespace gdjs {
 
     /** Handle collisions between characters that can push each other. */
     charactersManager: gdjs.PhysicsCharacter3DRuntimeBehavior.CharactersManager;
+    private _physicsRotationEulerZYX = new THREE.Euler(0, 0, 0, 'ZYX');
+    private _physicsRotationFallbackQuaternion = new THREE.Quaternion();
 
     constructor(
       instanceContainer: gdjs.RuntimeInstanceContainer,
@@ -440,16 +442,24 @@ namespace gdjs {
     }
 
     _moveObjectToPhysicsRotation(physicsRotation: Jolt.Quat): void {
-      const threeObject = this.owner3D.get3DRendererObject();
-      threeObject.quaternion.x = physicsRotation.GetX();
-      threeObject.quaternion.y = physicsRotation.GetY();
-      threeObject.quaternion.z = physicsRotation.GetZ();
-      threeObject.quaternion.w = physicsRotation.GetW();
-      // TODO Avoid this instantiation
-      const euler = new THREE.Euler(0, 0, 0, 'ZYX');
-      euler.setFromQuaternion(threeObject.quaternion);
+      const ownerRuntimeObjectAsAny = this.owner3D as any;
+      const threeObject =
+        ownerRuntimeObjectAsAny &&
+        ownerRuntimeObjectAsAny._renderer &&
+        ownerRuntimeObjectAsAny._renderer.get3DRendererObject
+          ? ownerRuntimeObjectAsAny._renderer.get3DRendererObject()
+          : null;
+      const targetQuaternion =
+        threeObject && typeof (threeObject as any).quaternion === 'object'
+          ? ((threeObject as any).quaternion as THREE.Quaternion)
+          : this._physicsRotationFallbackQuaternion;
+      targetQuaternion.x = physicsRotation.GetX();
+      targetQuaternion.y = physicsRotation.GetY();
+      targetQuaternion.z = physicsRotation.GetZ();
+      targetQuaternion.w = physicsRotation.GetW();
+      this._physicsRotationEulerZYX.setFromQuaternion(targetQuaternion);
       // No need to update the rotation for X and Y as CharacterVirtual doesn't change it.
-      this.owner3D.setAngle(gdjs.toDegrees(euler.z));
+      this.owner3D.setAngle(gdjs.toDegrees(this._physicsRotationEulerZYX.z));
     }
 
     override onDeActivate() {
@@ -1776,6 +1786,35 @@ namespace gdjs {
         this.characterBehavior._moveObjectToPhysicsRotation(
           character.GetRotation()
         );
+      }
+
+      capturePhysicsSnapshot(
+        snapshotBuffer: Float32Array,
+        snapshotOffset: integer
+      ): boolean {
+        const physics3D = this.characterBehavior.getPhysics3D();
+        if (!physics3D) {
+          return false;
+        }
+        const { character } = this.characterBehavior;
+        if (!character) {
+          return false;
+        }
+
+        const characterPosition = character.GetPosition();
+        const characterRotation = character.GetRotation();
+        physics3D.behavior._writePhysicsSnapshotValues(
+          snapshotBuffer,
+          snapshotOffset,
+          characterPosition.GetX(),
+          characterPosition.GetY(),
+          characterPosition.GetZ(),
+          characterRotation.GetX(),
+          characterRotation.GetY(),
+          characterRotation.GetZ(),
+          characterRotation.GetW()
+        );
+        return true;
       }
 
       updateBodyFromObject() {

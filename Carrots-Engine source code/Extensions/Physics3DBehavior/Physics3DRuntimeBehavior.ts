@@ -7,6 +7,22 @@ namespace Jolt {
 }
 
 const epsilon = 1 / (1 << 16);
+const physicsSnapshotStride = 7;
+const physicsSnapshotPositionXOffset = 0;
+const physicsSnapshotPositionYOffset = 1;
+const physicsSnapshotPositionZOffset = 2;
+const physicsSnapshotRotationXOffset = 3;
+const physicsSnapshotRotationYOffset = 4;
+const physicsSnapshotRotationZOffset = 5;
+const physicsSnapshotRotationWOffset = 6;
+const physicsSnapshotWorkerHandlerName =
+  'GDJS::Physics3D::prepareSnapshotChunk::v1';
+const physicsSnapshotWorkerChunkSize = 256;
+const physicsSnapshotWorkerPreparationEnabled = false;
+const physicsSnapshotObjectSyncEnabled = false;
+const physicsSnapshotPipelineEnabled =
+  physicsSnapshotWorkerPreparationEnabled || physicsSnapshotObjectSyncEnabled;
+let hasRegisteredPhysicsSnapshotWorkerHandler = false;
 
 namespace gdjs {
   const loadJolt = async () => {
@@ -136,6 +152,208 @@ namespace gdjs {
     state: 'Active' | 'Limp' | 'Stiff' | 'Frozen';
   }
 
+  export type Physics3DRenderSnapshot = {
+    version: integer;
+    bodyCount: integer;
+    stride: integer;
+    transforms: Float32Array;
+  };
+
+  type Physics3DSnapshotWorkerPayload = {
+    snapshotVersion: integer;
+    startSlot: integer;
+    slotCount: integer;
+    stride: integer;
+    worldScale: float;
+    chunkBuffer: ArrayBuffer;
+  };
+
+  type Physics3DSnapshotWorkerResult = {
+    snapshotVersion: integer;
+    startSlot: integer;
+    slotCount: integer;
+    stride: integer;
+    worldScale: float;
+    chunkBuffer: ArrayBuffer;
+  };
+
+  const isPhysics3DSnapshotWorkerResult = (
+    value: unknown
+  ): value is Physics3DSnapshotWorkerResult => {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+
+    const result = value as {
+      snapshotVersion?: unknown;
+      startSlot?: unknown;
+      slotCount?: unknown;
+      stride?: unknown;
+      worldScale?: unknown;
+      chunkBuffer?: unknown;
+    };
+    return (
+      typeof result.snapshotVersion === 'number' &&
+      typeof result.startSlot === 'number' &&
+      typeof result.slotCount === 'number' &&
+      typeof result.stride === 'number' &&
+      typeof result.worldScale === 'number' &&
+      result.chunkBuffer instanceof ArrayBuffer
+    );
+  };
+
+  const ensurePhysicsSnapshotWorkerHandlerRegistered = (): void => {
+    if (hasRegisteredPhysicsSnapshotWorkerHandler) {
+      return;
+    }
+    if (
+      typeof gdjs.registerWorkerTaskHandler !== 'function' ||
+      typeof gdjs.hasWorkerTaskHandler !== 'function'
+    ) {
+      return;
+    }
+
+    if (!gdjs.hasWorkerTaskHandler(physicsSnapshotWorkerHandlerName)) {
+      gdjs.registerWorkerTaskHandler(
+        physicsSnapshotWorkerHandlerName,
+        function (payload: unknown) {
+          const physicsSnapshotStride = 7;
+          const physicsSnapshotPositionXOffset = 0;
+          const physicsSnapshotPositionYOffset = 1;
+          const physicsSnapshotPositionZOffset = 2;
+          const physicsSnapshotRotationXOffset = 3;
+          const physicsSnapshotRotationYOffset = 4;
+          const physicsSnapshotRotationZOffset = 5;
+          const physicsSnapshotRotationWOffset = 6;
+          const epsilon = 1 / (1 << 16);
+
+          const workerPayload =
+            payload && typeof payload === 'object'
+              ? (payload as {
+                  snapshotVersion?: unknown;
+                  startSlot?: unknown;
+                  slotCount?: unknown;
+                  stride?: unknown;
+                  worldScale?: unknown;
+                  chunkBuffer?: unknown;
+                })
+              : null;
+          if (!workerPayload) {
+            throw new Error('Invalid physics snapshot worker payload.');
+          }
+
+          const snapshotVersion =
+            typeof workerPayload.snapshotVersion === 'number'
+              ? Math.floor(workerPayload.snapshotVersion)
+              : 0;
+          const startSlot =
+            typeof workerPayload.startSlot === 'number'
+              ? Math.max(0, Math.floor(workerPayload.startSlot))
+              : 0;
+          const slotCount =
+            typeof workerPayload.slotCount === 'number'
+              ? Math.max(0, Math.floor(workerPayload.slotCount))
+              : 0;
+          const stride =
+            typeof workerPayload.stride === 'number'
+              ? Math.floor(workerPayload.stride)
+              : physicsSnapshotStride;
+          const worldScale =
+            typeof workerPayload.worldScale === 'number' &&
+            Number.isFinite(workerPayload.worldScale)
+              ? workerPayload.worldScale
+              : 1;
+          if (
+            stride !== physicsSnapshotStride ||
+            !(workerPayload.chunkBuffer instanceof ArrayBuffer)
+          ) {
+            throw new Error('Malformed physics snapshot worker chunk payload.');
+          }
+
+          const transforms = new Float32Array(workerPayload.chunkBuffer);
+          const requiredLength = slotCount * stride;
+          if (requiredLength > transforms.length) {
+            throw new Error('Physics snapshot chunk payload is truncated.');
+          }
+
+          for (let slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+            const offset = slotIndex * stride;
+            const worldX =
+              transforms[offset + physicsSnapshotPositionXOffset] * worldScale;
+            const worldY =
+              transforms[offset + physicsSnapshotPositionYOffset] * worldScale;
+            const worldZ =
+              transforms[offset + physicsSnapshotPositionZOffset] * worldScale;
+            let qx = transforms[offset + physicsSnapshotRotationXOffset];
+            let qy = transforms[offset + physicsSnapshotRotationYOffset];
+            let qz = transforms[offset + physicsSnapshotRotationZOffset];
+            let qw = transforms[offset + physicsSnapshotRotationWOffset];
+
+            if (
+              !Number.isFinite(worldX) ||
+              !Number.isFinite(worldY) ||
+              !Number.isFinite(worldZ)
+            ) {
+              transforms[offset + physicsSnapshotPositionXOffset] = 0;
+              transforms[offset + physicsSnapshotPositionYOffset] = 0;
+              transforms[offset + physicsSnapshotPositionZOffset] = 0;
+            } else {
+              transforms[offset + physicsSnapshotPositionXOffset] = worldX;
+              transforms[offset + physicsSnapshotPositionYOffset] = worldY;
+              transforms[offset + physicsSnapshotPositionZOffset] = worldZ;
+            }
+
+            if (
+              !Number.isFinite(qx) ||
+              !Number.isFinite(qy) ||
+              !Number.isFinite(qz) ||
+              !Number.isFinite(qw)
+            ) {
+              qx = 0;
+              qy = 0;
+              qz = 0;
+              qw = 1;
+            } else {
+              const length = Math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+              if (length > epsilon) {
+                const inverseLength = 1 / length;
+                qx *= inverseLength;
+                qy *= inverseLength;
+                qz *= inverseLength;
+                qw *= inverseLength;
+              } else {
+                qx = 0;
+                qy = 0;
+                qz = 0;
+                qw = 1;
+              }
+            }
+
+            transforms[offset + physicsSnapshotRotationXOffset] = qx;
+            transforms[offset + physicsSnapshotRotationYOffset] = qy;
+            transforms[offset + physicsSnapshotRotationZOffset] = qz;
+            transforms[offset + physicsSnapshotRotationWOffset] = qw;
+          }
+
+          return {
+            __gdjsTransferableWorkerTaskResult: true,
+            value: {
+              snapshotVersion,
+              startSlot,
+              slotCount,
+              stride,
+              worldScale,
+              chunkBuffer: transforms.buffer,
+            },
+            transferables: [transforms.buffer],
+          };
+        }
+      );
+    }
+
+    hasRegisteredPhysicsSnapshotWorkerHandler = true;
+  };
+
   /** @category Behaviors > Physics 3D */
   export class Physics3DSharedData {
     gravityX: float;
@@ -161,6 +379,42 @@ namespace gdjs {
      * on behavior activation (onActivate) and on behavior deactivation (onDeActivate).
      */
     _registeredBehaviors: Set<Physics3DRuntimeBehavior>;
+    private _snapshotBehaviorByIndex: Array<Physics3DRuntimeBehavior | null> =
+      [];
+    private _snapshotIndexByBehavior = new Map<
+      Physics3DRuntimeBehavior,
+      integer
+    >();
+    private _snapshotFreeIndices: integer[] = [];
+    private _snapshotReadBuffer = new Float32Array(0);
+    private _snapshotWriteBuffer = new Float32Array(0);
+    private _snapshotBodyCount: integer = 0;
+    private _snapshotVersion: integer = 0;
+    private _readOnlyRenderSnapshot: gdjs.Physics3DRenderSnapshot = {
+      version: 0,
+      bodyCount: 0,
+      stride: physicsSnapshotStride,
+      transforms: this._snapshotReadBuffer,
+    };
+    private _snapshotPreparedByWorkerQueue: gdjs.WorkerTaskQueue | null = null;
+    private _snapshotPreparedInFlightVersion: integer = 0;
+    private _snapshotPreparedRemainingChunkCount: integer = 0;
+    private _snapshotPreparedChunkCount: integer = 0;
+    private _snapshotPreparedReadBuffer = new Float32Array(0);
+    private _snapshotPreparedVersion: integer = 0;
+    private _snapshotPreparedBodyCount: integer = 0;
+    private _snapshotPreparedReadOnlyRenderSnapshot: gdjs.Physics3DRenderSnapshot =
+      {
+        version: 0,
+        bodyCount: 0,
+        stride: physicsSnapshotStride,
+        transforms: this._snapshotPreparedReadBuffer,
+      };
+
+    private _fixedTimeStep: float = 1 / 60;
+    private _maxSubSteps: integer = 3;
+    private _maxAccumulatedDeltaTime: float = 1 / 8;
+    private _fixedStepAccumulator: float = 0;
 
     private _physics3DHooks: Array<gdjs.Physics3DRuntimeBehavior.Physics3DHook> =
       [];
@@ -356,6 +610,28 @@ namespace gdjs {
       this.gravityZ = sharedData.gravityZ;
       this.worldScale = sharedData.worldScale;
       this.worldInvScale = 1 / this.worldScale;
+      if (physicsSnapshotWorkerPreparationEnabled) {
+        ensurePhysicsSnapshotWorkerHandlerRegistered();
+
+        const runtimeScene = instanceContainer.getScene();
+        if (
+          runtimeScene &&
+          runtimeScene.createWorkerTaskQueue &&
+          typeof gdjs.hasWorkerTaskHandler === 'function' &&
+          gdjs.hasWorkerTaskHandler(physicsSnapshotWorkerHandlerName)
+        ) {
+          this._snapshotPreparedByWorkerQueue = runtimeScene.createWorkerTaskQueue(
+            {
+              name: 'physics3d-snapshot-prep',
+              maxConcurrentTasks: 1,
+              autoStart: true,
+              workerRole: 'physics',
+              priority: 'high',
+              allowMainThreadFallback: true,
+            }
+          );
+        }
+      }
 
       // Initialize Jolt
       const settings = new Jolt.JoltSettings();
@@ -500,11 +776,356 @@ namespace gdjs {
         );
     }
 
+    private _ensureSnapshotCapacity(slotCount: integer): void {
+      const requiredLength = slotCount * physicsSnapshotStride;
+      if (requiredLength <= this._snapshotReadBuffer.length) {
+        return;
+      }
+
+      const nextLength = Math.max(
+        requiredLength,
+        Math.max(32, this._snapshotReadBuffer.length * 2)
+      );
+
+      const nextReadBuffer = new Float32Array(nextLength);
+      nextReadBuffer.set(this._snapshotReadBuffer);
+      this._snapshotReadBuffer = nextReadBuffer;
+
+      const nextWriteBuffer = new Float32Array(nextLength);
+      nextWriteBuffer.set(this._snapshotWriteBuffer);
+      this._snapshotWriteBuffer = nextWriteBuffer;
+
+      this._readOnlyRenderSnapshot.transforms = this._snapshotReadBuffer;
+    }
+
+    private _ensurePreparedSnapshotCapacity(slotCount: integer): void {
+      const requiredLength = slotCount * physicsSnapshotStride;
+      if (requiredLength <= this._snapshotPreparedReadBuffer.length) {
+        return;
+      }
+
+      const nextLength = Math.max(
+        requiredLength,
+        Math.max(32, this._snapshotPreparedReadBuffer.length * 2)
+      );
+      const nextPreparedBuffer = new Float32Array(nextLength);
+      nextPreparedBuffer.set(this._snapshotPreparedReadBuffer);
+      this._snapshotPreparedReadBuffer = nextPreparedBuffer;
+      this._snapshotPreparedReadOnlyRenderSnapshot.transforms =
+        this._snapshotPreparedReadBuffer;
+    }
+
+    private _applyPreparedSnapshotWorkerChunk(
+      workerResult: Physics3DSnapshotWorkerResult
+    ): void {
+      if (
+        workerResult.stride !== physicsSnapshotStride ||
+        workerResult.slotCount <= 0 ||
+        workerResult.startSlot < 0
+      ) {
+        return;
+      }
+
+      const chunkTransforms = new Float32Array(workerResult.chunkBuffer);
+      const expectedLength = workerResult.slotCount * workerResult.stride;
+      if (chunkTransforms.length < expectedLength) {
+        return;
+      }
+
+      this._ensurePreparedSnapshotCapacity(
+        workerResult.startSlot + workerResult.slotCount
+      );
+      this._snapshotPreparedReadBuffer.set(
+        chunkTransforms.subarray(0, expectedLength),
+        workerResult.startSlot * physicsSnapshotStride
+      );
+    }
+
+    private _schedulePreparedSnapshotProcessing(snapshotVersion: integer): void {
+      if (
+        !this._snapshotPreparedByWorkerQueue ||
+        this._snapshotPreparedInFlightVersion !== 0 ||
+        snapshotVersion <= this._snapshotPreparedVersion
+      ) {
+        return;
+      }
+
+      const slotCount = this._snapshotBehaviorByIndex.length;
+      if (slotCount <= 0) {
+        this._snapshotPreparedVersion = snapshotVersion;
+        this._snapshotPreparedBodyCount = 0;
+        this._snapshotPreparedReadOnlyRenderSnapshot.version = snapshotVersion;
+        this._snapshotPreparedReadOnlyRenderSnapshot.bodyCount = 0;
+        return;
+      }
+
+      this._snapshotPreparedInFlightVersion = snapshotVersion;
+      this._snapshotPreparedChunkCount = Math.ceil(
+        slotCount / physicsSnapshotWorkerChunkSize
+      );
+      this._snapshotPreparedRemainingChunkCount = this._snapshotPreparedChunkCount;
+
+      for (
+        let startSlot = 0;
+        startSlot < slotCount;
+        startSlot += physicsSnapshotWorkerChunkSize
+      ) {
+        const chunkSlotCount = Math.min(
+          physicsSnapshotWorkerChunkSize,
+          slotCount - startSlot
+        );
+        const chunkStartOffset = startSlot * physicsSnapshotStride;
+        const chunkEndOffset =
+          chunkStartOffset + chunkSlotCount * physicsSnapshotStride;
+        const chunkTransforms = new Float32Array(
+          chunkSlotCount * physicsSnapshotStride
+        );
+        chunkTransforms.set(
+          this._snapshotReadBuffer.subarray(chunkStartOffset, chunkEndOffset)
+        );
+
+        const queuedTask = this._snapshotPreparedByWorkerQueue.enqueue<Physics3DSnapshotWorkerResult>(
+          physicsSnapshotWorkerHandlerName,
+          {
+            snapshotVersion,
+            startSlot,
+            slotCount: chunkSlotCount,
+            stride: physicsSnapshotStride,
+            worldScale: this.worldScale,
+            chunkBuffer: chunkTransforms.buffer,
+          } as Physics3DSnapshotWorkerPayload,
+          {
+            transferables: [chunkTransforms.buffer],
+            workerRole: 'physics',
+            priority: 'high',
+          }
+        );
+
+        queuedTask.promise.then(
+          (result) => {
+            if (
+              this._snapshotPreparedInFlightVersion !== snapshotVersion ||
+              !isPhysics3DSnapshotWorkerResult(result) ||
+              result.snapshotVersion !== snapshotVersion
+            ) {
+              this._snapshotPreparedRemainingChunkCount = Math.max(
+                0,
+                this._snapshotPreparedRemainingChunkCount - 1
+              );
+              return;
+            }
+
+            this._applyPreparedSnapshotWorkerChunk(result);
+            this._snapshotPreparedRemainingChunkCount = Math.max(
+              0,
+              this._snapshotPreparedRemainingChunkCount - 1
+            );
+            if (this._snapshotPreparedRemainingChunkCount === 0) {
+              this._snapshotPreparedInFlightVersion = 0;
+              this._snapshotPreparedVersion = snapshotVersion;
+              this._snapshotPreparedBodyCount = this._snapshotBodyCount;
+              this._snapshotPreparedReadOnlyRenderSnapshot.version =
+                snapshotVersion;
+              this._snapshotPreparedReadOnlyRenderSnapshot.bodyCount =
+                this._snapshotPreparedBodyCount;
+              this._snapshotPreparedReadOnlyRenderSnapshot.transforms =
+                this._snapshotPreparedReadBuffer;
+
+              if (this._snapshotPreparedVersion < this._snapshotVersion) {
+                this._schedulePreparedSnapshotProcessing(this._snapshotVersion);
+              }
+            }
+          },
+          (_error) => {
+            this._snapshotPreparedRemainingChunkCount = Math.max(
+              0,
+              this._snapshotPreparedRemainingChunkCount - 1
+            );
+            if (this._snapshotPreparedRemainingChunkCount === 0) {
+              this._snapshotPreparedInFlightVersion = 0;
+              if (this._snapshotPreparedVersion < this._snapshotVersion) {
+                this._schedulePreparedSnapshotProcessing(this._snapshotVersion);
+              }
+            }
+          }
+        );
+      }
+    }
+
+    private _registerBehaviorSnapshotSlot(
+      physicsBehavior: gdjs.Physics3DRuntimeBehavior
+    ): void {
+      if (!physicsSnapshotPipelineEnabled) {
+        return;
+      }
+      if (this._snapshotIndexByBehavior.has(physicsBehavior)) {
+        return;
+      }
+
+      let snapshotSlotIndex = this._snapshotFreeIndices.pop();
+      if (snapshotSlotIndex === undefined) {
+        snapshotSlotIndex = this._snapshotBehaviorByIndex.length;
+        this._snapshotBehaviorByIndex.push(null);
+      }
+
+      this._snapshotBehaviorByIndex[snapshotSlotIndex] = physicsBehavior;
+      this._snapshotIndexByBehavior.set(physicsBehavior, snapshotSlotIndex);
+      this._snapshotBodyCount++;
+      this._ensureSnapshotCapacity(this._snapshotBehaviorByIndex.length);
+      const snapshotOffset = snapshotSlotIndex * physicsSnapshotStride;
+      physicsBehavior._capturePhysicsSnapshotToBuffer(
+        this._snapshotReadBuffer,
+        snapshotOffset
+      );
+      physicsBehavior._capturePhysicsSnapshotToBuffer(
+        this._snapshotWriteBuffer,
+        snapshotOffset
+      );
+    }
+
+    private _unregisterBehaviorSnapshotSlot(
+      physicsBehavior: gdjs.Physics3DRuntimeBehavior
+    ): void {
+      if (!physicsSnapshotPipelineEnabled) {
+        return;
+      }
+      const snapshotSlotIndex =
+        this._snapshotIndexByBehavior.get(physicsBehavior);
+      if (snapshotSlotIndex === undefined) {
+        return;
+      }
+
+      this._snapshotIndexByBehavior.delete(physicsBehavior);
+      if (this._snapshotBehaviorByIndex[snapshotSlotIndex]) {
+        this._snapshotBehaviorByIndex[snapshotSlotIndex] = null;
+        this._snapshotFreeIndices.push(snapshotSlotIndex);
+        this._snapshotBodyCount = Math.max(0, this._snapshotBodyCount - 1);
+      }
+    }
+
+    private _capturePhysicsSnapshotToWriteBuffer(): void {
+      const snapshotWriteBuffer = this._snapshotWriteBuffer;
+
+      for (
+        let snapshotSlotIndex = 0;
+        snapshotSlotIndex < this._snapshotBehaviorByIndex.length;
+        snapshotSlotIndex++
+      ) {
+        const behavior = this._snapshotBehaviorByIndex[snapshotSlotIndex];
+        if (!behavior) {
+          continue;
+        }
+
+        behavior._capturePhysicsSnapshotToBuffer(
+          snapshotWriteBuffer,
+          snapshotSlotIndex * physicsSnapshotStride
+        );
+      }
+    }
+
+    private _swapPhysicsSnapshotBuffers(): void {
+      const previousReadBuffer = this._snapshotReadBuffer;
+      this._snapshotReadBuffer = this._snapshotWriteBuffer;
+      this._snapshotWriteBuffer = previousReadBuffer;
+
+      this._snapshotVersion++;
+      this._readOnlyRenderSnapshot.version = this._snapshotVersion;
+      this._readOnlyRenderSnapshot.bodyCount = this._snapshotBodyCount;
+      this._readOnlyRenderSnapshot.transforms = this._snapshotReadBuffer;
+    }
+
+    private _applyReadSnapshotToObjects(): void {
+      const snapshotReadBuffer = this._snapshotReadBuffer;
+
+      for (
+        let snapshotSlotIndex = 0;
+        snapshotSlotIndex < this._snapshotBehaviorByIndex.length;
+        snapshotSlotIndex++
+      ) {
+        const behavior = this._snapshotBehaviorByIndex[snapshotSlotIndex];
+        if (!behavior) {
+          continue;
+        }
+
+        behavior._applyPhysicsSnapshotFromBuffer(
+          snapshotReadBuffer,
+          snapshotSlotIndex * physicsSnapshotStride
+        );
+      }
+    }
+
+    applyLatestSnapshotToBehavior(
+      physicsBehavior: gdjs.Physics3DRuntimeBehavior
+    ): boolean {
+      if (!physicsSnapshotObjectSyncEnabled) {
+        return false;
+      }
+      const snapshotSlotIndex =
+        this._snapshotIndexByBehavior.get(physicsBehavior);
+      if (snapshotSlotIndex === undefined) {
+        return false;
+      }
+
+      physicsBehavior._applyPhysicsSnapshotFromBuffer(
+        this._snapshotReadBuffer,
+        snapshotSlotIndex * physicsSnapshotStride
+      );
+      return true;
+    }
+
+    getReadOnlyRenderSnapshot(): gdjs.Physics3DRenderSnapshot {
+      return this._readOnlyRenderSnapshot;
+    }
+
+    getReadOnlyPreparedRenderSnapshot():
+      | gdjs.Physics3DRenderSnapshot
+      | null {
+      if (
+        this._snapshotPreparedVersion <= 0 ||
+        this._snapshotPreparedVersion < this._snapshotVersion
+      ) {
+        return null;
+      }
+      return this._snapshotPreparedReadOnlyRenderSnapshot;
+    }
+
+    clearRegisteredBehaviorsAndSnapshots(): void {
+      this._registeredBehaviors.clear();
+      this._snapshotBehaviorByIndex.length = 0;
+      this._snapshotIndexByBehavior.clear();
+      this._snapshotFreeIndices.length = 0;
+      this._snapshotBodyCount = 0;
+      this._snapshotVersion = 0;
+      this._snapshotReadBuffer = new Float32Array(0);
+      this._snapshotWriteBuffer = new Float32Array(0);
+      this._snapshotPreparedInFlightVersion = 0;
+      this._snapshotPreparedRemainingChunkCount = 0;
+      this._snapshotPreparedChunkCount = 0;
+      this._snapshotPreparedVersion = 0;
+      this._snapshotPreparedBodyCount = 0;
+      this._snapshotPreparedReadBuffer = new Float32Array(0);
+      this._snapshotPreparedReadOnlyRenderSnapshot.version = 0;
+      this._snapshotPreparedReadOnlyRenderSnapshot.bodyCount = 0;
+      this._snapshotPreparedReadOnlyRenderSnapshot.transforms =
+        this._snapshotPreparedReadBuffer;
+      this._readOnlyRenderSnapshot.version = 0;
+      this._readOnlyRenderSnapshot.bodyCount = 0;
+      this._readOnlyRenderSnapshot.transforms = this._snapshotReadBuffer;
+      this._fixedStepAccumulator = 0;
+      if (this._snapshotPreparedByWorkerQueue) {
+        this._snapshotPreparedByWorkerQueue.dispose();
+        this._snapshotPreparedByWorkerQueue = null;
+      }
+    }
+
     /**
      * Add a physics object to the list of existing object.
      */
     addToBehaviorsList(physicsBehavior: gdjs.Physics3DRuntimeBehavior): void {
       this._registeredBehaviors.add(physicsBehavior);
+      if (physicsSnapshotPipelineEnabled) {
+        this._registerBehaviorSnapshotSlot(physicsBehavior);
+      }
     }
 
     /**
@@ -514,6 +1135,9 @@ namespace gdjs {
       physicsBehavior: gdjs.Physics3DRuntimeBehavior
     ): void {
       this._registeredBehaviors.delete(physicsBehavior);
+      if (physicsSnapshotPipelineEnabled) {
+        this._unregisterBehaviorSnapshotSlot(physicsBehavior);
+      }
     }
 
     /**
@@ -861,14 +1485,47 @@ namespace gdjs {
         physics3DHook.doBeforePhysicsStep(deltaTime);
       }
 
-      const numSteps = deltaTime > 1.0 / 55.0 ? 2 : 1;
-      this.jolt.Step(deltaTime, numSteps);
-      this._updateJointFeedbackAndBreaks(deltaTime);
-      this.stepped = true;
+      const clampedDeltaTime = Math.max(
+        0,
+        Math.min(deltaTime, this._maxAccumulatedDeltaTime)
+      );
+      this._fixedStepAccumulator = Math.min(
+        this._fixedStepAccumulator + clampedDeltaTime,
+        this._maxAccumulatedDeltaTime
+      );
 
-      // It's important that updateBodyFromObject and updateObjectFromBody are
-      // called at the same time because other behavior may move the object in
-      // their doStepPreEvents.
+      let fixedSubStepCount = Math.floor(
+        this._fixedStepAccumulator / this._fixedTimeStep
+      );
+      fixedSubStepCount = Math.min(this._maxSubSteps, fixedSubStepCount);
+
+      if (fixedSubStepCount > 0) {
+        const fixedSimulationDeltaTime = this._fixedTimeStep * fixedSubStepCount;
+        this.jolt.Step(fixedSimulationDeltaTime, fixedSubStepCount);
+        this._updateJointFeedbackAndBreaks(fixedSimulationDeltaTime);
+        this._fixedStepAccumulator = Math.max(
+          0,
+          this._fixedStepAccumulator - fixedSimulationDeltaTime
+        );
+      } else if (clampedDeltaTime > epsilon) {
+        // Adaptive fallback keeps controls responsive on high-refresh displays
+        // when not enough time was accumulated for a full fixed step yet.
+        this.jolt.Step(clampedDeltaTime, 1);
+        this._updateJointFeedbackAndBreaks(clampedDeltaTime);
+        this._fixedStepAccumulator = 0;
+      }
+      this.stepped = true;
+      if (physicsSnapshotPipelineEnabled) {
+        this._capturePhysicsSnapshotToWriteBuffer();
+        this._swapPhysicsSnapshotBuffers();
+        if (physicsSnapshotWorkerPreparationEnabled) {
+          this._schedulePreparedSnapshotProcessing(this._snapshotVersion);
+        }
+      }
+      if (physicsSnapshotObjectSyncEnabled) {
+        this._applyReadSnapshotToObjects();
+        return;
+      }
       for (const physicsBehavior of this._registeredBehaviors) {
         physicsBehavior.updateObjectFromBody();
       }
@@ -909,6 +1566,7 @@ namespace gdjs {
       }
       physics3DSharedData.joints = {};
       physics3DSharedData._jointStates = {};
+      physics3DSharedData.clearRegisteredBehaviorsAndSnapshots();
       Jolt.destroy(physics3DSharedData.contactListener);
       Jolt.destroy(physics3DSharedData._tempVec3);
       Jolt.destroy(physics3DSharedData._tempRVec3);
@@ -1049,6 +1707,8 @@ namespace gdjs {
     _objectOldWidth: float = 0;
     _objectOldHeight: float = 0;
     _objectOldDepth: float = 0;
+    private _physicsEulerZYX = new THREE.Euler(0, 0, 0, 'ZYX');
+    private _physicsSnapshotFallbackQuaternion = new THREE.Quaternion();
     private _lastRaycastResult: Physics3DRaycastResult =
       makeNewPhysics3DRaycastResult();
     /**
@@ -2157,9 +2817,127 @@ namespace gdjs {
     }
 
     updateObjectFromBody() {
-      this.bodyUpdater.updateObjectFromBody();
+      if (
+        !physicsSnapshotObjectSyncEnabled ||
+        !this._sharedData.applyLatestSnapshotToBehavior(this)
+      ) {
+        this.bodyUpdater.updateObjectFromBody();
+      }
+      this._cacheObjectTransform();
+    }
 
-      // Update cached transform.
+    _capturePhysicsSnapshotToBuffer(
+      snapshotBuffer: Float32Array,
+      snapshotOffset: integer
+    ): void {
+      const bodyUpdater = this.bodyUpdater;
+      if (
+        bodyUpdater.capturePhysicsSnapshot &&
+        bodyUpdater.capturePhysicsSnapshot(snapshotBuffer, snapshotOffset)
+      ) {
+        return;
+      }
+
+      const body = this._body;
+      if (body) {
+        const position = body.GetPosition();
+        const rotation = body.GetRotation();
+        this._writePhysicsSnapshotValues(
+          snapshotBuffer,
+          snapshotOffset,
+          position.GetX(),
+          position.GetY(),
+          position.GetZ(),
+          rotation.GetX(),
+          rotation.GetY(),
+          rotation.GetZ(),
+          rotation.GetW()
+        );
+        return;
+      }
+
+      const ownerRuntimeObjectAsAny = this.owner3D as any;
+      const ownerRendererObject =
+        ownerRuntimeObjectAsAny &&
+        ownerRuntimeObjectAsAny._renderer &&
+        ownerRuntimeObjectAsAny._renderer.get3DRendererObject
+          ? ownerRuntimeObjectAsAny._renderer.get3DRendererObject()
+          : null;
+      let ownerQuaternion:
+        | { x: number; y: number; z: number; w: number }
+        | THREE.Quaternion;
+      if (
+        ownerRendererObject &&
+        typeof (ownerRendererObject as any).quaternion === 'object'
+      ) {
+        ownerQuaternion = (ownerRendererObject as any).quaternion as THREE.Quaternion;
+      } else {
+        this._physicsEulerZYX.set(
+          gdjs.toRad(this.owner3D.getRotationX()),
+          gdjs.toRad(this.owner3D.getRotationY()),
+          gdjs.toRad(this.owner3D.getAngle())
+        );
+        this._physicsSnapshotFallbackQuaternion.setFromEuler(
+          this._physicsEulerZYX
+        );
+        ownerQuaternion = this._physicsSnapshotFallbackQuaternion;
+      }
+      this._writePhysicsSnapshotValues(
+        snapshotBuffer,
+        snapshotOffset,
+        this.owner3D.getCenterXInScene() * this._sharedData.worldInvScale,
+        this.owner3D.getCenterYInScene() * this._sharedData.worldInvScale,
+        this.owner3D.getCenterZInScene() * this._sharedData.worldInvScale,
+        ownerQuaternion.x,
+        ownerQuaternion.y,
+        ownerQuaternion.z,
+        ownerQuaternion.w
+      );
+    }
+
+    _applyPhysicsSnapshotFromBuffer(
+      snapshotBuffer: Float32Array,
+      snapshotOffset: integer
+    ): void {
+      const worldScale = this._sharedData.worldScale;
+      this._moveObjectToPhysicsPositionValues(
+        snapshotBuffer[snapshotOffset + physicsSnapshotPositionXOffset] *
+          worldScale,
+        snapshotBuffer[snapshotOffset + physicsSnapshotPositionYOffset] *
+          worldScale,
+        snapshotBuffer[snapshotOffset + physicsSnapshotPositionZOffset] *
+          worldScale
+      );
+      this._moveObjectToPhysicsRotationValues(
+        snapshotBuffer[snapshotOffset + physicsSnapshotRotationXOffset],
+        snapshotBuffer[snapshotOffset + physicsSnapshotRotationYOffset],
+        snapshotBuffer[snapshotOffset + physicsSnapshotRotationZOffset],
+        snapshotBuffer[snapshotOffset + physicsSnapshotRotationWOffset]
+      );
+      this._cacheObjectTransform();
+    }
+
+    _writePhysicsSnapshotValues(
+      snapshotBuffer: Float32Array,
+      snapshotOffset: integer,
+      x: float,
+      y: float,
+      z: float,
+      qx: float,
+      qy: float,
+      qz: float,
+      qw: float
+    ): void {
+      snapshotBuffer[snapshotOffset + physicsSnapshotPositionXOffset] = x;
+      snapshotBuffer[snapshotOffset + physicsSnapshotPositionYOffset] = y;
+      snapshotBuffer[snapshotOffset + physicsSnapshotPositionZOffset] = z;
+      snapshotBuffer[snapshotOffset + physicsSnapshotRotationXOffset] = qx;
+      snapshotBuffer[snapshotOffset + physicsSnapshotRotationYOffset] = qy;
+      snapshotBuffer[snapshotOffset + physicsSnapshotRotationZOffset] = qz;
+      snapshotBuffer[snapshotOffset + physicsSnapshotRotationWOffset] = qw;
+    }
+
+    private _cacheObjectTransform(): void {
       this._objectOldX = this.owner3D.getX();
       this._objectOldY = this.owner3D.getY();
       this._objectOldZ = this.owner3D.getZ();
@@ -2213,40 +2991,83 @@ namespace gdjs {
     }
 
     _getPhysicsRotation(result: Jolt.Quat): Jolt.Quat {
-      const threeObject = this.owner3D.get3DRendererObject();
+      const ownerRuntimeObjectAsAny = this.owner3D as any;
+      const threeObject =
+        ownerRuntimeObjectAsAny &&
+        ownerRuntimeObjectAsAny._renderer &&
+        ownerRuntimeObjectAsAny._renderer.get3DRendererObject
+          ? ownerRuntimeObjectAsAny._renderer.get3DRendererObject()
+          : null;
+      const ownerQuaternion =
+        threeObject && typeof (threeObject as any).quaternion === 'object'
+          ? ((threeObject as any).quaternion as THREE.Quaternion)
+          : this._physicsSnapshotFallbackQuaternion;
+      if (ownerQuaternion === this._physicsSnapshotFallbackQuaternion) {
+        this._physicsEulerZYX.set(
+          gdjs.toRad(this.owner3D.getRotationX()),
+          gdjs.toRad(this.owner3D.getRotationY()),
+          gdjs.toRad(this.owner3D.getAngle())
+        );
+        ownerQuaternion.setFromEuler(this._physicsEulerZYX);
+      }
       result.Set(
-        threeObject.quaternion.x,
-        threeObject.quaternion.y,
-        threeObject.quaternion.z,
-        threeObject.quaternion.w
+        ownerQuaternion.x,
+        ownerQuaternion.y,
+        ownerQuaternion.z,
+        ownerQuaternion.w
       );
       return result;
     }
 
     _moveObjectToPhysicsPosition(physicsPosition: Jolt.RVec3): void {
-      this.owner3D.setCenterXInScene(
-        physicsPosition.GetX() * this._sharedData.worldScale
-      );
-      this.owner3D.setCenterYInScene(
-        physicsPosition.GetY() * this._sharedData.worldScale
-      );
-      this.owner3D.setCenterZInScene(
+      this._moveObjectToPhysicsPositionValues(
+        physicsPosition.GetX() * this._sharedData.worldScale,
+        physicsPosition.GetY() * this._sharedData.worldScale,
         physicsPosition.GetZ() * this._sharedData.worldScale
       );
     }
 
+    _moveObjectToPhysicsPositionValues(
+      worldX: float,
+      worldY: float,
+      worldZ: float
+    ): void {
+      this.owner3D.setCenterXInScene(worldX);
+      this.owner3D.setCenterYInScene(worldY);
+      this.owner3D.setCenterZInScene(worldZ);
+    }
+
     _moveObjectToPhysicsRotation(physicsRotation: Jolt.Quat): void {
-      const threeObject = this.owner3D.get3DRendererObject();
-      threeObject.quaternion.x = physicsRotation.GetX();
-      threeObject.quaternion.y = physicsRotation.GetY();
-      threeObject.quaternion.z = physicsRotation.GetZ();
-      threeObject.quaternion.w = physicsRotation.GetW();
-      // TODO Avoid this instantiation
-      const euler = new THREE.Euler(0, 0, 0, 'ZYX');
-      euler.setFromQuaternion(threeObject.quaternion);
-      this.owner3D.setRotationX(gdjs.toDegrees(euler.x));
-      this.owner3D.setRotationY(gdjs.toDegrees(euler.y));
-      this.owner3D.setAngle(gdjs.toDegrees(euler.z));
+      this._moveObjectToPhysicsRotationValues(
+        physicsRotation.GetX(),
+        physicsRotation.GetY(),
+        physicsRotation.GetZ(),
+        physicsRotation.GetW()
+      );
+    }
+
+    _moveObjectToPhysicsRotationValues(
+      x: float,
+      y: float,
+      z: float,
+      w: float
+    ): void {
+      const ownerRuntimeObjectAsAny = this.owner3D as any;
+      const threeObject =
+        ownerRuntimeObjectAsAny &&
+        ownerRuntimeObjectAsAny._renderer &&
+        ownerRuntimeObjectAsAny._renderer.get3DRendererObject
+          ? ownerRuntimeObjectAsAny._renderer.get3DRendererObject()
+          : null;
+      const targetQuaternion =
+        threeObject && typeof (threeObject as any).quaternion === 'object'
+          ? ((threeObject as any).quaternion as THREE.Quaternion)
+          : this._physicsSnapshotFallbackQuaternion;
+      targetQuaternion.set(x, y, z, w);
+      this._physicsEulerZYX.setFromQuaternion(targetQuaternion);
+      this.owner3D.setRotationX(gdjs.toDegrees(this._physicsEulerZYX.x));
+      this.owner3D.setRotationY(gdjs.toDegrees(this._physicsEulerZYX.y));
+      this.owner3D.setAngle(gdjs.toDegrees(this._physicsEulerZYX.z));
     }
 
     getWorldScale(): float {
@@ -7163,6 +7984,10 @@ namespace gdjs {
     export interface BodyUpdater {
       createAndAddBody(): Jolt.Body | null;
       updateObjectFromBody(): void;
+      capturePhysicsSnapshot?(
+        snapshotBuffer: Float32Array,
+        snapshotOffset: integer
+      ): boolean;
       updateBodyFromObject(): void;
       recreateShape(): void;
       destroyBody(): void;
@@ -7233,6 +8058,32 @@ namespace gdjs {
           behavior._moveObjectToPhysicsPosition(_body.GetPosition());
           behavior._moveObjectToPhysicsRotation(_body.GetRotation());
         }
+      }
+
+      capturePhysicsSnapshot(
+        snapshotBuffer: Float32Array,
+        snapshotOffset: integer
+      ): boolean {
+        const { behavior } = this;
+        const body = behavior._body;
+        if (body === null || !body.IsActive()) {
+          return false;
+        }
+
+        const bodyPosition = body.GetPosition();
+        const bodyRotation = body.GetRotation();
+        behavior._writePhysicsSnapshotValues(
+          snapshotBuffer,
+          snapshotOffset,
+          bodyPosition.GetX(),
+          bodyPosition.GetY(),
+          bodyPosition.GetZ(),
+          bodyRotation.GetX(),
+          bodyRotation.GetY(),
+          bodyRotation.GetZ(),
+          bodyRotation.GetW()
+        );
+        return true;
       }
 
       updateBodyFromObject() {

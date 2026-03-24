@@ -7,6 +7,126 @@ namespace gdjs {
   const logger = new gdjs.Logger('Model3DManager');
 
   const resourceKinds: Array<ResourceKind> = ['model3D'];
+  const model3DLoaderWorkerHandlerName =
+    'GDJS::Model3D::fetchAndPreprocess::v1';
+  let hasRegisteredModel3DLoaderWorkerHandler = false;
+
+  type PreparedModel3DData = {
+    arrayBuffer: ArrayBuffer;
+    byteLength: integer;
+    contentHash: string;
+    format: 'glb' | 'unknown';
+    sourceUrl: string;
+    protocolVersion: integer;
+  };
+
+  const isPreparedModel3DData = (
+    value: unknown
+  ): value is PreparedModel3DData => {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+
+    const preparedModelData = value as {
+      arrayBuffer?: unknown;
+      byteLength?: unknown;
+      contentHash?: unknown;
+      format?: unknown;
+      sourceUrl?: unknown;
+      protocolVersion?: unknown;
+    };
+
+    return (
+      preparedModelData.arrayBuffer instanceof ArrayBuffer &&
+      typeof preparedModelData.byteLength === 'number' &&
+      typeof preparedModelData.contentHash === 'string' &&
+      (preparedModelData.format === 'glb' ||
+        preparedModelData.format === 'unknown') &&
+      typeof preparedModelData.sourceUrl === 'string' &&
+      typeof preparedModelData.protocolVersion === 'number'
+    );
+  };
+
+  const ensureModel3DLoaderWorkerHandlerRegistered = (): void => {
+    if (hasRegisteredModel3DLoaderWorkerHandler) {
+      return;
+    }
+    if (
+      typeof gdjs.registerWorkerTaskHandler !== 'function' ||
+      typeof gdjs.hasWorkerTaskHandler !== 'function'
+    ) {
+      logger.warn(
+        'Multithreading APIs are unavailable while initializing Model3D worker handlers.'
+      );
+      return;
+    }
+
+    if (!gdjs.hasWorkerTaskHandler(model3DLoaderWorkerHandlerName)) {
+      gdjs.registerWorkerTaskHandler(
+        model3DLoaderWorkerHandlerName,
+        async function (payload) {
+          const requestPayload =
+            payload && typeof payload === 'object'
+              ? (payload as {
+                  url?: unknown;
+                  credentials?: unknown;
+                })
+              : null;
+          if (!requestPayload || typeof requestPayload.url !== 'string') {
+            throw new Error('Invalid model preprocessing payload.');
+          }
+
+          const credentials =
+            requestPayload.credentials === 'include' ? 'include' : 'omit';
+          const response = await fetch(requestPayload.url, {
+            credentials,
+          });
+          if (!response.ok) {
+            throw new Error(
+              'Unable to fetch model resource. HTTP status: ' + response.status
+            );
+          }
+
+          const arrayBuffer = await response.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuffer);
+          const byteLength = bytes.byteLength;
+          const sampleCount = Math.min(4096, byteLength);
+          const sampleStep = Math.max(
+            1,
+            sampleCount > 0 ? Math.floor(byteLength / sampleCount) : 1
+          );
+
+          let hash = 2166136261;
+          for (let index = 0; index < byteLength; index += sampleStep) {
+            hash ^= bytes[index];
+            hash = Math.imul(hash, 16777619);
+          }
+
+          const isGlb =
+            byteLength >= 4 &&
+            bytes[0] === 0x67 &&
+            bytes[1] === 0x6c &&
+            bytes[2] === 0x54 &&
+            bytes[3] === 0x46;
+
+          return {
+            __gdjsTransferableWorkerTaskResult: true,
+            value: {
+              arrayBuffer,
+              byteLength,
+              contentHash: (hash >>> 0).toString(16),
+              format: isGlb ? 'glb' : 'unknown',
+              sourceUrl: requestPayload.url,
+              protocolVersion: 1,
+            },
+            transferables: [arrayBuffer],
+          };
+        }
+      );
+    }
+
+    hasRegisteredModel3DLoaderWorkerHandler = true;
+  };
 
   /**
    * Load GLB files (using `Three.js`), using the "model3D" resources
@@ -18,7 +138,13 @@ namespace gdjs {
      * Map associating a resource name to the loaded Three.js model.
      */
     private _loadedThreeModels = new gdjs.ResourceCache<THREE_ADDONS.GLTF>();
-    private _downloadedArrayBuffers = new gdjs.ResourceCache<ArrayBuffer>();
+    private _preparedModelDataByResource =
+      new gdjs.ResourceCache<PreparedModel3DData>();
+    private _preparedModelDataByUrl = new Map<string, PreparedModel3DData>();
+    private _inFlightPreparationByResourceName = new Map<
+      string,
+      Promise<PreparedModel3DData>
+    >();
 
     _resourceLoader: gdjs.ResourceLoader;
 
@@ -33,6 +159,7 @@ namespace gdjs {
      */
     constructor(resourceLoader: gdjs.ResourceLoader) {
       this._resourceLoader = resourceLoader;
+      ensureModel3DLoaderWorkerHandlerRegistered();
 
       if (typeof THREE !== 'undefined') {
         this._loader = new THREE_ADDONS.GLTFLoader();
@@ -69,6 +196,117 @@ namespace gdjs {
       return resourceKinds;
     }
 
+    private _retainPreparedModelDataForResource(
+      resource: ResourceData,
+      preparedModelData: PreparedModel3DData
+    ): void {
+      this._preparedModelDataByResource.set(resource, preparedModelData);
+      this._preparedModelDataByUrl.set(
+        preparedModelData.sourceUrl,
+        preparedModelData
+      );
+    }
+
+    private _releasePreparedModelDataForResource(resource: ResourceData): void {
+      this._preparedModelDataByResource.delete(resource);
+    }
+
+    private _preprocessModelArrayBuffer(
+      url: string,
+      arrayBuffer: ArrayBuffer
+    ): PreparedModel3DData {
+      const bytes = new Uint8Array(arrayBuffer);
+      const byteLength = bytes.byteLength;
+      const sampleCount = Math.min(4096, byteLength);
+      const sampleStep = Math.max(
+        1,
+        sampleCount > 0 ? Math.floor(byteLength / sampleCount) : 1
+      );
+
+      let hash = 2166136261;
+      for (let index = 0; index < byteLength; index += sampleStep) {
+        hash ^= bytes[index];
+        hash = Math.imul(hash, 16777619);
+      }
+
+      const isGlb =
+        byteLength >= 4 &&
+        bytes[0] === 0x67 &&
+        bytes[1] === 0x6c &&
+        bytes[2] === 0x54 &&
+        bytes[3] === 0x46;
+
+      return {
+        arrayBuffer,
+        byteLength,
+        contentHash: (hash >>> 0).toString(16),
+        format: isGlb ? 'glb' : 'unknown',
+        sourceUrl: url,
+        protocolVersion: 1,
+      };
+    }
+
+    private async _fetchAndPrepareModelResource(
+      url: string
+    ): Promise<PreparedModel3DData> {
+      const runtimeGame = this._resourceLoader.getRuntimeGame();
+      const multithreadManager = runtimeGame.getMultithreadManager();
+      const credentials = this._resourceLoader.checkIfCredentialsRequired(url)
+        ? 'include'
+        : 'omit';
+
+      if (
+        typeof gdjs.hasWorkerTaskHandler !== 'function' ||
+        !gdjs.hasWorkerTaskHandler(model3DLoaderWorkerHandlerName)
+      ) {
+        const response = await fetch(url, {
+          credentials,
+        });
+        if (!response.ok) {
+          throw new Error(
+            'Unable to fetch model resource. HTTP status: ' + response.status
+          );
+        }
+        return this._preprocessModelArrayBuffer(url, await response.arrayBuffer());
+      }
+
+      try {
+        const workerTaskHandle =
+          multithreadManager.runTask<PreparedModel3DData>(
+            model3DLoaderWorkerHandlerName,
+            {
+              url,
+              credentials,
+            },
+            {
+              workerRole: 'loader',
+              priority: 'high',
+            }
+          );
+        const preparedModelData = await workerTaskHandle.promise;
+        if (!isPreparedModel3DData(preparedModelData)) {
+          throw new Error(
+            'Model preprocessing worker returned an invalid payload.'
+          );
+        }
+        return preparedModelData;
+      } catch (error) {
+        logger.warn(
+          'Falling back to main-thread model preprocessing after worker failure:',
+          error
+        );
+        const response = await fetch(url, {
+          credentials,
+        });
+        if (!response.ok) {
+          throw new Error(
+            'Unable to fetch model resource. HTTP status: ' + response.status
+          );
+        }
+        return this._preprocessModelArrayBuffer(url, await response.arrayBuffer());
+      }
+    }
+
     async processResource(resourceName: string): Promise<void> {
       const resource = this._resourceLoader.getResource(resourceName);
       if (!resource) {
@@ -81,18 +319,22 @@ namespace gdjs {
       if (!loader) {
         return;
       }
-      const data = this._downloadedArrayBuffers.get(resource);
-      if (!data) {
+      const preparedModelData = this._preparedModelDataByResource.get(resource);
+      if (!preparedModelData) {
         return;
       }
-      this._downloadedArrayBuffers.delete(resource);
       try {
-        const gltf: THREE_ADDONS.GLTF = await loader.parseAsync(data, '');
+        const gltf: THREE_ADDONS.GLTF = await loader.parseAsync(
+          preparedModelData.arrayBuffer,
+          ''
+        );
         this._loadedThreeModels.set(resource, gltf);
+        this._releasePreparedModelDataForResource(resource);
       } catch (error) {
         logger.error(
-          "Can't fetch the 3D model file " + resource.file + ', error: ' + error
+          "Can't parse the 3D model file " + resource.file + ', error: ' + error
         );
+        throw error;
       }
     }
 
@@ -111,21 +353,44 @@ namespace gdjs {
       if (this._loadedThreeModels.get(resource)) {
         return;
       }
+      if (this._preparedModelDataByResource.get(resource)) {
+        return;
+      }
+
       const url = this._resourceLoader.getFullUrl(resource.file);
-      try {
-        const response = await fetch(url, {
-          credentials: this._resourceLoader.checkIfCredentialsRequired(url)
-            ? 'include'
-            : 'omit',
+      const cachedPreparedModelData = this._preparedModelDataByUrl.get(url);
+      if (cachedPreparedModelData) {
+        this._retainPreparedModelDataForResource(resource, cachedPreparedModelData);
+        return;
+      }
+
+      const inFlightPreparation = this._inFlightPreparationByResourceName.get(
+        resource.name
+      );
+      if (inFlightPreparation) {
+        await inFlightPreparation;
+        return;
+      }
+
+      const preparationPromise = this._fetchAndPrepareModelResource(url)
+        .then((preparedModelData) => {
+          this._retainPreparedModelDataForResource(resource, preparedModelData);
+          return preparedModelData;
+        })
+        .finally(() => {
+          this._inFlightPreparationByResourceName.delete(resource.name);
         });
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-        const data = await response.arrayBuffer();
-        this._downloadedArrayBuffers.set(resource, data);
+
+      this._inFlightPreparationByResourceName.set(
+        resource.name,
+        preparationPromise
+      );
+
+      try {
+        await preparationPromise;
       } catch (error) {
         logger.error(
-          "Can't fetch the 3D model file " + resource.file + ', error: ' + error
+          "Can't load the 3D model file " + resource.file + ', error: ' + error
         );
         throw error;
       }
@@ -151,7 +416,9 @@ namespace gdjs {
      */
     dispose(): void {
       this._loadedThreeModels.clear();
-      this._downloadedArrayBuffers.clear();
+      this._preparedModelDataByResource.clear();
+      this._preparedModelDataByUrl.clear();
+      this._inFlightPreparationByResourceName.clear();
       this._loader = null;
       this._dracoLoader = null;
 
@@ -174,12 +441,8 @@ namespace gdjs {
         this._loadedThreeModels.delete(resourceData);
       }
 
-      const downloadedArrayBuffer = this._downloadedArrayBuffers.getFromName(
-        resourceData.name
-      );
-      if (downloadedArrayBuffer) {
-        this._downloadedArrayBuffers.delete(resourceData);
-      }
+      this._releasePreparedModelDataForResource(resourceData);
+      this._inFlightPreparationByResourceName.delete(resourceData.name);
     }
   }
 }

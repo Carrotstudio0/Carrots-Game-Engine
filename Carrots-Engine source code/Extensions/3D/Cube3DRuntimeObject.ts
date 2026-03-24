@@ -447,7 +447,7 @@ namespace gdjs {
         oldObjectData.content.materialType !==
         newObjectData.content.materialType
       ) {
-        this.setMaterialType(newObjectData.content.materialType);
+        this.setMaterialType(newObjectData.content.materialType || 'Standard');
       }
       if (
         oldObjectData.content.isCastingShadow !==

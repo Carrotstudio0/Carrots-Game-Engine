@@ -150,5 +150,88 @@
         runtimeGame.dispose(true);
       }
     });
+
+    it('should process small tasks through WorkerTaskQueue with a concurrency limit', async function () {
+      const runtimeGame = new gdjs.RuntimeGame(gdjs.createProjectData(), {
+        multithreading: {
+          workerCount: 2,
+        },
+      });
+
+      try {
+        const taskQueue = runtimeGame.getMultithreadManager().createTaskQueue({
+          name: 'tests-multithreading-queue',
+          maxConcurrentTasks: 1,
+          workerRole: 'generic',
+          priority: 'normal',
+        });
+
+        const queuedTasks = taskQueue.enqueueBatch([
+          {
+            handlerName: handlerNames.delay,
+            payload: { delayMs: 10, value: 1 },
+          },
+          {
+            handlerName: handlerNames.delay,
+            payload: { delayMs: 0, value: 2 },
+          },
+          {
+            handlerName: handlerNames.delay,
+            payload: { delayMs: 0, value: 3 },
+          },
+        ]);
+
+        const results = await Promise.all(
+          queuedTasks.map((queuedTask) => queuedTask.promise)
+        );
+        expect(results).to.eql([1, 2, 3]);
+
+        const queueStats = taskQueue.getStats();
+        expect(queueStats.pendingTaskCount).to.be(0);
+        expect(queueStats.runningTaskCount).to.be(0);
+        expect(queueStats.completedTaskCount).to.be(3);
+      } finally {
+        runtimeGame.dispose(true);
+      }
+    });
+
+    it('should cancel pending tasks in WorkerTaskQueue', async function () {
+      const runtimeGame = new gdjs.RuntimeGame(gdjs.createProjectData(), {
+        multithreading: {
+          workerCount: 1,
+        },
+      });
+
+      try {
+        const taskQueue = runtimeGame.getMultithreadManager().createTaskQueue({
+          name: 'tests-multithreading-queue-cancel',
+          maxConcurrentTasks: 1,
+        });
+
+        const firstQueuedTask = taskQueue.enqueue(handlerNames.delay, {
+          delayMs: 30,
+          value: 1,
+        });
+        const secondQueuedTask = taskQueue.enqueue(handlerNames.delay, {
+          delayMs: 0,
+          value: 2,
+        });
+
+        expect(secondQueuedTask.cancel()).to.be(true);
+
+        let cancellationError = null;
+        try {
+          await secondQueuedTask.promise;
+        } catch (error) {
+          cancellationError = error;
+        }
+
+        expect(cancellationError).not.to.be(null);
+        expect(cancellationError.name).to.be('WorkerTaskCancelledError');
+        expect(await firstQueuedTask.promise).to.be(1);
+      } finally {
+        runtimeGame.dispose(true);
+      }
+    });
   });
 })();

@@ -4,6 +4,10 @@ import { GDevelopAssetApi } from './ApiConfigs';
 import { type Filters } from './Filters';
 import { type UserPublicProfile } from './User';
 import { retryIfFailed } from '../RetryIfFailed';
+import {
+  getLocalResourceUrl,
+  resolveLocalResourcePath,
+} from './LocalResourceUrl';
 
 export type ExampleShortHeader = {|
   id: string,
@@ -35,7 +39,7 @@ export type AllExamples = {|
 |};
 
 const USE_LOCAL_EXAMPLES = true;
-const LOCAL_EXAMPLES_DATABASE_URL = '/examples/examples.json';
+const LOCAL_EXAMPLES_DATABASE_URL = getLocalResourceUrl('/examples/examples.json');
 
 let cachedLocalExamplesDatabase: ?{
   exampleShortHeaders: Array<ExampleShortHeader>,
@@ -43,33 +47,82 @@ let cachedLocalExamplesDatabase: ?{
   examplesById?: { [string]: Example },
 } = null;
 
+const adaptLocalExampleShortHeader = (
+  exampleShortHeader: ExampleShortHeader
+): ExampleShortHeader => ({
+  ...exampleShortHeader,
+  previewImageUrls: Array.isArray(exampleShortHeader.previewImageUrls)
+    ? exampleShortHeader.previewImageUrls.map(resolveLocalResourcePath)
+    : [],
+});
+
+const adaptLocalExample = (example: Example): Example => ({
+  ...adaptLocalExampleShortHeader(example),
+  projectFileUrl: resolveLocalResourcePath(example.projectFileUrl),
+});
+
 const loadLocalExamplesDatabase = async () => {
   if (cachedLocalExamplesDatabase) return cachedLocalExamplesDatabase;
   const response = await axios.get(LOCAL_EXAMPLES_DATABASE_URL);
-  cachedLocalExamplesDatabase = response.data;
+  const rawDatabase = response.data || {};
+  const rawExampleShortHeaders = Array.isArray(rawDatabase.exampleShortHeaders)
+    ? rawDatabase.exampleShortHeaders
+    : [];
+  const rawExamplesById =
+    rawDatabase.examplesById && typeof rawDatabase.examplesById === 'object'
+      ? rawDatabase.examplesById
+      : {};
+
+  const adaptedExamplesById: { [string]: Example } = {};
+  for (const exampleId in rawExamplesById) {
+    if (!Object.prototype.hasOwnProperty.call(rawExamplesById, exampleId)) {
+      continue;
+    }
+    adaptedExamplesById[exampleId] = adaptLocalExample(rawExamplesById[exampleId]);
+  }
+
+  cachedLocalExamplesDatabase = {
+    ...rawDatabase,
+    exampleShortHeaders: rawExampleShortHeaders.map(adaptLocalExampleShortHeader),
+    examplesById: adaptedExamplesById,
+  };
   return cachedLocalExamplesDatabase;
 };
 
 export const listAllExamples = async (): Promise<AllExamples> => {
-  // $FlowFixMe[underconstrained-implicit-instantiation]
-  const response = await axios.get(`${GDevelopAssetApi.baseUrl}/example`, {
-    params: {
-      // Could be changed according to the editor environment, but keep
-      // reading from the "live" data for now.
-      environment: 'live',
-    },
-  });
-  const { exampleShortHeadersUrl, filtersUrl } = response.data;
+  let exampleShortHeaders = [];
+  let filters = {
+    allTags: [],
+    defaultTags: [],
+    tagsTree: [],
+  };
 
-  const [exampleShortHeaders, filters] = await Promise.all([
-    retryIfFailed(
-      { times: 2 },
-      // $FlowFixMe[underconstrained-implicit-instantiation]
-      async () => (await axios.get(exampleShortHeadersUrl)).data
-    ),
+  try {
     // $FlowFixMe[underconstrained-implicit-instantiation]
-    retryIfFailed({ times: 2 }, async () => (await axios.get(filtersUrl)).data),
-  ]);
+    const response = await axios.get(`${GDevelopAssetApi.baseUrl}/example`, {
+      params: {
+        // Could be changed according to the editor environment, but keep
+        // reading from the "live" data for now.
+        environment: 'live',
+      },
+    });
+    const { exampleShortHeadersUrl, filtersUrl } = response.data;
+
+    [exampleShortHeaders, filters] = await Promise.all([
+      retryIfFailed(
+        { times: 2 },
+        // $FlowFixMe[underconstrained-implicit-instantiation]
+        async () => (await axios.get(exampleShortHeadersUrl)).data
+      ),
+      // $FlowFixMe[underconstrained-implicit-instantiation]
+      retryIfFailed({ times: 2 }, async () => (await axios.get(filtersUrl)).data),
+    ]);
+  } catch (error) {
+    console.warn(
+      'Unable to load remote examples database, trying local bundled examples only:',
+      error
+    );
+  }
 
   let mergedExampleShortHeaders = exampleShortHeaders;
   let mergedFilters = filters;
@@ -114,6 +167,10 @@ export const listAllExamples = async (): Promise<AllExamples> => {
     } catch (error) {
       console.warn('Unable to load local examples database:', error);
     }
+  }
+
+  if (!mergedExampleShortHeaders.length) {
+    throw new Error('No example could be loaded from remote or local sources.');
   }
 
   const allExamples: AllExamples = {

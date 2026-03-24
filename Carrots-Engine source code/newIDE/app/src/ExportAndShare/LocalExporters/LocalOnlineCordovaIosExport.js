@@ -8,7 +8,6 @@ import {
 } from '../../Utils/GDevelopServices/Build';
 import { uploadLocalFile } from './LocalFileUploader';
 import { type AuthenticatedUser } from '../../Profile/AuthenticatedUserContext';
-import { findGDJS } from '../../GameEngineFinder/LocalGDJSFinder';
 import { archiveLocalFolder } from '../../Utils/LocalArchiver';
 import optionalRequire from '../../Utils/OptionalRequire';
 import LocalFileSystem, { type UrlFileDescriptor } from './LocalFileSystem';
@@ -23,6 +22,7 @@ import {
   ExportFlow,
 } from '../GenericExporters/OnlineCordovaIosExport';
 import { downloadUrlsToLocalFiles } from '../../Utils/LocalFileDownloader';
+const { findGDJS } = require('../../GameEngineFinder/LocalGDJSFinder');
 
 const path = optionalRequire('path');
 const os = optionalRequire('os');

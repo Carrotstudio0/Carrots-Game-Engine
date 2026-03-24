@@ -119,6 +119,13 @@ namespace gdjs {
     blendFactor: number;
     minAngle: number;
     maxAngle: number;
+    targetTolerance: number;
+    linkConstraintsByBoneName: Map<string, Model3DIKLinkConstraintDefinition>;
+  };
+
+  type Model3DIKLinkConstraintDefinition = {
+    minEulerDegrees: FloatPoint3D;
+    maxEulerDegrees: FloatPoint3D;
   };
 
   type Model3DIKResolvedChain = {
@@ -126,6 +133,14 @@ namespace gdjs {
     effectorBone: THREE.Bone;
     targetBone: THREE.Bone | null;
     linkBones: THREE.Bone[];
+    linkConstraints: Array<Model3DIKLinkConstraintDefinition | null>;
+    targetToleranceSquared: number;
+  };
+
+  type Model3DIKGizmoVisual = {
+    targetHandle: THREE.Mesh;
+    chainLine: THREE.Line;
+    chainLinePositions: Float32Array;
   };
 
   const clampNumber = (value: number, min: number, max: number): number =>
@@ -153,6 +168,27 @@ namespace gdjs {
     private _ikScratchLinkWorldQuaternion = new THREE.Quaternion();
     private _ikScratchLinkWorldQuaternionInverse = new THREE.Quaternion();
     private _ikScratchDeltaQuaternion = new THREE.Quaternion();
+    private _ikScratchEuler = new THREE.Euler(0, 0, 0, 'XYZ');
+    private _ikGizmosEnabled = false;
+    private _ikGizmoGroup: THREE.Group | null = null;
+    private _ikGizmoVisuals = new Map<string, Model3DIKGizmoVisual>();
+    private _ikGizmoRaycaster = new THREE.Raycaster();
+    private _ikGizmoNormalizedPointer = new THREE.Vector2();
+    private _ikGizmoCameraPosition = new THREE.Vector3();
+    private _ikGizmoCameraDirection = new THREE.Vector3();
+    private _ikGizmoPointerWorldPosition = new THREE.Vector3();
+    private _ikGizmoDragPlane = new THREE.Plane();
+    private _ikGizmoDragOffset = new THREE.Vector3();
+    private _ikGizmoScratchTargetWorldPosition = new THREE.Vector3();
+    private _ikGizmoScratchLocalPosition = new THREE.Vector3();
+    private _ikGizmoWasMousePressed = false;
+    private _ikGizmoDraggedChainName: string | null = null;
+    private _ikGizmoAttachedLayerRenderer:
+      | {
+          add3DRendererObject: (object: THREE.Object3D) => void;
+          remove3DRendererObject: (object: THREE.Object3D) => void;
+        }
+      | null = null;
 
     /**
      * The model origin evaluated according to the object configuration.
@@ -198,7 +234,9 @@ namespace gdjs {
 
     updateAnimation(timeDelta: float) {
       this._animationMixer.update(timeDelta);
+      this._updateIKGizmoInteraction();
       this._updateIK();
+      this._updateIKGizmoVisuals();
     }
 
     updatePosition() {
@@ -455,9 +493,19 @@ namespace gdjs {
       const normalizedChainName = chainName.trim();
       const normalizedEffectorBoneName = effectorBoneName.trim();
       const normalizedTargetBoneName = targetBoneName.trim();
-      const normalizedLinkBoneNames = linkBoneNames
+      let normalizedLinkBoneNames = linkBoneNames
         .map((linkBoneName) => linkBoneName.trim())
         .filter((linkBoneName) => !!linkBoneName);
+
+      if (
+        normalizedEffectorBoneName &&
+        normalizedLinkBoneNames.length === 0 &&
+        this._bonesByName.size > 0
+      ) {
+        normalizedLinkBoneNames = this._buildDefaultIKLinkBoneNames(
+          normalizedEffectorBoneName
+        );
+      }
 
       if (
         !normalizedChainName ||
@@ -490,6 +538,12 @@ namespace gdjs {
         blendFactor: this._sanitizeIKBlendFactor(blendFactor),
         minAngle: minAngleDegrees,
         maxAngle: maxAngleDegrees,
+        targetTolerance: previousChain
+          ? previousChain.targetTolerance
+          : this._sanitizeIKTargetTolerance(0.002),
+        linkConstraintsByBoneName: new Map(
+          previousChain ? previousChain.linkConstraintsByBoneName : undefined
+        ),
       };
       this._ikChains.set(normalizedChainName, chain);
       this._resolveIKChains();
@@ -579,15 +633,109 @@ namespace gdjs {
       return true;
     }
 
+    setIKTargetTolerance(chainName: string, tolerance: number): boolean {
+      const chain = this._ikChains.get(chainName.trim());
+      if (!chain) {
+        return false;
+      }
+
+      chain.targetTolerance = this._sanitizeIKTargetTolerance(tolerance);
+      return true;
+    }
+
+    setIKGizmosEnabled(enabled: boolean): void {
+      this._ikGizmosEnabled = enabled;
+      if (!enabled) {
+        this._ikGizmoDraggedChainName = null;
+      }
+      this._syncIKGizmoVisualsWithResolvedChains();
+    }
+
+    areIKGizmosEnabled(): boolean {
+      return this._ikGizmosEnabled;
+    }
+
+    setIKLinkAngleLimits(
+      chainName: string,
+      linkBoneName: string,
+      minAngleXDegrees: number,
+      maxAngleXDegrees: number,
+      minAngleYDegrees: number,
+      maxAngleYDegrees: number,
+      minAngleZDegrees: number,
+      maxAngleZDegrees: number
+    ): boolean {
+      const chain = this._ikChains.get(chainName.trim());
+      const normalizedLinkBoneName = linkBoneName.trim();
+      if (!chain || !normalizedLinkBoneName) {
+        return false;
+      }
+
+      const [minX, maxX] = this._sanitizeIKAngleConstraintRange(
+        minAngleXDegrees,
+        maxAngleXDegrees
+      );
+      const [minY, maxY] = this._sanitizeIKAngleConstraintRange(
+        minAngleYDegrees,
+        maxAngleYDegrees
+      );
+      const [minZ, maxZ] = this._sanitizeIKAngleConstraintRange(
+        minAngleZDegrees,
+        maxAngleZDegrees
+      );
+
+      chain.linkConstraintsByBoneName.set(normalizedLinkBoneName, {
+        minEulerDegrees: [minX, minY, minZ],
+        maxEulerDegrees: [maxX, maxY, maxZ],
+      });
+      this._resolveIKChains();
+      return true;
+    }
+
+    clearIKLinkAngleLimits(chainName: string, linkBoneName: string): boolean {
+      const chain = this._ikChains.get(chainName.trim());
+      if (!chain) {
+        return false;
+      }
+
+      const normalizedLinkBoneName = linkBoneName.trim();
+      if (!normalizedLinkBoneName) {
+        return false;
+      }
+
+      const hasDeleted = chain.linkConstraintsByBoneName.delete(
+        normalizedLinkBoneName
+      );
+      if (hasDeleted) {
+        this._resolveIKChains();
+      }
+      return hasDeleted;
+    }
+
+    clearIKLinkConstraints(chainName: string): boolean {
+      const chain = this._ikChains.get(chainName.trim());
+      if (!chain) {
+        return false;
+      }
+      if (chain.linkConstraintsByBoneName.size === 0) {
+        return false;
+      }
+      chain.linkConstraintsByBoneName.clear();
+      this._resolveIKChains();
+      return true;
+    }
+
     removeIKChain(chainName: string): void {
       const normalizedChainName = chainName.trim();
       this._ikChains.delete(normalizedChainName);
       this._resolvedIKChains.delete(normalizedChainName);
+      this._syncIKGizmoVisualsWithResolvedChains();
     }
 
     clearIKChains(): void {
       this._ikChains.clear();
       this._resolvedIKChains.clear();
+      this._syncIKGizmoVisualsWithResolvedChains();
     }
 
     hasIKChain(chainName: string): boolean {
@@ -612,6 +760,90 @@ namespace gdjs {
       return clampNumber(blendFactor, 0, 1);
     }
 
+    private _sanitizeIKTargetTolerance(tolerance: number): number {
+      if (!Number.isFinite(tolerance)) {
+        return 0.002;
+      }
+      return clampNumber(tolerance, 0.00005, 1);
+    }
+
+    private _sanitizeIKAngleConstraintRange(
+      minAngleDegrees: number,
+      maxAngleDegrees: number
+    ): [number, number] {
+      let normalizedMinAngle = Number.isFinite(minAngleDegrees)
+        ? clampNumber(minAngleDegrees, -180, 180)
+        : -180;
+      let normalizedMaxAngle = Number.isFinite(maxAngleDegrees)
+        ? clampNumber(maxAngleDegrees, -180, 180)
+        : 180;
+      if (normalizedMinAngle > normalizedMaxAngle) {
+        const temp = normalizedMinAngle;
+        normalizedMinAngle = normalizedMaxAngle;
+        normalizedMaxAngle = temp;
+      }
+      return [normalizedMinAngle, normalizedMaxAngle];
+    }
+
+    private _isAncestorBone(
+      ancestorBone: THREE.Bone,
+      childBone: THREE.Object3D
+    ): boolean {
+      let currentParent = childBone.parent;
+      while (currentParent) {
+        if (currentParent === ancestorBone) {
+          return true;
+        }
+        currentParent = currentParent.parent;
+      }
+      return false;
+    }
+
+    private _isValidIKHierarchy(
+      effectorBone: THREE.Bone,
+      linkBones: THREE.Bone[]
+    ): boolean {
+      if (linkBones.length === 0) {
+        return false;
+      }
+
+      if (!this._isAncestorBone(linkBones[0], effectorBone)) {
+        return false;
+      }
+
+      for (let linkIndex = 1; linkIndex < linkBones.length; linkIndex++) {
+        const childLinkBone = linkBones[linkIndex - 1];
+        const parentLinkBone = linkBones[linkIndex];
+        if (!this._isAncestorBone(parentLinkBone, childLinkBone)) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    private _buildDefaultIKLinkBoneNames(effectorBoneName: string): string[] {
+      const effectorBone = this._bonesByName.get(effectorBoneName);
+      if (!effectorBone) {
+        return [];
+      }
+
+      const linkBoneNames: string[] = [];
+      let currentParent: THREE.Object3D | null = effectorBone.parent;
+      while (currentParent) {
+        const maybeBone = currentParent as any;
+        if (!maybeBone || !maybeBone.isBone) {
+          break;
+        }
+
+        const parentBone = currentParent as THREE.Bone;
+        linkBoneNames.push(parentBone.name);
+        currentParent = parentBone.parent;
+      }
+
+      return linkBoneNames;
+    }
+
     private _rebuildIKChainCache(): void {
       this._bonesByName.clear();
       this._threeObject.traverse((child) => {
@@ -630,23 +862,39 @@ namespace gdjs {
         const effectorBone = this._bonesByName.get(chain.effectorBoneName);
         if (!effectorBone) continue;
 
+        const seenLinkBoneNames = new Set<string>();
         const linkBones = chain.linkBoneNames
+          .filter((linkBoneName) => {
+            if (seenLinkBoneNames.has(linkBoneName)) {
+              return false;
+            }
+            seenLinkBoneNames.add(linkBoneName);
+            return true;
+          })
           .map((linkBoneName) => this._bonesByName.get(linkBoneName))
           .filter((linkBone): linkBone is THREE.Bone => !!linkBone);
         if (linkBones.length === 0) continue;
+        if (!this._isValidIKHierarchy(effectorBone, linkBones)) continue;
 
         const targetBone =
           chain.targetMode === 'bone'
             ? this._bonesByName.get(chain.targetBoneName) || null
             : null;
 
+        const linkConstraints = linkBones.map((linkBone) => {
+          return chain.linkConstraintsByBoneName.get(linkBone.name) || null;
+        });
+
         this._resolvedIKChains.set(chain.name, {
           definition: chain,
           effectorBone,
           targetBone,
           linkBones,
+          linkConstraints,
+          targetToleranceSquared: chain.targetTolerance * chain.targetTolerance,
         });
       }
+      this._syncIKGizmoVisualsWithResolvedChains();
     }
 
     private _updateIK(): void {
@@ -666,7 +914,7 @@ namespace gdjs {
           resolvedChain.targetBone.getWorldPosition(targetPosition);
         } else {
           const [targetX, targetY, targetZ] = definition.targetPosition;
-          targetPosition.set(targetX, targetY, targetZ);
+          targetPosition.set(targetX, -targetY, targetZ);
         }
 
         this._solveIKChain(resolvedChain, targetPosition);
@@ -688,7 +936,13 @@ namespace gdjs {
         iterationIndex++
       ) {
         let hasRotatedBone = false;
-        for (const linkBone of resolvedChain.linkBones) {
+        for (
+          let linkIndex = 0;
+          linkIndex < resolvedChain.linkBones.length;
+          linkIndex++
+        ) {
+          const linkBone = resolvedChain.linkBones[linkIndex];
+          const linkConstraint = resolvedChain.linkConstraints[linkIndex];
           linkBone.getWorldPosition(this._ikScratchLinkPosition);
           resolvedChain.effectorBone.getWorldPosition(
             this._ikScratchEffectorPosition
@@ -754,6 +1008,27 @@ namespace gdjs {
             angle
           );
           linkBone.quaternion.multiply(this._ikScratchDeltaQuaternion);
+
+          if (linkConstraint) {
+            this._ikScratchEuler.setFromQuaternion(linkBone.quaternion, 'XYZ');
+            this._ikScratchEuler.x = clampNumber(
+              this._ikScratchEuler.x,
+              gdjs.toRad(linkConstraint.minEulerDegrees[0]),
+              gdjs.toRad(linkConstraint.maxEulerDegrees[0])
+            );
+            this._ikScratchEuler.y = clampNumber(
+              this._ikScratchEuler.y,
+              gdjs.toRad(linkConstraint.minEulerDegrees[1]),
+              gdjs.toRad(linkConstraint.maxEulerDegrees[1])
+            );
+            this._ikScratchEuler.z = clampNumber(
+              this._ikScratchEuler.z,
+              gdjs.toRad(linkConstraint.minEulerDegrees[2]),
+              gdjs.toRad(linkConstraint.maxEulerDegrees[2])
+            );
+            linkBone.quaternion.setFromEuler(this._ikScratchEuler);
+          }
+
           linkBone.updateMatrixWorld(true);
           hasRotatedBone = true;
         }
@@ -761,7 +1036,7 @@ namespace gdjs {
         resolvedChain.effectorBone.getWorldPosition(this._ikScratchEffectorPosition);
         if (
           this._ikScratchEffectorPosition.distanceToSquared(targetPosition) <
-          epsilon
+          resolvedChain.targetToleranceSquared
         ) {
           break;
         }
@@ -769,6 +1044,423 @@ namespace gdjs {
           break;
         }
       }
+    }
+
+    private _getIKGizmoLayerContext():
+      | {
+          layerRenderer: {
+            add3DRendererObject: (object: THREE.Object3D) => void;
+            remove3DRendererObject: (object: THREE.Object3D) => void;
+            getThreeCamera: () => THREE.Camera | null;
+            getThreeGroup: () => THREE.Group | null;
+          };
+          threeCamera: THREE.Camera | null;
+          threeGroup: THREE.Group | null;
+        }
+      | null {
+      const runtimeLayerRenderer = this._object
+        .getRuntimeScene()
+        .getLayer(this._object.getLayer())
+        .getRenderer() as {
+        add3DRendererObject?: (object: THREE.Object3D) => void;
+        remove3DRendererObject?: (object: THREE.Object3D) => void;
+        getThreeCamera?: () => THREE.Camera | null;
+        getThreeGroup?: () => THREE.Group | null;
+      };
+      if (
+        !runtimeLayerRenderer ||
+        typeof runtimeLayerRenderer.add3DRendererObject !== 'function' ||
+        typeof runtimeLayerRenderer.remove3DRendererObject !== 'function' ||
+        typeof runtimeLayerRenderer.getThreeCamera !== 'function' ||
+        typeof runtimeLayerRenderer.getThreeGroup !== 'function'
+      ) {
+        return null;
+      }
+
+      return {
+        layerRenderer: runtimeLayerRenderer as {
+          add3DRendererObject: (object: THREE.Object3D) => void;
+          remove3DRendererObject: (object: THREE.Object3D) => void;
+          getThreeCamera: () => THREE.Camera | null;
+          getThreeGroup: () => THREE.Group | null;
+        },
+        threeCamera: runtimeLayerRenderer.getThreeCamera(),
+        threeGroup: runtimeLayerRenderer.getThreeGroup(),
+      };
+    }
+
+    private _ensureIKGizmoLayerAttachment(): boolean {
+      if (!this._ikGizmoGroup) {
+        this._ikGizmoGroup = new THREE.Group();
+        this._ikGizmoGroup.rotation.order = 'ZYX';
+        this._ikGizmoGroup.name = 'GDJS.Model3D.IKGizmos';
+      }
+
+      const context = this._getIKGizmoLayerContext();
+      if (!context || !context.threeGroup) {
+        return false;
+      }
+
+      if (
+        this._ikGizmoAttachedLayerRenderer &&
+        this._ikGizmoAttachedLayerRenderer !== context.layerRenderer
+      ) {
+        this._ikGizmoAttachedLayerRenderer.remove3DRendererObject(
+          this._ikGizmoGroup
+        );
+      }
+
+      if (this._ikGizmoGroup.parent !== context.threeGroup) {
+        context.layerRenderer.add3DRendererObject(this._ikGizmoGroup);
+      }
+      this._ikGizmoAttachedLayerRenderer = context.layerRenderer;
+      return true;
+    }
+
+    private _disposeIKGizmoVisual(visual: Model3DIKGizmoVisual): void {
+      visual.targetHandle.removeFromParent();
+      visual.targetHandle.geometry.dispose();
+      const targetHandleMaterials = Array.isArray(visual.targetHandle.material)
+        ? visual.targetHandle.material
+        : [visual.targetHandle.material];
+      for (const targetHandleMaterial of targetHandleMaterials) {
+        targetHandleMaterial.dispose();
+      }
+
+      visual.chainLine.removeFromParent();
+      visual.chainLine.geometry.dispose();
+      const chainLineMaterials = Array.isArray(visual.chainLine.material)
+        ? visual.chainLine.material
+        : [visual.chainLine.material];
+      for (const chainLineMaterial of chainLineMaterials) {
+        chainLineMaterial.dispose();
+      }
+    }
+
+    private _disposeIKGizmos(): void {
+      this._ikGizmoDraggedChainName = null;
+      this._ikGizmoWasMousePressed = false;
+      for (const visual of this._ikGizmoVisuals.values()) {
+        this._disposeIKGizmoVisual(visual);
+      }
+      this._ikGizmoVisuals.clear();
+
+      if (this._ikGizmoGroup) {
+        if (this._ikGizmoAttachedLayerRenderer) {
+          this._ikGizmoAttachedLayerRenderer.remove3DRendererObject(
+            this._ikGizmoGroup
+          );
+        }
+        this._ikGizmoGroup.removeFromParent();
+      }
+      this._ikGizmoGroup = null;
+      this._ikGizmoAttachedLayerRenderer = null;
+    }
+
+    private _createIKGizmoVisual(
+      chainName: string,
+      resolvedChain: Model3DIKResolvedChain
+    ): Model3DIKGizmoVisual {
+      const targetHandle = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 18, 18),
+        new THREE.MeshBasicMaterial({
+          color: '#4ca3ff',
+          transparent: true,
+          opacity: 0.95,
+          depthTest: false,
+          depthWrite: false,
+        })
+      );
+      targetHandle.renderOrder = 9999;
+      (targetHandle as any).gdjsIKChainName = chainName;
+
+      const chainPointCount = resolvedChain.linkBones.length + 1;
+      const chainLinePositions = new Float32Array(chainPointCount * 3);
+      const chainLineGeometry = new THREE.BufferGeometry();
+      chainLineGeometry.setAttribute(
+        'position',
+        new THREE.BufferAttribute(chainLinePositions, 3)
+      );
+      const chainLine = new THREE.Line(
+        chainLineGeometry,
+        new THREE.LineBasicMaterial({
+          color: '#ff5a5a',
+          transparent: true,
+          opacity: 0.9,
+          depthTest: false,
+          depthWrite: false,
+        })
+      );
+      chainLine.renderOrder = 9998;
+
+      return {
+        targetHandle,
+        chainLine,
+        chainLinePositions,
+      };
+    }
+
+    private _syncIKGizmoVisualsWithResolvedChains(): void {
+      if (!this._ikGizmosEnabled || this._resolvedIKChains.size === 0) {
+        this._disposeIKGizmos();
+        return;
+      }
+
+      if (!this._ensureIKGizmoLayerAttachment() || !this._ikGizmoGroup) {
+        return;
+      }
+
+      for (const [chainName, visual] of this._ikGizmoVisuals.entries()) {
+        if (this._resolvedIKChains.has(chainName)) {
+          continue;
+        }
+        this._disposeIKGizmoVisual(visual);
+        this._ikGizmoVisuals.delete(chainName);
+      }
+
+      for (const [chainName, resolvedChain] of this._resolvedIKChains.entries()) {
+        if (this._ikGizmoVisuals.has(chainName)) {
+          continue;
+        }
+        const visual = this._createIKGizmoVisual(chainName, resolvedChain);
+        this._ikGizmoGroup.add(visual.chainLine);
+        this._ikGizmoGroup.add(visual.targetHandle);
+        this._ikGizmoVisuals.set(chainName, visual);
+      }
+
+      this._ikGizmoGroup.visible = this._ikGizmoVisuals.size > 0;
+    }
+
+    private _getChainTargetLocalPosition(
+      resolvedChain: Model3DIKResolvedChain,
+      outLocalPosition: THREE.Vector3
+    ): THREE.Vector3 {
+      const { definition, targetBone } = resolvedChain;
+      if (definition.targetMode === 'bone' && targetBone) {
+        targetBone.getWorldPosition(this._ikGizmoScratchTargetWorldPosition);
+        if (this._ikGizmoGroup && this._ikGizmoGroup.parent) {
+          outLocalPosition
+            .copy(this._ikGizmoScratchTargetWorldPosition);
+          this._ikGizmoGroup.parent.worldToLocal(outLocalPosition);
+          return outLocalPosition;
+        }
+      }
+
+      const [targetX, targetY, targetZ] = definition.targetPosition;
+      outLocalPosition.set(targetX, targetY, targetZ);
+      return outLocalPosition;
+    }
+
+    private _updateIKGizmoVisuals(): void {
+      if (
+        !this._ikGizmosEnabled ||
+        this._resolvedIKChains.size === 0 ||
+        !this._ikGizmoGroup ||
+        this._ikGizmoVisuals.size === 0 ||
+        !this._ensureIKGizmoLayerAttachment()
+      ) {
+        return;
+      }
+
+      const context = this._getIKGizmoLayerContext();
+      const threeCamera = context ? context.threeCamera : null;
+      if (threeCamera) {
+        threeCamera.getWorldPosition(this._ikGizmoCameraPosition);
+      }
+
+      for (const [chainName, resolvedChain] of this._resolvedIKChains.entries()) {
+        const visual = this._ikGizmoVisuals.get(chainName);
+        if (!visual) {
+          continue;
+        }
+
+        const targetLocalPosition = this._getChainTargetLocalPosition(
+          resolvedChain,
+          this._ikGizmoScratchLocalPosition
+        );
+        visual.targetHandle.position.copy(targetLocalPosition);
+
+        const targetHandleMaterial = visual.targetHandle
+          .material as THREE.MeshBasicMaterial;
+        targetHandleMaterial.color.set(
+          this._ikGizmoDraggedChainName === chainName ? '#ffd166' : '#4ca3ff'
+        );
+        targetHandleMaterial.needsUpdate = true;
+
+        if (threeCamera) {
+          const targetWorldPosition = this._ikGizmoPointerWorldPosition;
+          targetWorldPosition.copy(targetLocalPosition);
+          this._ikGizmoGroup.parent?.localToWorld(targetWorldPosition);
+          const distanceToCamera = targetWorldPosition.distanceTo(
+            this._ikGizmoCameraPosition
+          );
+          const handleScale = clampNumber(distanceToCamera * 0.02, 2, 35);
+          visual.targetHandle.scale.set(handleScale, handleScale, handleScale);
+        }
+
+        let positionOffset = 0;
+        for (
+          let linkIndex = resolvedChain.linkBones.length - 1;
+          linkIndex >= 0;
+          linkIndex--
+        ) {
+          const linkBone = resolvedChain.linkBones[linkIndex];
+          linkBone.getWorldPosition(this._ikGizmoScratchTargetWorldPosition);
+          if (this._ikGizmoGroup.parent) {
+            this._ikGizmoGroup.parent.worldToLocal(
+              this._ikGizmoScratchTargetWorldPosition
+            );
+          }
+          visual.chainLinePositions[positionOffset++] =
+            this._ikGizmoScratchTargetWorldPosition.x;
+          visual.chainLinePositions[positionOffset++] =
+            this._ikGizmoScratchTargetWorldPosition.y;
+          visual.chainLinePositions[positionOffset++] =
+            this._ikGizmoScratchTargetWorldPosition.z;
+        }
+
+        resolvedChain.effectorBone.getWorldPosition(
+          this._ikGizmoScratchTargetWorldPosition
+        );
+        if (this._ikGizmoGroup.parent) {
+          this._ikGizmoGroup.parent.worldToLocal(
+            this._ikGizmoScratchTargetWorldPosition
+          );
+        }
+        visual.chainLinePositions[positionOffset++] =
+          this._ikGizmoScratchTargetWorldPosition.x;
+        visual.chainLinePositions[positionOffset++] =
+          this._ikGizmoScratchTargetWorldPosition.y;
+        visual.chainLinePositions[positionOffset++] =
+          this._ikGizmoScratchTargetWorldPosition.z;
+
+        const linePositionAttribute = visual.chainLine.geometry.getAttribute(
+          'position'
+        ) as THREE.BufferAttribute;
+        linePositionAttribute.needsUpdate = true;
+      }
+    }
+
+    private _updateIKGizmoInteraction(): void {
+      if (
+        !this._ikGizmosEnabled ||
+        this._resolvedIKChains.size === 0 ||
+        this._ikGizmoVisuals.size === 0
+      ) {
+        this._ikGizmoDraggedChainName = null;
+        this._ikGizmoWasMousePressed = false;
+        return;
+      }
+
+      const context = this._getIKGizmoLayerContext();
+      if (!context || !context.threeCamera || !this._ensureIKGizmoLayerAttachment()) {
+        this._ikGizmoDraggedChainName = null;
+        this._ikGizmoWasMousePressed = false;
+        return;
+      }
+
+      const runtimeGame = this._object.getInstanceContainer().getGame();
+      const inputManager = runtimeGame.getInputManager();
+      const isMousePressed = inputManager.isMouseButtonPressed(
+        gdjs.InputManager.MOUSE_LEFT_BUTTON
+      );
+      const hasMouseJustPressed = isMousePressed && !this._ikGizmoWasMousePressed;
+
+      if (!isMousePressed) {
+        this._ikGizmoDraggedChainName = null;
+      }
+
+      if (hasMouseJustPressed && inputManager.isMouseInsideCanvas()) {
+        this._ikGizmoNormalizedPointer.set(
+          (inputManager.getCursorX() / runtimeGame.getGameResolutionWidth()) * 2 -
+            1,
+          -(inputManager.getCursorY() / runtimeGame.getGameResolutionHeight()) * 2 +
+            1
+        );
+        this._ikGizmoRaycaster.setFromCamera(
+          this._ikGizmoNormalizedPointer,
+          context.threeCamera
+        );
+        const targetHandles = Array.from(this._ikGizmoVisuals.values()).map(
+          (visual) => visual.targetHandle
+        );
+        const intersects = this._ikGizmoRaycaster.intersectObjects(
+          targetHandles,
+          false
+        );
+        const firstIntersect = intersects[0];
+        if (firstIntersect) {
+          const chainName = (firstIntersect.object as any).gdjsIKChainName as
+            | string
+            | undefined;
+          if (chainName && this._resolvedIKChains.has(chainName)) {
+            this._ikGizmoDraggedChainName = chainName;
+            const resolvedChain = this._resolvedIKChains.get(chainName);
+            if (resolvedChain) {
+              resolvedChain.definition.targetMode = 'position';
+              resolvedChain.definition.targetBoneName = '';
+              context.threeCamera.getWorldDirection(this._ikGizmoCameraDirection);
+              this._ikGizmoDragPlane.setFromNormalAndCoplanarPoint(
+                this._ikGizmoCameraDirection,
+                firstIntersect.point
+              );
+              if (
+                this._ikGizmoRaycaster.ray.intersectPlane(
+                  this._ikGizmoDragPlane,
+                  this._ikGizmoPointerWorldPosition
+                )
+              ) {
+                this._ikGizmoDragOffset
+                  .copy(firstIntersect.point)
+                  .sub(this._ikGizmoPointerWorldPosition);
+              } else {
+                this._ikGizmoDragOffset.set(0, 0, 0);
+              }
+            }
+          }
+        }
+      }
+
+      if (isMousePressed && this._ikGizmoDraggedChainName) {
+        const draggedResolvedChain = this._resolvedIKChains.get(
+          this._ikGizmoDraggedChainName
+        );
+        if (draggedResolvedChain) {
+          this._ikGizmoNormalizedPointer.set(
+            (inputManager.getCursorX() / runtimeGame.getGameResolutionWidth()) *
+              2 -
+              1,
+            -(inputManager.getCursorY() / runtimeGame.getGameResolutionHeight()) *
+              2 +
+              1
+          );
+          this._ikGizmoRaycaster.setFromCamera(
+            this._ikGizmoNormalizedPointer,
+            context.threeCamera
+          );
+          if (
+            this._ikGizmoRaycaster.ray.intersectPlane(
+              this._ikGizmoDragPlane,
+              this._ikGizmoPointerWorldPosition
+            )
+          ) {
+            this._ikGizmoPointerWorldPosition.add(this._ikGizmoDragOffset);
+            draggedResolvedChain.definition.targetPosition = [
+              this._ikGizmoPointerWorldPosition.x,
+              -this._ikGizmoPointerWorldPosition.y,
+              this._ikGizmoPointerWorldPosition.z,
+            ];
+          }
+        } else {
+          this._ikGizmoDraggedChainName = null;
+        }
+      }
+
+      this._ikGizmoWasMousePressed = isMousePressed;
+    }
+
+    onDestroy(): void {
+      this._disposeIKGizmos();
     }
 
     getAnimationCount() {

@@ -1,6 +1,6 @@
 //@flow
-import { findGDJS } from '../GameEngineFinder/LocalGDJSFinder';
 import optionalRequire from '../Utils/OptionalRequire';
+const { findGDJS } = require('../GameEngineFinder/LocalGDJSFinder');
 const fs = optionalRequire('fs');
 const path = optionalRequire('path');
 

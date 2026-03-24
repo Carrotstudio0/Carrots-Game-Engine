@@ -271,9 +271,9 @@ namespace gdjs {
     private _updateFsrSceneTextureFromPixiRenderTexture(
       threeRenderer: THREE.WebGLRenderer,
       pixiRenderer: PIXI.Renderer
-    ): void {
+    ): boolean {
       if (!this._fsrSceneTexture || !this._fsrSceneRenderTexture) {
-        return;
+        return false;
       }
 
       const glTexture =
@@ -281,11 +281,15 @@ namespace gdjs {
           pixiRenderer.CONTEXT_UID
         ];
       if (!glTexture) {
-        return;
+        return false;
       }
 
       const texture = threeRenderer.properties.get(this._fsrSceneTexture);
+      if (!texture) {
+        return false;
+      }
       texture.__webglTexture = glTexture.texture;
+      return true;
     }
 
     private _renderTextureToLowResTarget(
@@ -456,10 +460,16 @@ namespace gdjs {
               threeRenderer.resetState();
               pixiRenderer.reset();
               this._renderSceneToFsrTexture(pixiRenderer);
-              this._updateFsrSceneTextureFromPixiRenderTexture(
-                threeRenderer,
-                pixiRenderer
-              );
+              const hasSyncedSceneTexture =
+                this._updateFsrSceneTextureFromPixiRenderTexture(
+                  threeRenderer,
+                  pixiRenderer
+                );
+              if (!hasSyncedSceneTexture) {
+                throw new Error(
+                  'Unable to synchronize Pixi render texture for FSR rendering.'
+                );
+              }
 
               pixiRenderer.reset();
               threeRenderer.resetState();

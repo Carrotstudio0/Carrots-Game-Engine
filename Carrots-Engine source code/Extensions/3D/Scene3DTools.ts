@@ -4,6 +4,53 @@ namespace gdjs {
    */
   export namespace scene3d {
     const assumedFovIn2D = 45;
+    type CameraRotationState = {
+      x: float;
+      y: float;
+    };
+    const cameraRotationByLayer = new WeakMap<
+      gdjs.RuntimeLayer,
+      CameraRotationState
+    >();
+
+    const normalizeAngleDegrees = (angle: float): float => {
+      if (!Number.isFinite(angle)) {
+        return 0;
+      }
+
+      let normalizedAngle = angle % 360;
+      if (normalizedAngle <= -180) {
+        normalizedAngle += 360;
+      } else if (normalizedAngle > 180) {
+        normalizedAngle -= 360;
+      }
+      return normalizedAngle;
+    };
+
+    const getOrCreateCameraRotationState = (
+      layer: gdjs.RuntimeLayer,
+      threeCamera: THREE.Camera
+    ): CameraRotationState => {
+      let rotationState = cameraRotationByLayer.get(layer);
+      if (!rotationState) {
+        rotationState = {
+          x: normalizeAngleDegrees(gdjs.toDegrees(threeCamera.rotation.x)),
+          y: normalizeAngleDegrees(gdjs.toDegrees(threeCamera.rotation.y)),
+        };
+        cameraRotationByLayer.set(layer, rotationState);
+      }
+      return rotationState;
+    };
+
+    const syncCameraRotationStateFromCamera = (
+      layer: gdjs.RuntimeLayer,
+      threeCamera: THREE.Camera
+    ): CameraRotationState => {
+      const rotationState = getOrCreateCameraRotationState(layer, threeCamera);
+      rotationState.x = normalizeAngleDegrees(gdjs.toDegrees(threeCamera.rotation.x));
+      rotationState.y = normalizeAngleDegrees(gdjs.toDegrees(threeCamera.rotation.y));
+      return rotationState;
+    };
 
     export namespace camera {
       export const getCameraZ = (
@@ -49,7 +96,7 @@ namespace gdjs {
 
         const threeCamera = layerRenderer.getThreeCamera();
         if (!threeCamera) return 0;
-        return gdjs.toDegrees(threeCamera.rotation.x);
+        return getOrCreateCameraRotationState(layer, threeCamera).x;
       };
 
       export const setCameraRotationX = (
@@ -64,7 +111,9 @@ namespace gdjs {
         const threeCamera = layerRenderer.getThreeCamera();
         if (!threeCamera) return;
 
-        threeCamera.rotation.x = gdjs.toRad(angle);
+        const rotationState = getOrCreateCameraRotationState(layer, threeCamera);
+        rotationState.x = Number.isFinite(angle) ? angle : 0;
+        threeCamera.rotation.x = gdjs.toRad(rotationState.x);
       };
 
       export const getCameraRotationY = (
@@ -77,7 +126,7 @@ namespace gdjs {
 
         const threeCamera = layerRenderer.getThreeCamera();
         if (!threeCamera) return 0;
-        return gdjs.toDegrees(threeCamera.rotation.y);
+        return getOrCreateCameraRotationState(layer, threeCamera).y;
       };
 
       export const setCameraRotationY = (
@@ -92,7 +141,9 @@ namespace gdjs {
         const threeCamera = layerRenderer.getThreeCamera();
         if (!threeCamera) return;
 
-        threeCamera.rotation.y = gdjs.toRad(angle);
+        const rotationState = getOrCreateCameraRotationState(layer, threeCamera);
+        rotationState.y = Number.isFinite(angle) ? angle : 0;
+        threeCamera.rotation.y = gdjs.toRad(rotationState.y);
       };
 
       export const turnCameraTowardObject = (
@@ -123,6 +174,7 @@ namespace gdjs {
         );
         // The layer angle takes over the 3D camera Z rotation.
         layer.setCameraRotation(gdjs.toDegrees(-threeCamera.rotation.z));
+        syncCameraRotationStateFromCamera(layer, threeCamera);
       };
 
       export const turnCameraTowardPosition = (
@@ -148,6 +200,7 @@ namespace gdjs {
         threeCamera.lookAt(x, -y, z);
         // The layer angle takes over the 3D camera Z rotation.
         layer.setCameraRotation(gdjs.toDegrees(-threeCamera.rotation.z));
+        syncCameraRotationStateFromCamera(layer, threeCamera);
       };
 
       export const getNearPlane = (
