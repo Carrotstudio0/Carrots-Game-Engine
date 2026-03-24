@@ -131,6 +131,9 @@ const useCreateProject = ({
     project.setVersion('1.0.0');
     project.getAuthorIds().clear();
     project.setAuthor('');
+    // Default project branding is fully customizable and disabled by default.
+    project.getLoadingScreen().showGDevelopLogoDuringLoadingScreen(false);
+    project.getWatermark().showGDevelopWatermark(false);
     if (newProjectSetup.width && newProjectSetup.height) {
       project.setGameResolutionSize(
         newProjectSetup.width,

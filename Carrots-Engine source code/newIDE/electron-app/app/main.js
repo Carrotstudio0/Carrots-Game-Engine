@@ -39,6 +39,7 @@ const {
   closePreviewWindowsForParent,
   closeAllPreviewWindows,
 } = require('./PreviewWindow');
+const { registerGitSyncIpcHandlers } = require('./GitSync');
 const {
   setupLocalGDJSDevelopmentWatcher,
   closeLocalGDJSDevelopmentWatcher,
@@ -723,6 +724,7 @@ app.on('ready', function() {
   });
 
   setUpDiscordRichPresence(ipcMain);
+  registerGitSyncIpcHandlers(ipcMain);
 
   // npm script execution in external terminal (cross-platform)
   ipcMain.on('run-npm-script', (event, { projectPath, npmScript }) => {

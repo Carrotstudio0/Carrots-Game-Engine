@@ -35,6 +35,8 @@ import { extractGDevelopApiErrorStatusAndCode } from '../../Utils/GDevelopServic
 import UserLine from '../../UI/User/UserLine';
 import { getTranslatableLevel } from '../../Utils/AclUtils';
 import { emailRegex } from '../../Utils/EmailUtils';
+import { Tabs } from '../../UI/Tabs';
+import GitSyncPanel from './GitSyncPanel';
 
 const getEmailErrorText = (addError: ?string) => {
   switch (addError) {
@@ -67,12 +69,19 @@ const getEmailErrorText = (addError: ?string) => {
 
 type Props = {|
   cloudProjectId: ?string,
+  localProjectFilePath?: ?string,
 |};
 
-const InviteHome = ({ cloudProjectId }: Props): React.Node | React.Node => {
+const InviteHome = ({
+  cloudProjectId,
+  localProjectFilePath,
+}: Props): React.Node | React.Node => {
   const authenticatedUser = React.useContext(AuthenticatedUserContext);
   const { profile, limits } = authenticatedUser;
   const isOnline = useOnlineStatus();
+  const [inviteSection, setInviteSection] = React.useState<'cloud' | 'git'>(
+    localProjectFilePath ? 'git' : 'cloud'
+  );
 
   const [projectUserAcls, setProjectUserAcls] = React.useState(null);
   const [fetchError, setFetchError] = React.useState<
@@ -103,8 +112,40 @@ const InviteHome = ({ cloudProjectId }: Props): React.Node | React.Node => {
   );
   const { showAlert, showConfirmation } = useAlertDialog();
 
+  React.useEffect(
+    () => {
+      if (!localProjectFilePath && inviteSection === 'git') {
+        setInviteSection('cloud');
+      }
+    },
+    [localProjectFilePath, inviteSection]
+  );
+
+  const inviteTabs = (
+    <Tabs
+      value={inviteSection}
+      onChange={setInviteSection}
+      options={[
+        {
+          value: 'cloud',
+          label: <Trans>Cloud</Trans>,
+          id: 'invite-cloud-tab',
+        },
+        {
+          value: 'git',
+          label: <Trans>Git Sync</Trans>,
+          id: 'invite-git-tab',
+          disabled: !localProjectFilePath,
+        },
+      ]}
+    />
+  );
+
   const fetchProjectUserAcls = React.useCallback(
     async () => {
+      if (inviteSection !== 'cloud') {
+        return;
+      }
       if (!cloudProjectId) {
         setFetchError('project-not-found');
         return;
@@ -140,7 +181,7 @@ const InviteHome = ({ cloudProjectId }: Props): React.Node | React.Node => {
         setActionInProgress(false);
       }
     },
-    [authenticatedUser, cloudProjectId]
+    [authenticatedUser, cloudProjectId, inviteSection]
   );
 
   React.useEffect(
@@ -299,9 +340,19 @@ const InviteHome = ({ cloudProjectId }: Props): React.Node | React.Node => {
     }
   };
 
+  if (inviteSection === 'git') {
+    return (
+      <ColumnStackLayout noMargin expand>
+        {inviteTabs}
+        <GitSyncPanel localProjectFilePath={localProjectFilePath} />
+      </ColumnStackLayout>
+    );
+  }
+
   if (!profile || !limits || !isOnline) {
     return (
       <ColumnStackLayout expand noMargin>
+        {inviteTabs}
         <AlertMessage kind="warning">
           <Trans>You must be logged in to invite collaborators.</Trans>
         </AlertMessage>
@@ -318,6 +369,7 @@ const InviteHome = ({ cloudProjectId }: Props): React.Node | React.Node => {
   return (
     <>
       <ColumnStackLayout expand noMargin>
+        {inviteTabs}
         <UserLine
           username={profile.username}
           fullName={profile.fullName}
