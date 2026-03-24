@@ -60,13 +60,6 @@ module.exports = {
           else return false;
 
           behaviorContent.getChild('bodyType').setStringValue(bodyTypeValue);
-          if (
-            bodyTypeValue !== 'Static' &&
-            behaviorContent.getChild('shape').getStringValue().toLowerCase() ===
-              'mesh'
-          ) {
-            behaviorContent.getChild('shape').setStringValue('Box');
-          }
           return true;
         }
 
@@ -93,9 +86,16 @@ module.exports = {
           else return false;
 
           behaviorContent.getChild('shape').setStringValue(shapeValue);
-          if (shapeValue === 'Mesh') {
-            behaviorContent.getChild('bodyType').setStringValue('Static');
+          return true;
+        }
+
+        if (propertyName === 'showCollider') {
+          if (!behaviorContent.hasChild('showCollider')) {
+            behaviorContent.addChild('showCollider').setBoolValue(false);
           }
+          behaviorContent
+            .getChild('showCollider')
+            .setBoolValue(newValue === '1' || newValue === 'true');
           return true;
         }
 
@@ -666,7 +666,27 @@ module.exports = {
           .addChoice('Capsule', _('Capsule'))
           .addChoice('Sphere', _('Sphere'))
           .addChoice('Cylinder', _('Cylinder'))
-          .addChoice('Mesh', _('Mesh (works for Static only)'));
+          .addChoice('Mesh', _('Mesh'));
+        if (!behaviorContent.hasChild('showCollider')) {
+          behaviorContent.addChild('showCollider').setBoolValue(false);
+        }
+        behaviorProperties
+          .getOrCreate('showCollider')
+          .setValue(
+            behaviorContent.getChild('showCollider').getBoolValue()
+              ? 'true'
+              : 'false'
+          )
+          .setType('Boolean')
+          .setLabel(_('Show physics hitbox'))
+          .setDescription(
+            _(
+              'Draw the physics collider shape in the 3D scene during preview/runtime.'
+            )
+          )
+          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden)
+          .setGroup(_('Physics body advanced settings'))
+          .setAdvanced(true);
         behaviorProperties
           .getOrCreate('meshShapeResourceName')
           .setValue(
@@ -1460,6 +1480,7 @@ module.exports = {
         behaviorContent.addChild('bullet').setBoolValue(false);
         behaviorContent.addChild('fixedRotation').setBoolValue(false);
         behaviorContent.addChild('shape').setStringValue('Box');
+        behaviorContent.addChild('showCollider').setBoolValue(false);
         behaviorContent.addChild('meshShapeResourceName').setStringValue('');
         behaviorContent.addChild('shapeOrientation').setStringValue('Z');
         behaviorContent.addChild('shapeDimensionA').setDoubleValue(0);

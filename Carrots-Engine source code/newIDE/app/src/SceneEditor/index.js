@@ -134,6 +134,8 @@ const light3DByKind = {
   },
 };
 type Light3DKind = $Keys<typeof light3DByKind>;
+const PHYSICS_3D_BEHAVIOR_TYPE = 'Physics3D::Physics3DBehavior';
+const PHYSICS_3D_SHOW_COLLIDER_PROPERTY = 'showCollider';
 
 interface InstancePersistentUuidData {
   persistentUuid: string;
@@ -755,6 +757,13 @@ export default class SceneEditor extends React.Component<Props, State> {
           isWindowMaskShown={!!this.state.instancesEditorSettings.windowMask}
           toggleGrid={this.toggleGrid}
           isGridShown={!!this.state.instancesEditorSettings.grid}
+          toggleSelectedPhysicsHitboxes={this.toggleSelectedPhysicsHitboxes}
+          canToggleSelectedPhysicsHitboxes={
+            this.hasSelectedPhysics3DBehaviors()
+          }
+          areSelectedPhysicsHitboxesShown={
+            this.areSelectedPhysics3DHitboxesShown()
+          }
           openSetupGrid={this.openSetupGrid}
           setZoomFactor={this.setZoomFactor}
           getContextMenuZoomItems={this.getContextMenuZoomItems}
@@ -790,6 +799,13 @@ export default class SceneEditor extends React.Component<Props, State> {
           isWindowMaskShown={!!this.state.instancesEditorSettings.windowMask}
           toggleGrid={this.toggleGrid}
           isGridShown={!!this.state.instancesEditorSettings.grid}
+          toggleSelectedPhysicsHitboxes={this.toggleSelectedPhysicsHitboxes}
+          canToggleSelectedPhysicsHitboxes={
+            this.hasSelectedPhysics3DBehaviors()
+          }
+          areSelectedPhysicsHitboxesShown={
+            this.areSelectedPhysics3DHitboxesShown()
+          }
           openSetupGrid={this.openSetupGrid}
           setZoomFactor={this.setZoomFactor}
           getContextMenuZoomItems={this.getContextMenuZoomItems}
@@ -928,6 +944,91 @@ export default class SceneEditor extends React.Component<Props, State> {
       grid: !this.state.instancesEditorSettings.grid,
       snap: !this.state.instancesEditorSettings.grid,
     });
+  };
+
+  getSelectedObjectsWithPhysics3DBehaviors = (): Array<{|
+    object: gdObject,
+    behaviors: Array<gdBehavior>,
+  |}> => {
+    const { globalObjectsContainer, objectsContainer } = this.props;
+    const selectedObjectNames = uniq(
+      this.instancesSelection
+        .getSelectedInstances()
+        .map(instance => instance.getObjectName())
+    );
+
+    return selectedObjectNames
+      .map(objectName =>
+        getObjectByName(globalObjectsContainer, objectsContainer, objectName)
+      )
+      .filter(Boolean)
+      .map(object => {
+        const behaviors = object
+          .getAllBehaviorNames()
+          .toJSArray()
+          .map(behaviorName => object.getBehavior(behaviorName))
+          .filter(
+            behavior => behavior.getTypeName() === PHYSICS_3D_BEHAVIOR_TYPE
+          );
+
+        return { object, behaviors };
+      })
+      .filter(({ behaviors }) => behaviors.length > 0);
+  };
+
+  isPhysics3DHitboxShown = (behavior: gdBehavior): boolean => {
+    const showColliderProperty = behavior
+      .getProperties()
+      .get(PHYSICS_3D_SHOW_COLLIDER_PROPERTY);
+    if (!showColliderProperty) return false;
+
+    const value = showColliderProperty.getValue().toLowerCase();
+    return value === '1' || value === 'true';
+  };
+
+  hasSelectedPhysics3DBehaviors = (): boolean => {
+    return this.getSelectedObjectsWithPhysics3DBehaviors().length > 0;
+  };
+
+  areSelectedPhysics3DHitboxesShown = (): boolean => {
+    const selectedObjectsWithPhysics3D = this.getSelectedObjectsWithPhysics3DBehaviors();
+    if (!selectedObjectsWithPhysics3D.length) return false;
+
+    return selectedObjectsWithPhysics3D.every(({ behaviors }) =>
+      behaviors.every(behavior => this.isPhysics3DHitboxShown(behavior))
+    );
+  };
+
+  toggleSelectedPhysicsHitboxes = () => {
+    const selectedObjectsWithPhysics3D = this.getSelectedObjectsWithPhysics3DBehaviors();
+    if (!selectedObjectsWithPhysics3D.length) return;
+
+    const shouldShowHitboxes = !selectedObjectsWithPhysics3D.every(
+      ({ behaviors }) =>
+        behaviors.every(behavior => this.isPhysics3DHitboxShown(behavior))
+    );
+    const updatedObjects = [];
+
+    selectedObjectsWithPhysics3D.forEach(({ object, behaviors }) => {
+      const hasBehaviorBeenUpdated = behaviors.some(behavior =>
+        behavior.updateProperty(
+          PHYSICS_3D_SHOW_COLLIDER_PROPERTY,
+          shouldShowHitboxes ? '1' : '0'
+        )
+      );
+      if (hasBehaviorBeenUpdated) {
+        updatedObjects.push(object);
+      }
+    });
+
+    if (!updatedObjects.length) return;
+
+    if (this.props.unsavedChanges) {
+      this.props.unsavedChanges.triggerUnsavedChanges();
+    }
+    this._hotReloadObjects({ updatedObjects });
+    this.forceUpdatePropertiesEditor();
+    this.updateToolbar();
   };
 
   setGameEditorMode = (newMode: 'instances-editor' | 'embedded-game') => {

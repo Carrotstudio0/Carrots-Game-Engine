@@ -26,6 +26,7 @@ import TrashIcon from '../../UI/CustomSvgIcons/Trash';
 import GridIcon from '../../UI/CustomSvgIcons/Grid';
 import ZoomInIcon from '../../UI/CustomSvgIcons/ZoomIn';
 import EditSceneIcon from '../../UI/CustomSvgIcons/EditScene';
+import RectangleIcon from '../../UI/CustomSvgIcons/Rectangle';
 import {
   OPEN_INSTANCES_PANEL_BUTTON_ID,
   OPEN_LAYERS_PANEL_BUTTON_ID,
@@ -75,6 +76,9 @@ type Props = {|
   toggleWindowMask: () => void,
   isGridShown: boolean,
   toggleGrid: () => void,
+  toggleSelectedPhysicsHitboxes: () => void,
+  canToggleSelectedPhysicsHitboxes: boolean,
+  areSelectedPhysicsHitboxesShown: boolean,
   openSetupGrid: () => void,
   getContextMenuZoomItems: I18nType => Array<MenuItemTemplate>,
   setZoomFactor: number => void,
@@ -275,6 +279,21 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
           }
         >
           <EditIcon />
+        </IconButton>
+        <ToolbarSeparator />
+        <IconButton
+          size="small"
+          color="default"
+          onClick={props.toggleSelectedPhysicsHitboxes}
+          disabled={!props.canToggleSelectedPhysicsHitboxes}
+          selected={props.areSelectedPhysicsHitboxesShown}
+          tooltip={
+            props.areSelectedPhysicsHitboxesShown
+              ? t`Hide 3D physics hitboxes`
+              : t`Show 3D physics hitboxes`
+          }
+        >
+          <RectangleIcon />
         </IconButton>
         <ToolbarSeparator />
         <ElementWithMenu

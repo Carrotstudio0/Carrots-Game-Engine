@@ -931,6 +931,7 @@ namespace gdjs {
     fixedRotation: boolean;
     _shape: string;
     private meshShapeResourceName: string;
+    private showCollider: boolean;
     private shapeOrientation: string;
     private shapeDimensionA: float;
     private shapeDimensionB: float;
@@ -985,6 +986,9 @@ namespace gdjs {
     private _jointEditorPreviewAnchorMesh: THREE.Mesh | null;
     private _jointEditorPreviewSourceMesh: THREE.Mesh | null;
     private _jointEditorPreviewTargetMesh: THREE.Mesh | null;
+    private _colliderPreviewGroup: THREE.Group | null;
+    private _colliderPreviewObject: THREE.Object3D | null;
+    private _colliderPreviewSignature: string;
     shapeScale: number = 1;
 
     /**
@@ -1072,6 +1076,7 @@ namespace gdjs {
       this.fixedRotation = behaviorData.fixedRotation;
       this._shape = behaviorData.shape;
       this.meshShapeResourceName = behaviorData.meshShapeResourceName || '';
+      this.showCollider = !!behaviorData.showCollider;
       this.shapeOrientation =
         behaviorData.shape === 'Box' ? 'Z' : behaviorData.shapeOrientation;
       this.shapeDimensionA = behaviorData.shapeDimensionA;
@@ -1165,6 +1170,9 @@ namespace gdjs {
       this._jointEditorPreviewAnchorMesh = null;
       this._jointEditorPreviewSourceMesh = null;
       this._jointEditorPreviewTargetMesh = null;
+      this._colliderPreviewGroup = null;
+      this._colliderPreviewObject = null;
+      this._colliderPreviewSignature = '';
       this._sharedData = Physics3DSharedData.getSharedData(
         instanceContainer.getScene(),
         behaviorData.name
@@ -1327,6 +1335,9 @@ namespace gdjs {
           behaviorData.jointEditorPreviewSize
         );
       }
+      if (behaviorData.showCollider !== undefined) {
+        this.setShowCollider(!!behaviorData.showCollider);
+      }
 
       // TODO: make these properties updatable.
       if (behaviorData.layers !== undefined) {
@@ -1485,6 +1496,7 @@ namespace gdjs {
 
     override onDeActivate() {
       this._sharedData.removeFromBehaviorsList(this);
+      this._disposeColliderPreview();
       this._destroyBody();
     }
 
@@ -1495,6 +1507,7 @@ namespace gdjs {
     override onDestroy() {
       this._destroyedDuringFrameLogic = true;
       this._disposeJointEditorPreview();
+      this._disposeColliderPreview();
       this._clearJointEditorOwnedJoint();
       this._sharedData.removeBodyFromAllRagdollGroups(this);
       this.onDeActivate();
@@ -1503,6 +1516,7 @@ namespace gdjs {
     _destroyBody() {
       this._preferredJointTargetsByObjectName = {};
       this._disposeJointEditorPreview();
+      this._disposeColliderPreview();
       this._clearJointEditorOwnedJoint();
       // Remove all joints associated with this body before destroying it
       if (this._body !== null) {
@@ -1580,45 +1594,52 @@ namespace gdjs {
 
       const onePixel = this._sharedData.worldInvScale;
 
-      let shapeSettings: Jolt.ShapeSettings;
+      let shapeSettings: Jolt.ShapeSettings | null = null;
       /** This is fine only because no other Quat is used locally. */
-      let quat: Jolt.Quat;
-      if (
-        this._shape === 'Mesh' &&
-        this.bodyType === 'Static' &&
-        isModel3D(this.owner)
-      ) {
-        const meshShapeSettings: Array<Jolt.MeshShapeSettings> =
-          gdjs.staticArray(
-            Physics3DRuntimeBehavior.prototype
-              ._createNewShapeSettingsWithoutMassCenterOffset
-          );
-        this.getMeshShapeSettings(
-          this.owner,
-          width,
-          height,
-          depth,
-          meshShapeSettings
-        );
-        if (meshShapeSettings.length === 1) {
-          shapeSettings = meshShapeSettings[0];
-        } else {
-          const compoundShapeSettings = new Jolt.StaticCompoundShapeSettings();
-          for (let index = 0; index < meshShapeSettings.length; index++) {
-            compoundShapeSettings.AddShapeShapeSettings(
-              this.getVec3(0, 0, 0),
-              this.getQuat(0, 0, 0, 1),
-              meshShapeSettings[index],
-              index
+      let quat: Jolt.Quat = this.getQuat(0, 0, 0, 1);
+      if (this._shape === 'Mesh') {
+        const meshWidth = width > 0 ? width : onePixel;
+        const meshHeight = height > 0 ? height : onePixel;
+        const meshDepth = depth > 0 ? depth : onePixel;
+        this._shapeHalfWidth = meshWidth / 2;
+        this._shapeHalfHeight = meshHeight / 2;
+        this._shapeHalfDepth = meshDepth / 2;
+
+        if (this.bodyType === 'Static') {
+          const meshShapeSettings: Array<Jolt.MeshShapeSettings> =
+            gdjs.staticArray(
+              Physics3DRuntimeBehavior.prototype
+                ._createNewShapeSettingsWithoutMassCenterOffset
             );
+          this.getMeshShapeSettings(width, height, depth, meshShapeSettings);
+          if (meshShapeSettings.length === 1) {
+            shapeSettings = meshShapeSettings[0];
+          } else if (meshShapeSettings.length > 1) {
+            const compoundShapeSettings = new Jolt.StaticCompoundShapeSettings();
+            for (let index = 0; index < meshShapeSettings.length; index++) {
+              compoundShapeSettings.AddShapeShapeSettings(
+                this.getVec3(0, 0, 0),
+                this.getQuat(0, 0, 0, 1),
+                meshShapeSettings[index],
+                index
+              );
+            }
+            shapeSettings = compoundShapeSettings;
           }
-          shapeSettings = compoundShapeSettings;
+          meshShapeSettings.length = 0;
+        } else {
+          const convexHullShapeSettings =
+            this._createMeshConvexHullShapeSettings(width, height, depth);
+          if (convexHullShapeSettings) {
+            convexHullShapeSettings.mDensity = this.density;
+            shapeSettings = convexHullShapeSettings;
+          }
         }
-        meshShapeSettings.length = 0;
-        quat = this.getQuat(0, 0, 0, 1);
-      } else {
+      }
+
+      if (!shapeSettings) {
         let convexShapeSettings: Jolt.ConvexShapeSettings;
-        if (this._shape === 'Box') {
+        if (this._shape === 'Box' || this._shape === 'Mesh') {
           const boxWidth =
             shapeDimensionA > 0
               ? shapeDimensionA
@@ -1732,47 +1753,72 @@ namespace gdjs {
       );
     }
 
+    private _createMeshShapeSourceObject(
+      width: float,
+      height: float,
+      depth: float
+    ): THREE.Object3D | null {
+      if (isModel3D(this.owner)) {
+        const originalModel = this.owner
+          .getInstanceContainer()
+          .getGame()
+          .getModel3DManager()
+          .getModel(
+            this.meshShapeResourceName || this.owner._modelResourceName || ''
+          );
+
+        const modelInCube = new THREE.Group();
+        modelInCube.rotation.order = 'ZYX';
+        const root = THREE_ADDONS.SkeletonUtils.clone(originalModel.scene);
+        modelInCube.add(root);
+
+        const data = this.owner._data.content;
+        this.owner._renderer.stretchModelIntoUnitaryCube(
+          modelInCube,
+          data.rotationX,
+          data.rotationY,
+          data.rotationZ
+        );
+
+        const meshSource = new THREE.Group();
+        meshSource.rotation.order = 'ZYX';
+        meshSource.add(modelInCube);
+        const object = this.owner3D;
+        meshSource.scale.set(
+          object.isFlippedX() ? -width : width,
+          object.isFlippedY() ? -height : height,
+          object.isFlippedZ() ? -depth : depth
+        );
+        meshSource.updateMatrixWorld(true);
+        return meshSource;
+      }
+
+      const ownerRendererObject = this.owner3D.get3DRendererObject();
+      if (!ownerRendererObject) {
+        return null;
+      }
+      const meshSource = THREE_ADDONS.SkeletonUtils.clone(ownerRendererObject);
+      meshSource.updateMatrixWorld(true);
+      return meshSource;
+    }
+
     private getMeshShapeSettings(
-      model3DRuntimeObject: gdjs.Model3DRuntimeObject,
       width: float,
       height: float,
       depth: float,
       meshes: Array<Jolt.MeshShapeSettings>
     ): void {
-      const originalModel = this.owner
-        .getInstanceContainer()
-        .getGame()
-        .getModel3DManager()
-        .getModel(
-          this.meshShapeResourceName ||
-            model3DRuntimeObject._modelResourceName ||
-            ''
-        );
-
-      const modelInCube = new THREE.Group();
-      modelInCube.rotation.order = 'ZYX';
-      const root = THREE_ADDONS.SkeletonUtils.clone(originalModel.scene);
-      modelInCube.add(root);
-
-      const data = model3DRuntimeObject._data.content;
-      model3DRuntimeObject._renderer.stretchModelIntoUnitaryCube(
-        modelInCube,
-        data.rotationX,
-        data.rotationY,
-        data.rotationZ
+      const sourceObject = this._createMeshShapeSourceObject(
+        width,
+        height,
+        depth
       );
-
-      const threeObject = new THREE.Group();
-      threeObject.rotation.order = 'ZYX';
-      threeObject.add(modelInCube);
-      const object = this.owner3D;
-      threeObject.scale.set(
-        object.isFlippedX() ? -width : width,
-        object.isFlippedY() ? -height : height,
-        object.isFlippedZ() ? -depth : depth
-      );
-
-      threeObject.updateMatrixWorld();
+      if (!sourceObject) {
+        return;
+      }
+      sourceObject.position.set(0, 0, 0);
+      sourceObject.quaternion.set(0, 0, 0, 1);
+      sourceObject.updateMatrixWorld(true);
 
       // For indexed triangles
       const vector3 = new THREE.Vector3();
@@ -1788,12 +1834,15 @@ namespace gdjs {
       const b = new Jolt.Vec3();
       const c = new Jolt.Vec3();
 
-      threeObject.traverse((object3d) => {
+      sourceObject.traverse((object3d) => {
         const mesh = object3d as THREE.Mesh;
         if (!mesh.isMesh) {
           return;
         }
         const positionAttribute = mesh.geometry.getAttribute('position');
+        if (!positionAttribute) {
+          return;
+        }
         object3d.getWorldScale(vector3);
         const shouldTrianglesBeFlipped = vector3.x * vector3.y * vector3.z < 0;
         const index = mesh.geometry.getIndex();
@@ -1871,6 +1920,65 @@ namespace gdjs {
       Jolt.destroy(a);
       Jolt.destroy(b);
       Jolt.destroy(c);
+    }
+
+    private _createMeshConvexHullShapeSettings(
+      width: float,
+      height: float,
+      depth: float
+    ): Jolt.ConvexHullShapeSettings | null {
+      const sourceObject = this._createMeshShapeSourceObject(
+        width,
+        height,
+        depth
+      );
+      if (!sourceObject) {
+        return null;
+      }
+      sourceObject.position.set(0, 0, 0);
+      sourceObject.quaternion.set(0, 0, 0, 1);
+      sourceObject.updateMatrixWorld(true);
+
+      const convexHullShapeSettings = new Jolt.ConvexHullShapeSettings();
+      const points = convexHullShapeSettings.mPoints;
+      const vector3 = new THREE.Vector3();
+      const point = new Jolt.Vec3();
+      const maxPoints = 1024;
+
+      let pushedPoints = 0;
+      sourceObject.traverse((object3d) => {
+        if (pushedPoints >= maxPoints) {
+          return;
+        }
+        const mesh = object3d as THREE.Mesh;
+        if (!mesh.isMesh) {
+          return;
+        }
+        const positionAttribute = mesh.geometry.getAttribute('position');
+        if (!positionAttribute || positionAttribute.count === 0) {
+          return;
+        }
+
+        const step = Math.max(1, Math.floor(positionAttribute.count / 128));
+        for (
+          let i = 0;
+          i < positionAttribute.count && pushedPoints < maxPoints;
+          i += step
+        ) {
+          vector3.fromBufferAttribute(positionAttribute, i);
+          object3d.localToWorld(vector3);
+          point.Set(vector3.x, vector3.y, vector3.z);
+          points.push_back(point);
+          pushedPoints++;
+        }
+      });
+      Jolt.destroy(point);
+
+      if (pushedPoints < 4) {
+        Jolt.destroy(convexHullShapeSettings);
+        return null;
+      }
+      return convexHullShapeSettings;
     }
 
     private _getShapeOrientationQuat(): Jolt.Quat {
@@ -1975,6 +2083,7 @@ namespace gdjs {
       // Reset world step to update next frame
       this._sharedData.stepped = false;
       this._syncJointEditorBinding();
+      this._updateColliderPreview();
     }
 
     onObjectHotReloaded() {
@@ -2246,6 +2355,23 @@ namespace gdjs {
       }
       this.fixedRotation = enable;
       this._needToRecreateBody = true;
+    }
+
+    isColliderVisible(): boolean {
+      return this.showCollider;
+    }
+
+    setShowCollider(showCollider: boolean): void {
+      const normalizedShowCollider = !!showCollider;
+      if (this.showCollider === normalizedShowCollider) {
+        return;
+      }
+      this.showCollider = normalizedShowCollider;
+      if (!this.showCollider) {
+        this._disposeColliderPreview();
+      } else {
+        this._rebuildColliderPreviewObject();
+      }
     }
 
     getDensity() {
@@ -3620,6 +3746,294 @@ namespace gdjs {
       this._jointEditorPreviewAnchorMesh = null;
       this._jointEditorPreviewSourceMesh = null;
       this._jointEditorPreviewTargetMesh = null;
+    }
+
+    private _getThreeShapeOrientationQuaternion(): THREE.Quaternion {
+      if (this.shapeOrientation === 'X') {
+        return new THREE.Quaternion(0, 0, Math.sqrt(2) / 2, -Math.sqrt(2) / 2);
+      } else if (this.shapeOrientation === 'Y') {
+        return new THREE.Quaternion(0, 0, 0, 1);
+      }
+      return new THREE.Quaternion(Math.sqrt(2) / 2, 0, 0, Math.sqrt(2) / 2);
+    }
+
+    private _createColliderPreviewObject(): THREE.Object3D | null {
+      const color = 0x2bb6ff;
+      const shapeScale = this.shapeScale;
+      const width = this.owner3D.getWidth();
+      const height = this.owner3D.getHeight();
+      const depth = this.owner3D.getDepth();
+
+      const previewRoot = new THREE.Group();
+      previewRoot.rotation.order = 'ZYX';
+      previewRoot.name = 'Physics3DColliderPreviewObject';
+      previewRoot.position.set(
+        this.shapeOffsetX * shapeScale,
+        this.shapeOffsetY * shapeScale,
+        this.shapeOffsetZ * shapeScale
+      );
+
+      if (this._shape === 'Mesh') {
+        const meshPreview = this._createMeshShapeSourceObject(width, height, depth);
+        if (!meshPreview) {
+          return null;
+        }
+        meshPreview.position.set(0, 0, 0);
+        meshPreview.quaternion.set(0, 0, 0, 1);
+        meshPreview.traverse((object3d) => {
+          const mesh = object3d as THREE.Mesh;
+          if (!mesh.isMesh) {
+            return;
+          }
+          if (mesh.geometry) {
+            mesh.geometry = mesh.geometry.clone();
+          }
+          const material = new THREE.MeshBasicMaterial({
+            color,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.45,
+            depthTest: false,
+          });
+          mesh.material = material;
+          mesh.frustumCulled = false;
+          mesh.renderOrder = 10020;
+        });
+        previewRoot.add(meshPreview);
+        return previewRoot;
+      }
+
+      const material = new THREE.MeshBasicMaterial({
+        color,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.8,
+        depthTest: false,
+      });
+
+      let geometry: THREE.BufferGeometry;
+      if (this._shape === 'Capsule') {
+        const radius =
+          this.shapeDimensionA > 0
+            ? this.shapeDimensionA * shapeScale
+            : width > 0
+              ? Math.sqrt(width * height) / 2
+              : 1;
+        const capsuleDepth =
+          this.shapeDimensionB > 0
+            ? this.shapeDimensionB * shapeScale
+            : depth > 0
+              ? depth
+              : 1;
+        const length = Math.max(0, capsuleDepth - radius * 2);
+        geometry = new THREE.CapsuleGeometry(radius, length, 8, 16);
+        previewRoot.quaternion.copy(this._getThreeShapeOrientationQuaternion());
+      } else if (this._shape === 'Cylinder') {
+        const radius =
+          this.shapeDimensionA > 0
+            ? this.shapeDimensionA * shapeScale
+            : width > 0
+              ? Math.sqrt(width * height) / 2
+              : 1;
+        const cylinderDepth =
+          this.shapeDimensionB > 0
+            ? this.shapeDimensionB * shapeScale
+            : depth > 0
+              ? depth
+              : 1;
+        geometry = new THREE.CylinderGeometry(radius, radius, cylinderDepth, 20);
+        previewRoot.quaternion.copy(this._getThreeShapeOrientationQuaternion());
+      } else if (this._shape === 'Sphere') {
+        const radius =
+          this.shapeDimensionA > 0
+            ? this.shapeDimensionA * shapeScale
+            : width > 0
+              ? Math.pow(width * height * depth, 1 / 3) / 2
+              : 1;
+        geometry = new THREE.SphereGeometry(radius, 20, 14);
+      } else {
+        const boxWidth =
+          this.shapeDimensionA > 0 ? this.shapeDimensionA * shapeScale : width;
+        const boxHeight =
+          this.shapeDimensionB > 0 ? this.shapeDimensionB * shapeScale : height;
+        const boxDepth =
+          this.shapeDimensionC > 0 ? this.shapeDimensionC * shapeScale : depth;
+        geometry = new THREE.BoxGeometry(
+          Math.max(1, boxWidth),
+          Math.max(1, boxHeight),
+          Math.max(1, boxDepth)
+        );
+      }
+
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.renderOrder = 10020;
+      mesh.frustumCulled = false;
+      previewRoot.add(mesh);
+      return previewRoot;
+    }
+
+    private _computeColliderPreviewSignature(): string {
+      return [
+        this.bodyType,
+        this._shape,
+        this.shapeScale,
+        this.shapeOrientation,
+        this.shapeDimensionA,
+        this.shapeDimensionB,
+        this.shapeDimensionC,
+        this.shapeOffsetX,
+        this.shapeOffsetY,
+        this.shapeOffsetZ,
+        this.meshShapeResourceName,
+        this.owner3D.getWidth(),
+        this.owner3D.getHeight(),
+        this.owner3D.getDepth(),
+      ].join('|');
+    }
+
+    private _ensureColliderPreview(scene: THREE.Scene): void {
+      if (this._colliderPreviewGroup) {
+        if (this._colliderPreviewGroup.parent !== scene) {
+          this._colliderPreviewGroup.parent?.remove(this._colliderPreviewGroup);
+          scene.add(this._colliderPreviewGroup);
+        }
+        return;
+      }
+
+      const group = new THREE.Group();
+      group.name = 'Physics3DColliderPreview';
+      scene.add(group);
+      this._colliderPreviewGroup = group;
+    }
+
+    private _rebuildColliderPreviewObject(): void {
+      if (!this._colliderPreviewGroup) {
+        return;
+      }
+      if (this._colliderPreviewObject) {
+        this._colliderPreviewObject.removeFromParent();
+        this._colliderPreviewObject.traverse((object3d) => {
+          const anyObject = object3d as any;
+          if (
+            anyObject.geometry &&
+            typeof anyObject.geometry.dispose === 'function'
+          ) {
+            anyObject.geometry.dispose();
+          }
+          if (anyObject.material) {
+            if (Array.isArray(anyObject.material)) {
+              for (const material of anyObject.material) {
+                if (material && typeof material.dispose === 'function') {
+                  material.dispose();
+                }
+              }
+            } else if (typeof anyObject.material.dispose === 'function') {
+              anyObject.material.dispose();
+            }
+          }
+        });
+      }
+
+      this._colliderPreviewObject = this._createColliderPreviewObject();
+      if (this._colliderPreviewObject) {
+        this._colliderPreviewGroup.add(this._colliderPreviewObject);
+      }
+    }
+
+    private _disposeColliderPreview(): void {
+      if (!this._colliderPreviewGroup) {
+        this._colliderPreviewSignature = '';
+        return;
+      }
+      this._colliderPreviewGroup.removeFromParent();
+      this._colliderPreviewGroup.traverse((object3d) => {
+        const anyObject = object3d as any;
+        if (
+          anyObject.geometry &&
+          typeof anyObject.geometry.dispose === 'function'
+        ) {
+          anyObject.geometry.dispose();
+        }
+        if (anyObject.material) {
+          if (Array.isArray(anyObject.material)) {
+            for (const material of anyObject.material) {
+              if (material && typeof material.dispose === 'function') {
+                material.dispose();
+              }
+            }
+          } else if (typeof anyObject.material.dispose === 'function') {
+            anyObject.material.dispose();
+          }
+        }
+      });
+      this._colliderPreviewGroup = null;
+      this._colliderPreviewObject = null;
+      this._colliderPreviewSignature = '';
+    }
+
+    private _updateColliderPreview(): void {
+      if (!this.showCollider || !this.activated()) {
+        this._disposeColliderPreview();
+        return;
+      }
+
+      const runtimeScene = this.owner.getRuntimeScene();
+      const layer = runtimeScene.getLayer(this.owner.getLayer());
+      const scene = layer.get3DRendererObject() as THREE.Scene | null;
+      if (!scene) {
+        this._disposeColliderPreview();
+        return;
+      }
+
+      this._ensureColliderPreview(scene);
+      if (!this._colliderPreviewGroup) {
+        return;
+      }
+
+      const signature = this._computeColliderPreviewSignature();
+      if (
+        signature !== this._colliderPreviewSignature ||
+        !this._colliderPreviewObject
+      ) {
+        this._colliderPreviewSignature = signature;
+        this._rebuildColliderPreviewObject();
+      }
+
+      if (!this._colliderPreviewObject) {
+        this._colliderPreviewGroup.visible = false;
+        return;
+      }
+
+      const threeObject = this.owner3D.get3DRendererObject();
+      if (!threeObject) {
+        this._colliderPreviewGroup.visible = false;
+        return;
+      }
+
+      // Use the physics body transform when available.
+      // This is the only reliable source for special updaters (like VehicleBodyUpdater),
+      // where the visual object transform can be offset from the rigid body center.
+      if (this._body) {
+        const physicsPosition = this._body.GetPosition();
+        const physicsRotation = this._body.GetRotation();
+        this._colliderPreviewGroup.position.set(
+          physicsPosition.GetX() * this._sharedData.worldScale,
+          physicsPosition.GetY() * this._sharedData.worldScale,
+          physicsPosition.GetZ() * this._sharedData.worldScale
+        );
+        this._colliderPreviewGroup.quaternion.set(
+          physicsRotation.GetX(),
+          physicsRotation.GetY(),
+          physicsRotation.GetZ(),
+          physicsRotation.GetW()
+        );
+      } else {
+        threeObject.updateMatrixWorld(true);
+        threeObject.getWorldPosition(this._colliderPreviewGroup.position);
+        threeObject.getWorldQuaternion(this._colliderPreviewGroup.quaternion);
+      }
+      this._colliderPreviewGroup.scale.set(1, 1, 1);
+      this._colliderPreviewGroup.visible = true;
     }
 
     private _updateJointEditorPreview(
