@@ -667,7 +667,7 @@ namespace gdjs {
       const fsrSharpness =
         typeof this._data.properties.fsrSharpness === 'number'
           ? this._data.properties.fsrSharpness
-          : 0.2;
+          : 0.5;
       this._fsrSharpness = Math.max(0, Math.min(1, fsrSharpness));
       this._resetFsrAdaptiveState(true);
       this._updateRenderingSize();
@@ -788,7 +788,7 @@ namespace gdjs {
       const fsrSharpness =
         typeof this._data.properties.fsrSharpness === 'number'
           ? this._data.properties.fsrSharpness
-          : 0.2;
+          : 0.5;
       this._fsrSharpness = Math.max(0, Math.min(1, fsrSharpness));
       this._resetFsrAdaptiveState(true);
       this._updateRenderingSize();

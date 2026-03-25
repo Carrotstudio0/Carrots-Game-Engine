@@ -512,6 +512,10 @@ namespace gdjs {
             this._threePlaneTexture.magFilter = filter;
             this._threePlaneTexture.wrapS = THREE.ClampToEdgeWrapping;
             this._threePlaneTexture.wrapT = THREE.ClampToEdgeWrapping;
+            const maxAnisotropy = threeRenderer
+              ? threeRenderer.capabilities.getMaxAnisotropy()
+              : 1;
+            this._threePlaneTexture.anisotropy = Math.max(1, maxAnisotropy);
             // This disable the gamma correction done by THREE as PIXI is already doing it.
             const noGammaCorrectionShader: THREE.ShaderMaterialParameters = {
               vertexShader: `

@@ -104,20 +104,32 @@ namespace gdjs {
     initializeRenderers(gameCanvas: HTMLCanvasElement): void {
       this._throwIfDisposed();
 
+      const pixelRatio = this._getDevicePixelRatio();
       if (typeof THREE !== 'undefined') {
+        const useHardwareAntialiasing =
+          this._game.getAntialiasingMode() !== 'none' ||
+          this._game.isInGameEdition();
         this._threeRenderer = new THREE.WebGLRenderer({
           canvas: gameCanvas,
           antialias:
-            this._game.getAntialiasingMode() !== 'none' &&
+            useHardwareAntialiasing &&
             (this._game.isAntialisingEnabledOnMobile() ||
               !gdjs.evtTools.common.isMobile()),
           preserveDrawingBuffer: true, // Keep to true to allow screenshots.
+          powerPreference: 'high-performance',
         });
         this._threeRenderer.shadowMap.enabled = true;
         this._threeRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        this._threeRenderer.useLegacyLights = true;
+        this._threeRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this._threeRenderer.toneMappingExposure = 1.08;
         this._threeRenderer.autoClear = false;
-        this._threeRenderer.pixelRatio = window.devicePixelRatio;
+        const srgbColorSpace = (THREE as { SRGBColorSpace?: unknown })
+          .SRGBColorSpace;
+        if (srgbColorSpace !== undefined) {
+          (this._threeRenderer as { outputColorSpace?: unknown }).outputColorSpace =
+            srgbColorSpace;
+        }
+        this._threeRenderer.setPixelRatio(pixelRatio);
         this._threeRenderer.setSize(
           this._game.getGameResolutionWidth(),
           this._game.getGameResolutionHeight()
@@ -136,7 +148,7 @@ namespace gdjs {
           preserveDrawingBuffer: true, // Keep to true to allow screenshots.
           antialias: false,
           backgroundAlpha: 0,
-          // TODO (3D): add a setting for pixel ratio (`resolution: window.devicePixelRatio`)
+          resolution: pixelRatio,
         });
       } else {
         // Create the renderer and setup the rendering area.
@@ -148,6 +160,7 @@ namespace gdjs {
           view: gameCanvas,
           preserveDrawingBuffer: true,
           antialias: false,
+          resolution: pixelRatio,
         }) as PIXI.Renderer;
       }
 
@@ -287,10 +300,25 @@ namespace gdjs {
     private _resizeCanvas() {
       if (!this._pixiRenderer || !this._domElementsContainer) return;
 
+      const pixelRatio = this._getDevicePixelRatio();
+      let rendererNeedsResize = false;
+      if (
+        this._threeRenderer &&
+        this._threeRenderer.getPixelRatio() !== pixelRatio
+      ) {
+        this._threeRenderer.setPixelRatio(pixelRatio);
+        rendererNeedsResize = true;
+      }
+      if (this._pixiRenderer.resolution !== pixelRatio) {
+        this._pixiRenderer.resolution = pixelRatio;
+        rendererNeedsResize = true;
+      }
+
       // Set the Pixi (and/or Three) renderer size to the game size.
       // There is no "smart" resizing to be done here: the rendering of the game
       // should be done with the size set on the game.
       if (
+        rendererNeedsResize ||
         this._pixiRenderer.width !== this._game.getGameResolutionWidth() ||
         this._pixiRenderer.height !== this._game.getGameResolutionHeight()
       ) {
@@ -361,6 +389,19 @@ namespace gdjs {
       // Store the canvas size for fast access to it.
       this._canvasWidth = canvasWidth;
       this._canvasHeight = canvasHeight;
+    }
+
+    private _getDevicePixelRatio(): float {
+      if (typeof window === 'undefined' || !window.devicePixelRatio) {
+        return 1;
+      }
+
+      const pixelRatio = window.devicePixelRatio;
+      if (!Number.isFinite(pixelRatio) || pixelRatio <= 0) {
+        return 1;
+      }
+
+      return pixelRatio;
     }
 
     /**

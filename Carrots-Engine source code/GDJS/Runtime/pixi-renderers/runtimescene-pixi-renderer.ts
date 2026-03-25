@@ -137,6 +137,9 @@ namespace gdjs {
         this._fsrSceneTexture.magFilter = THREE.LinearFilter;
         this._fsrSceneTexture.wrapS = THREE.ClampToEdgeWrapping;
         this._fsrSceneTexture.wrapT = THREE.ClampToEdgeWrapping;
+        this._fsrSceneTexture.anisotropy = this._threeRenderer
+          ? Math.max(1, this._threeRenderer.capabilities.getMaxAnisotropy())
+          : 1;
       }
 
       return true;
