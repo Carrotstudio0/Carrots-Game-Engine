@@ -376,7 +376,10 @@ namespace gdjs {
 
     private _canRenderSceneWithDirectFsr(): boolean {
       const runtimeGame = this._runtimeScene.getGame();
-      if (runtimeGame.isInGameEdition()) {
+      if (runtimeGame.isInGameEdition() || runtimeGame.isPreview()) {
+        // Direct FSR relies on syncing a Pixi render texture into a Three.js
+        // texture. In preview/electron this path can be unstable depending on
+        // the WebGL context lifecycle, so force the layered path there.
         return false;
       }
 

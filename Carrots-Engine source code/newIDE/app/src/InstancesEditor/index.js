@@ -261,33 +261,46 @@ export default class InstancesEditor extends Component<Props, State> {
     // TODO (3D): Should it handle preference changes without needing to reopen tabs?
     if (this._showObjectInstancesIn3D) {
       gameCanvas = document.createElement('canvas');
-      const threeRenderer = new THREE.WebGLRenderer({
-        canvas: gameCanvas,
-      });
-      threeRenderer.useLegacyLights = true;
-      threeRenderer.autoClear = false;
-      threeRenderer.setSize(this.props.width, this.props.height);
+      try {
+        const threeRenderer = new THREE.WebGLRenderer({
+          canvas: gameCanvas,
+        });
+        threeRenderer.useLegacyLights = true;
+        threeRenderer.autoClear = false;
+        threeRenderer.setSize(this.props.width, this.props.height);
 
-      // Create a PixiJS renderer that use the same GL context as Three.js
-      // so that both can render to the canvas and even have PixiJS rendering
-      // reused in Three.js (by using a RenderTexture and the same internal WebGL texture).
-      this.pixiRenderer = new PIXI.Renderer({
-        width: this.props.width,
-        height: this.props.height,
-        view: gameCanvas,
-        context: threeRenderer.getContext(),
-        clearBeforeRender: false,
-        preserveDrawingBuffer: true,
-        antialias: false,
-        backgroundAlpha: 0,
-        // It's the default value, but it's better to make it explicit.
-        // It allows instances composed of several pixi objects to detect hovering.
-        eventMode: 'auto',
-        // TODO (3D): add a setting for pixel ratio (`resolution: window.devicePixelRatio`)
-      });
+        // Create a PixiJS renderer that use the same GL context as Three.js
+        // so that both can render to the canvas and even have PixiJS rendering
+        // reused in Three.js (by using a RenderTexture and the same internal WebGL texture).
+        this.pixiRenderer = new PIXI.Renderer({
+          width: this.props.width,
+          height: this.props.height,
+          view: gameCanvas,
+          context: threeRenderer.getContext(),
+          clearBeforeRender: false,
+          preserveDrawingBuffer: true,
+          antialias: false,
+          backgroundAlpha: 0,
+          // It's the default value, but it's better to make it explicit.
+          // It allows instances composed of several pixi objects to detect hovering.
+          eventMode: 'auto',
+          // TODO (3D): add a setting for pixel ratio (`resolution: window.devicePixelRatio`)
+        });
 
-      this.threeRenderer = threeRenderer;
+        this.threeRenderer = threeRenderer;
+      } catch (error) {
+        console.error(
+          'Unable to initialize the shared Three.js/PixiJS 3D renderer. Falling back to 2D editor rendering.',
+          error
+        );
+        this._showObjectInstancesIn3D = false;
+        this.threeRenderer = null;
+      }
     } else {
+      this.threeRenderer = null;
+    }
+
+    if (!this._showObjectInstancesIn3D) {
       // Create the renderer and setup the rendering area for scene editor.
       this.pixiRenderer = PIXI.autoDetectRenderer({
         width: this.props.width,
@@ -432,15 +445,19 @@ export default class InstancesEditor extends Component<Props, State> {
     this.uiPixiContainer.addChild(this.backgroundArea);
 
     const areaRectangle = this._getAreaRectangle();
+    const initialViewXFromSettings = this.props.editorViewPosition2D.viewX;
+    const initialViewYFromSettings = this.props.editorViewPosition2D.viewY;
+    const initialViewX =
+      initialViewXFromSettings !== null && isFinite(initialViewXFromSettings)
+        ? initialViewXFromSettings
+        : areaRectangle.centerX();
+    const initialViewY =
+      initialViewYFromSettings !== null && isFinite(initialViewYFromSettings)
+        ? initialViewYFromSettings
+        : areaRectangle.centerY();
     this.viewPosition = new ViewPosition({
-      initialViewX:
-        this.props.editorViewPosition2D.viewX === null
-          ? areaRectangle.centerX()
-          : this.props.editorViewPosition2D.viewX,
-      initialViewY:
-        this.props.editorViewPosition2D.viewY === null
-          ? areaRectangle.centerY()
-          : this.props.editorViewPosition2D.viewY,
+      initialViewX,
+      initialViewY,
       width: this.props.width,
       height: this.props.height,
       instancesEditorSettings: this.props.instancesEditorSettings,
@@ -682,6 +699,16 @@ export default class InstancesEditor extends Component<Props, State> {
     if (this.pixiRenderer) {
       this.pixiRenderer.destroy();
     }
+    if (this.threeRenderer) {
+      try {
+        this.threeRenderer.dispose();
+        // Force context release to avoid stale WebGL state on renderer re-creation.
+        this.threeRenderer.forceContextLoss();
+      } catch (error) {
+        console.warn('Unable to fully dispose Three.js renderer.', error);
+      }
+      this.threeRenderer = null;
+    }
   }
 
   // To be updated, see https://reactjs.org/docs/react-component.html#unsafe_componentwillreceiveprops.
@@ -799,12 +826,19 @@ export default class InstancesEditor extends Component<Props, State> {
   shouldDisplayClickableHandles = (): any => !this.props.tileMapTileSelection;
 
   getZoomFactor = (): any => {
-    return this.props.instancesEditorSettings.zoomFactor;
+    const zoomFactor = this.props.instancesEditorSettings.zoomFactor;
+    if (!isFinite(zoomFactor) || zoomFactor === 0) {
+      return 1;
+    }
+    return Math.abs(zoomFactor);
   };
 
   setZoomFactor = (zoomFactor: number) => {
+    const normalizedZoomFactor = isFinite(zoomFactor)
+      ? Math.abs(zoomFactor)
+      : 1;
     this.props.instancesEditorSettings.zoomFactor = clampInstancesEditorZoom(
-      zoomFactor
+      normalizedZoomFactor
     );
 
     this.props.onInstancesEditorSettingsMutated(

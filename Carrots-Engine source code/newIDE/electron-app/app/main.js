@@ -1,5 +1,6 @@
 const electron = require('electron');
 const path = require('path');
+const fs = require('fs');
 const child_process = require('child_process');
 const app = electron.app; // Module to control application life.
 const BrowserWindow = electron.BrowserWindow; // Module to create native browser window.
@@ -59,6 +60,40 @@ log.info('GDevelop Electron app starting...');
 autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
 autoUpdater.autoDownload = false;
+
+const getAutoUpdaterConfigPath = () => {
+  const resourcesPath =
+    process.resourcesPath || path.join(app.getAppPath(), '..', 'resources');
+  return path.join(resourcesPath, 'app-update.yml');
+};
+
+const canCheckForUpdatesInCurrentBuild = () => {
+  if (isDev) return false;
+
+  try {
+    return fs.existsSync(getAutoUpdaterConfigPath());
+  } catch (error) {
+    log.warn(
+      'Unable to probe auto-updater configuration file. Disabling updater checks.',
+      error
+    );
+    return false;
+  }
+};
+
+const isBenignRendererConsoleMessage = message => {
+  if (!message || typeof message !== 'string') return false;
+
+  return (
+    message.includes("Unrecognized feature: 'web-share'.") ||
+    message.includes(
+      'An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.'
+    ) ||
+    message.includes(
+      'THREE.WebGLRenderer: The property .useLegacyLights has been deprecated.'
+    )
+  );
+};
 
 // Keep a global reference of the window objects, if you don't, the windows will
 // be closed automatically when the JavaScript object is garbage collected.
@@ -265,6 +300,41 @@ function createNewWindow(windowArgs = args) {
         log.warn('Could not get renderer process PID:', err);
       });
   });
+
+  newWindow.webContents.on(
+    'did-fail-load',
+    (
+      _event,
+      errorCode,
+      errorDescription,
+      validatedURL,
+      isMainFrame,
+      frameProcessId,
+      frameRoutingId
+    ) => {
+      log.error(
+        `[Window ${windowId}] did-fail-load code=${errorCode} description="${errorDescription}" url=${validatedURL} mainFrame=${isMainFrame} framePid=${frameProcessId} frameRoutingId=${frameRoutingId}`
+      );
+    }
+  );
+
+  newWindow.webContents.on(
+    'console-message',
+    (_event, level, message, line, sourceId) => {
+      const prefix = `[Renderer ${windowId}]`;
+      if (level >= 2) {
+        if (isBenignRendererConsoleMessage(message)) {
+          log.warn(`${prefix} ${sourceId}:${line} ${message}`);
+          return;
+        }
+        log.error(`${prefix} ${sourceId}:${line} ${message}`);
+        return;
+      }
+      if (level === 1 && process.env.CARROTS_ENGINE_LOG_RENDERER_WARNINGS) {
+        log.warn(`${prefix} ${sourceId}:${line} ${message}`);
+      }
+    }
+  );
 
   newWindow.webContents.on('render-process-gone', (_event, details) => {
     log.error(`[Window ${windowId}] Renderer process gone:`, details);
@@ -646,6 +716,16 @@ app.on('ready', function() {
   });
 
   ipcMain.on('updates-check-and-download', event => {
+    if (!canCheckForUpdatesInCurrentBuild()) {
+      const reason = `Updater is disabled for this build (missing ${getAutoUpdaterConfigPath()}).`;
+      log.warn(reason);
+      event.sender.send('update-status', {
+        message: reason,
+        status: 'update-disabled',
+      });
+      return;
+    }
+
     // This will immediately download an update, then install when the
     // app quits.
     log.info('Starting check for updates (with auto-download if any)');
@@ -656,6 +736,16 @@ app.on('ready', function() {
   });
 
   ipcMain.on('updates-check', event => {
+    if (!canCheckForUpdatesInCurrentBuild()) {
+      const reason = `Updater is disabled for this build (missing ${getAutoUpdaterConfigPath()}).`;
+      log.warn(reason);
+      event.sender.send('update-status', {
+        message: reason,
+        status: 'update-disabled',
+      });
+      return;
+    }
+
     log.info('Starting check for updates (without auto-download)');
     autoUpdater.autoDownload = false;
     autoUpdater.checkForUpdates().catch(err => {

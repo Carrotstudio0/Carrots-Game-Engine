@@ -15,6 +15,14 @@ import {
   increasePixiUiRenderingTime,
 } from './BasicProfilingCounters';
 
+const getSafeLayerCamera3DFieldOfView = (layer: gdLayer): number => {
+  const fieldOfView = layer.getCamera3DFieldOfView();
+  if (!isFinite(fieldOfView)) {
+    return 45;
+  }
+  return Math.max(5, Math.min(170, fieldOfView));
+};
+
 export type InstanceMeasurer = {|
   getInstanceAABB: (gdInitialInstance, Rectangle) => Rectangle,
   getUnrotatedInstanceAABB: (gdInitialInstance, Rectangle) => Rectangle,
@@ -193,6 +201,25 @@ export default class InstancesRenderer {
     return this._basicProfilingCounters;
   }
 
+  _disableLayerTextureInteropOnWebGlError(
+    layerRenderer: LayerRenderer,
+    // $FlowFixMe[value-as-type]
+    pixiRenderer: PIXI.Renderer
+  ): void {
+    // $FlowFixMe[prop-missing]
+    const gl = pixiRenderer && pixiRenderer.gl;
+    if (!gl || typeof gl.getError !== 'function') {
+      return;
+    }
+    const errorCode = gl.getError();
+    if (errorCode === gl.NO_ERROR) {
+      return;
+    }
+    layerRenderer.disableThreePlaneTextureInterop(
+      'WebGL error 0x' + errorCode.toString(16)
+    );
+  }
+
   render(
     // $FlowFixMe[value-as-type]
     pixiRenderer: PIXI.Renderer,
@@ -278,8 +305,8 @@ export default class InstancesRenderer {
       const threeCamera = layerRenderer.getThreeCamera();
       const threePlaneMesh = layerRenderer.getThreePlaneMesh();
       if (threeCamera && threePlaneMesh) {
+        threeCamera.fov = getSafeLayerCamera3DFieldOfView(layer);
         viewPosition.applyTransformationToThree(threeCamera, threePlaneMesh);
-        threeCamera.fov = layer.getCamera3DFieldOfView();
       }
 
       if (!threeRenderer) {
@@ -306,12 +333,24 @@ export default class InstancesRenderer {
           // Then, update the texture of the plane showing the PixiJS rendering,
           // so that the 2D rendering made by PixiJS can be shown in the 3D world.
           const pixiStartTime = performance.now();
-          layerRenderer.renderOnPixiRenderTexture(pixiRenderer);
-          layerRenderer.updateThreePlaneTextureFromPixiRenderTexture(
-            // The renderers are needed to find the internal WebGL texture.
-            threeRenderer,
+          const hasRenderedOnPixiTexture = layerRenderer.renderOnPixiRenderTexture(
             pixiRenderer
           );
+          const hasBoundPixiTextureToThreePlane =
+            layerRenderer.isThreePlaneTextureInteropEnabled() &&
+            hasRenderedOnPixiTexture &&
+            layerRenderer.updateThreePlaneTextureFromPixiRenderTexture(
+              // The renderers are needed to find the internal WebGL texture.
+              threeRenderer,
+              pixiRenderer
+            );
+
+          if (!hasBoundPixiTextureToThreePlane) {
+            // Fallback: if texture interop failed, render this layer directly with PixiJS
+            // to avoid a black frame while still keeping 3D objects rendered by Three.js.
+            pixiRenderer.render(layerContainer, { clear: false });
+          }
+
           increasePixiRenderingTime(
             this._basicProfilingCounters,
             performance.now() - pixiStartTime
@@ -328,9 +367,21 @@ export default class InstancesRenderer {
 
           const threeStartTime = performance.now();
           threeRenderer.render(threeScene, threeCamera);
+          this._disableLayerTextureInteropOnWebGlError(
+            layerRenderer,
+            pixiRenderer
+          );
           increaseThreeRenderingTime(
             this._basicProfilingCounters,
             performance.now() - threeStartTime
+          );
+        } else {
+          // If for any reason a layer has no Three.js scene/camera, keep it visible with PixiJS.
+          const time = performance.now();
+          pixiRenderer.render(layerContainer, { clear: false });
+          increasePixiRenderingTime(
+            this._basicProfilingCounters,
+            performance.now() - time
           );
         }
       }

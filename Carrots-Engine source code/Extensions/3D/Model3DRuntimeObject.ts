@@ -577,6 +577,58 @@ namespace gdjs {
       return this._renderer.getIKChainCount();
     }
 
+    getIKChainNames(): string[] {
+      return this._renderer.getIKChainNames();
+    }
+
+    getIKChainSettings(chainName: string): any {
+      return this._renderer.getIKChainSettings(chainName);
+    }
+
+    getIKBoneNames(): string[] {
+      return this._renderer.getIKBoneNames();
+    }
+
+    saveIKPose(poseName: string): void {
+      this._renderer.saveIKPose(poseName);
+    }
+
+    applyIKPose(poseName: string): void {
+      this._renderer.applyIKPose(poseName);
+    }
+
+    removeIKPose(poseName: string): void {
+      this._renderer.removeIKPose(poseName);
+    }
+
+    clearIKPoses(): void {
+      this._renderer.clearIKPoses();
+    }
+
+    hasIKPose(poseName: string): boolean {
+      return this._renderer.hasIKPose(poseName);
+    }
+
+    getIKPoseCount(): number {
+      return this._renderer.getIKPoseCount();
+    }
+
+    pinIKTargetToCurrentEffector(chainName: string): void {
+      this._renderer.pinIKTargetToCurrentEffector(chainName);
+    }
+
+    pinAllIKTargetsToCurrentEffectors(): void {
+      this._renderer.pinAllIKTargetsToCurrentEffectors();
+    }
+
+    exportIKPosesToJSON(): string {
+      return this._renderer.exportIKPosesToJSON();
+    }
+
+    importIKPosesFromJSON(posesJSON: string, clearExisting: boolean): void {
+      this._renderer.importIKPosesFromJSON(posesJSON, clearExisting);
+    }
+
     override onDeletedFromScene(): void {
       this._renderer.onDestroy();
       super.onDeletedFromScene();

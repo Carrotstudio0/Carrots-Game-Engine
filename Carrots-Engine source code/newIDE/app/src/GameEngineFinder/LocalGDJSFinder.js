@@ -1,5 +1,5 @@
 // @flow
-// Note: this file does not use import/export syntax so it can be used from Node.js.
+// Keep dependencies optional so this can run in Electron and test environments.
 
 const optionalRequire = require('../Utils/OptionalRequire');
 const remote = optionalRequire('@electron/remote');
@@ -81,12 +81,9 @@ const findGDJS = async () /*: Promise<{|gdjsRoot: string|}> */ => {
   );
 };
 
-const exportedApi = {
+const localGDJSFinder = {
   findGDJS,
 };
 
-if (typeof module !== 'undefined' && module && module.exports) {
-  module.exports = exportedApi;
-} else if (typeof exports !== 'undefined') {
-  exports.findGDJS = findGDJS;
-}
+export { findGDJS };
+export default localGDJSFinder;

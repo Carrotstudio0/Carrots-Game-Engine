@@ -70,13 +70,18 @@ const getSafeLocalPathForRequest = requestUrl => {
  * Load the given path, relative to the app public folder.
  */
 const load = ({ isDev, devTools, path: appPath, window }) => {
+  const normalizedAppPath = appPath || '/index.html';
+  const relativeAppPath = normalizedAppPath.replace(/^\/+/, '');
+
   if (isDev) {
     // Development (server hosted by npm run start)
-    window.loadURL(developmentServerBaseUrl + appPath);
+    window.loadURL(developmentServerBaseUrl + normalizedAppPath);
     window.openDevTools();
   } else {
     // Production (with npm run build)
-    window.loadURL(new URL(appPath, appPublicFolderBaseFileUrl).toString());
+    window.loadURL(
+      new URL(relativeAppPath, appPublicFolderBaseFileUrl).toString()
+    );
     if (devTools) window.openDevTools();
   }
 };

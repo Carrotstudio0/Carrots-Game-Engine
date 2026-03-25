@@ -100,6 +100,10 @@ export default class LayerRenderer {
 
   // $FlowFixMe[missing-local-annot]
   _basicProfilingCounters = (makeBasicProfilingCounters(): BasicProfilingCounters);
+  _hasLoggedTextureInteropWarning: boolean = false;
+  _hasLoggedWebGlInteropDisableWarning: boolean = false;
+  _textureInteropFailureCount: number = 0;
+  _allowThreePlaneTextureInterop: boolean = true;
 
   constructor({
     project,
@@ -271,6 +275,27 @@ export default class LayerRenderer {
   // $FlowFixMe[value-as-type]
   getThreePlaneMesh(): THREE.Mesh | null {
     return this._threePlaneMesh;
+  }
+
+  isThreePlaneTextureInteropEnabled(): boolean {
+    return this._allowThreePlaneTextureInterop;
+  }
+
+  disableThreePlaneTextureInterop(reason: string): void {
+    if (!this._allowThreePlaneTextureInterop) {
+      return;
+    }
+    this._allowThreePlaneTextureInterop = false;
+    this._textureInteropFailureCount = 0;
+    if (this._threePlaneMesh) {
+      this._threePlaneMesh.visible = false;
+    }
+    if (!this._hasLoggedWebGlInteropDisableWarning) {
+      this._hasLoggedWebGlInteropDisableWarning = true;
+      console.warn(
+        `[LayerRenderer] Disabled Pixi/Three texture interop for layer "${this.layer.getName()}": ${reason}.`
+      );
+    }
   }
 
   getRendererOfInstance(
@@ -595,11 +620,26 @@ export default class LayerRenderer {
      *   should cover most of the cases.
      */
     const margin = 1000;
-    this.viewTopLeft = this.viewPosition.toSceneCoordinates(-margin, -margin);
-    this.viewBottomRight = this.viewPosition.toSceneCoordinates(
+    const topLeft = this.viewPosition.toSceneCoordinates(-margin, -margin);
+    const bottomRight = this.viewPosition.toSceneCoordinates(
       this.viewPosition.getWidth() + margin,
       this.viewPosition.getHeight() + margin
     );
+
+    const allFinite =
+      isFinite(topLeft[0]) &&
+      isFinite(topLeft[1]) &&
+      isFinite(bottomRight[0]) &&
+      isFinite(bottomRight[1]);
+    if (!allFinite) {
+      // If camera/zoom becomes invalid, disable culling to avoid invisible scenes.
+      this.viewTopLeft = [-1e9, -1e9];
+      this.viewBottomRight = [1e9, 1e9];
+      return;
+    }
+
+    this.viewTopLeft = topLeft;
+    this.viewBottomRight = bottomRight;
   }
 
   render() {
@@ -771,9 +811,9 @@ export default class LayerRenderer {
    * consumed by Three.js (for 2D+3D layers).
    */
   // $FlowFixMe[value-as-type]
-  renderOnPixiRenderTexture(pixiRenderer: PIXI.Renderer) {
-    if (!this._renderTexture) {
-      return;
+  renderOnPixiRenderTexture(pixiRenderer: PIXI.Renderer): boolean {
+    if (!this._renderTexture || !this._allowThreePlaneTextureInterop) {
+      return false;
     }
     if (
       this._oldWidth !== pixiRenderer.screen.width ||
@@ -802,6 +842,7 @@ export default class LayerRenderer {
       oldSourceFrame,
       undefined
     );
+    return true;
   }
 
   /**
@@ -813,21 +854,46 @@ export default class LayerRenderer {
     threeRenderer: THREE.WebGLRenderer,
     // $FlowFixMe[value-as-type]
     pixiRenderer: PIXI.Renderer
-  ): void {
-    if (!this._threePlaneTexture || !this._renderTexture) {
-      return;
+  ): boolean {
+    if (
+      !this._allowThreePlaneTextureInterop ||
+      !this._threePlaneTexture ||
+      !this._renderTexture
+    ) {
+      if (this._threePlaneMesh) this._threePlaneMesh.visible = false;
+      return false;
     }
 
-    const glTexture = this._renderTexture.baseTexture._glTextures[
-      pixiRenderer.CONTEXT_UID
-    ];
-    if (glTexture) {
+    const glTextures = this._renderTexture.baseTexture._glTextures;
+    const glTexture = glTextures ? glTextures[pixiRenderer.CONTEXT_UID] : null;
+    if (glTexture && glTexture.texture) {
       // "Hack" into the Three.js renderer by getting the internal WebGL texture for the PixiJS plane,
       // and set it so that it's the same as the WebGL texture for the PixiJS RenderTexture.
       // This works because PixiJS and Three.js are using the same WebGL context.
       const texture = threeRenderer.properties.get(this._threePlaneTexture);
-      texture.__webglTexture = glTexture.texture;
+      if (texture) {
+        texture.__webglTexture = glTexture.texture;
+        this._textureInteropFailureCount = 0;
+        if (this._threePlaneMesh) this._threePlaneMesh.visible = true;
+        this._hasLoggedTextureInteropWarning = false;
+        return true;
+      }
     }
+
+    this._textureInteropFailureCount++;
+    if (this._threePlaneMesh) this._threePlaneMesh.visible = false;
+    if (!this._hasLoggedTextureInteropWarning) {
+      this._hasLoggedTextureInteropWarning = true;
+      console.warn(
+        `[LayerRenderer] Failed to bind Pixi render texture to Three plane for layer "${this.layer.getName()}". Falling back to direct Pixi rendering for this layer.`
+      );
+    }
+    if (this._textureInteropFailureCount >= 5) {
+      this.disableThreePlaneTextureInterop(
+        'texture binding failed repeatedly'
+      );
+    }
+    return false;
   }
 
   _updatePixiObjectsZOrder() {

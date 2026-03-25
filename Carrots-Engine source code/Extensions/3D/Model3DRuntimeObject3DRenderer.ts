@@ -123,6 +123,21 @@ namespace gdjs {
     linkConstraintsByBoneName: Map<string, Model3DIKLinkConstraintDefinition>;
   };
 
+  type Model3DIKChainSettings = {
+    name: string;
+    enabled: boolean;
+    effectorBoneName: string;
+    targetMode: Model3DIKTargetMode;
+    targetBoneName: string;
+    targetPosition: FloatPoint3D;
+    linkBoneNames: string[];
+    iterationCount: number;
+    blendFactor: number;
+    minAngle: number;
+    maxAngle: number;
+    targetTolerance: number;
+  };
+
   type Model3DIKLinkConstraintDefinition = {
     minEulerDegrees: FloatPoint3D;
     maxEulerDegrees: FloatPoint3D;
@@ -143,6 +158,18 @@ namespace gdjs {
     chainLinePositions: Float32Array;
   };
 
+  type Model3DIKQuaternion = [number, number, number, number];
+
+  type Model3DIKBonePose = {
+    position: FloatPoint3D;
+    quaternion: Model3DIKQuaternion;
+    scale: FloatPoint3D;
+  };
+
+  type Model3DIKPoseSnapshot = {
+    bonesByName: Map<string, Model3DIKBonePose>;
+  };
+
   const clampNumber = (value: number, min: number, max: number): number =>
     Math.max(min, Math.min(max, value));
 
@@ -158,6 +185,7 @@ namespace gdjs {
     private _ikChains: Map<string, Model3DIKChainDefinition>;
     private _resolvedIKChains: Map<string, Model3DIKResolvedChain>;
     private _bonesByName: Map<string, THREE.Bone>;
+    private _ikPoses: Map<string, Model3DIKPoseSnapshot>;
 
     private _ikScratchTargetPosition = new THREE.Vector3();
     private _ikScratchLinkPosition = new THREE.Vector3();
@@ -230,6 +258,7 @@ namespace gdjs {
       this._ikChains = new Map();
       this._resolvedIKChains = new Map();
       this._bonesByName = new Map();
+      this._ikPoses = new Map();
     }
 
     updateAnimation(timeDelta: float) {
@@ -744,6 +773,322 @@ namespace gdjs {
 
     getIKChainCount(): number {
       return this._ikChains.size;
+    }
+
+    getIKChainNames(): string[] {
+      return Array.from(this._ikChains.keys());
+    }
+
+    getIKChainSettings(chainName: string): Model3DIKChainSettings | null {
+      const chain = this._ikChains.get(chainName.trim());
+      if (!chain) {
+        return null;
+      }
+
+      const [targetX, targetY, targetZ] = chain.targetPosition;
+      return {
+        name: chain.name,
+        enabled: chain.enabled,
+        effectorBoneName: chain.effectorBoneName,
+        targetMode: chain.targetMode,
+        targetBoneName: chain.targetBoneName,
+        targetPosition: [targetX, targetY, targetZ],
+        linkBoneNames: chain.linkBoneNames.slice(),
+        iterationCount: chain.iterationCount,
+        blendFactor: chain.blendFactor,
+        minAngle: chain.minAngle,
+        maxAngle: chain.maxAngle,
+        targetTolerance: chain.targetTolerance,
+      };
+    }
+
+    getIKBoneNames(): string[] {
+      return Array.from(this._bonesByName.keys());
+    }
+
+    saveIKPose(poseName: string): boolean {
+      const normalizedPoseName = poseName.trim();
+      if (!normalizedPoseName || this._bonesByName.size === 0) {
+        return false;
+      }
+
+      const bonesByName = new Map<string, Model3DIKBonePose>();
+      for (const [boneName, bone] of this._bonesByName.entries()) {
+        bonesByName.set(boneName, {
+          position: [bone.position.x, bone.position.y, bone.position.z],
+          quaternion: [
+            bone.quaternion.x,
+            bone.quaternion.y,
+            bone.quaternion.z,
+            bone.quaternion.w,
+          ],
+          scale: [bone.scale.x, bone.scale.y, bone.scale.z],
+        });
+      }
+
+      this._ikPoses.set(normalizedPoseName, { bonesByName });
+      return true;
+    }
+
+    applyIKPose(poseName: string): boolean {
+      const pose = this._ikPoses.get(poseName.trim());
+      if (!pose) {
+        return false;
+      }
+
+      let hasAppliedBone = false;
+      for (const [boneName, bonePose] of pose.bonesByName.entries()) {
+        const bone = this._bonesByName.get(boneName);
+        if (!bone) {
+          continue;
+        }
+
+        bone.position.set(
+          bonePose.position[0],
+          bonePose.position[1],
+          bonePose.position[2]
+        );
+        bone.quaternion.set(
+          bonePose.quaternion[0],
+          bonePose.quaternion[1],
+          bonePose.quaternion[2],
+          bonePose.quaternion[3]
+        );
+        bone.scale.set(bonePose.scale[0], bonePose.scale[1], bonePose.scale[2]);
+        bone.updateMatrix();
+        hasAppliedBone = true;
+      }
+
+      if (!hasAppliedBone) {
+        return false;
+      }
+
+      this._threeObject.updateMatrixWorld(true);
+      return true;
+    }
+
+    removeIKPose(poseName: string): boolean {
+      return this._ikPoses.delete(poseName.trim());
+    }
+
+    clearIKPoses(): void {
+      this._ikPoses.clear();
+    }
+
+    hasIKPose(poseName: string): boolean {
+      return this._ikPoses.has(poseName.trim());
+    }
+
+    getIKPoseCount(): number {
+      return this._ikPoses.size;
+    }
+
+    pinIKTargetToCurrentEffector(chainName: string): boolean {
+      const resolvedChain = this._resolvedIKChains.get(chainName.trim());
+      if (!resolvedChain) {
+        return false;
+      }
+
+      this._threeObject.updateMatrixWorld(true);
+      resolvedChain.effectorBone.getWorldPosition(this._ikScratchEffectorPosition);
+      resolvedChain.definition.targetMode = 'position';
+      resolvedChain.definition.targetBoneName = '';
+      resolvedChain.definition.targetPosition = [
+        this._ikScratchEffectorPosition.x,
+        -this._ikScratchEffectorPosition.y,
+        this._ikScratchEffectorPosition.z,
+      ];
+      this._resolveIKChains();
+      return true;
+    }
+
+    pinAllIKTargetsToCurrentEffectors(): number {
+      if (this._resolvedIKChains.size === 0) {
+        return 0;
+      }
+
+      this._threeObject.updateMatrixWorld(true);
+      let pinnedChainCount = 0;
+      for (const resolvedChain of this._resolvedIKChains.values()) {
+        resolvedChain.effectorBone.getWorldPosition(this._ikScratchEffectorPosition);
+        resolvedChain.definition.targetMode = 'position';
+        resolvedChain.definition.targetBoneName = '';
+        resolvedChain.definition.targetPosition = [
+          this._ikScratchEffectorPosition.x,
+          -this._ikScratchEffectorPosition.y,
+          this._ikScratchEffectorPosition.z,
+        ];
+        pinnedChainCount++;
+      }
+
+      if (pinnedChainCount > 0) {
+        this._resolveIKChains();
+      }
+      return pinnedChainCount;
+    }
+
+    exportIKPosesToJSON(): string {
+      const serializedPoses = Array.from(this._ikPoses.entries()).map(
+        ([poseName, pose]) => ({
+          name: poseName,
+          bones: Array.from(pose.bonesByName.entries()).map(
+            ([boneName, bonePose]) => ({
+              name: boneName,
+              position: [
+                bonePose.position[0],
+                bonePose.position[1],
+                bonePose.position[2],
+              ] as FloatPoint3D,
+              quaternion: [
+                bonePose.quaternion[0],
+                bonePose.quaternion[1],
+                bonePose.quaternion[2],
+                bonePose.quaternion[3],
+              ] as Model3DIKQuaternion,
+              scale: [bonePose.scale[0], bonePose.scale[1], bonePose.scale[2]] as
+                FloatPoint3D,
+            })
+          ),
+        })
+      );
+
+      return JSON.stringify({
+        version: 1,
+        poses: serializedPoses,
+      });
+    }
+
+    importIKPosesFromJSON(posesJSON: string, clearExisting: boolean): boolean {
+      if (!posesJSON) {
+        return false;
+      }
+
+      let parsedPayload: unknown = null;
+      try {
+        parsedPayload = JSON.parse(posesJSON);
+      } catch (_error) {
+        return false;
+      }
+
+      if (!this._isObjectRecord(parsedPayload)) {
+        return false;
+      }
+
+      const serializedPoses = parsedPayload.poses;
+      if (!Array.isArray(serializedPoses)) {
+        return false;
+      }
+
+      if (clearExisting) {
+        this._ikPoses.clear();
+      }
+
+      let importedPoseCount = 0;
+      for (const serializedPose of serializedPoses) {
+        if (!this._isObjectRecord(serializedPose)) {
+          continue;
+        }
+
+        const rawPoseName = serializedPose.name;
+        const rawBones = serializedPose.bones;
+        if (typeof rawPoseName !== 'string' || !Array.isArray(rawBones)) {
+          continue;
+        }
+
+        const normalizedPoseName = rawPoseName.trim();
+        if (!normalizedPoseName) {
+          continue;
+        }
+
+        const bonesByName = new Map<string, Model3DIKBonePose>();
+        for (const rawBone of rawBones) {
+          if (!this._isObjectRecord(rawBone)) {
+            continue;
+          }
+
+          const rawBoneName = rawBone.name;
+          if (typeof rawBoneName !== 'string') {
+            continue;
+          }
+
+          const normalizedBoneName = rawBoneName.trim();
+          if (!normalizedBoneName) {
+            continue;
+          }
+
+          const position = this._parseIKPoseVector3(rawBone.position);
+          const quaternion = this._parseIKPoseQuaternion(rawBone.quaternion);
+          const scale = this._parseIKPoseVector3(rawBone.scale);
+          if (!position || !quaternion || !scale) {
+            continue;
+          }
+
+          bonesByName.set(normalizedBoneName, {
+            position,
+            quaternion,
+            scale,
+          });
+        }
+
+        if (bonesByName.size === 0) {
+          continue;
+        }
+
+        this._ikPoses.set(normalizedPoseName, { bonesByName });
+        importedPoseCount++;
+      }
+
+      return importedPoseCount > 0;
+    }
+
+    private _isObjectRecord(value: unknown): value is Record<string, unknown> {
+      return !!value && typeof value === 'object' && !Array.isArray(value);
+    }
+
+    private _parseIKPoseVector3(value: unknown): FloatPoint3D | null {
+      if (!Array.isArray(value) || value.length !== 3) {
+        return null;
+      }
+
+      const x = Number(value[0]);
+      const y = Number(value[1]);
+      const z = Number(value[2]);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+        return null;
+      }
+
+      return [x, y, z];
+    }
+
+    private _parseIKPoseQuaternion(value: unknown): Model3DIKQuaternion | null {
+      if (!Array.isArray(value) || value.length !== 4) {
+        return null;
+      }
+
+      const x = Number(value[0]);
+      const y = Number(value[1]);
+      const z = Number(value[2]);
+      const w = Number(value[3]);
+      if (
+        !Number.isFinite(x) ||
+        !Number.isFinite(y) ||
+        !Number.isFinite(z) ||
+        !Number.isFinite(w)
+      ) {
+        return null;
+      }
+
+      const quaternionLength = Math.hypot(x, y, z, w);
+      if (!Number.isFinite(quaternionLength) || quaternionLength < epsilon) {
+        return null;
+      }
+
+      return [
+        x / quaternionLength,
+        y / quaternionLength,
+        z / quaternionLength,
+        w / quaternionLength,
+      ];
     }
 
     private _sanitizeIKIterationCount(iterationCount: number): number {

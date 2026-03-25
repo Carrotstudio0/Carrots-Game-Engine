@@ -426,6 +426,82 @@ namespace gdjs {
     helper: ObjectSkeletonHelper;
   };
 
+  type IKTargetMode = 'bone' | 'position';
+
+  type IKChainSettings = {
+    name: string;
+    enabled: boolean;
+    effectorBoneName: string;
+    targetMode: IKTargetMode;
+    targetBoneName: string;
+    targetPosition: Point3D;
+    linkBoneNames: string[];
+    iterationCount: number;
+    blendFactor: number;
+    minAngle: number;
+    maxAngle: number;
+    targetTolerance: number;
+  };
+
+  type IKConfigurableObject = gdjs.RuntimeObject & {
+    configureIKChain: (
+      chainName: string,
+      effectorBoneName: string,
+      targetBoneName: string,
+      linkBoneNames: string,
+      iterationCount: number,
+      blendFactor: number,
+      minAngle: number,
+      maxAngle: number
+    ) => void;
+    setIKTargetPosition: (
+      chainName: string,
+      targetX: number,
+      targetY: number,
+      targetZ: number
+    ) => void;
+    setIKTargetBone: (chainName: string, targetBoneName: string) => void;
+    setIKEnabled: (chainName: string, enabled: boolean) => void;
+    setIKIterationCount: (chainName: string, iterationCount: number) => void;
+    setIKBlendFactor: (chainName: string, blendFactor: number) => void;
+    setIKAngleLimits: (
+      chainName: string,
+      minAngleDegrees: number,
+      maxAngleDegrees: number
+    ) => void;
+    setIKTargetTolerance: (chainName: string, tolerance: number) => void;
+    setIKGizmosEnabled: (enabled: boolean) => void;
+    areIKGizmosEnabled: () => boolean;
+    removeIKChain: (chainName: string) => void;
+    clearIKChains: () => void;
+    getIKChainNames: () => string[];
+    getIKChainSettings: (chainName: string) => IKChainSettings | null;
+    getIKBoneNames: () => string[];
+    saveIKPose: (poseName: string) => void;
+    applyIKPose: (poseName: string) => void;
+    removeIKPose: (poseName: string) => void;
+    clearIKPoses: () => void;
+    hasIKPose: (poseName: string) => boolean;
+    getIKPoseCount: () => number;
+    exportIKPosesToJSON: () => string;
+    importIKPosesFromJSON: (json: string, clearExisting: boolean) => void;
+    pinIKTargetToCurrentEffector: (chainName: string) => void;
+    pinAllIKTargetsToCurrentEffectors: () => void;
+  };
+
+  const isIKConfigurableObject = (
+    object: gdjs.RuntimeObject | null
+  ): object is IKConfigurableObject => {
+    if (!object) return false;
+    const candidate = object as any;
+    return (
+      typeof candidate.configureIKChain === 'function' &&
+      typeof candidate.getIKChainNames === 'function' &&
+      typeof candidate.getIKChainSettings === 'function' &&
+      typeof candidate.getIKBoneNames === 'function'
+    );
+  };
+
   const defaultEffectsData: EffectData[] = [
     {
       effectType: 'Scene3D::HemisphereLight',
@@ -922,6 +998,7 @@ namespace gdjs {
     };
     private _instancesEditorSettings: InstancesEditorSettings | null = null;
     private _toolbar: Toolbar;
+    private _ikSettingsPanel: IKSettingsPanel;
     private _inGameEditorSettings: InGameEditorSettings;
 
     constructor(
@@ -983,6 +1060,13 @@ namespace gdjs {
         hasEditableSelection: () => this._hasEditableSelection(),
         getSelectionTransformValues: () => this._getSelectionTransformValues(),
       });
+      this._ikSettingsPanel = new IKSettingsPanel({
+        getActiveIKObject: () => this._getActiveIKObject(),
+        getSelectedBoneName: () =>
+          this._selectedBoneControl ? this._selectedBoneControl.bone.name : null,
+        isIKModeEnabled: () => this._isIKModeEnabledForSelection(),
+        setIKModeEnabled: (enabled: boolean) => this._setIKModeEnabled(enabled),
+      });
 
       this._applyInGameEditorSettings();
       this.onProjectDataChange(projectData);
@@ -1022,6 +1106,7 @@ namespace gdjs {
         this._unregisterContextLostListener();
         this._unregisterContextLostListener = null;
       }
+      this._ikSettingsPanel.dispose();
     }
 
     private _applyInGameEditorSettings() {
@@ -2135,7 +2220,17 @@ namespace gdjs {
         inputManager.isMouseButtonReleased(0) &&
         this._hasCursorStayedStillWhilePressed({ toleranceRadius: 10 })
       ) {
-        if (!isShiftPressed(inputManager)) {
+        const shiftPressed = isShiftPressed(inputManager);
+        const selectedBoneObject = this._selectedBoneControl
+          ? this._selectedBoneControl.object
+          : null;
+        const shouldKeepCurrentBoneSelection =
+          !shiftPressed &&
+          this._isIKModeEnabledForSelection() &&
+          !!this._selectedBoneControl &&
+          (!objectUnderCursor || objectUnderCursor === selectedBoneObject);
+
+        if (!shiftPressed && !shouldKeepCurrentBoneSelection) {
           this._selection.clear();
           this._selectedBoneControl = null;
         }
@@ -2148,7 +2243,14 @@ namespace gdjs {
             !layer._initialLayerData.isLocked &&
             !this.isInstanceSealed(objectUnderCursor)
           ) {
-            this._selection.toggle(objectUnderCursor);
+            if (
+              shouldKeepCurrentBoneSelection &&
+              objectUnderCursor === selectedBoneObject
+            ) {
+              // Keep current IK target selection on miss-click around the same object.
+            } else {
+              this._selection.toggle(objectUnderCursor);
+            }
           }
 
           if (
@@ -2178,7 +2280,7 @@ namespace gdjs {
             .includes(boneControlUnderCursor.object)
         ) {
           this._selectedBoneControl = boneControlUnderCursor;
-        } else if (!isShiftPressed(inputManager)) {
+        } else if (!shiftPressed && !shouldKeepCurrentBoneSelection) {
           this._selectedBoneControl = null;
         }
         this._sendSelectionUpdate({
@@ -2289,7 +2391,26 @@ namespace gdjs {
           helper.setColor(
             selectedObjects.includes(object) ? '#f2a63c' : '#4ca3ff'
           );
-          helper.update();
+          const highlightedBone =
+            this._selectedBoneControl &&
+            this._selectedBoneControl.object === object
+              ? this._selectedBoneControl.bone
+              : this._boneControlUnderCursor &&
+                  this._boneControlUnderCursor.object === object
+                ? this._boneControlUnderCursor.bone
+                : null;
+          helper.setActiveBone(highlightedBone);
+          try {
+            helper.update();
+          } catch (error) {
+            logger.warn(
+              'Failed to update IK skeleton helper for object "',
+              object.getName(),
+              '". Removing helper.',
+              error
+            );
+            skeletonHelpersToRemove.push(object);
+          }
         }
       });
       skeletonHelpersToRemove.forEach((object) => {
@@ -2327,6 +2448,7 @@ namespace gdjs {
       }
 
       threeGroup.add(skeletonHelper.container);
+      skeletonHelper.syncContainerWithWorldSpace();
       this._skeletonHelpers.set(object, skeletonHelper);
       return true;
     }
@@ -2371,6 +2493,30 @@ namespace gdjs {
         }
       });
       return hasBones;
+    }
+
+    private _getActiveIKObject(): IKConfigurableObject | null {
+      const selectedBoneObject = this._selectedBoneControl
+        ? this._selectedBoneControl.object
+        : null;
+      if (isIKConfigurableObject(selectedBoneObject)) {
+        return selectedBoneObject;
+      }
+
+      const lastSelectedObject = this._selection.getLastSelectedObject();
+      if (isIKConfigurableObject(lastSelectedObject)) {
+        return lastSelectedObject;
+      }
+
+      const selectedObjects = this._selection.getSelectedObjects();
+      for (let i = selectedObjects.length - 1; i >= 0; i--) {
+        const selectedObject = selectedObjects[i];
+        if (isIKConfigurableObject(selectedObject)) {
+          return selectedObject;
+        }
+      }
+
+      return null;
     }
 
     private _canEnableIKModeForSelection(): boolean {
@@ -3263,8 +3409,24 @@ namespace gdjs {
       if (boneControl) {
         const { bone } = boneControl;
         bone.updateMatrixWorld(true);
-        bone.getWorldPosition(dummyThreeObject.position);
-        bone.getWorldQuaternion(dummyThreeObject.quaternion);
+        const worldPosition = new THREE.Vector3();
+        bone.getWorldPosition(worldPosition);
+        if (dummyThreeObject.parent) {
+          dummyThreeObject.parent.worldToLocal(worldPosition);
+        }
+        dummyThreeObject.position.copy(worldPosition);
+
+        const worldQuaternion = new THREE.Quaternion();
+        bone.getWorldQuaternion(worldQuaternion);
+        if (dummyThreeObject.parent) {
+          const parentWorldQuaternion = new THREE.Quaternion();
+          dummyThreeObject.parent.getWorldQuaternion(parentWorldQuaternion);
+          dummyThreeObject.quaternion
+            .copy(parentWorldQuaternion.invert())
+            .multiply(worldQuaternion);
+        } else {
+          dummyThreeObject.quaternion.copy(worldQuaternion);
+        }
         dummyThreeObject.scale.set(1, 1, 1);
         return;
       }
@@ -3303,9 +3465,14 @@ namespace gdjs {
       bone: THREE.Bone
     ) {
       const parent = bone.parent;
+      const dummyWorldPosition = new THREE.Vector3();
+      const dummyWorldQuaternion = new THREE.Quaternion();
+      dummyThreeObject.getWorldPosition(dummyWorldPosition);
+      dummyThreeObject.getWorldQuaternion(dummyWorldQuaternion);
+
       if (!parent) {
-        bone.position.copy(dummyThreeObject.position);
-        bone.quaternion.copy(dummyThreeObject.quaternion);
+        bone.position.copy(dummyWorldPosition);
+        bone.quaternion.copy(dummyWorldQuaternion);
         bone.updateMatrixWorld(true);
         return;
       }
@@ -3316,13 +3483,13 @@ namespace gdjs {
       parent.getWorldQuaternion(parentWorldQuaternion);
       parentWorldQuaternionInverse.copy(parentWorldQuaternion).invert();
 
-      localPosition.copy(dummyThreeObject.position);
+      localPosition.copy(dummyWorldPosition);
       parent.worldToLocal(localPosition);
       bone.position.copy(localPosition);
 
       bone.quaternion
         .copy(parentWorldQuaternionInverse)
-        .multiply(dummyThreeObject.quaternion);
+        .multiply(dummyWorldQuaternion);
       bone.updateMatrixWorld(true);
     }
 
@@ -3345,6 +3512,7 @@ namespace gdjs {
       } else {
         this._runtimeGame.getSoundManager().unmuteEverything('in-game-editor');
         this._removeSelectionControls();
+        this._ikSettingsPanel.hide();
 
         // Cleanup selection boxes
         this._selectionBoxes.forEach((box) => {
@@ -4027,6 +4195,7 @@ namespace gdjs {
       excludedObjects?: Array<gdjs.RuntimeObject>
     ): THREE.Intersection | null {
       const runtimeGame = this._runtimeGame;
+      const isIKModeEnabledForSelection = this._isIKModeEnabledForSelection();
       const firstIntersectsByLayer: {
         [layerName: string]: null | {
           intersect: THREE.Intersection;
@@ -4089,8 +4258,44 @@ namespace gdjs {
           threeGroup.children,
           true
         );
+        let firstFallbackIntersect: THREE.Intersection | null = null;
+        let firstSelectableIntersect: THREE.Intersection | null = null;
+        let firstBoneIntersect: THREE.Intersection | null = null;
+        for (const intersect of intersects) {
+          const intersectObject = intersect.object as THREE.Object3D & {
+            isTransformControls?: boolean;
+          };
+          if (intersectObject.isTransformControls) {
+            continue;
+          }
 
-        const firstIntersect = intersects[0];
+          if (!firstFallbackIntersect) {
+            firstFallbackIntersect = intersect;
+          }
+
+          if (
+            isIKModeEnabledForSelection &&
+            !firstBoneIntersect &&
+            this._getBoneControlData(intersectObject)
+          ) {
+            firstBoneIntersect = intersect;
+          }
+
+          if (!firstSelectableIntersect && this._getObject3D(intersectObject)) {
+            firstSelectableIntersect = intersect;
+          }
+
+          if (
+            firstSelectableIntersect &&
+            (!isIKModeEnabledForSelection || firstBoneIntersect)
+          ) {
+            break;
+          }
+        }
+        const firstIntersect =
+          (isIKModeEnabledForSelection && firstBoneIntersect) ||
+          firstSelectableIntersect ||
+          firstFallbackIntersect;
         if (!firstIntersect) return;
 
         firstIntersectsByLayer[layerName] = {
@@ -4468,6 +4673,7 @@ namespace gdjs {
         .getDomElementContainer();
       if (domElementContainer) {
         this._toolbar.render(domElementContainer);
+        this._ikSettingsPanel.render(domElementContainer);
       }
 
       // Prepare state of the mouse/cursor for the next frame.
@@ -4492,6 +4698,1287 @@ namespace gdjs {
 
     private _getEditorCamera(): EditorCamera {
       return this._editorCamera;
+    }
+  }
+
+  class IKSettingsPanel {
+    private _parent: HTMLElement | null = null;
+    private _root: HTMLDivElement | null = null;
+    private _elements: {
+      objectLabel: HTMLSpanElement;
+      chainCountLabel: HTMLSpanElement;
+      modeCheckbox: HTMLInputElement;
+      chainSelect: HTMLSelectElement;
+      chainNameInput: HTMLInputElement;
+      effectorSelect: HTMLSelectElement;
+      targetModeSelect: HTMLSelectElement;
+      targetBoneSelect: HTMLSelectElement;
+      targetPositionRow: HTMLDivElement;
+      targetXInput: HTMLInputElement;
+      targetYInput: HTMLInputElement;
+      targetZInput: HTMLInputElement;
+      linksInput: HTMLInputElement;
+      iterationsInput: HTMLInputElement;
+      blendInput: HTMLInputElement;
+      minAngleInput: HTMLInputElement;
+      maxAngleInput: HTMLInputElement;
+      toleranceInput: HTMLInputElement;
+      chainEnabledCheckbox: HTMLInputElement;
+      gizmosCheckbox: HTMLInputElement;
+      poseNameInput: HTMLInputElement;
+      poseCountLabel: HTMLSpanElement;
+      jsonTextarea: HTMLTextAreaElement;
+      statusLabel: HTMLDivElement;
+      applyChainButton: HTMLButtonElement;
+      removeChainButton: HTMLButtonElement;
+      clearChainsButton: HTMLButtonElement;
+      setEffectorFromSelectedButton: HTMLButtonElement;
+      setTargetFromSelectedButton: HTMLButtonElement;
+      pinChainButton: HTMLButtonElement;
+      pinAllButton: HTMLButtonElement;
+      savePoseButton: HTMLButtonElement;
+      applyPoseButton: HTMLButtonElement;
+      removePoseButton: HTMLButtonElement;
+      clearPosesButton: HTMLButtonElement;
+      exportJsonButton: HTMLButtonElement;
+      importReplaceButton: HTMLButtonElement;
+      importMergeButton: HTMLButtonElement;
+    } | null = null;
+    private _getActiveIKObject: () => IKConfigurableObject | null;
+    private _getSelectedBoneName: () => string | null;
+    private _isIKModeEnabled: () => boolean;
+    private _setIKModeEnabled: (enabled: boolean) => void;
+    private _activeObject: IKConfigurableObject | null = null;
+    private _selectedChainName = '';
+    private _lastChainSignature = '';
+    private _lastBoneSignature = '';
+    private _isSyncingFormValues = false;
+    private _statusTimeout: number | null = null;
+
+    constructor({
+      getActiveIKObject,
+      getSelectedBoneName,
+      isIKModeEnabled,
+      setIKModeEnabled,
+    }: {
+      getActiveIKObject: () => IKConfigurableObject | null;
+      getSelectedBoneName: () => string | null;
+      isIKModeEnabled: () => boolean;
+      setIKModeEnabled: (enabled: boolean) => void;
+    }) {
+      this._getActiveIKObject = getActiveIKObject;
+      this._getSelectedBoneName = getSelectedBoneName;
+      this._isIKModeEnabled = isIKModeEnabled;
+      this._setIKModeEnabled = setIKModeEnabled;
+
+      this._addOrUpdateStyle();
+    }
+
+    dispose() {
+      if (this._statusTimeout !== null) {
+        window.clearTimeout(this._statusTimeout);
+        this._statusTimeout = null;
+      }
+      if (this._root) {
+        this._root.remove();
+      }
+      this._root = null;
+      this._elements = null;
+      this._parent = null;
+      this._activeObject = null;
+      this._selectedChainName = '';
+      this._lastChainSignature = '';
+      this._lastBoneSignature = '';
+    }
+
+    hide() {
+      if (this._root) {
+        this._root.style.display = 'none';
+      }
+    }
+
+    private _addOrUpdateStyle() {
+      const styleId = 'InGameEditor-IKPanel-Style';
+      let styleElement = document.getElementById(styleId) as
+        | HTMLStyleElement
+        | null;
+      if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = styleId;
+        document.head.appendChild(styleElement);
+      }
+
+      styleElement.textContent = `
+        .InGameEditor-IKPanel-Root {
+          position: absolute;
+          top: max(46px, calc(env(safe-area-inset-top) + 46px));
+          right: max(6px, env(safe-area-inset-right));
+          z-index: 16;
+          pointer-events: none;
+          padding: 0 8px;
+        }
+        .InGameEditor-IKPanel-Card {
+          width: min(360px, calc(100vw - 16px));
+          max-height: calc(100vh - 58px);
+          overflow: auto;
+          pointer-events: auto;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(0,0,0,0.25)), rgba(8, 16, 20, 0.86);
+          box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
+          backdrop-filter: blur(6px);
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: 10px;
+          color: var(--in-game-editor-theme-text-color-primary);
+          font-family: inherit;
+        }
+        .InGameEditor-IKPanel-Header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+        }
+        .InGameEditor-IKPanel-Subtle {
+          font-size: 10px;
+          opacity: 0.74;
+          text-transform: none;
+          letter-spacing: 0;
+          font-weight: 600;
+          text-align: right;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          max-width: 160px;
+        }
+        .InGameEditor-IKPanel-Section {
+          border: 1px solid rgba(255, 255, 255, 0.13);
+          border-radius: 10px;
+          padding: 8px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          background: rgba(0, 0, 0, 0.18);
+        }
+        .InGameEditor-IKPanel-SectionTitle {
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+        .InGameEditor-IKPanel-Row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .InGameEditor-IKPanel-Label {
+          min-width: 68px;
+          font-size: 11px;
+          opacity: 0.92;
+        }
+        .InGameEditor-IKPanel-Input,
+        .InGameEditor-IKPanel-Select,
+        .InGameEditor-IKPanel-Textarea {
+          flex: 1;
+          min-width: 0;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 7px;
+          padding: 6px 8px;
+          background: rgba(0, 0, 0, 0.3);
+          color: var(--in-game-editor-theme-text-color-primary);
+          font-size: 12px;
+        }
+        .InGameEditor-IKPanel-Grid-2 {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 6px;
+        }
+        .InGameEditor-IKPanel-Grid-3 {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 6px;
+        }
+        .InGameEditor-IKPanel-Button {
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          border-radius: 8px;
+          min-height: 30px;
+          padding: 6px;
+          background: rgba(255, 255, 255, 0.06);
+          color: var(--in-game-editor-theme-text-color-primary);
+          font-size: 11px;
+          font-weight: 700;
+        }
+        .InGameEditor-IKPanel-Button:disabled {
+          opacity: 0.5;
+        }
+        .InGameEditor-IKPanel-Checkbox {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          user-select: none;
+        }
+        .InGameEditor-IKPanel-Textarea {
+          min-height: 82px;
+          resize: vertical;
+          line-height: 1.35;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          font-size: 11px;
+        }
+        .InGameEditor-IKPanel-Status {
+          min-height: 16px;
+          font-size: 11px;
+          opacity: 0.86;
+        }
+        .InGameEditor-IKPanel-Status[data-is-error="1"] {
+          color: #ff9b9b;
+          opacity: 1;
+        }
+      `;
+    }
+
+    private _setStatus(message: string, isError = false) {
+      if (!this._elements) return;
+      this._elements.statusLabel.textContent = message;
+      this._elements.statusLabel.dataset.isError = isError ? '1' : '0';
+      if (this._statusTimeout !== null) {
+        window.clearTimeout(this._statusTimeout);
+      }
+      if (!message) {
+        this._statusTimeout = null;
+        return;
+      }
+      this._statusTimeout = window.setTimeout(() => {
+        if (this._elements) {
+          this._elements.statusLabel.textContent = '';
+          this._elements.statusLabel.dataset.isError = '0';
+        }
+        this._statusTimeout = null;
+      }, 2500);
+    }
+
+    private _parseNumber(input: HTMLInputElement, fallbackValue: number): number {
+      const parsedValue = Number(input.value);
+      return Number.isFinite(parsedValue) ? parsedValue : fallbackValue;
+    }
+
+    private _chainSignature(chainNames: string[]): string {
+      return chainNames.join('\n');
+    }
+
+    private _setFieldValueIfNotFocused(
+      input:
+        | HTMLInputElement
+        | HTMLSelectElement
+        | HTMLTextAreaElement
+        | null,
+      value: string,
+      force = false
+    ) {
+      if (!input) return;
+      if (!force && document.activeElement === input) {
+        return;
+      }
+      if (input.value !== value) {
+        input.value = value;
+      }
+    }
+
+    private _syncSelectOptions(
+      select: HTMLSelectElement,
+      options: string[],
+      configuration?: {
+        allowEmptyOption?: boolean;
+        emptyOptionLabel?: string;
+      }
+    ) {
+      const allowEmptyOption = configuration && configuration.allowEmptyOption;
+      const emptyOptionLabel =
+        (configuration && configuration.emptyOptionLabel) || 'None';
+      const normalizedOptions = allowEmptyOption
+        ? ['', ...options]
+        : options.slice();
+      let shouldRebuildOptions = select.options.length !== normalizedOptions.length;
+      if (!shouldRebuildOptions) {
+        for (let index = 0; index < normalizedOptions.length; index++) {
+          if (select.options[index].value !== normalizedOptions[index]) {
+            shouldRebuildOptions = true;
+            break;
+          }
+        }
+      }
+      if (!shouldRebuildOptions) {
+        return;
+      }
+
+      const previousValue = select.value;
+      select.innerHTML = '';
+      if (allowEmptyOption) {
+        const emptyOption = document.createElement('option');
+        emptyOption.value = '';
+        emptyOption.textContent = emptyOptionLabel;
+        select.appendChild(emptyOption);
+      }
+      options.forEach((optionValue) => {
+        const option = document.createElement('option');
+        option.value = optionValue;
+        option.textContent = optionValue;
+        select.appendChild(option);
+      });
+      if (
+        previousValue &&
+        Array.from(select.options).some(
+          (option) => option.value === previousValue
+        )
+      ) {
+        select.value = previousValue;
+      }
+    }
+
+    private _updateTargetInputsVisibility() {
+      if (!this._elements) return;
+      const isPositionMode =
+        this._elements.targetModeSelect.value === ('position' as IKTargetMode);
+      this._elements.targetBoneSelect.disabled = isPositionMode;
+      this._elements.setTargetFromSelectedButton.disabled = isPositionMode;
+      this._elements.targetPositionRow.style.display = isPositionMode
+        ? 'grid'
+        : 'none';
+    }
+
+    private _applyCurrentChainSettingsToForm(force = false) {
+      if (!this._elements || !this._activeObject) return;
+      const chainName = this._selectedChainName;
+      if (!chainName) {
+        this._updateTargetInputsVisibility();
+        return;
+      }
+      const chainSettings = this._activeObject.getIKChainSettings(chainName);
+      if (!chainSettings) {
+        this._updateTargetInputsVisibility();
+        return;
+      }
+
+      this._isSyncingFormValues = true;
+      this._setFieldValueIfNotFocused(
+        this._elements.chainNameInput,
+        chainSettings.name,
+        force
+      );
+      this._setFieldValueIfNotFocused(
+        this._elements.effectorSelect,
+        chainSettings.effectorBoneName,
+        force
+      );
+      this._setFieldValueIfNotFocused(
+        this._elements.targetModeSelect,
+        chainSettings.targetMode,
+        force
+      );
+      this._setFieldValueIfNotFocused(
+        this._elements.targetBoneSelect,
+        chainSettings.targetBoneName || '',
+        force
+      );
+      this._setFieldValueIfNotFocused(
+        this._elements.targetXInput,
+        String(chainSettings.targetPosition[0]),
+        force
+      );
+      this._setFieldValueIfNotFocused(
+        this._elements.targetYInput,
+        String(chainSettings.targetPosition[1]),
+        force
+      );
+      this._setFieldValueIfNotFocused(
+        this._elements.targetZInput,
+        String(chainSettings.targetPosition[2]),
+        force
+      );
+      this._setFieldValueIfNotFocused(
+        this._elements.linksInput,
+        chainSettings.linkBoneNames.join(', '),
+        force
+      );
+      this._setFieldValueIfNotFocused(
+        this._elements.iterationsInput,
+        String(chainSettings.iterationCount),
+        force
+      );
+      this._setFieldValueIfNotFocused(
+        this._elements.blendInput,
+        String(chainSettings.blendFactor),
+        force
+      );
+      this._setFieldValueIfNotFocused(
+        this._elements.minAngleInput,
+        String(chainSettings.minAngle),
+        force
+      );
+      this._setFieldValueIfNotFocused(
+        this._elements.maxAngleInput,
+        String(chainSettings.maxAngle),
+        force
+      );
+      this._setFieldValueIfNotFocused(
+        this._elements.toleranceInput,
+        String(chainSettings.targetTolerance),
+        force
+      );
+      this._elements.chainEnabledCheckbox.checked = !!chainSettings.enabled;
+      this._isSyncingFormValues = false;
+      this._updateTargetInputsVisibility();
+    }
+
+    private _withActiveObject(
+      callback: (activeObject: IKConfigurableObject) => void
+    ): boolean {
+      const activeObject = this._getActiveIKObject();
+      if (!activeObject) {
+        this._setStatus('Select a 3D model with bones first.', true);
+        return false;
+      }
+      this._activeObject = activeObject;
+      try {
+        callback(activeObject);
+      } catch (error) {
+        logger.error('IK panel action failed.', error);
+        this._setStatus('IK operation failed.', true);
+        return false;
+      }
+      return true;
+    }
+
+    private _getChainNameFromForm(
+      options?: {
+        requireExistingChain?: boolean;
+      }
+    ): string | null {
+      if (!this._elements) return null;
+      const chainName = (
+        this._elements.chainNameInput.value.trim() ||
+        this._elements.chainSelect.value.trim() ||
+        this._selectedChainName
+      ).trim();
+      if (!chainName) {
+        return null;
+      }
+      if (
+        options &&
+        options.requireExistingChain &&
+        this._activeObject &&
+        !this._activeObject.getIKChainNames().includes(chainName)
+      ) {
+        return null;
+      }
+      return chainName;
+    }
+
+    private _applyChainFromForm() {
+      if (!this._elements) return;
+      const chainName = this._getChainNameFromForm();
+      if (!chainName) {
+        this._setStatus('Chain name is required.', true);
+        return;
+      }
+      const effectorBoneName = this._elements.effectorSelect.value.trim();
+      if (!effectorBoneName) {
+        this._setStatus('Choose an effector bone.', true);
+        return;
+      }
+
+      const targetMode =
+        this._elements.targetModeSelect.value === 'position'
+          ? ('position' as IKTargetMode)
+          : ('bone' as IKTargetMode);
+      const targetBoneName = this._elements.targetBoneSelect.value.trim();
+      if (targetMode === 'bone' && !targetBoneName) {
+        this._setStatus('Choose a target bone or switch to position mode.', true);
+        return;
+      }
+
+      const fallbackSettings =
+        this._activeObject &&
+        this._activeObject.getIKChainSettings(this._selectedChainName || chainName);
+      const iterationCount = Math.max(
+        1,
+        Math.round(
+          this._parseNumber(
+            this._elements.iterationsInput,
+            fallbackSettings ? fallbackSettings.iterationCount : 12
+          )
+        )
+      );
+      const blendFactor = Math.max(
+        0,
+        Math.min(
+          1,
+          this._parseNumber(
+            this._elements.blendInput,
+            fallbackSettings ? fallbackSettings.blendFactor : 1
+          )
+        )
+      );
+      let minAngle = Math.max(
+        0,
+        this._parseNumber(
+          this._elements.minAngleInput,
+          fallbackSettings ? fallbackSettings.minAngle : 0
+        )
+      );
+      let maxAngle = Math.max(
+        0,
+        this._parseNumber(
+          this._elements.maxAngleInput,
+          fallbackSettings ? fallbackSettings.maxAngle : 180
+        )
+      );
+      if (maxAngle > 0 && minAngle > maxAngle) {
+        const temp = minAngle;
+        minAngle = maxAngle;
+        maxAngle = temp;
+      }
+      const targetTolerance = Math.max(
+        0.00001,
+        this._parseNumber(
+          this._elements.toleranceInput,
+          fallbackSettings ? fallbackSettings.targetTolerance : 0.002
+        )
+      );
+      const targetX = this._parseNumber(
+        this._elements.targetXInput,
+        fallbackSettings ? fallbackSettings.targetPosition[0] : 0
+      );
+      const targetY = this._parseNumber(
+        this._elements.targetYInput,
+        fallbackSettings ? fallbackSettings.targetPosition[1] : 0
+      );
+      const targetZ = this._parseNumber(
+        this._elements.targetZInput,
+        fallbackSettings ? fallbackSettings.targetPosition[2] : 0
+      );
+
+      const links = this._elements.linksInput.value.trim();
+      const chainEnabled = this._elements.chainEnabledCheckbox.checked;
+      const gizmosEnabled = this._elements.gizmosCheckbox.checked;
+
+      const hasApplied = this._withActiveObject((activeObject) => {
+        activeObject.configureIKChain(
+          chainName,
+          effectorBoneName,
+          targetMode === 'bone' ? targetBoneName : '',
+          links,
+          iterationCount,
+          blendFactor,
+          minAngle,
+          maxAngle
+        );
+        if (targetMode === 'bone') {
+          activeObject.setIKTargetBone(chainName, targetBoneName);
+        } else {
+          activeObject.setIKTargetPosition(chainName, targetX, targetY, targetZ);
+        }
+        activeObject.setIKEnabled(chainName, chainEnabled);
+        activeObject.setIKIterationCount(chainName, iterationCount);
+        activeObject.setIKBlendFactor(chainName, blendFactor);
+        activeObject.setIKAngleLimits(chainName, minAngle, maxAngle);
+        activeObject.setIKTargetTolerance(chainName, targetTolerance);
+        activeObject.setIKGizmosEnabled(gizmosEnabled);
+      });
+      if (!hasApplied) {
+        return;
+      }
+
+      this._selectedChainName = chainName;
+      this._lastChainSignature = '';
+      this._setStatus(`Applied chain "${chainName}".`);
+    }
+
+    private _removeCurrentChain() {
+      const chainName = this._getChainNameFromForm({ requireExistingChain: true });
+      if (!chainName) {
+        this._setStatus('Select an existing chain to remove.', true);
+        return;
+      }
+
+      if (
+        !this._withActiveObject((activeObject) => {
+          activeObject.removeIKChain(chainName);
+        })
+      ) {
+        return;
+      }
+
+      this._selectedChainName = '';
+      this._lastChainSignature = '';
+      this._setStatus(`Removed chain "${chainName}".`);
+    }
+
+    private _clearChains() {
+      if (
+        !this._withActiveObject((activeObject) => {
+          activeObject.clearIKChains();
+        })
+      ) {
+        return;
+      }
+      this._selectedChainName = '';
+      this._lastChainSignature = '';
+      this._setStatus('Cleared all IK chains.');
+    }
+
+    private _setEffectorFromSelectedBone() {
+      if (!this._elements) return;
+      const selectedBoneName = this._getSelectedBoneName();
+      if (!selectedBoneName) {
+        this._setStatus('Select a bone handle first.', true);
+        return;
+      }
+      const hasBoneOption = Array.from(this._elements.effectorSelect.options).some(
+        (option) => option.value === selectedBoneName
+      );
+      if (!hasBoneOption) {
+        this._setStatus('Selected bone is not part of this model.', true);
+        return;
+      }
+      this._elements.effectorSelect.value = selectedBoneName;
+      if (!this._elements.chainNameInput.value.trim()) {
+        this._elements.chainNameInput.value = `chain_${selectedBoneName}`;
+      }
+      this._setStatus(`Effector set to "${selectedBoneName}".`);
+    }
+
+    private _setTargetFromSelectedBone() {
+      if (!this._elements) return;
+      const selectedBoneName = this._getSelectedBoneName();
+      if (!selectedBoneName) {
+        this._setStatus('Select a bone handle first.', true);
+        return;
+      }
+      const hasBoneOption = Array.from(this._elements.targetBoneSelect.options).some(
+        (option) => option.value === selectedBoneName
+      );
+      if (!hasBoneOption) {
+        this._setStatus('Selected bone is not part of this model.', true);
+        return;
+      }
+      this._elements.targetModeSelect.value = 'bone';
+      this._elements.targetBoneSelect.value = selectedBoneName;
+      this._updateTargetInputsVisibility();
+      this._setStatus(`Target set to "${selectedBoneName}".`);
+    }
+
+    private _pinCurrentChain() {
+      const chainName = this._getChainNameFromForm({ requireExistingChain: true });
+      if (!chainName) {
+        this._setStatus('Select an existing chain to pin.', true);
+        return;
+      }
+      if (
+        !this._withActiveObject((activeObject) => {
+          activeObject.pinIKTargetToCurrentEffector(chainName);
+        })
+      ) {
+        return;
+      }
+      this._setStatus(`Pinned "${chainName}" target to current effector.`);
+    }
+
+    private _pinAllChains() {
+      if (
+        !this._withActiveObject((activeObject) => {
+          activeObject.pinAllIKTargetsToCurrentEffectors();
+        })
+      ) {
+        return;
+      }
+      this._setStatus('Pinned all IK targets to current effectors.');
+    }
+
+    private _savePose() {
+      if (!this._elements) return;
+      const poseName = this._elements.poseNameInput.value.trim();
+      if (!poseName) {
+        this._setStatus('Pose name is required.', true);
+        return;
+      }
+      if (
+        !this._withActiveObject((activeObject) => {
+          activeObject.saveIKPose(poseName);
+        })
+      ) {
+        return;
+      }
+      this._setStatus(`Saved pose "${poseName}".`);
+    }
+
+    private _applyPose() {
+      if (!this._elements) return;
+      const poseName = this._elements.poseNameInput.value.trim();
+      if (!poseName) {
+        this._setStatus('Pose name is required.', true);
+        return;
+      }
+      if (
+        !this._withActiveObject((activeObject) => {
+          activeObject.applyIKPose(poseName);
+        })
+      ) {
+        return;
+      }
+      this._setStatus(`Applied pose "${poseName}".`);
+    }
+
+    private _removePose() {
+      if (!this._elements) return;
+      const poseName = this._elements.poseNameInput.value.trim();
+      if (!poseName) {
+        this._setStatus('Pose name is required.', true);
+        return;
+      }
+      if (
+        !this._withActiveObject((activeObject) => {
+          activeObject.removeIKPose(poseName);
+        })
+      ) {
+        return;
+      }
+      this._setStatus(`Removed pose "${poseName}".`);
+    }
+
+    private _clearPoses() {
+      if (
+        !this._withActiveObject((activeObject) => {
+          activeObject.clearIKPoses();
+        })
+      ) {
+        return;
+      }
+      this._setStatus('Cleared all poses.');
+    }
+
+    private _exportPosesToJson() {
+      if (!this._elements) return;
+      if (
+        !this._withActiveObject((activeObject) => {
+          this._elements!.jsonTextarea.value = activeObject.exportIKPosesToJSON();
+        })
+      ) {
+        return;
+      }
+      this._setStatus('Exported poses to JSON.');
+    }
+
+    private _importPosesFromJson(clearExisting: boolean) {
+      if (!this._elements) return;
+      const json = this._elements.jsonTextarea.value.trim();
+      if (!json) {
+        this._setStatus('Paste JSON before importing.', true);
+        return;
+      }
+      if (
+        !this._withActiveObject((activeObject) => {
+          activeObject.importIKPosesFromJSON(json, clearExisting);
+        })
+      ) {
+        return;
+      }
+      this._setStatus(
+        clearExisting
+          ? 'Imported poses (replaced existing).'
+          : 'Imported poses (merged).'
+      );
+    }
+
+    private _createRootIfNeeded() {
+      if (this._root) return;
+
+      const makeInput = (
+        type = 'text',
+        placeholder = ''
+      ): HTMLInputElement => {
+        const input = h('input', {
+          class: 'InGameEditor-IKPanel-Input',
+          type,
+          placeholder,
+        }) as HTMLInputElement;
+        return input;
+      };
+      const makeSelect = (): HTMLSelectElement =>
+        h('select', {
+          class: 'InGameEditor-IKPanel-Select',
+        }) as HTMLSelectElement;
+      const makeButton = (label: string): HTMLButtonElement =>
+        h(
+          'button',
+          {
+            class: 'InGameEditor-IKPanel-Button',
+            type: 'button',
+          },
+          label
+        ) as HTMLButtonElement;
+      const makeSection = (title: string): HTMLDivElement =>
+        h(
+          'div',
+          {
+            class: 'InGameEditor-IKPanel-Section',
+          },
+          h('div', { class: 'InGameEditor-IKPanel-SectionTitle' }, title)
+        ) as HTMLDivElement;
+      const makeRow = (
+        label: string,
+        ...children: HTMLElement[]
+      ): HTMLDivElement =>
+        h(
+          'div',
+          {
+            class: 'InGameEditor-IKPanel-Row',
+          },
+          h('div', { class: 'InGameEditor-IKPanel-Label' }, label),
+          ...children
+        ) as HTMLDivElement;
+
+      const root = h('div', {
+        class: 'InGameEditor-IKPanel-Root',
+      }) as HTMLDivElement;
+      const card = h('div', {
+        class: 'InGameEditor-IKPanel-Card',
+      }) as HTMLDivElement;
+      root.appendChild(card);
+      this._root = root;
+
+      const objectLabel = h(
+        'span',
+        { class: 'InGameEditor-IKPanel-Subtle' },
+        ''
+      ) as HTMLSpanElement;
+      const chainCountLabel = h(
+        'span',
+        { class: 'InGameEditor-IKPanel-Subtle' },
+        '0 chains'
+      ) as HTMLSpanElement;
+      const poseCountLabel = h(
+        'span',
+        { class: 'InGameEditor-IKPanel-Subtle' },
+        '0 poses'
+      ) as HTMLSpanElement;
+      card.appendChild(
+        h(
+          'div',
+          { class: 'InGameEditor-IKPanel-Header' },
+          h('span', {}, 'IK Rig'),
+          objectLabel
+        )
+      );
+
+      const modeCheckbox = h('input', {
+        type: 'checkbox',
+      }) as HTMLInputElement;
+      card.appendChild(
+        h(
+          'label',
+          { class: 'InGameEditor-IKPanel-Checkbox' },
+          modeCheckbox,
+          h('span', {}, 'Enable IK mode')
+        )
+      );
+
+      const chainSection = makeSection('Chains');
+      card.appendChild(chainSection);
+      chainSection.appendChild(
+        h(
+          'div',
+          { class: 'InGameEditor-IKPanel-Header' },
+          h('span', {}, 'Active Chain'),
+          chainCountLabel
+        )
+      );
+      const chainSelect = makeSelect();
+      const chainNameInput = makeInput('text', 'chain_name');
+      chainSection.appendChild(makeRow('Select', chainSelect));
+      chainSection.appendChild(makeRow('Name', chainNameInput));
+
+      const effectorSelect = makeSelect();
+      const setEffectorFromSelectedButton = makeButton('From selected');
+      chainSection.appendChild(
+        makeRow('Effector', effectorSelect, setEffectorFromSelectedButton)
+      );
+
+      const targetModeSelect = makeSelect();
+      const targetModeBoneOption = document.createElement('option');
+      targetModeBoneOption.value = 'bone';
+      targetModeBoneOption.textContent = 'Bone';
+      targetModeSelect.appendChild(targetModeBoneOption);
+      const targetModePositionOption = document.createElement('option');
+      targetModePositionOption.value = 'position';
+      targetModePositionOption.textContent = 'Position';
+      targetModeSelect.appendChild(targetModePositionOption);
+      chainSection.appendChild(makeRow('Target', targetModeSelect));
+
+      const targetBoneSelect = makeSelect();
+      const setTargetFromSelectedButton = makeButton('From selected');
+      chainSection.appendChild(
+        makeRow('Target Bone', targetBoneSelect, setTargetFromSelectedButton)
+      );
+
+      const targetXInput = makeInput('number');
+      targetXInput.step = '0.01';
+      targetXInput.placeholder = 'X';
+      const targetYInput = makeInput('number');
+      targetYInput.step = '0.01';
+      targetYInput.placeholder = 'Y';
+      const targetZInput = makeInput('number');
+      targetZInput.step = '0.01';
+      targetZInput.placeholder = 'Z';
+      const targetPositionRow = h(
+        'div',
+        {
+          class: 'InGameEditor-IKPanel-Grid-3',
+        },
+        targetXInput,
+        targetYInput,
+        targetZInput
+      ) as HTMLDivElement;
+      chainSection.appendChild(makeRow('Target Pos', targetPositionRow));
+
+      const linksInput = makeInput('text', 'upperarm, forearm');
+      chainSection.appendChild(makeRow('Links', linksInput));
+
+      const iterationsInput = makeInput('number');
+      iterationsInput.min = '1';
+      iterationsInput.step = '1';
+      const blendInput = makeInput('number');
+      blendInput.min = '0';
+      blendInput.max = '1';
+      blendInput.step = '0.01';
+      chainSection.appendChild(
+        makeRow(
+          'Solver',
+          h(
+            'div',
+            { class: 'InGameEditor-IKPanel-Grid-2' },
+            iterationsInput,
+            blendInput
+          )
+        )
+      );
+
+      const minAngleInput = makeInput('number');
+      minAngleInput.min = '0';
+      minAngleInput.max = '180';
+      minAngleInput.step = '1';
+      const maxAngleInput = makeInput('number');
+      maxAngleInput.min = '0';
+      maxAngleInput.max = '180';
+      maxAngleInput.step = '1';
+      const toleranceInput = makeInput('number');
+      toleranceInput.min = '0';
+      toleranceInput.step = '0.0001';
+      chainSection.appendChild(
+        makeRow(
+          'Limits',
+          h(
+            'div',
+            { class: 'InGameEditor-IKPanel-Grid-3' },
+            minAngleInput,
+            maxAngleInput,
+            toleranceInput
+          )
+        )
+      );
+
+      const chainEnabledCheckbox = h('input', {
+        type: 'checkbox',
+      }) as HTMLInputElement;
+      const gizmosCheckbox = h('input', {
+        type: 'checkbox',
+      }) as HTMLInputElement;
+      chainSection.appendChild(
+        h(
+          'div',
+          { class: 'InGameEditor-IKPanel-Row' },
+          h(
+            'label',
+            { class: 'InGameEditor-IKPanel-Checkbox' },
+            chainEnabledCheckbox,
+            h('span', {}, 'Chain enabled')
+          ),
+          h(
+            'label',
+            { class: 'InGameEditor-IKPanel-Checkbox' },
+            gizmosCheckbox,
+            h('span', {}, 'Show gizmos')
+          )
+        )
+      );
+
+      const applyChainButton = makeButton('Apply chain');
+      const removeChainButton = makeButton('Remove chain');
+      const clearChainsButton = makeButton('Clear chains');
+      const pinChainButton = makeButton('Pin chain target');
+      const pinAllButton = makeButton('Pin all targets');
+      chainSection.appendChild(
+        h(
+          'div',
+          { class: 'InGameEditor-IKPanel-Grid-2' },
+          applyChainButton,
+          removeChainButton,
+          clearChainsButton,
+          pinChainButton,
+          pinAllButton
+        )
+      );
+
+      const poseSection = makeSection('Poses');
+      card.appendChild(poseSection);
+      poseSection.appendChild(
+        h(
+          'div',
+          { class: 'InGameEditor-IKPanel-Header' },
+          h('span', {}, 'Library'),
+          poseCountLabel
+        )
+      );
+      const poseNameInput = makeInput('text', 'pose_name');
+      poseSection.appendChild(makeRow('Pose', poseNameInput));
+      const savePoseButton = makeButton('Save pose');
+      const applyPoseButton = makeButton('Apply pose');
+      const removePoseButton = makeButton('Remove pose');
+      const clearPosesButton = makeButton('Clear poses');
+      poseSection.appendChild(
+        h(
+          'div',
+          { class: 'InGameEditor-IKPanel-Grid-2' },
+          savePoseButton,
+          applyPoseButton,
+          removePoseButton,
+          clearPosesButton
+        )
+      );
+
+      const jsonTextarea = h('textarea', {
+        class: 'InGameEditor-IKPanel-Textarea',
+        placeholder: 'IK pose JSON...',
+      }) as HTMLTextAreaElement;
+      poseSection.appendChild(jsonTextarea);
+      const exportJsonButton = makeButton('Export JSON');
+      const importReplaceButton = makeButton('Import (replace)');
+      const importMergeButton = makeButton('Import (merge)');
+      poseSection.appendChild(
+        h(
+          'div',
+          { class: 'InGameEditor-IKPanel-Grid-3' },
+          exportJsonButton,
+          importReplaceButton,
+          importMergeButton
+        )
+      );
+
+      const statusLabel = h(
+        'div',
+        { class: 'InGameEditor-IKPanel-Status', 'data-is-error': '0' },
+        ''
+      ) as HTMLDivElement;
+      card.appendChild(statusLabel);
+
+      this._elements = {
+        objectLabel,
+        chainCountLabel,
+        modeCheckbox,
+        chainSelect,
+        chainNameInput,
+        effectorSelect,
+        targetModeSelect,
+        targetBoneSelect,
+        targetPositionRow,
+        targetXInput,
+        targetYInput,
+        targetZInput,
+        linksInput,
+        iterationsInput,
+        blendInput,
+        minAngleInput,
+        maxAngleInput,
+        toleranceInput,
+        chainEnabledCheckbox,
+        gizmosCheckbox,
+        poseNameInput,
+        poseCountLabel,
+        jsonTextarea,
+        statusLabel,
+        applyChainButton,
+        removeChainButton,
+        clearChainsButton,
+        setEffectorFromSelectedButton,
+        setTargetFromSelectedButton,
+        pinChainButton,
+        pinAllButton,
+        savePoseButton,
+        applyPoseButton,
+        removePoseButton,
+        clearPosesButton,
+        exportJsonButton,
+        importReplaceButton,
+        importMergeButton,
+      };
+
+      const stopEvent = (event: Event) => {
+        event.stopPropagation();
+      };
+      [
+        'pointerdown',
+        'pointerup',
+        'mousedown',
+        'mouseup',
+        'click',
+        'dblclick',
+        'contextmenu',
+        'wheel',
+      ].forEach((eventName) => {
+        root.addEventListener(eventName, stopEvent);
+      });
+
+      modeCheckbox.addEventListener('change', () => {
+        this._setIKModeEnabled(modeCheckbox.checked);
+      });
+      chainSelect.addEventListener('change', () => {
+        if (this._isSyncingFormValues) return;
+        this._selectedChainName = chainSelect.value.trim();
+        this._setFieldValueIfNotFocused(
+          chainNameInput,
+          this._selectedChainName,
+          true
+        );
+        this._applyCurrentChainSettingsToForm(true);
+      });
+      targetModeSelect.addEventListener('change', () => {
+        this._updateTargetInputsVisibility();
+      });
+      gizmosCheckbox.addEventListener('change', () => {
+        this._withActiveObject((activeObject) => {
+          activeObject.setIKGizmosEnabled(gizmosCheckbox.checked);
+        });
+      });
+
+      applyChainButton.addEventListener('click', () => this._applyChainFromForm());
+      removeChainButton.addEventListener('click', () => this._removeCurrentChain());
+      clearChainsButton.addEventListener('click', () => this._clearChains());
+      setEffectorFromSelectedButton.addEventListener('click', () =>
+        this._setEffectorFromSelectedBone()
+      );
+      setTargetFromSelectedButton.addEventListener('click', () =>
+        this._setTargetFromSelectedBone()
+      );
+      pinChainButton.addEventListener('click', () => this._pinCurrentChain());
+      pinAllButton.addEventListener('click', () => this._pinAllChains());
+
+      savePoseButton.addEventListener('click', () => this._savePose());
+      applyPoseButton.addEventListener('click', () => this._applyPose());
+      removePoseButton.addEventListener('click', () => this._removePose());
+      clearPosesButton.addEventListener('click', () => this._clearPoses());
+      exportJsonButton.addEventListener('click', () => this._exportPosesToJson());
+      importReplaceButton.addEventListener('click', () =>
+        this._importPosesFromJson(true)
+      );
+      importMergeButton.addEventListener('click', () =>
+        this._importPosesFromJson(false)
+      );
+    }
+
+    render(parent: HTMLElement) {
+      this._createRootIfNeeded();
+      if (!this._root || !this._elements) return;
+
+      if (this._parent !== parent || this._root.parentElement !== parent) {
+        this._root.remove();
+        parent.appendChild(this._root);
+        this._parent = parent;
+      }
+
+      const activeObject = this._getActiveIKObject();
+      const isIKModeEnabled = this._isIKModeEnabled();
+      this._elements.modeCheckbox.checked = isIKModeEnabled;
+      if (!isIKModeEnabled || !activeObject) {
+        this._activeObject = null;
+        this._root.style.display = 'none';
+        return;
+      }
+
+      this._root.style.display = 'block';
+      const hasObjectChanged = activeObject !== this._activeObject;
+      if (hasObjectChanged) {
+        this._selectedChainName = '';
+        this._lastChainSignature = '';
+        this._lastBoneSignature = '';
+        this._setStatus('');
+      }
+      this._activeObject = activeObject;
+      this._elements.objectLabel.textContent = activeObject.getName();
+
+      const chainNames = activeObject.getIKChainNames();
+      const chainSignature = this._chainSignature(chainNames);
+      const hasChainListChanged =
+        hasObjectChanged || chainSignature !== this._lastChainSignature;
+      if (hasChainListChanged) {
+        this._lastChainSignature = chainSignature;
+        this._syncSelectOptions(this._elements.chainSelect, chainNames, {
+          allowEmptyOption: true,
+          emptyOptionLabel: 'Select chain',
+        });
+      }
+
+      if (
+        this._selectedChainName &&
+        !chainNames.includes(this._selectedChainName)
+      ) {
+        this._selectedChainName = '';
+      }
+      if (!this._selectedChainName && chainNames.length > 0) {
+        this._selectedChainName = chainNames[0];
+      }
+
+      if (this._selectedChainName) {
+        this._setFieldValueIfNotFocused(
+          this._elements.chainSelect,
+          this._selectedChainName,
+          true
+        );
+      } else if (this._elements.chainSelect.value) {
+        this._selectedChainName = this._elements.chainSelect.value;
+      }
+
+      const boneNames = activeObject.getIKBoneNames();
+      const boneSignature = this._chainSignature(boneNames);
+      if (hasObjectChanged || boneSignature !== this._lastBoneSignature) {
+        this._lastBoneSignature = boneSignature;
+        this._syncSelectOptions(this._elements.effectorSelect, boneNames, {
+          allowEmptyOption: true,
+          emptyOptionLabel: 'Select bone',
+        });
+        this._syncSelectOptions(this._elements.targetBoneSelect, boneNames, {
+          allowEmptyOption: true,
+          emptyOptionLabel: 'Select bone',
+        });
+      }
+
+      this._elements.chainCountLabel.textContent = `${chainNames.length} chains`;
+      this._elements.poseCountLabel.textContent = `${activeObject.getIKPoseCount()} poses`;
+      this._elements.gizmosCheckbox.checked = !!activeObject.areIKGizmosEnabled();
+
+      this._applyCurrentChainSettingsToForm(hasObjectChanged || hasChainListChanged);
+
+      const hasSelectedChain =
+        !!this._selectedChainName && chainNames.includes(this._selectedChainName);
+      this._elements.removeChainButton.disabled = !hasSelectedChain;
+      this._elements.pinChainButton.disabled = !hasSelectedChain;
+      const poseName = this._elements.poseNameInput.value.trim();
+      this._elements.applyPoseButton.disabled = !poseName;
+      this._elements.removePoseButton.disabled = !poseName;
     }
   }
 
@@ -6660,6 +8147,8 @@ namespace gdjs {
     container: THREE.Group;
     skeletonHelper: THREE.SkeletonHelper;
     private _handles: THREE.Mesh[] = [];
+    private _handleColor: THREE.ColorRepresentation = '#4ca3ff';
+    private _activeBone: THREE.Bone | null = null;
 
     constructor(object: gdjs.RuntimeObject) {
       this.object = object;
@@ -6683,8 +8172,24 @@ namespace gdjs {
         configurableSkeletonMaterial.fog = false;
       }
       this.container.add(this.skeletonHelper);
+      // Keep lines visual-only: IK selection should target bone handles, not helper lines.
+      (
+        this.skeletonHelper as THREE.Object3D & {
+          raycast?: (raycaster: THREE.Raycaster, intersects: Array<THREE.Intersection>) => void;
+        }
+      ).raycast = () => {};
+      this.skeletonHelper.traverse((child) => {
+        (
+          child as THREE.Object3D & {
+            raycast?: (
+              raycaster: THREE.Raycaster,
+              intersects: Array<THREE.Intersection>
+            ) => void;
+          }
+        ).raycast = () => {};
+      });
 
-      const handleGeometry = new THREE.SphereGeometry(3, 10, 10);
+      const handleGeometry = new THREE.SphereGeometry(2, 10, 10);
       const handleMaterial = new THREE.MeshBasicMaterial({
         color: '#4ca3ff',
         depthTest: false,
@@ -6710,6 +8215,18 @@ namespace gdjs {
         this.container.add(handle);
         this._handles.push(handle);
       });
+      this._refreshHandleStyles();
+    }
+
+    syncContainerWithWorldSpace() {
+      if (!this.container.parent) return;
+
+      // SkeletonHelper stores world matrix internally. Keep this container in
+      // world space to avoid applying layer/scene transforms twice.
+      this.container.parent.updateMatrixWorld(true);
+      this.container.matrixAutoUpdate = false;
+      this.container.matrix.copy(this.container.parent.matrixWorld).invert();
+      this.container.matrixWorldNeedsUpdate = true;
     }
 
     hasBones(): boolean {
@@ -6717,7 +8234,25 @@ namespace gdjs {
     }
 
     update() {
-      this.skeletonHelper.update();
+      this.syncContainerWithWorldSpace();
+      const updatableSkeletonHelper = this.skeletonHelper as THREE.SkeletonHelper &
+        {
+          update?: () => void;
+          root?: THREE.Object3D;
+        };
+
+      if (typeof updatableSkeletonHelper.update === 'function') {
+        updatableSkeletonHelper.update();
+      } else {
+        // Three.js changed SkeletonHelper API (update -> updateMatrixWorld).
+        // Keep compatibility across versions used by the editor/preview.
+        if (updatableSkeletonHelper.root) {
+          updatableSkeletonHelper.root.updateMatrixWorld(true);
+        }
+        this.skeletonHelper.updateMatrixWorld(true);
+      }
+
+      const boneWorldPosition = new THREE.Vector3();
       for (const handle of this._handles) {
         // @ts-ignore
         const bone = handle.gdjsBoneControlData
@@ -6727,7 +8262,9 @@ namespace gdjs {
         if (!bone) continue;
 
         bone.updateMatrixWorld(true);
-        bone.getWorldPosition(handle.position);
+        bone.getWorldPosition(boneWorldPosition);
+        this.container.worldToLocal(boneWorldPosition);
+        handle.position.copy(boneWorldPosition);
       }
     }
 
@@ -6760,6 +8297,7 @@ namespace gdjs {
     }
 
     setColor(color: THREE.ColorRepresentation) {
+      this._handleColor = color;
       const skeletonMaterials = Array.isArray(this.skeletonHelper.material)
         ? this.skeletonHelper.material
         : [this.skeletonHelper.material];
@@ -6773,15 +8311,30 @@ namespace gdjs {
         }
         colorMaterial.needsUpdate = true;
       }
+      this._refreshHandleStyles();
+    }
+
+    setActiveBone(bone: THREE.Bone | null) {
+      if (this._activeBone === bone) return;
+      this._activeBone = bone;
+      this._refreshHandleStyles();
+    }
+
+    private _refreshHandleStyles() {
       for (const handle of this._handles) {
+        // @ts-ignore
+        const boneControlData = handle.gdjsBoneControlData as BoneControlData | null;
+        const isActive = !!boneControlData && boneControlData.bone === this._activeBone;
         const handleMaterials = Array.isArray(handle.material)
           ? handle.material
           : [handle.material];
         for (const handleMaterial of handleMaterials) {
           const material = handleMaterial as THREE.MeshBasicMaterial;
-          material.color.set(color);
+          material.color.set(isActive ? '#35f5a3' : this._handleColor);
+          material.opacity = isActive ? 1 : 0.95;
           material.needsUpdate = true;
         }
+        handle.scale.setScalar(isActive ? 1.2 : 1);
       }
     }
   }

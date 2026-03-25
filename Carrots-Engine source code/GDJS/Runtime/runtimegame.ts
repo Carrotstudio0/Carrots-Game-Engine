@@ -189,6 +189,294 @@ namespace gdjs {
     multithreading?: gdjs.MultithreadManagerOptions;
   };
 
+  const createEmptyMultithreadRoleCount = (): {
+    [role in gdjs.WorkerRole]: integer;
+  } => ({
+    generic: 0,
+    physics: 0,
+    loader: 0,
+  });
+
+  class RuntimeMultithreadTaskQueueFallback {
+    private _manager: RuntimeMultithreadManagerFallback;
+    private _name: string;
+    private _isPaused = false;
+    private _disposed = false;
+    private _taskIndex = 0;
+
+    constructor(
+      manager: RuntimeMultithreadManagerFallback,
+      options?: gdjs.WorkerTaskQueueOptions
+    ) {
+      this._manager = manager;
+      this._name =
+        options?.name && options.name.trim()
+          ? options.name.trim()
+          : 'fallback-worker-task-queue';
+      this._isPaused = options?.autoStart === false;
+    }
+
+    private _createTaskId(): string {
+      this._taskIndex++;
+      return this._name + '-task-' + this._taskIndex;
+    }
+
+    enqueue<T = unknown>(
+      handlerName: string,
+      payload: unknown,
+      options?: gdjs.WorkerTaskOptions
+    ): gdjs.WorkerQueuedTask<T> {
+      const queueTaskId = this._createTaskId();
+      if (this._disposed) {
+        const disposedError = new Error(
+          'The fallback worker task queue was disposed.'
+        );
+        const rejectedPromise = Promise.reject(disposedError);
+        rejectedPromise.catch(() => {});
+        return {
+          id: queueTaskId,
+          promise: rejectedPromise as Promise<T>,
+          cancel: () => false,
+          getStatus: () => 'cancelled',
+        };
+      }
+
+      if (this._isPaused) {
+        const pausedError = new Error(
+          'Fallback worker task queue is paused and does not support buffering.'
+        );
+        const rejectedPromise = Promise.reject(pausedError);
+        rejectedPromise.catch(() => {});
+        return {
+          id: queueTaskId,
+          promise: rejectedPromise as Promise<T>,
+          cancel: () => false,
+          getStatus: () => 'failed',
+        };
+      }
+
+      const taskHandle = this._manager.runTask<T>(handlerName, payload, options);
+      return {
+        id: queueTaskId,
+        promise: taskHandle.promise,
+        cancel: () => taskHandle.cancel(),
+        getStatus: () => taskHandle.getStatus(),
+      };
+    }
+
+    enqueueBatch<T = unknown>(
+      tasks: Array<{
+        handlerName: string;
+        payload: unknown;
+        options?: gdjs.WorkerTaskOptions;
+      }>
+    ): Array<gdjs.WorkerQueuedTask<T>> {
+      return tasks.map((task) =>
+        this.enqueue<T>(task.handlerName, task.payload, task.options)
+      );
+    }
+
+    cancelTask(_taskId: string): boolean {
+      return false;
+    }
+
+    pause(): void {
+      this._isPaused = true;
+    }
+
+    resume(): void {
+      this._isPaused = false;
+    }
+
+    isPaused(): boolean {
+      return this._isPaused;
+    }
+
+    clearPendingTasks(): integer {
+      return 0;
+    }
+
+    async drain(): Promise<void> {}
+
+    getStats(): gdjs.WorkerTaskQueueStats {
+      return {
+        name: this._name,
+        isPaused: this._isPaused,
+        maxConcurrentTasks: 0,
+        pendingTaskCount: 0,
+        runningTaskCount: 0,
+        completedTaskCount: 0,
+        failedTaskCount: 0,
+        cancelledTaskCount: 0,
+      };
+    }
+
+    dispose(): void {
+      this._disposed = true;
+      this._isPaused = true;
+    }
+  }
+
+  class RuntimeMultithreadManagerFallback {
+    private _jobIndex = 0;
+    private _disposed = false;
+    private _failedJobCount = 0;
+
+    runTask<T = unknown>(
+      _handlerName: string,
+      _payload: unknown,
+      _options?: gdjs.WorkerTaskOptions
+    ): gdjs.WorkerTaskHandle<T> {
+      if (this._disposed) {
+        const disposedError = new Error('The fallback multithread manager was disposed.');
+        const rejectedPromise = Promise.reject(disposedError);
+        rejectedPromise.catch(() => {});
+        return {
+          id: 'fallback-worker-job-disposed',
+          promise: rejectedPromise as Promise<T>,
+          cancel: () => false,
+          getStatus: () => 'cancelled',
+          isFinished: () => true,
+          getResult: () => null,
+          getError: () => disposedError,
+        } as gdjs.WorkerTaskHandle<T>;
+      }
+      this._jobIndex++;
+      const error = new Error(
+        'The multithreading runtime is unavailable in this preview.'
+      );
+      const rejectedPromise = Promise.reject(error);
+      rejectedPromise.catch(() => {});
+      this._failedJobCount++;
+      return {
+        id: 'fallback-worker-job-' + this._jobIndex,
+        promise: rejectedPromise as Promise<T>,
+        cancel: () => false,
+        getStatus: () => 'failed',
+        isFinished: () => true,
+        getResult: () => null,
+        getError: () => error,
+      } as gdjs.WorkerTaskHandle<T>;
+    }
+
+    runTaskBatch<T = unknown>(
+      jobs: Array<{
+        handlerName: string;
+        payload: unknown;
+        options?: gdjs.WorkerTaskOptions;
+      }>
+    ): Array<gdjs.WorkerTaskHandle<T>> {
+      return jobs.map((job) =>
+        this.runTask<T>(job.handlerName, job.payload, job.options)
+      );
+    }
+
+    createTaskQueue(
+      options?: gdjs.WorkerTaskQueueOptions
+    ): gdjs.WorkerTaskQueue {
+      if (typeof gdjs.WorkerTaskQueue === 'function') {
+        return new gdjs.WorkerTaskQueue(
+          this as unknown as gdjs.MultithreadManager,
+          options
+        );
+      }
+      return (new RuntimeMultithreadTaskQueueFallback(
+        this,
+        options
+      ) as unknown) as gdjs.WorkerTaskQueue;
+    }
+
+    setDebugMessageLogLevel(_logLevel: gdjs.WorkerMessageLogLevel): void {}
+
+    cancelTask(_jobId: string): boolean {
+      return false;
+    }
+
+    getStats(): gdjs.MultithreadStats {
+      return {
+        configuredWorkerCount: 0,
+        activeWorkerCount: 0,
+        busyWorkerCount: 0,
+        queuedJobCount: 0,
+        runningJobCount: 0,
+        completedJobCount: 0,
+        failedJobCount: this._failedJobCount,
+        cancelledJobCount: 0,
+        supportsWorkers: false,
+        isUsingWorkers: false,
+        registeredHandlerCount: 0,
+        activeWorkerCountByRole: createEmptyMultithreadRoleCount(),
+        queuedJobCountByRole: createEmptyMultithreadRoleCount(),
+        runningJobCountByRole: createEmptyMultithreadRoleCount(),
+      };
+    }
+
+    supportsWorkers(): boolean {
+      return false;
+    }
+
+    dispose(): void {
+      this._disposed = true;
+    }
+  }
+
+  const isMultithreadManagerLike = (
+    candidate: unknown
+  ): candidate is gdjs.MultithreadManager => {
+    if (!candidate || typeof candidate !== 'object') {
+      return false;
+    }
+
+    const maybeManager = candidate as {
+      runTask?: unknown;
+      runTaskBatch?: unknown;
+      createTaskQueue?: unknown;
+      setDebugMessageLogLevel?: unknown;
+      cancelTask?: unknown;
+      getStats?: unknown;
+      supportsWorkers?: unknown;
+      dispose?: unknown;
+    };
+    return (
+      typeof maybeManager.runTask === 'function' &&
+      typeof maybeManager.runTaskBatch === 'function' &&
+      typeof maybeManager.createTaskQueue === 'function' &&
+      typeof maybeManager.setDebugMessageLogLevel === 'function' &&
+      typeof maybeManager.cancelTask === 'function' &&
+      typeof maybeManager.getStats === 'function' &&
+      typeof maybeManager.supportsWorkers === 'function' &&
+      typeof maybeManager.dispose === 'function'
+    );
+  };
+
+  const resolveMultithreadManagerConstructor = (): ((
+    new (options?: gdjs.MultithreadManagerOptions) => gdjs.MultithreadManager
+  ) | null) => {
+    const multithreadManagerExport = (gdjs as {
+      MultithreadManager?: unknown;
+    }).MultithreadManager;
+    if (typeof multithreadManagerExport === 'function') {
+      return multithreadManagerExport as new (
+        options?: gdjs.MultithreadManagerOptions
+      ) => gdjs.MultithreadManager;
+    }
+
+    if (
+      multithreadManagerExport &&
+      typeof multithreadManagerExport === 'object'
+    ) {
+      const maybeDefault = (multithreadManagerExport as { default?: unknown })
+        .default;
+      if (typeof maybeDefault === 'function') {
+        return maybeDefault as new (
+          options?: gdjs.MultithreadManagerOptions
+        ) => gdjs.MultithreadManager;
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Represents a game being played.
    * @category Core Engine > Game
@@ -397,9 +685,43 @@ namespace gdjs {
       );
       this._sceneStack = new gdjs.SceneStack(this);
       this._inputManager = new gdjs.InputManager();
-      this._multithreadManager = new gdjs.MultithreadManager(
-        this._options.multithreading
-      );
+      const fallbackMultithreadManager =
+        (new RuntimeMultithreadManagerFallback() as unknown as gdjs.MultithreadManager);
+      const multithreadManagerExport = (gdjs as {
+        MultithreadManager?: unknown;
+      }).MultithreadManager;
+      if (isMultithreadManagerLike(multithreadManagerExport)) {
+        this._multithreadManager = multithreadManagerExport;
+      } else {
+        const multithreadManagerConstructor =
+          resolveMultithreadManagerConstructor();
+        if (multithreadManagerConstructor) {
+          try {
+            const multithreadManager = new multithreadManagerConstructor(
+              this._options.multithreading
+            );
+            if (isMultithreadManagerLike(multithreadManager)) {
+              this._multithreadManager = multithreadManager;
+            } else {
+              logger.warn(
+                'MultithreadManager constructor returned an invalid object. Falling back to a no-op manager.'
+              );
+              this._multithreadManager = fallbackMultithreadManager;
+            }
+          } catch (error) {
+            logger.warn(
+              'MultithreadManager failed to initialize. Falling back to a no-op manager.',
+              error
+            );
+            this._multithreadManager = fallbackMultithreadManager;
+          }
+        } else {
+          logger.warn(
+            'MultithreadManager script is unavailable. Falling back to a no-op manager.'
+          );
+          this._multithreadManager = fallbackMultithreadManager;
+        }
+      }
       this._captureManager = gdjs.CaptureManager
         ? new gdjs.CaptureManager(
             this._renderer,
