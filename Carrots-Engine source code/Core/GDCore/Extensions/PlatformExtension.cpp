@@ -355,6 +355,14 @@ bool PlatformExtension::HasBehavior(const gd::String& behaviorType) const {
   return behaviorsInfo.find(behaviorType) != behaviorsInfo.end();
 }
 
+bool PlatformExtension::HasObject(const gd::String& objectType) const {
+  return objectsInfos.find(objectType) != objectsInfos.end();
+}
+
+bool PlatformExtension::HasEffect(const gd::String& effectName) const {
+  return effectsMetadata.find(effectName) != effectsMetadata.end();
+}
+
 gd::EffectMetadata& PlatformExtension::GetEffectMetadata(
     const gd::String& effectName) {
   if (effectsMetadata.find(effectName) != effectsMetadata.end())

@@ -548,6 +548,18 @@ class GD_CORE_API PlatformExtension {
   bool HasBehavior(const gd::String& behaviorType) const;
 
   /**
+   * \brief Return true if the extension contains an object type associated to
+   * \a objectType.
+   */
+  bool HasObject(const gd::String& objectType) const;
+
+  /**
+   * \brief Return true if the extension contains an effect associated to
+   * \a effectName.
+   */
+  bool HasEffect(const gd::String& effectName) const;
+
+  /**
    * \brief Return the metadata for the effect with the given name.
    */
   EffectMetadata& GetEffectMetadata(const gd::String& effectName);

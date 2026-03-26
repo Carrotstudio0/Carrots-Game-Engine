@@ -29,15 +29,19 @@ void EffectsCodeGenerator::DoVisitObject(gd::Object &object) {
 };
 
 void EffectsCodeGenerator::AddEffectIncludeFiles(const gd::Effect &effect) {
-  // TODO: this browse all the extensions every time we're trying to find
-  // a new effect. Might be a good idea to rework MetadataProvider to be
-  // faster (not sure if it is a bottleneck at all though - but could be
-  // for events code generation).
-  const gd::EffectMetadata &effectMetadata =
-      MetadataProvider::GetEffectMetadata(platform, effect.GetEffectType());
+  // The effect metadata only depends on effect type and platform.
+  // Cache visited types to avoid repeatedly searching metadata when
+  // the same effect type is used many times in the project.
+  const gd::String& effectType = effect.GetEffectType();
+  if (!effectTypesWithCollectedIncludes.insert(effectType).second) {
+    return;
+  }
 
-  for (auto &includeFile : effectMetadata.GetIncludeFiles())
-    includeFiles.insert(includeFile);
+  const gd::EffectMetadata &effectMetadata =
+      MetadataProvider::GetEffectMetadata(platform, effectType);
+
+  includeFiles.insert(effectMetadata.GetIncludeFiles().begin(),
+                      effectMetadata.GetIncludeFiles().end());
 };
 
 void EffectsCodeGenerator::GenerateEffectsIncludeFiles(

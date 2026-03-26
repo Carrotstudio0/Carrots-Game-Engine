@@ -51,7 +51,7 @@ function LayerView(layer, dispatcher) {
 
 	var label = document.createElement('span');
 
-	label.style.cssText = 'font-size: 12px; padding: 4px; display:inline-block; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+	label.style.cssText = 'font-size: 11px; padding: 3px; display:inline-block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
 
 	label.addEventListener('click', function(e) {
 		// context.dispatcher.fire('label', channelName);
@@ -63,7 +63,7 @@ function LayerView(layer, dispatcher) {
 
 	var dropdown = document.createElement('select');
 	var option;
-	dropdown.style.cssText = 'font-size: 10px; width: 60px; margin: 0; float: right; text-align: right;';
+	dropdown.style.cssText = 'font-size: 9px; width: 56px; margin: 0; float: right; text-align: right;';
 
 	for (var k in Tweens) {
 		option = document.createElement('option');
@@ -78,7 +78,7 @@ function LayerView(layer, dispatcher) {
 
 	var keyframe_button = document.createElement('button');
 	keyframe_button.innerHTML = '&#9672;'; // '&diams;' &#9671; 9679 9670 9672
-	keyframe_button.style.cssText = 'background: none; font-size: 12px; padding: 0px; font-family: monospace; float: right; width: 20px; height: ' + height + 'px; border-style:none; outline: none;'; //  border-style:inset;
+	keyframe_button.style.cssText = 'background: none; font-size: 11px; padding: 0px; font-family: monospace; float: right; width: 18px; height: ' + height + 'px; border-style:none; outline: none;'; //  border-style:inset;
 
 	keyframe_button.addEventListener('click', function(e) {
 		console.log('clicked:keyframing...', state.get('_value').value);
@@ -108,8 +108,8 @@ function LayerView(layer, dispatcher) {
 		button.textContent = text;
 
 		utils.style(button, {
-			fontSize: '12px',
-			padding: '1px',
+			fontSize: '11px',
+			padding: '0px',
 			borderSize: '2px',
 			outline: 'none',
 			background: Theme.a,
@@ -166,7 +166,7 @@ function LayerView(layer, dispatcher) {
 
 	utils.style(dom, {
 		textAlign: 'left',
-		margin: '0px 0px 0px 5px',
+		margin: '0px 0px 0px 4px',
 		borderBottom: '1px solid ' + Theme.b,
 		top: 0,
 		left: 0,

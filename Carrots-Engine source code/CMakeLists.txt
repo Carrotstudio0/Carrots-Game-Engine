@@ -19,6 +19,11 @@ gd_set_option(BUILD_CORE TRUE BOOL "TRUE to build GDevelop Core library")
 gd_set_option(BUILD_GDJS TRUE BOOL "TRUE to build GDevelop JS Platform")
 gd_set_option(BUILD_EXTENSIONS TRUE BOOL "TRUE to build the extensions")
 gd_set_option(BUILD_TESTS TRUE BOOL "TRUE to build the tests")
+gd_set_option(GD_CXX_STANDARD 17 STRING "C++ standard used to build GDevelop")
+gd_set_option(GD_ENABLE_IPO TRUE BOOL "TRUE to enable interprocedural optimization (LTO) for Release builds when supported")
+gd_set_option(GD_ENABLE_UNITY_BUILD FALSE BOOL "TRUE to enable CMake unity builds")
+gd_set_option(GD_ENABLE_FAST_MATH FALSE BOOL "TRUE to enable fast math optimizations for Release builds")
+gd_set_option(GD_ENABLE_NATIVE_CPU_OPTIMIZATIONS FALSE BOOL "TRUE to optimize Release builds for the local CPU architecture")
 
 # Disable deprecated code
 set(NO_GUI TRUE CACHE BOOL "" FORCE) # Force disable old GUI related code.
@@ -59,9 +64,47 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Release" AND NOT WIN32 AND CMAKE_COMPILER_IS_
 	set(CMAKE_SHARED_LINKER_FLAGS "-s") # Force stripping to avoid errors when packaging for linux.
 endif()
 
-#Activate C++11
-set(CMAKE_CXX_STANDARD 11) # Upgrading to C++17 should be tried.
+# Activate modern C++
+set(CMAKE_CXX_STANDARD ${GD_CXX_STANDARD})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(GD_ENABLE_UNITY_BUILD)
+	set(CMAKE_UNITY_BUILD ON)
+endif()
+
+if(GD_ENABLE_IPO AND "${CMAKE_BUILD_TYPE}" STREQUAL "Release")
+	if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.9")
+		if(POLICY CMP0069)
+			cmake_policy(SET CMP0069 NEW)
+		endif()
+		include(CheckIPOSupported)
+		check_ipo_supported(RESULT gd_ipo_supported OUTPUT gd_ipo_error)
+		if(gd_ipo_supported)
+			set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+			message(STATUS "Interprocedural optimization (LTO) enabled for Release builds.")
+		else()
+			message(STATUS "Interprocedural optimization (LTO) disabled: ${gd_ipo_error}")
+		endif()
+	else()
+		message(STATUS "Interprocedural optimization requires CMake >= 3.9.")
+	endif()
+endif()
+
+if(GD_ENABLE_FAST_MATH)
+	if(MSVC)
+		add_compile_options($<$<CONFIG:Release>:/fp:fast>)
+	elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+		add_compile_options($<$<CONFIG:Release>:-ffast-math> $<$<CONFIG:Release>:-fno-math-errno>)
+	endif()
+endif()
+
+if(GD_ENABLE_NATIVE_CPU_OPTIMIZATIONS)
+	if(MSVC)
+		add_compile_options($<$<CONFIG:Release>:/arch:AVX2>)
+	elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+		add_compile_options($<$<CONFIG:Release>:-march=native> $<$<CONFIG:Release>:-mtune=native>)
+	endif()
+endif()
 
 # Mark some warnings as errors
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")

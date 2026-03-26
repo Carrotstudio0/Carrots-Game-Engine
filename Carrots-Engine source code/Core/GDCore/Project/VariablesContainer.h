@@ -6,6 +6,7 @@
 
 #pragma once
 #include <memory>
+#include <unordered_map>
 #include <vector>
 #include "GDCore/Project/Variable.h"
 #include "GDCore/String.h"
@@ -147,7 +148,7 @@ class GD_CORE_API VariablesContainer {
   /**
    * \brief Clear all variables of the container.
    */
-  inline void Clear() { variables.clear(); }
+  void Clear();
 
   /**
    * \brief Call the callback for each variable with a name matching the specified search.
@@ -191,6 +192,9 @@ class GD_CORE_API VariablesContainer {
  private:
   SourceType sourceType = Unknown;
   std::vector<std::pair<gd::String, std::shared_ptr<gd::Variable>>> variables;
+  mutable std::unordered_map<gd::String, std::size_t>
+      variablePositionsByName;
+  mutable bool areVariablePositionsByNameDirty = true;
   mutable gd::String persistentUuid;  ///< A persistent random version 4 UUID,
                                       ///< useful for computing changesets.
   static gd::Variable badVariable;
@@ -201,6 +205,8 @@ class GD_CORE_API VariablesContainer {
    * copy-ctor and assign-op. Don't forget to update me if members were changed!
    */
   void Init(const VariablesContainer& other);
+  void EnsureVariablePositionsByNameIsUpToDate() const;
+  void MarkVariablePositionsByNameAsDirty();
 };
 
 }  // namespace gd

@@ -50,12 +50,9 @@ ExtensionAndMetadata<ObjectMetadata>
 MetadataProvider::GetExtensionAndObjectMetadata(const gd::Platform& platform,
                                                 gd::String objectType) {
   for (auto& extension : platform.GetAllPlatformExtensions()) {
-    auto objectsTypes = extension->GetExtensionObjectsTypes();
-    for (std::size_t j = 0; j < objectsTypes.size(); ++j) {
-      if (objectsTypes[j] == objectType)
-        return ExtensionAndMetadata<ObjectMetadata>(
-            *extension, extension->GetObjectMetadata(objectType));
-    }
+    if (extension->HasObject(objectType))
+      return ExtensionAndMetadata<ObjectMetadata>(
+          *extension, extension->GetObjectMetadata(objectType));
   }
 
   return ExtensionAndMetadata<ObjectMetadata>(badExtension, badObjectInfo);
@@ -70,12 +67,9 @@ ExtensionAndMetadata<EffectMetadata>
 MetadataProvider::GetExtensionAndEffectMetadata(const gd::Platform& platform,
                                                 gd::String type) {
   for (auto& extension : platform.GetAllPlatformExtensions()) {
-    auto objectsTypes = extension->GetExtensionEffectTypes();
-    for (std::size_t j = 0; j < objectsTypes.size(); ++j) {
-      if (objectsTypes[j] == type)
-        return ExtensionAndMetadata<EffectMetadata>(
-            *extension, extension->GetEffectMetadata(type));
-    }
+    if (extension->HasEffect(type))
+      return ExtensionAndMetadata<EffectMetadata>(
+          *extension, extension->GetEffectMetadata(type));
   }
 
   return ExtensionAndMetadata<EffectMetadata>(badExtension, badEffectMetadata);
@@ -92,26 +86,29 @@ MetadataProvider::GetExtensionAndActionMetadata(const gd::Platform& platform,
   auto& extensions = platform.GetAllPlatformExtensions();
   for (auto& extension : extensions) {
     const auto& allActions = extension->GetAllActions();
-    if (allActions.find(actionType) != allActions.end())
-      return ExtensionAndMetadata<InstructionMetadata>(
-          *extension, allActions.find(actionType)->second);
+    auto action = allActions.find(actionType);
+    if (action != allActions.end())
+      return ExtensionAndMetadata<InstructionMetadata>(*extension,
+                                                       action->second);
 
     const auto& objects = extension->GetExtensionObjectsTypes();
     for (const gd::String& extObjectType : objects) {
       const auto& allObjectsActions =
           extension->GetAllActionsForObject(extObjectType);
-      if (allObjectsActions.find(actionType) != allObjectsActions.end())
+      auto objectAction = allObjectsActions.find(actionType);
+      if (objectAction != allObjectsActions.end())
         return ExtensionAndMetadata<InstructionMetadata>(
-            *extension, allObjectsActions.find(actionType)->second);
+            *extension, objectAction->second);
     }
 
     const auto& autos = extension->GetBehaviorsTypes();
     for (std::size_t j = 0; j < autos.size(); ++j) {
       const auto& allAutosActions =
           extension->GetAllActionsForBehavior(autos[j]);
-      if (allAutosActions.find(actionType) != allAutosActions.end())
+      auto behaviorAction = allAutosActions.find(actionType);
+      if (behaviorAction != allAutosActions.end())
         return ExtensionAndMetadata<InstructionMetadata>(
-            *extension, allAutosActions.find(actionType)->second);
+            *extension, behaviorAction->second);
     }
   }
 
@@ -130,26 +127,29 @@ MetadataProvider::GetExtensionAndConditionMetadata(const gd::Platform& platform,
   auto& extensions = platform.GetAllPlatformExtensions();
   for (auto& extension : extensions) {
     const auto& allConditions = extension->GetAllConditions();
-    if (allConditions.find(conditionType) != allConditions.end())
-      return ExtensionAndMetadata<InstructionMetadata>(
-          *extension, allConditions.find(conditionType)->second);
+    auto condition = allConditions.find(conditionType);
+    if (condition != allConditions.end())
+      return ExtensionAndMetadata<InstructionMetadata>(*extension,
+                                                       condition->second);
 
     const auto& objects = extension->GetExtensionObjectsTypes();
     for (const gd::String& extObjectType : objects) {
       const auto& allObjectsConditions =
           extension->GetAllConditionsForObject(extObjectType);
-      if (allObjectsConditions.find(conditionType) != allObjectsConditions.end())
+      auto objectCondition = allObjectsConditions.find(conditionType);
+      if (objectCondition != allObjectsConditions.end())
         return ExtensionAndMetadata<InstructionMetadata>(
-            *extension, allObjectsConditions.find(conditionType)->second);
+            *extension, objectCondition->second);
     }
 
     const auto& autos = extension->GetBehaviorsTypes();
     for (std::size_t j = 0; j < autos.size(); ++j) {
       const auto& allAutosConditions =
           extension->GetAllConditionsForBehavior(autos[j]);
-      if (allAutosConditions.find(conditionType) != allAutosConditions.end())
+      auto behaviorCondition = allAutosConditions.find(conditionType);
+      if (behaviorCondition != allAutosConditions.end())
         return ExtensionAndMetadata<InstructionMetadata>(
-            *extension, allAutosConditions.find(conditionType)->second);
+            *extension, behaviorCondition->second);
     }
   }
 
@@ -168,13 +168,13 @@ MetadataProvider::GetExtensionAndObjectExpressionMetadata(
     const gd::Platform& platform, gd::String objectType, gd::String exprType) {
   auto& extensions = platform.GetAllPlatformExtensions();
   for (auto& extension : extensions) {
-    const auto& objects = extension->GetExtensionObjectsTypes();
-    if (find(objects.begin(), objects.end(), objectType) != objects.end()) {
+    if (extension->HasObject(objectType)) {
       const auto& allObjectExpressions =
           extension->GetAllExpressionsForObject(objectType);
-      if (allObjectExpressions.find(exprType) != allObjectExpressions.end())
+      auto objectExpression = allObjectExpressions.find(exprType);
+      if (objectExpression != allObjectExpressions.end())
         return ExtensionAndMetadata<ExpressionMetadata>(
-            *extension, allObjectExpressions.find(exprType)->second);
+            *extension, objectExpression->second);
     }
   }
 
@@ -182,9 +182,10 @@ MetadataProvider::GetExtensionAndObjectExpressionMetadata(
   for (auto& extension : extensions) {
     const auto& allObjectExpressions =
         extension->GetAllExpressionsForObject("");
-    if (allObjectExpressions.find(exprType) != allObjectExpressions.end())
+    auto objectExpression = allObjectExpressions.find(exprType);
+    if (objectExpression != allObjectExpressions.end())
       return ExtensionAndMetadata<ExpressionMetadata>(
-          *extension, allObjectExpressions.find(exprType)->second);
+          *extension, objectExpression->second);
   }
 
   return ExtensionAndMetadata<ExpressionMetadata>(badExtension,
@@ -236,9 +237,10 @@ MetadataProvider::GetExtensionAndExpressionMetadata(
   auto& extensions = platform.GetAllPlatformExtensions();
   for (auto& extension : extensions) {
     const auto& allExpr = extension->GetAllExpressions();
-    if (allExpr.find(exprType) != allExpr.end())
+    auto expression = allExpr.find(exprType);
+    if (expression != allExpr.end())
       return ExtensionAndMetadata<ExpressionMetadata>(
-          *extension, allExpr.find(exprType)->second);
+          *extension, expression->second);
   }
 
   return ExtensionAndMetadata<ExpressionMetadata>(badExtension,
@@ -255,14 +257,13 @@ MetadataProvider::GetExtensionAndObjectStrExpressionMetadata(
     const gd::Platform& platform, gd::String objectType, gd::String exprType) {
   auto& extensions = platform.GetAllPlatformExtensions();
   for (auto& extension : extensions) {
-    const auto& objects = extension->GetExtensionObjectsTypes();
-    if (find(objects.begin(), objects.end(), objectType) != objects.end()) {
+    if (extension->HasObject(objectType)) {
       const auto& allObjectStrExpressions =
           extension->GetAllStrExpressionsForObject(objectType);
-      if (allObjectStrExpressions.find(exprType) !=
-          allObjectStrExpressions.end())
+      auto objectStrExpression = allObjectStrExpressions.find(exprType);
+      if (objectStrExpression != allObjectStrExpressions.end())
         return ExtensionAndMetadata<ExpressionMetadata>(
-            *extension, allObjectStrExpressions.find(exprType)->second);
+            *extension, objectStrExpression->second);
     }
   }
 
@@ -270,9 +271,10 @@ MetadataProvider::GetExtensionAndObjectStrExpressionMetadata(
   for (auto& extension : extensions) {
     const auto& allObjectStrExpressions =
         extension->GetAllStrExpressionsForObject("");
-    if (allObjectStrExpressions.find(exprType) != allObjectStrExpressions.end())
+    auto objectStrExpression = allObjectStrExpressions.find(exprType);
+    if (objectStrExpression != allObjectStrExpressions.end())
       return ExtensionAndMetadata<ExpressionMetadata>(
-          *extension, allObjectStrExpressions.find(exprType)->second);
+          *extension, objectStrExpression->second);
   }
 
   return ExtensionAndMetadata<ExpressionMetadata>(badExtension,
@@ -294,10 +296,10 @@ MetadataProvider::GetExtensionAndBehaviorStrExpressionMetadata(
     if (extension->HasBehavior(autoType)) {
       const auto& allBehaviorStrExpressions =
           extension->GetAllStrExpressionsForBehavior(autoType);
-      if (allBehaviorStrExpressions.find(exprType) !=
-          allBehaviorStrExpressions.end())
+      auto behaviorStrExpression = allBehaviorStrExpressions.find(exprType);
+      if (behaviorStrExpression != allBehaviorStrExpressions.end())
         return ExtensionAndMetadata<ExpressionMetadata>(
-            *extension, allBehaviorStrExpressions.find(exprType)->second);
+            *extension, behaviorStrExpression->second);
     }
   }
 
@@ -305,10 +307,10 @@ MetadataProvider::GetExtensionAndBehaviorStrExpressionMetadata(
   for (auto& extension : extensions) {
     const auto& allBehaviorStrExpressions =
         extension->GetAllStrExpressionsForBehavior("");
-    if (allBehaviorStrExpressions.find(exprType) !=
-        allBehaviorStrExpressions.end())
+    auto behaviorStrExpression = allBehaviorStrExpressions.find(exprType);
+    if (behaviorStrExpression != allBehaviorStrExpressions.end())
       return ExtensionAndMetadata<ExpressionMetadata>(
-          *extension, allBehaviorStrExpressions.find(exprType)->second);
+          *extension, behaviorStrExpression->second);
   }
 
   return ExtensionAndMetadata<ExpressionMetadata>(badExtension,
@@ -330,9 +332,10 @@ MetadataProvider::GetExtensionAndStrExpressionMetadata(
   auto& extensions = platform.GetAllPlatformExtensions();
   for (auto& extension : extensions) {
     const auto& allExpr = extension->GetAllStrExpressions();
-    if (allExpr.find(exprType) != allExpr.end())
+    auto expression = allExpr.find(exprType);
+    if (expression != allExpr.end())
       return ExtensionAndMetadata<ExpressionMetadata>(
-          *extension, allExpr.find(exprType)->second);
+          *extension, expression->second);
   }
 
   return ExtensionAndMetadata<ExpressionMetadata>(badExtension,

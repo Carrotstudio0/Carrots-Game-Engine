@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.5)
 
+if(POLICY CMP0069)
+	cmake_policy(SET CMP0069 NEW)
+endif()
+
 project(GDCore)
 
 set(CMAKE_C_USE_RESPONSE_FILE_FOR_OBJECTS 1) # Force use response file: useful for Ninja build system on Windows.

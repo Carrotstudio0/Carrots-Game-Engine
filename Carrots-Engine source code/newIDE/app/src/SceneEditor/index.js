@@ -226,9 +226,9 @@ const styles = {
     left: 8,
     right: 8,
     bottom: 8,
-    height: '44%',
-    minHeight: 340,
-    maxHeight: 560,
+    height: '34%',
+    minHeight: 248,
+    maxHeight: 430,
     zIndex: 4,
     pointerEvents: 'none',
   },
@@ -369,6 +369,9 @@ export default class SceneEditor extends React.Component<Props, State> {
   resourceExternallyChangedCallbackId: ?string;
   unregisterDebuggerCallback: (() => void) | null = null;
   editorViewPosition2D: EditorViewPosition2D = { viewX: null, viewY: null };
+  _pendingUpdatedInstances: Map<string, gdInitialInstance> = new Map();
+  _pendingUpdatedInstancesNoUuidCount: number = 0;
+  _flushUpdatedInstancesAnimationFrame: number | null = null;
 
   constructor(props: Props) {
     super(props);
@@ -508,6 +511,11 @@ export default class SceneEditor extends React.Component<Props, State> {
       this.unregisterDebuggerCallback();
       this.unregisterDebuggerCallback = null;
     }
+    if (this._flushUpdatedInstancesAnimationFrame !== null) {
+      window.cancelAnimationFrame(this._flushUpdatedInstancesAnimationFrame);
+      this._flushUpdatedInstancesAnimationFrame = null;
+    }
+    this._pendingUpdatedInstances.clear();
   }
 
   onEditorReloaded() {
@@ -1772,20 +1780,48 @@ export default class SceneEditor extends React.Component<Props, State> {
     //TODO: Save for redo with debounce (and cancel on unmount)
   };
 
-  _sendUpdatedInstances = (instances: Array<gdInitialInstance>) => {
-    const { previewDebuggerServer } = this.props;
-    if (!previewDebuggerServer) return;
+  _flushUpdatedInstancesToPreview = () => {
+    this._flushUpdatedInstancesAnimationFrame = null;
 
+    const { previewDebuggerServer } = this.props;
+    if (!previewDebuggerServer) {
+      this._pendingUpdatedInstances.clear();
+      return;
+    }
+
+    const instances = Array.from(this._pendingUpdatedInstances.values());
+    this._pendingUpdatedInstances.clear();
+    if (!instances.length) {
+      return;
+    }
+
+    const serializedInstances = instances.map(instance =>
+      serializeToJSObject(instance)
+    );
     previewDebuggerServer
       .getExistingEmbeddedGameFrameDebuggerIds()
       .forEach(debuggerId => {
         previewDebuggerServer.sendMessage(debuggerId, {
           command: 'updateInstances',
           payload: {
-            instances: instances.map(instance => serializeToJSObject(instance)),
+            instances: serializedInstances,
           },
         });
       });
+  };
+
+  _sendUpdatedInstances = (instances: Array<gdInitialInstance>) => {
+    instances.forEach(instance => {
+      const persistentUuid = instance.getPersistentUuid();
+      const key =
+        persistentUuid || `no-persistent-uuid-${this._pendingUpdatedInstancesNoUuidCount++}`;
+      this._pendingUpdatedInstances.set(key, instance);
+    });
+
+    if (this._flushUpdatedInstancesAnimationFrame !== null) return;
+    this._flushUpdatedInstancesAnimationFrame = window.requestAnimationFrame(
+      this._flushUpdatedInstancesToPreview
+    );
   };
 
   _onObjectsModified = (objects: Array<gdObject>) => {

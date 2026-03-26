@@ -34,12 +34,12 @@ function UINumber(config) {
 
 	style(span, {
 		textAlign: 'center',
-		fontSize: '10px',
+		fontSize: '9px',
 		padding: '1px',
 		cursor: 'ns-resize',
-		width: '40px',
+		width: '34px',
 		margin: 0,
-		marginRight: '10px',
+		marginRight: '6px',
 		appearance: 'none',
 		outline: 'none',
 		border: 0,

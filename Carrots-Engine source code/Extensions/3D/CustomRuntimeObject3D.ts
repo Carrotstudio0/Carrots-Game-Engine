@@ -131,6 +131,24 @@ namespace gdjs {
       return this._z;
     }
 
+    private _getUnscaledBoundsOnZ(): { minZ: float; maxZ: float } {
+      if (this._innerArea) {
+        return {
+          minZ: this._innerArea.min[2],
+          maxZ: this._innerArea.max[2],
+        };
+      }
+
+      if (this._isUntransformedHitBoxesDirty) {
+        this._updateUntransformedHitBoxes();
+      }
+
+      return {
+        minZ: this._minZ,
+        maxZ: this._maxZ,
+      };
+    }
+
     /**
      * Get the Z position of the rendered object.
      *
@@ -141,24 +159,13 @@ namespace gdjs {
      * @return The Z position of the rendered object.
      */
     getDrawableZ(): float {
-      let minZ = 0;
-      if (this._innerArea) {
-        minZ = this._innerArea.min[2];
-      } else {
-        if (this._isUntransformedHitBoxesDirty) {
-          this._updateUntransformedHitBoxes();
-        }
-        minZ = this._minZ;
-      }
+      const { minZ, maxZ } = this._getUnscaledBoundsOnZ();
       const absScaleZ = this.getScaleZ();
       if (!this._flippedZ) {
         return this._z + minZ * absScaleZ;
       } else {
-        return (
-          this._z +
-          (-minZ - this.getUnscaledDepth() + 2 * this.getUnscaledCenterZ()) *
-            absScaleZ
-        );
+        const centerZ = this.getUnscaledCenterZ();
+        return this._z + (2 * centerZ - maxZ) * absScaleZ;
       }
     }
 
@@ -172,15 +179,21 @@ namespace gdjs {
      * `getDrawableZ()`.
      */
     getCenterZ(): float {
-      return this.getDepth() / 2;
+      const { minZ, maxZ } = this._getUnscaledBoundsOnZ();
+      const centerZ = this.getUnscaledCenterZ();
+      const absScaleZ = this.getScaleZ();
+      if (!this._flippedZ) {
+        return (centerZ - minZ) * absScaleZ;
+      }
+      return (maxZ - centerZ) * absScaleZ;
     }
 
     getCenterZInScene(): float {
-      return this.getDrawableZ() + this.getCenterZ();
+      return this._z + this.getUnscaledCenterZ() * this.getScaleZ();
     }
 
     setCenterZInScene(z: float): void {
-      this.setZ(z + this._z - (this.getDrawableZ() + this.getCenterZ()));
+      this.setZ(z - this.getUnscaledCenterZ() * this.getScaleZ());
     }
 
     /**

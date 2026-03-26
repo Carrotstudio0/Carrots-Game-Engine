@@ -188,7 +188,7 @@ const VariablesContainer &VariablesContainersList::
 std::size_t
 VariablesContainersList::GetVariablesContainerPositionFromVariableName(
     const gd::String &variableName) const {
-  for (std::size_t i = variablesContainers.size() - 1; i >= 0 ; --i) {
+  for (std::size_t i = variablesContainers.size(); i-- > 0;) {
     if (variablesContainers[i]->Has(variableName))
       return i;
   }

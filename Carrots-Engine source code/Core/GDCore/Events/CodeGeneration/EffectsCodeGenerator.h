@@ -6,6 +6,7 @@
 #pragma once
 
 #include <set>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include "GDCore/String.h"
@@ -42,6 +43,7 @@ private:
 
   const gd::Platform &platform;
   std::set<gd::String> &includeFiles;
+  std::unordered_set<gd::String> effectTypesWithCollectedIncludes;
 };
 
 }  // namespace gd

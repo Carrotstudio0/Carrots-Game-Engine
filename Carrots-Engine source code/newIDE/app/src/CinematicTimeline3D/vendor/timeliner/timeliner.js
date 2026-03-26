@@ -455,7 +455,7 @@ function Timeliner(target, options) {
 		textAlign: 'left',
 		lineHeight: '1em',
 		position: 'absolute',
-		top: '22px'
+		top: '20px'
 	});
 
 	var pane = document.createElement('div');
@@ -474,7 +474,7 @@ function Timeliner(target, options) {
 		color: Theme.d,
 		zIndex: Z_INDEX,
 		fontFamily: 'monospace',
-		fontSize: '12px'
+		fontSize: '11px'
 	});
 
 
@@ -482,15 +482,15 @@ function Timeliner(target, options) {
 		position: 'absolute',
 		top: '0px',
 		width: '100%',
-		height: '22px',
-		lineHeight: '22px',
+		height: '20px',
+		lineHeight: '20px',
 		overflow: 'hidden'
 	};
 
 	var button_styles = {
-		width: '20px',
-		height: '20px',
-		padding: '2px',
+		width: '18px',
+		height: '18px',
+		padding: '1px',
 		marginRight: '2px'
 	};
 
@@ -527,12 +527,12 @@ function Timeliner(target, options) {
 	var footer_styles = {
 		position: 'absolute',
 		width: '100%',
-		height: '22px',
-		lineHeight: '22px',
+		height: '20px',
+		lineHeight: '20px',
 		bottom: '0',
 		// padding: '2px',
 		background: Theme.a,
-		fontSize: '11px'
+		fontSize: '10px'
 	};
 
 	style(pane_status, footer_styles, {
@@ -757,7 +757,7 @@ function Timeliner(target, options) {
 		// };
 		// TODO: remove ugly hardcodes
 		width -= 4;
-		height -= 44;
+		height -= 40;
 
 		Settings.width = width - Settings.LEFT_PANE_WIDTH;
 		Settings.height = height;

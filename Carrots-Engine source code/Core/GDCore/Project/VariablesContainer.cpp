@@ -43,23 +43,28 @@ VariablesContainer::VariablesContainer(
 }
 
 bool VariablesContainer::Has(const gd::String& name) const {
-  auto i =
-      std::find_if(variables.begin(), variables.end(), VariableHasName(name));
-  return (i != variables.end());
+  EnsureVariablePositionsByNameIsUpToDate();
+  return variablePositionsByName.find(name) != variablePositionsByName.end();
 }
 
 Variable& VariablesContainer::Get(const gd::String& name) {
-  auto i =
-      std::find_if(variables.begin(), variables.end(), VariableHasName(name));
-  if (i != variables.end()) return *i->second;
+  EnsureVariablePositionsByNameIsUpToDate();
+  auto position = variablePositionsByName.find(name);
+  if (position != variablePositionsByName.end() &&
+      position->second < variables.size()) {
+    return *variables[position->second].second;
+  }
 
   return badVariable;
 }
 
 const Variable& VariablesContainer::Get(const gd::String& name) const {
-  auto i =
-      std::find_if(variables.begin(), variables.end(), VariableHasName(name));
-  if (i != variables.end()) return *i->second;
+  EnsureVariablePositionsByNameIsUpToDate();
+  auto position = variablePositionsByName.find(name);
+  if (position != variablePositionsByName.end() &&
+      position->second < variables.size()) {
+    return *variables[position->second].second;
+  }
 
   return badVariable;
 }
@@ -86,25 +91,34 @@ Variable& VariablesContainer::Insert(const gd::String& name,
                                      const gd::Variable& variable,
                                      std::size_t position) {
   auto newVariable = std::make_shared<gd::Variable>(variable);
+  Variable* insertedVariable = nullptr;
   if (position < variables.size()) {
     variables.insert(variables.begin() + position,
                      std::make_pair(name, newVariable));
-    return *variables[position].second;
+    insertedVariable = variables[position].second.get();
   } else {
     variables.push_back(std::make_pair(name, newVariable));
-    return *variables.back().second;
+    insertedVariable = variables.back().second.get();
   }
+
+  MarkVariablePositionsByNameAsDirty();
+  return *insertedVariable;
 }
 
 void VariablesContainer::Remove(const gd::String& varName) {
+  const auto oldSize = variables.size();
   variables.erase(
       std::remove_if(
           variables.begin(), variables.end(), VariableHasName(varName)),
       variables.end());
+  if (oldSize != variables.size()) {
+    MarkVariablePositionsByNameAsDirty();
+  }
 }
 
 void VariablesContainer::RemoveRecursively(
     const gd::Variable& variableToRemove) {
+  const auto oldSize = variables.size();
   variables.erase(
       std::remove_if(
           variables.begin(),
@@ -115,6 +129,9 @@ void VariablesContainer::RemoveRecursively(
             return &variableToRemove == nameAndVariable.second.get();
           }),
       variables.end());
+  if (oldSize != variables.size()) {
+    MarkVariablePositionsByNameAsDirty();
+  }
 
   for (auto& it : variables) {
     it.second->RemoveRecursively(variableToRemove);
@@ -122,8 +139,11 @@ void VariablesContainer::RemoveRecursively(
 }
 
 std::size_t VariablesContainer::GetPosition(const gd::String& name) const {
-  for (std::size_t i = 0; i < variables.size(); ++i) {
-    if (variables[i].first == name) return i;
+  EnsureVariablePositionsByNameIsUpToDate();
+  auto position = variablePositionsByName.find(name);
+  if (position != variablePositionsByName.end() &&
+      position->second < variables.size()) {
+    return position->second;
   }
 
   return gd::String::npos;
@@ -139,9 +159,13 @@ bool VariablesContainer::Rename(const gd::String& oldName,
                                 const gd::String& newName) {
   if (Has(newName)) return false;
 
-  auto i = std::find_if(
-      variables.begin(), variables.end(), VariableHasName(oldName));
-  if (i != variables.end()) i->first = newName;
+  EnsureVariablePositionsByNameIsUpToDate();
+  auto oldPosition = variablePositionsByName.find(oldName);
+  if (oldPosition != variablePositionsByName.end() &&
+      oldPosition->second < variables.size()) {
+    variables[oldPosition->second].first = newName;
+    MarkVariablePositionsByNameAsDirty();
+  }
 
   return true;
 }
@@ -155,6 +179,7 @@ void VariablesContainer::Swap(std::size_t firstVariableIndex,
   auto temp = variables[firstVariableIndex];
   variables[firstVariableIndex] = variables[secondVariableIndex];
   variables[secondVariableIndex] = temp;
+  MarkVariablePositionsByNameAsDirty();
 }
 
 void VariablesContainer::Move(std::size_t oldIndex, std::size_t newIndex) {
@@ -165,6 +190,13 @@ void VariablesContainer::Move(std::size_t oldIndex, std::size_t newIndex) {
   auto nameAndVariable = variables[oldIndex];
   variables.erase(variables.begin() + oldIndex);
   variables.insert(variables.begin() + newIndex, nameAndVariable);
+  MarkVariablePositionsByNameAsDirty();
+}
+
+void VariablesContainer::Clear() {
+  variables.clear();
+  variablePositionsByName.clear();
+  areVariablePositionsByNameDirty = false;
 }
 
 void VariablesContainer::ForEachVariableMatchingSearch(
@@ -194,6 +226,7 @@ void VariablesContainer::UnserializeFrom(const SerializerElement& element) {
 
   Clear();
   element.ConsiderAsArrayOf("variable", "Variable");
+  variables.reserve(element.GetChildrenCount());
   for (std::size_t j = 0; j < element.GetChildrenCount(); j++) {
     const SerializerElement& variableElement = element.GetChild(j);
 
@@ -237,9 +270,32 @@ void VariablesContainer::Init(const gd::VariablesContainer& other) {
   sourceType = other.sourceType;
   persistentUuid = other.persistentUuid;
   variables.clear();
+  variables.reserve(other.variables.size());
   for (auto& it : other.variables) {
     variables.push_back(
         std::make_pair(it.first, std::make_shared<gd::Variable>(*it.second)));
   }
+  MarkVariablePositionsByNameAsDirty();
+}
+
+void VariablesContainer::EnsureVariablePositionsByNameIsUpToDate() const {
+  if (!areVariablePositionsByNameDirty) {
+    return;
+  }
+
+  variablePositionsByName.clear();
+  variablePositionsByName.reserve(variables.size());
+  for (std::size_t i = 0; i < variables.size(); ++i) {
+    if (variablePositionsByName.find(variables[i].first) ==
+        variablePositionsByName.end()) {
+      variablePositionsByName.emplace(variables[i].first, i);
+    }
+  }
+
+  areVariablePositionsByNameDirty = false;
+}
+
+void VariablesContainer::MarkVariablePositionsByNameAsDirty() {
+  areVariablePositionsByNameDirty = true;
 }
 }  // namespace gd

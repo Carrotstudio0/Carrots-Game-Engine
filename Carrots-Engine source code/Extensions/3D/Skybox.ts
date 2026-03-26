@@ -2,6 +2,22 @@ namespace gdjs {
   interface SkyboxFilterNetworkSyncData {
     i: number;
   }
+  const sceneBackgroundOverridesUserDataKeyForSkybox =
+    '__gdjsSceneBackgroundOverrides';
+  type SceneBackgroundOverrideValueForSkybox =
+    | THREE.Texture
+    | THREE.Color
+    | null;
+  type SceneBackgroundOverrideEntryForSkybox = {
+    ownerId: string;
+    value: SceneBackgroundOverrideValueForSkybox;
+  };
+  type SceneBackgroundOverrideStateForSkybox = {
+    baseValue: SceneBackgroundOverrideValueForSkybox;
+    entries: SceneBackgroundOverrideEntryForSkybox[];
+  };
+  let nextScene3DSkyboxBackgroundOverrideId = 1;
+
   gdjs.PixiFiltersTools.registerFilterCreator(
     'Scene3D::Skybox',
     new (class implements gdjs.PixiFiltersTools.FilterCreator {
@@ -16,13 +32,15 @@ namespace gdjs {
           _cubeTexture: THREE.CubeTexture;
           _pmremGenerator: THREE.PMREMGenerator | null = null;
           _pmremRenderTarget: THREE.WebGLRenderTarget | null = null;
-          _oldBackground: THREE.Texture | THREE.Color | null = null;
+          _appliedEnvironment: THREE.Texture | null = null;
           _oldEnvironment: THREE.Texture | null = null;
           _oldEnvironmentIntensity: number | null = null;
+          _backgroundOverrideOwnerId: string;
           _environmentIntensity: number;
           _isEnabled: boolean = false;
 
           constructor() {
+            this._backgroundOverrideOwnerId = `Scene3D::Skybox:${nextScene3DSkyboxBackgroundOverrideId++}`;
             this._cubeTexture = target
               .getRuntimeScene()
               .getGame()
@@ -108,6 +126,84 @@ namespace gdjs {
             }
           }
 
+          private _getBackgroundOverridesState(
+            scene: THREE.Scene
+          ): SceneBackgroundOverrideStateForSkybox | null {
+            const userData = scene.userData as {
+              [sceneBackgroundOverridesUserDataKeyForSkybox]?:
+                | SceneBackgroundOverrideStateForSkybox
+                | undefined;
+            };
+            return (
+              userData[sceneBackgroundOverridesUserDataKeyForSkybox] || null
+            );
+          }
+
+          private _ensureBackgroundOverridesState(
+            scene: THREE.Scene
+          ): SceneBackgroundOverrideStateForSkybox {
+            const existingState = this._getBackgroundOverridesState(scene);
+            if (existingState) {
+              return existingState;
+            }
+            const state: SceneBackgroundOverrideStateForSkybox = {
+              baseValue: scene.background,
+              entries: [],
+            };
+            const userData = scene.userData as {
+              [sceneBackgroundOverridesUserDataKeyForSkybox]?:
+                | SceneBackgroundOverrideStateForSkybox
+                | undefined;
+            };
+            userData[sceneBackgroundOverridesUserDataKeyForSkybox] = state;
+            return state;
+          }
+
+          private _applyBackgroundOverride(
+            scene: THREE.Scene,
+            value: SceneBackgroundOverrideValueForSkybox
+          ): void {
+            const state = this._ensureBackgroundOverridesState(scene);
+            const existingIndex = state.entries.findIndex(
+              entry => entry.ownerId === this._backgroundOverrideOwnerId
+            );
+            if (existingIndex !== -1) {
+              state.entries.splice(existingIndex, 1);
+            }
+            state.entries.push({
+              ownerId: this._backgroundOverrideOwnerId,
+              value,
+            });
+            scene.background = value;
+          }
+
+          private _removeBackgroundOverride(scene: THREE.Scene): void {
+            const state = this._getBackgroundOverridesState(scene);
+            if (!state) {
+              return;
+            }
+            const existingIndex = state.entries.findIndex(
+              entry => entry.ownerId === this._backgroundOverrideOwnerId
+            );
+            if (existingIndex === -1) {
+              return;
+            }
+            state.entries.splice(existingIndex, 1);
+
+            if (state.entries.length === 0) {
+              scene.background = state.baseValue;
+              const userData = scene.userData as {
+                [sceneBackgroundOverridesUserDataKeyForSkybox]?:
+                  | SceneBackgroundOverrideStateForSkybox
+                  | undefined;
+              };
+              delete userData[sceneBackgroundOverridesUserDataKeyForSkybox];
+              return;
+            }
+
+            scene.background = state.entries[state.entries.length - 1].value;
+          }
+
           isEnabled(target: EffectsTarget): boolean {
             return this._isEnabled;
           }
@@ -126,7 +222,10 @@ namespace gdjs {
             if (!scene) {
               return false;
             }
-            this._oldBackground = scene.background;
+            if (this._isEnabled) {
+              return true;
+            }
+
             this._oldEnvironment = scene.environment;
             const sceneWithEnvironmentIntensity = scene as THREE.Scene & {
               environmentIntensity?: number;
@@ -137,8 +236,9 @@ namespace gdjs {
                 ? sceneWithEnvironmentIntensity.environmentIntensity
                 : null;
 
-            scene.background = this._cubeTexture;
-            scene.environment = this._buildEnvironmentTexture(target);
+            this._applyBackgroundOverride(scene, this._cubeTexture);
+            this._appliedEnvironment = this._buildEnvironmentTexture(target);
+            scene.environment = this._appliedEnvironment;
             this._applyEnvironmentIntensity(scene);
             this._isEnabled = true;
             return true;
@@ -148,9 +248,15 @@ namespace gdjs {
             if (!scene) {
               return false;
             }
-            scene.background = this._oldBackground;
-            scene.environment = this._oldEnvironment;
-            if (this._oldEnvironmentIntensity !== null) {
+            this._removeBackgroundOverride(scene);
+
+            if (scene.environment === this._appliedEnvironment) {
+              scene.environment = this._oldEnvironment;
+            }
+            if (
+              scene.environment === this._oldEnvironment &&
+              this._oldEnvironmentIntensity !== null
+            ) {
               const sceneWithEnvironmentIntensity = scene as THREE.Scene & {
                 environmentIntensity?: number;
               };
@@ -162,6 +268,10 @@ namespace gdjs {
                   this._oldEnvironmentIntensity;
               }
             }
+
+            this._appliedEnvironment = null;
+            this._oldEnvironment = null;
+            this._oldEnvironmentIntensity = null;
             this._disposePmremResources();
             this._isEnabled = false;
             return true;
@@ -174,7 +284,9 @@ namespace gdjs {
             if (!scene) {
               return;
             }
-            this._applyEnvironmentIntensity(scene);
+            if (scene.environment === this._appliedEnvironment) {
+              this._applyEnvironmentIntensity(scene);
+            }
           }
           updateDoubleParameter(parameterName: string, value: number): void {
             if (parameterName === 'environmentIntensity') {

@@ -27,6 +27,13 @@ namespace gdjs {
     runtimeGameOptions: RuntimeGameOptions;
   };
 
+  type HotReloadQueueEntry = {
+    hotReloadId: number;
+    coalescedHotReloadIds: number[];
+    onDoneCallbacks: Array<(logs: HotReloaderLog[]) => void>;
+    options: HotReloadOptions;
+  };
+
   const cloneHotReloadOptions = (
     options: HotReloadOptions
   ): HotReloadOptions => {
@@ -44,6 +51,42 @@ namespace gdjs {
   };
 
   /**
+   * Merge 2 hot-reload options while keeping the newest project/runtime data.
+   * Boolean "should..." flags are merged with OR so that required stronger
+   * operations are not lost.
+   */
+  const mergeHotReloadOptions = (
+    previousOptions: HotReloadOptions,
+    latestOptions: HotReloadOptions
+  ): HotReloadOptions => {
+    const shouldReloadLibraries =
+      !!previousOptions.runtimeGameOptions.shouldReloadLibraries ||
+      !!latestOptions.runtimeGameOptions.shouldReloadLibraries;
+    const shouldGenerateScenesEventsCode =
+      !!previousOptions.runtimeGameOptions.shouldGenerateScenesEventsCode ||
+      !!latestOptions.runtimeGameOptions.shouldGenerateScenesEventsCode;
+
+    return {
+      shouldReloadResources:
+        previousOptions.shouldReloadResources ||
+        latestOptions.shouldReloadResources,
+      // Keep only the latest snapshot of project data.
+      projectData: latestOptions.projectData,
+      runtimeGameOptions: {
+        ...previousOptions.runtimeGameOptions,
+        ...latestOptions.runtimeGameOptions,
+        shouldReloadLibraries,
+        shouldGenerateScenesEventsCode,
+        // Keep the latest script files list when available, otherwise preserve
+        // the existing one (useful for merged requests).
+        scriptFiles:
+          latestOptions.runtimeGameOptions.scriptFiles ||
+          previousOptions.runtimeGameOptions.scriptFiles,
+      },
+    };
+  };
+
+  /**
    * Reload scripts/data of an exported game and applies the changes
    * to the running runtime game.
    * @category Debugging > Hot reloader
@@ -56,11 +99,7 @@ namespace gdjs {
     _existingScriptFiles: RuntimeGameOptionsScriptFile[] | null = null;
     _isHotReloadingSince: number | null = null;
 
-    _hotReloadsQueue: Array<{
-      hotReloadId: number;
-      onDone: (logs: HotReloaderLog[]) => void;
-      options: HotReloadOptions;
-    }> = [];
+    _hotReloadsQueue: HotReloadQueueEntry[] = [];
 
     /**
      * @param runtimeGame - The `gdjs.RuntimeGame` to be hot-reloaded.
@@ -72,6 +111,46 @@ namespace gdjs {
       if (this._runtimeGame._options.scriptFiles) {
         this._existingScriptFiles = this._runtimeGame._options.scriptFiles;
       }
+    }
+
+    private _enqueueHotReload(
+      hotReloadId: number,
+      options: HotReloadOptions,
+      onDone: (logs: HotReloaderLog[]) => void
+    ): {
+      queuedHotReloadId: number;
+      wasCoalesced: boolean;
+      coalescedCount: number;
+    } {
+      const lastQueuedHotReload =
+        this._hotReloadsQueue[this._hotReloadsQueue.length - 1];
+      if (lastQueuedHotReload) {
+        lastQueuedHotReload.options = mergeHotReloadOptions(
+          lastQueuedHotReload.options,
+          options
+        );
+        lastQueuedHotReload.onDoneCallbacks.push(onDone);
+        lastQueuedHotReload.coalescedHotReloadIds.push(hotReloadId);
+
+        return {
+          queuedHotReloadId: lastQueuedHotReload.hotReloadId,
+          wasCoalesced: true,
+          coalescedCount: lastQueuedHotReload.coalescedHotReloadIds.length,
+        };
+      }
+
+      this._hotReloadsQueue.push({
+        hotReloadId,
+        coalescedHotReloadIds: [hotReloadId],
+        onDoneCallbacks: [onDone],
+        options,
+      });
+
+      return {
+        queuedHotReloadId: hotReloadId,
+        wasCoalesced: false,
+        coalescedCount: 1,
+      };
     }
 
     static indexByPersistentUuid<
@@ -201,18 +280,22 @@ namespace gdjs {
     async hotReload(options: HotReloadOptions): Promise<HotReloaderLog[]> {
       return new Promise((resolve) => {
         const hotReloadId = nextHotReloadId++;
+        const { queuedHotReloadId, wasCoalesced, coalescedCount } =
+          this._enqueueHotReload(
+            hotReloadId,
+            // Clone the options to avoid any mutation while
+            // waiting for the hot-reload to be processed.
+            cloneHotReloadOptions(options),
+            resolve
+          );
 
-        this._hotReloadsQueue.push({
-          hotReloadId,
-          onDone: resolve,
-          // Clone the options to avoid any mutation while
-          // waiting for the hot-reload to be processed.
-          options: cloneHotReloadOptions(options),
-        });
-
-        if (this._hotReloadsQueue.length > 1) {
+        if (wasCoalesced) {
           logger.info(
-            `Hot reload #${hotReloadId} added to queue. Options are: ${getOptionsLogString(options)}.`
+            `Hot reload #${hotReloadId} coalesced into hot reload #${queuedHotReloadId} (${coalescedCount} merged request(s)). Options are: ${getOptionsLogString(options)}.`
+          );
+        } else if (this._isHotReloadingSince) {
+          logger.info(
+            `Hot reload #${hotReloadId} queued while another hot reload is running. Options are: ${getOptionsLogString(options)}.`
           );
         }
 
@@ -230,15 +313,24 @@ namespace gdjs {
       // Mark the hot reload as started (so no other hot-reload is started).
       this._isHotReloadingSince = Date.now();
 
-      const { options, onDone, hotReloadId } = this._hotReloadsQueue.shift()!;
+      const {
+        options,
+        onDoneCallbacks,
+        hotReloadId,
+        coalescedHotReloadIds,
+      } = this._hotReloadsQueue.shift()!;
       const {
         shouldReloadResources,
         projectData: newProjectData,
         runtimeGameOptions: newRuntimeGameOptions,
       } = options;
+      const coalescedIdsLog =
+        coalescedHotReloadIds.length > 1
+          ? ` (merged requests: ${coalescedHotReloadIds.join(', ')})`
+          : '';
 
       logger.info(
-        `Hot reload #${hotReloadId} started. Options are: ${getOptionsLogString(options)}.`
+        `Hot reload #${hotReloadId}${coalescedIdsLog} started. Options are: ${getOptionsLogString(options)}.`
       );
 
       const wasPaused = this._runtimeGame.isPaused();
@@ -362,15 +454,18 @@ namespace gdjs {
       }
 
       logger.info(
-        `Hot reload #${hotReloadId} finished in ${Math.ceil(Date.now() - this._isHotReloadingSince)}ms with logs:\n${
+        `Hot reload #${hotReloadId}${coalescedIdsLog} finished in ${Math.ceil(Date.now() - this._isHotReloadingSince)}ms with logs:\n${
           this._logs.length > 0
             ? this._logs.map((log) => '\n' + log.kind + ': ' + log.message)
             : '(no logs)'
         }`
       );
+      const logs = [...this._logs];
       this._isHotReloadingSince = null;
       this._runtimeGame.pause(wasPaused);
-      onDone(this._logs);
+      onDoneCallbacks.forEach((onDone) => {
+        onDone(logs);
+      });
 
       if (this._hotReloadsQueue.length > 0) {
         logger.info(

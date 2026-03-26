@@ -37,6 +37,7 @@ gd::String ResourcesContainer::badResourceName;
 
 void ResourcesContainer::Init(const ResourcesContainer &other) {
   resources.clear();
+  resources.reserve(other.resources.size());
   for (std::size_t i = 0; i < other.resources.size(); ++i) {
     resources.push_back(std::shared_ptr<Resource>(other.resources[i]->Clone()));
   }
@@ -367,6 +368,7 @@ void ResourcesContainer::UnserializeFrom(const SerializerElement &element) {
   const SerializerElement &resourcesElement =
       element.GetChild("resources", 0, "Resources");
   resourcesElement.ConsiderAsArrayOf("resource", "Resource");
+  resources.reserve(resourcesElement.GetChildrenCount());
   for (std::size_t i = 0; i < resourcesElement.GetChildrenCount(); ++i) {
     const SerializerElement &resourceElement = resourcesElement.GetChild(i);
     gd::String kind = resourceElement.GetStringAttribute("kind");

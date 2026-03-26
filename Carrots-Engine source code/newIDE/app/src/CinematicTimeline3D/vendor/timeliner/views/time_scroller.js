@@ -71,10 +71,10 @@ function ScrollCanvas(dispatcher, data) {
 		ctx.scale(dpr, dpr);
 
 		var w = width - 2 * MARGINS;
-		var h = 16; // TOP_SCROLL_TRACK;
+		var h = 14; // TOP_SCROLL_TRACK;
 
 		ctx.clearRect(0, 0, width, height);
-		ctx.translate(MARGINS, 5);
+		ctx.translate(MARGINS, 4);
 
 		// outline scroller
 		ctx.beginPath();
@@ -106,12 +106,12 @@ function ScrollCanvas(dispatcher, data) {
 		// ctx.arc(r, h2 / 2, h2 / 1.5, 0, Math.PI * 2);
 
 		// line
-		ctx.rect(r, 0, 2, h + 5);
+		ctx.rect(r, 0, 2, h + 4);
 		ctx.fill()
 
-		ctx.fillText(currentTime && currentTime.toFixed(2), r, h + 14);
+		ctx.fillText(currentTime && currentTime.toFixed(2), r, h + 11);
 		// ctx.fillText(currentTime && currentTime.toFixed(3), 10, 10);
-		ctx.fillText(totalTime, 300, 14);
+		ctx.fillText(totalTime, Math.max(w - 40, 0), 11);
 
 		ctx.restore();
 	}

@@ -42,9 +42,7 @@ gd::Expression& Instruction::GetParameter(std::size_t index) {
 }
 
 void Instruction::SetParametersCount(std::size_t size) {
-  while (size < parameters.size())
-    parameters.erase(parameters.begin() + parameters.size() - 1);
-  while (size > parameters.size()) parameters.push_back(gd::Expression(""));
+  parameters.resize(size, gd::Expression(""));
 }
 
 void Instruction::SetParameter(std::size_t nb, const gd::Expression& val) {

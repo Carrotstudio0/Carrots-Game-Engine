@@ -5,27 +5,22 @@ class GD_CORE_API EventsListUnfolder {
  public:
   /**
    * \brief Recursively unfold all the event lists containing the specified
-   * event. \note This is a quick and naive implementation, complexity is pretty
-   * high.
+   * event.
    */
   static void UnfoldWhenContaining(gd::EventsList& list,
                                    const gd::BaseEvent& eventToContain) {
-    for (size_t i = 0; i < list.size(); ++i) {
-      gd::BaseEvent& event = list[i];
-      if (event.CanHaveSubEvents() &&
-          event.GetSubEvents().Contains(eventToContain)) {
-        event.SetFolded(false);
-        UnfoldWhenContaining(event.GetSubEvents(), eventToContain);
-      }
-    }
+    UnfoldWhenContainingRecursively(list, eventToContain);
   }
 
   static void FoldAll(gd::EventsList& list) {
     for (size_t i = 0; i < list.size(); ++i) {
       gd::BaseEvent& event = list[i];
       event.SetFolded(true);
-      if (event.CanHaveSubEvents() && event.GetSubEvents().size() > 0) {
-        FoldAll(event.GetSubEvents());
+      if (event.CanHaveSubEvents()) {
+        gd::EventsList& subEvents = event.GetSubEvents();
+        if (subEvents.size() > 0) {
+          FoldAll(subEvents);
+        }
       }
     }
   }
@@ -39,14 +34,44 @@ class GD_CORE_API EventsListUnfolder {
                             const int8_t maxLevel,
                             const std::size_t currentLevel = 0) {
     if (maxLevel >= 0 && currentLevel > maxLevel) return;
+    const bool canUnfoldChildren =
+        maxLevel < 0 || currentLevel < static_cast<std::size_t>(maxLevel);
 
     for (size_t i = 0; i < list.size(); ++i) {
       gd::BaseEvent& event = list[i];
       event.SetFolded(false);
-      if (event.CanHaveSubEvents() && event.GetSubEvents().size() > 0 &&
-          (maxLevel == -1 || currentLevel <= maxLevel)) {
-        UnfoldToLevel(event.GetSubEvents(), maxLevel, currentLevel + 1);
+      if (canUnfoldChildren && event.CanHaveSubEvents()) {
+        gd::EventsList& subEvents = event.GetSubEvents();
+        if (subEvents.size() > 0) {
+          UnfoldToLevel(subEvents, maxLevel, currentLevel + 1);
+        }
       }
     }
+  }
+
+ private:
+  static bool UnfoldWhenContainingRecursively(
+      gd::EventsList& list, const gd::BaseEvent& eventToContain) {
+    bool listContainsTargetEvent = false;
+
+    for (size_t i = 0; i < list.size(); ++i) {
+      gd::BaseEvent& event = list[i];
+      bool eventOrSubEventsContainTarget = (&event == &eventToContain);
+
+      if (event.CanHaveSubEvents()) {
+        gd::EventsList& subEvents = event.GetSubEvents();
+        if (subEvents.size() > 0 &&
+            UnfoldWhenContainingRecursively(subEvents, eventToContain)) {
+          event.SetFolded(false);
+          eventOrSubEventsContainTarget = true;
+        }
+      }
+
+      if (eventOrSubEventsContainTarget) {
+        listContainsTargetEvent = true;
+      }
+    }
+
+    return listContainsTargetEvent;
   }
 };

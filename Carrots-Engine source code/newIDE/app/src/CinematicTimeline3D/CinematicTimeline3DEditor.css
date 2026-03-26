@@ -1,6 +1,6 @@
 .ct3d-root {
-  --ct3d-toolbar-max-height: 44%;
-  --ct3d-timeline-min-height: 280px;
+  --ct3d-toolbar-max-height: 36%;
+  --ct3d-timeline-min-height: 190px;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -18,7 +18,7 @@
   flex: 0 0 auto;
   max-height: var(--ct3d-toolbar-max-height);
   overflow-y: auto;
-  padding: 10px;
+  padding: 7px;
   border-bottom: 1px solid #2f3743;
   background: linear-gradient(180deg, rgba(24, 33, 45, 0.96) 0%, rgba(17, 24, 34, 0.96) 100%);
 }
@@ -27,38 +27,38 @@
   display: flex;
   align-items: flex-end;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .ct3d-toolbarRow + .ct3d-toolbarRow {
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .ct3d-inlineField {
   display: inline-flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 
 .ct3d-field-scene {
-  width: min(380px, 38vw);
+  width: min(320px, 34vw);
 }
 
 .ct3d-field-fps {
-  width: 92px;
+  width: 82px;
 }
 
 .ct3d-field-duration {
-  width: 138px;
+  width: 120px;
 }
 
 .ct3d-field-chain {
-  width: min(360px, 42vw);
+  width: min(300px, 36vw);
 }
 
 .ct3d-field-effector {
-  width: min(220px, 28vw);
+  width: min(190px, 24vw);
 }
 
 .ct3d-fieldLabel {
@@ -70,13 +70,13 @@
 .ct3d-input {
   width: 100%;
   min-width: 0;
-  height: 34px;
+  height: 28px;
   border: 1px solid #46576b;
-  border-radius: 7px;
+  border-radius: 6px;
   background: #0f151d;
   color: #f3f8ff;
-  padding: 0 10px;
-  font-size: 14px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .ct3d-input:focus {
@@ -90,15 +90,15 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  height: 34px;
+  height: 28px;
   border: 1px solid #4d6076;
-  border-radius: 8px;
+  border-radius: 7px;
   background: #273241;
   color: #e7eef9;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
-  padding: 0 12px;
+  padding: 0 10px;
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
@@ -144,17 +144,17 @@
 .ct3d-checkRow {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  font-size: 13px;
+  gap: 6px;
+  font-size: 12px;
   color: #b8c7d9;
 }
 
 .ct3d-checkRow-inline {
-  height: 34px;
+  height: 28px;
   border: 1px solid #44566f;
-  border-radius: 8px;
+  border-radius: 7px;
   background: rgba(22, 31, 42, 0.85);
-  padding: 0 10px;
+  padding: 0 8px;
 }
 
 .ct3d-toolbarRow-meta {
@@ -162,11 +162,11 @@
 }
 
 .ct3d-selectedText {
-  font-size: 14px;
+  font-size: 12px;
   color: #d9b56e;
   font-weight: 700;
   margin-right: auto;
-  min-width: 180px;
+  min-width: 140px;
   max-width: min(46vw, 560px);
   overflow: hidden;
   white-space: nowrap;
@@ -177,15 +177,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 28px;
+  min-height: 24px;
   border-radius: 999px;
   border: 1px solid #4b5667;
   background: #1c232c;
   color: #aeb9c8;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
-  padding: 0 12px;
+  padding: 0 10px;
 }
 
 .ct3d-chip.is-good {
@@ -202,17 +202,17 @@
 
 .ct3d-hintInline {
   max-width: min(52vw, 620px);
-  min-height: 28px;
+  min-height: 24px;
   border-radius: 8px;
   border: 1px solid #374354;
   background: rgba(20, 28, 39, 0.85);
   color: #95aac5;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 6px 10px;
+  padding: 5px 8px;
 }
 
 .ct3d-hintInline.is-recording {
@@ -228,7 +228,7 @@
 .ct3d-advancedPanel {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
   width: 100%;
 }
 
@@ -236,11 +236,11 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid #364559;
-  border-radius: 8px;
+  border-radius: 7px;
   background: rgba(14, 21, 31, 0.76);
-  padding: 8px;
+  padding: 6px;
   min-width: 0;
 }
 
@@ -251,7 +251,7 @@
   letter-spacing: 0.08em;
   color: #99afca;
   font-weight: 700;
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 
 .ct3d-advancedBlock-list {
@@ -263,16 +263,16 @@
 }
 
 .ct3d-field-small {
-  width: 96px;
+  width: 84px;
 }
 
 .ct3d-field-smallGrow {
-  width: min(260px, 100%);
+  width: min(220px, 100%);
 }
 
 .ct3d-miniList {
   width: 100%;
-  max-height: 132px;
+  max-height: 112px;
   overflow: auto;
   border: 1px solid #334255;
   border-radius: 7px;
@@ -285,7 +285,7 @@
   gap: 6px;
   min-width: 0;
   border-bottom: 1px solid rgba(62, 80, 102, 0.5);
-  padding: 5px 6px;
+  padding: 3px 5px;
 }
 
 .ct3d-listRow:last-child {
@@ -295,7 +295,7 @@
 .ct3d-listLabel {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: #c5d4e6;
   white-space: nowrap;
   overflow: hidden;
@@ -303,16 +303,16 @@
 }
 
 .ct3d-btn-mini {
-  height: 26px;
-  border-radius: 6px;
-  font-size: 11px;
-  padding: 0 8px;
+  height: 22px;
+  border-radius: 5px;
+  font-size: 10px;
+  padding: 0 7px;
 }
 
 .ct3d-listEmpty {
   color: #8fa3bc;
-  font-size: 12px;
-  padding: 7px 8px;
+  font-size: 11px;
+  padding: 6px 7px;
 }
 
 .ct3d-importButton {
@@ -343,12 +343,12 @@
   border-top: 1px solid #2f3743;
   background: #1a2029;
   color: #9eb0c4;
-  font-size: 11px;
-  min-height: 24px;
+  font-size: 10px;
+  min-height: 20px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 5px 10px;
+  padding: 4px 8px;
 }
 
 @keyframes ct3d-fadeIn {
@@ -372,7 +372,7 @@
 
 @media (max-width: 980px) {
   .ct3d-toolbar {
-    padding: 8px;
+    padding: 6px;
   }
 
   .ct3d-field-scene {
@@ -405,14 +405,14 @@
 
 @media (max-height: 860px) {
   .ct3d-root {
-    --ct3d-toolbar-max-height: 40%;
-    --ct3d-timeline-min-height: 230px;
+    --ct3d-toolbar-max-height: 34%;
+    --ct3d-timeline-min-height: 180px;
   }
 }
 
 @media (max-height: 720px) {
   .ct3d-root {
-    --ct3d-toolbar-max-height: 36%;
-    --ct3d-timeline-min-height: 200px;
+    --ct3d-toolbar-max-height: 32%;
+    --ct3d-timeline-min-height: 160px;
   }
 }

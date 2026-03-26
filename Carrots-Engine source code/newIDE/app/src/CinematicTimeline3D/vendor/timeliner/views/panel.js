@@ -12,11 +12,11 @@ const proxy_ctx  = utils.proxy_ctx;
 var
 	LINE_HEIGHT = LayoutConstants.LINE_HEIGHT,
 	DIAMOND_SIZE = LayoutConstants.DIAMOND_SIZE,
-	TIME_SCROLLER_HEIGHT = 35,
-	MARKER_TRACK_HEIGHT = 25,
+	TIME_SCROLLER_HEIGHT = 30,
+	MARKER_TRACK_HEIGHT = 22,
 	LEFT_PANE_WIDTH = LayoutConstants.LEFT_PANE_WIDTH,
 	time_scale = LayoutConstants.time_scale,
-	TOP = 10;
+	TOP = 8;
 
 
 var frame_start = 0; // this is the current scroll position.
@@ -412,7 +412,7 @@ function TimelinePanel(data, dispatcher) {
 
 			var t = (i * units - offsetUnits) / time_scale + frame_start;
 			t = utils.format_friendly_seconds(t);
-			ctx.fillText(t, x, 38);
+			ctx.fillText(t, x, MARKER_TRACK_HEIGHT + 10);
 		}
 
 		units = time_scale / tickMark2;
@@ -424,7 +424,7 @@ function TimelinePanel(data, dispatcher) {
 			ctx.beginPath();
 			x = i * units + LEFT_GUTTER - offsetUnits;
 			ctx.moveTo(x, MARKER_TRACK_HEIGHT - 0);
-			ctx.lineTo(x, MARKER_TRACK_HEIGHT - 16);
+			ctx.lineTo(x, MARKER_TRACK_HEIGHT - 13);
 			ctx.stroke();
 		}
 
@@ -439,7 +439,7 @@ function TimelinePanel(data, dispatcher) {
 			ctx.beginPath();
 			x = i * units + LEFT_GUTTER - offsetUnits;
 			ctx.moveTo(x, MARKER_TRACK_HEIGHT - 0);
-			ctx.lineTo(x, MARKER_TRACK_HEIGHT - 10);
+			ctx.lineTo(x, MARKER_TRACK_HEIGHT - 8);
 			ctx.stroke();
 		}
 
@@ -461,7 +461,7 @@ function TimelinePanel(data, dispatcher) {
 		var txt = utils.format_friendly_seconds(currentTime);
 		var textWidth = ctx.measureText(txt).width;
 
-		var base_line = MARKER_TRACK_HEIGHT - 5, half_rect = textWidth / 2 + 4;
+		var base_line = MARKER_TRACK_HEIGHT - 3, half_rect = textWidth / 2 + 4;
 
 		ctx.beginPath();
 		ctx.moveTo(x, base_line);
@@ -471,11 +471,11 @@ function TimelinePanel(data, dispatcher) {
 		ctx.fillStyle = 'red'; // black
 		ctx.textAlign = 'center';
 		ctx.beginPath();
-		ctx.moveTo(x, base_line + 5);
+		ctx.moveTo(x, base_line + 4);
 		ctx.lineTo(x + 5, base_line);
 		ctx.lineTo(x + half_rect, base_line);
-		ctx.lineTo(x + half_rect, base_line - 14);
-		ctx.lineTo(x - half_rect, base_line - 14);
+		ctx.lineTo(x + half_rect, base_line - 12);
+		ctx.lineTo(x - half_rect, base_line - 12);
 		ctx.lineTo(x - half_rect, base_line);
 		ctx.lineTo(x - 5, base_line);
 		ctx.closePath();

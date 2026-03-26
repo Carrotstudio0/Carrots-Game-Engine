@@ -70,6 +70,7 @@ void ObjectsContainer::UnserializeObjectsFrom(
     gd::Project& project, const SerializerElement& element) {
   Clear();
   element.ConsiderAsArrayOf("object", "Objet");
+  initialObjects.reserve(element.GetChildrenCount());
   for (std::size_t i = 0; i < element.GetChildrenCount(); ++i) {
     const SerializerElement& objectElement = element.GetChild(i);
 
