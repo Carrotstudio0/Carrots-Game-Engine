@@ -18,6 +18,9 @@ import ScenePropertiesDialog from './ScenePropertiesDialog';
 import EventsBasedObjectScenePropertiesDialog from './EventsBasedObjectScenePropertiesDialog';
 import ExtractAsExternalLayoutDialog from './ExtractAsExternalLayoutDialog';
 import ExtractAsCustomObjectDialog from './CustomObjectExtractor/ExtractAsCustomObjectDialog';
+import CinematicTimeline3DEditor, {
+  type ActiveObjectSnapshot,
+} from '../CinematicTimeline3D/CinematicTimeline3DEditor';
 import { type ObjectEditorTab } from '../ObjectEditor/ObjectEditorDialog';
 import MosaicEditorsDisplayToolbar from './MosaicEditorsDisplay/Toolbar';
 import SwipeableDrawerEditorsDisplayToolbar from './SwipeableDrawerEditorsDisplay/Toolbar';
@@ -218,6 +221,26 @@ const styles = {
     position: 'relative',
     overflow: 'hidden',
   },
+  cinematicTimelineOverlay: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 8,
+    height: '44%',
+    minHeight: 340,
+    maxHeight: 560,
+    zIndex: 4,
+    pointerEvents: 'none',
+  },
+  cinematicTimelineOverlayContent: {
+    width: '100%',
+    height: '100%',
+    pointerEvents: 'all',
+    borderRadius: 10,
+    overflow: 'hidden',
+    boxShadow: '0 8px 28px rgba(0,0,0,0.38)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+  },
 };
 
 type Props = {|
@@ -325,6 +348,7 @@ type State = {|
   tileMapTileSelection: ?TileMapTileSelection,
 
   lastSelectionType: 'instance' | 'object' | 'layer',
+  isCinematicTimelineShown: boolean,
 |};
 
 type CopyCutPasteOptions = {|
@@ -394,6 +418,7 @@ export default class SceneEditor extends React.Component<Props, State> {
       invisibleLayerOnWhichInstancesHaveJustBeenAdded: null,
 
       lastSelectionType: 'instance',
+      isCinematicTimelineShown: false,
     };
   }
 
@@ -734,6 +759,8 @@ export default class SceneEditor extends React.Component<Props, State> {
           isObjectGroupsListShown={editorDisplay.isEditorVisible(
             'object-groups-list'
           )}
+          toggleCinematicTimeline={this.toggleCinematicTimeline}
+          isCinematicTimelineShown={this.state.isCinematicTimelineShown}
           onOpenScenesManager={this.openScenesManager}
           onOpenSceneEvents={this.openCurrentSceneEvents}
           sceneEventsEnabled={!!this.props.layout}
@@ -786,6 +813,8 @@ export default class SceneEditor extends React.Component<Props, State> {
           }
           toggleObjectsList={this.toggleObjectsList}
           toggleObjectGroupsList={this.toggleObjectGroupsList}
+          toggleCinematicTimeline={this.toggleCinematicTimeline}
+          isCinematicTimelineShown={this.state.isCinematicTimelineShown}
           toggleProperties={this.toggleProperties}
           onOpenSceneEvents={this.openCurrentSceneEvents}
           sceneEventsEnabled={!!this.props.layout}
@@ -872,6 +901,110 @@ export default class SceneEditor extends React.Component<Props, State> {
   toggleObjectGroupsList = () => {
     if (!this.editorDisplay) return;
     this.editorDisplay.toggleEditorView('object-groups-list');
+  };
+
+  toggleCinematicTimeline = () => {
+    const shouldShowTimeline = !this.state.isCinematicTimelineShown;
+    if (shouldShowTimeline && this.props.gameEditorMode !== 'embedded-game') {
+      this.setGameEditorMode('embedded-game');
+    }
+
+    this.setState(
+      {
+        isCinematicTimelineShown: shouldShowTimeline,
+      },
+      () => {
+        this.updateToolbar();
+      }
+    );
+  };
+
+  closeCinematicTimeline = () => {
+    if (!this.state.isCinematicTimelineShown) return;
+    this.setState(
+      {
+        isCinematicTimelineShown: false,
+      },
+      () => {
+        this.updateToolbar();
+      }
+    );
+  };
+
+  getSelectedInstanceCinematicSnapshot = (): ?ActiveObjectSnapshot => {
+    const selectedInstances = this.instancesSelection.getSelectedInstances();
+    if (!selectedInstances.length) return null;
+
+    const instance = selectedInstances[selectedInstances.length - 1];
+    const instanceAsAny = (instance: any);
+
+    const baseWidth =
+      Number.isFinite(instance.getDefaultWidth()) && instance.getDefaultWidth() !== 0
+        ? instance.getDefaultWidth()
+        : 1;
+    const baseHeight =
+      Number.isFinite(instance.getDefaultHeight()) && instance.getDefaultHeight() !== 0
+        ? instance.getDefaultHeight()
+        : 1;
+    const baseDepth =
+      Number.isFinite(instance.getDefaultDepth()) && instance.getDefaultDepth() !== 0
+        ? instance.getDefaultDepth()
+        : 1;
+
+    const width = instance.hasCustomSize()
+      ? instance.getCustomWidth()
+      : instance.getDefaultWidth();
+    const height = instance.hasCustomSize()
+      ? instance.getCustomHeight()
+      : instance.getDefaultHeight();
+    const hasCustomDepth =
+      typeof instanceAsAny.hasCustomDepth === 'function'
+        ? instanceAsAny.hasCustomDepth()
+        : false;
+    const depth = hasCustomDepth
+      ? instance.getCustomDepth()
+      : instance.getDefaultDepth();
+
+    const positionZ =
+      typeof instanceAsAny.getZ === 'function' ? instanceAsAny.getZ() : 0;
+    const rotationX =
+      typeof instanceAsAny.getRotationX === 'function'
+        ? instanceAsAny.getRotationX()
+        : 0;
+    const rotationY =
+      typeof instanceAsAny.getRotationY === 'function'
+        ? instanceAsAny.getRotationY()
+        : 0;
+    const flippedZ =
+      typeof instanceAsAny.isFlippedZ === 'function'
+        ? instanceAsAny.isFlippedZ()
+        : false;
+
+    const persistentUuid = instance.getPersistentUuid();
+    const objectName = instance.getObjectName();
+    const targetId = persistentUuid ? `uuid:${persistentUuid}` : objectName;
+
+    return {
+      targetId,
+      objectName,
+      transform: {
+        position: {
+          x: instance.getX(),
+          y: instance.getY(),
+          z: positionZ,
+        },
+        rotation: {
+          x: rotationX,
+          y: rotationY,
+          z: instance.getAngle(),
+        },
+        scale: {
+          x: (width / baseWidth) * (instance.isFlippedX() ? -1 : 1),
+          y: (height / baseHeight) * (instance.isFlippedY() ? -1 : 1),
+          z: (depth / baseDepth) * (flippedZ ? -1 : 1),
+        },
+      },
+    };
   };
 
   openScenesManager = () => {
@@ -1032,6 +1165,12 @@ export default class SceneEditor extends React.Component<Props, State> {
   };
 
   setGameEditorMode = (newMode: 'instances-editor' | 'embedded-game') => {
+    if (newMode !== 'embedded-game' && this.state.isCinematicTimelineShown) {
+      this.setState({ isCinematicTimelineShown: false }, () => {
+        this.updateToolbar();
+      });
+    }
+
     this.setInstancesEditorSettings({
       ...this.state.instancesEditorSettings,
       gameEditorMode: newMode,
@@ -3126,6 +3265,23 @@ export default class SceneEditor extends React.Component<Props, State> {
     const isCustomVariant = eventsBasedObject
       ? eventsBasedObject.getDefaultVariant() !== eventsBasedObjectVariant
       : false;
+    const selectedInstanceCinematicSnapshot = this.getSelectedInstanceCinematicSnapshot();
+    const embeddedEditorOverlay =
+      this.state.isCinematicTimelineShown &&
+      this.props.gameEditorMode === 'embedded-game' ? (
+        <div style={styles.cinematicTimelineOverlay}>
+          <div style={styles.cinematicTimelineOverlayContent}>
+            <CinematicTimeline3DEditor
+              project={project}
+              previewDebuggerServer={this.props.previewDebuggerServer}
+              isActive={isActive && this.state.isCinematicTimelineShown}
+              displayMode="overlay"
+              onRequestClose={this.closeCinematicTimeline}
+              activeObjectSnapshot={selectedInstanceCinematicSnapshot}
+            />
+          </div>
+        </div>
+      ) : null;
 
     return (
       <I18n>
@@ -3296,6 +3452,7 @@ export default class SceneEditor extends React.Component<Props, State> {
                       this.props.onEventsBasedObjectChildrenEdited
                     }
                     onOpenEvents={this.props.onOpenEvents}
+                    embeddedEditorOverlay={embeddedEditorOverlay}
                   />
                   <React.Fragment>
                     {editedObjectWithContext && (

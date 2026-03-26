@@ -1,0 +1,418 @@
+.ct3d-root {
+  --ct3d-toolbar-max-height: 44%;
+  --ct3d-timeline-min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  color: #dbe4f0;
+  border: 1px solid #2f3743;
+  border-radius: 10px;
+  background: radial-gradient(circle at top left, #1c2734 0%, #151d27 52%, #11161d 100%);
+  animation: ct3d-fadeIn 180ms ease-out;
+}
+
+.ct3d-toolbar {
+  flex: 0 0 auto;
+  max-height: var(--ct3d-toolbar-max-height);
+  overflow-y: auto;
+  padding: 10px;
+  border-bottom: 1px solid #2f3743;
+  background: linear-gradient(180deg, rgba(24, 33, 45, 0.96) 0%, rgba(17, 24, 34, 0.96) 100%);
+}
+
+.ct3d-toolbarRow {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ct3d-toolbarRow + .ct3d-toolbarRow {
+  margin-top: 8px;
+}
+
+.ct3d-inlineField {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ct3d-field-scene {
+  width: min(380px, 38vw);
+}
+
+.ct3d-field-fps {
+  width: 92px;
+}
+
+.ct3d-field-duration {
+  width: 138px;
+}
+
+.ct3d-field-chain {
+  width: min(360px, 42vw);
+}
+
+.ct3d-field-effector {
+  width: min(220px, 28vw);
+}
+
+.ct3d-fieldLabel {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: #9dafc8;
+}
+
+.ct3d-input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid #46576b;
+  border-radius: 7px;
+  background: #0f151d;
+  color: #f3f8ff;
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+.ct3d-input:focus {
+  outline: none;
+  border-color: #72a6dd;
+  box-shadow: 0 0 0 1px rgba(100, 163, 234, 0.3);
+}
+
+.ct3d-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 34px;
+  border: 1px solid #4d6076;
+  border-radius: 8px;
+  background: #273241;
+  color: #e7eef9;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  padding: 0 12px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.ct3d-btn:hover {
+  background: #324154;
+  border-color: #607997;
+}
+
+.ct3d-btn:active {
+  transform: translateY(1px);
+}
+
+.ct3d-btn-primary {
+  border-color: #2d8e5a;
+  background: #257447;
+}
+
+.ct3d-btn-primary:hover {
+  border-color: #42a36d;
+  background: #2f8b55;
+}
+
+.ct3d-btn-record {
+  border-color: #7e3131;
+  background: #3f2525;
+  color: #ffdddd;
+}
+
+.ct3d-btn-record.is-active {
+  border-color: #cc4f4f;
+  background: #8f3131;
+  color: #fff7f7;
+  box-shadow: 0 0 0 1px rgba(204, 79, 79, 0.3);
+}
+
+.ct3d-btn-ghost {
+  border-color: #576983;
+  background: #1d2734;
+  color: #bad0ea;
+}
+
+.ct3d-checkRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: #b8c7d9;
+}
+
+.ct3d-checkRow-inline {
+  height: 34px;
+  border: 1px solid #44566f;
+  border-radius: 8px;
+  background: rgba(22, 31, 42, 0.85);
+  padding: 0 10px;
+}
+
+.ct3d-toolbarRow-meta {
+  align-items: center;
+}
+
+.ct3d-selectedText {
+  font-size: 14px;
+  color: #d9b56e;
+  font-weight: 700;
+  margin-right: auto;
+  min-width: 180px;
+  max-width: min(46vw, 560px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ct3d-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  border-radius: 999px;
+  border: 1px solid #4b5667;
+  background: #1c232c;
+  color: #aeb9c8;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  padding: 0 12px;
+}
+
+.ct3d-chip.is-good {
+  border-color: #2e7f57;
+  background: #18402b;
+  color: #d3f6e1;
+}
+
+.ct3d-chip-frame {
+  border-color: #3e6aa0;
+  background: #183355;
+  color: #cbe4ff;
+}
+
+.ct3d-hintInline {
+  max-width: min(52vw, 620px);
+  min-height: 28px;
+  border-radius: 8px;
+  border: 1px solid #374354;
+  background: rgba(20, 28, 39, 0.85);
+  color: #95aac5;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 6px 10px;
+}
+
+.ct3d-hintInline.is-recording {
+  border-color: #7d3d3d;
+  color: #f2bbbb;
+  background: rgba(54, 26, 26, 0.45);
+}
+
+.ct3d-toolbarRow-advanced {
+  padding-top: 2px;
+}
+
+.ct3d-advancedPanel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.ct3d-advancedBlock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  border: 1px solid #364559;
+  border-radius: 8px;
+  background: rgba(14, 21, 31, 0.76);
+  padding: 8px;
+  min-width: 0;
+}
+
+.ct3d-advancedTitle {
+  width: 100%;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #99afca;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.ct3d-advancedBlock-list {
+  align-items: stretch;
+}
+
+.ct3d-field-trackSelect {
+  width: min(440px, 100%);
+}
+
+.ct3d-field-small {
+  width: 96px;
+}
+
+.ct3d-field-smallGrow {
+  width: min(260px, 100%);
+}
+
+.ct3d-miniList {
+  width: 100%;
+  max-height: 132px;
+  overflow: auto;
+  border: 1px solid #334255;
+  border-radius: 7px;
+  background: rgba(11, 17, 25, 0.86);
+}
+
+.ct3d-listRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border-bottom: 1px solid rgba(62, 80, 102, 0.5);
+  padding: 5px 6px;
+}
+
+.ct3d-listRow:last-child {
+  border-bottom: 0;
+}
+
+.ct3d-listLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: #c5d4e6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ct3d-btn-mini {
+  height: 26px;
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 0 8px;
+}
+
+.ct3d-listEmpty {
+  color: #8fa3bc;
+  font-size: 12px;
+  padding: 7px 8px;
+}
+
+.ct3d-importButton {
+  position: relative;
+}
+
+.ct3d-hiddenInput {
+  display: none;
+}
+
+.ct3d-timelineDock {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-height: var(--ct3d-timeline-min-height);
+  background: #101723;
+}
+
+.ct3d-host {
+  position: relative;
+  flex: 1;
+  min-height: var(--ct3d-timeline-min-height);
+  overflow: hidden;
+}
+
+.ct3d-statusBar {
+  border-top: 1px solid #2f3743;
+  background: #1a2029;
+  color: #9eb0c4;
+  font-size: 11px;
+  min-height: 24px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 5px 10px;
+}
+
+@keyframes ct3d-fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 1320px) {
+  .ct3d-field-scene {
+    width: min(330px, 44vw);
+  }
+
+  .ct3d-hintInline {
+    max-width: min(100%, 560px);
+  }
+}
+
+@media (max-width: 980px) {
+  .ct3d-toolbar {
+    padding: 8px;
+  }
+
+  .ct3d-field-scene {
+    width: min(100%, 420px);
+  }
+
+  .ct3d-field-chain,
+  .ct3d-field-effector {
+    width: min(100%, 320px);
+  }
+
+  .ct3d-selectedText {
+    max-width: min(100%, 520px);
+  }
+
+  .ct3d-hintInline {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .ct3d-advancedPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .ct3d-field-trackSelect,
+  .ct3d-field-smallGrow {
+    width: min(100%, 340px);
+  }
+}
+
+@media (max-height: 860px) {
+  .ct3d-root {
+    --ct3d-toolbar-max-height: 40%;
+    --ct3d-timeline-min-height: 230px;
+  }
+}
+
+@media (max-height: 720px) {
+  .ct3d-root {
+    --ct3d-toolbar-max-height: 36%;
+    --ct3d-timeline-min-height: 200px;
+  }
+}

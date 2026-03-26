@@ -1,0 +1,3099 @@
+// @flow
+import * as React from 'react';
+import { Timeliner } from './vendor/timeliner/timeliner';
+import { type PreviewDebuggerServer } from '../ExportAndShare/PreviewLauncher.flow';
+import './CinematicTimeline3DEditor.css';
+
+type CinematicTimelineEasing =
+  | 'linear'
+  | 'step'
+  | 'quadEaseIn'
+  | 'quadEaseOut'
+  | 'quadEaseInOut'
+  | 'none';
+
+type Vec3 = {|
+  x: number,
+  y: number,
+  z: number,
+|};
+
+type TransformValue = {|
+  position: Vec3,
+  rotation: Vec3,
+  scale: Vec3,
+|};
+
+type IKValue = {|
+  target: Vec3,
+  pole: Vec3,
+  weight: number,
+|};
+
+type Keyframe<T> = {|
+  frame: number,
+  easing: CinematicTimelineEasing,
+  value: T,
+|};
+
+type TransformTrack = {|
+  id: string,
+  type: 'transform',
+  name?: string,
+  targetId: string,
+  keyframes: Array<Keyframe<TransformValue>>,
+|};
+
+type IKTrack = {|
+  id: string,
+  type: 'ik',
+  name: string,
+  targetId: string,
+  chainRoot: string,
+  endEffector: string,
+  keyframes: Array<Keyframe<IKValue>>,
+|};
+
+type Track = TransformTrack | IKTrack;
+
+type TrackSettings = {|
+  muted?: boolean,
+  solo?: boolean,
+  locked?: boolean,
+|};
+
+type CinematicTimelineLoopRange = {|
+  enabled: boolean,
+  inFrame: number,
+  outFrame: number,
+|};
+
+type CinematicTimelineShot = {|
+  id: string,
+  name: string,
+  startFrame: number,
+  endFrame: number,
+|};
+
+type CinematicTimelineEventMarker = {|
+  id: string,
+  name: string,
+  action: string,
+  condition: string,
+  frame: number,
+  payload?: string,
+|};
+
+type CinematicScene = {|
+  version: 1,
+  name: string,
+  fps: number,
+  duration: number,
+  tracks: Array<Track>,
+  loopRange?: CinematicTimelineLoopRange,
+  shots?: Array<CinematicTimelineShot>,
+  events?: Array<CinematicTimelineEventMarker>,
+|};
+
+type TimelinerLayerValue = {|
+  time: number,
+  value: number,
+  tween?: string,
+  _color?: string,
+|};
+
+type TimelinerLayer = {|
+  name: string,
+  values: Array<TimelinerLayerValue>,
+  _value?: number,
+  _color?: string,
+  _mute?: boolean,
+  _solo?: boolean,
+|};
+
+type TimelinerUi = {|
+  currentTime?: number,
+  totalTime?: number,
+  scrollTime?: number,
+  timeScale?: number,
+|};
+
+type TimelinerData = {|
+  version?: string,
+  modified?: string,
+  title?: string,
+  ui: TimelinerUi,
+  layers: Array<TimelinerLayer>,
+  gdCinematicMeta?: {|
+    fps?: number,
+    sceneName?: string,
+    loopRange?: {|
+      enabled?: boolean,
+      inFrame?: number,
+      outFrame?: number,
+    |},
+    shots?: Array<{
+      id?: string,
+      name?: string,
+      startFrame?: number,
+      endFrame?: number,
+    }>,
+    events?: Array<{
+      id?: string,
+      name?: string,
+      action?: string,
+      condition?: string,
+      frame?: number,
+      payload?: string,
+    }>,
+    trackSettingsByLayer?: {
+      [string]: {| muted?: boolean, solo?: boolean, locked?: boolean |},
+    },
+    ikConfigByTarget?: {
+      [string]: {|
+        chainRoot?: string,
+        endEffector?: string,
+        name?: string,
+      |},
+    },
+  |},
+|};
+
+export type ActiveObjectSnapshot = {|
+  targetId: string,
+  objectName: string,
+  transform: TransformValue,
+|};
+
+type Props = {|
+  project: gdProject,
+  previewDebuggerServer: ?PreviewDebuggerServer,
+  isActive: boolean,
+  displayMode?: 'tab' | 'overlay',
+  onRequestClose?: () => void,
+  activeObjectSnapshot?: ?ActiveObjectSnapshot,
+|};
+
+const PROJECT_STORAGE_VARIABLE = '__carrots_cinematic_timeliner_v1';
+const DEFAULT_FPS = 30;
+const DEFAULT_DURATION_SECONDS = 8;
+const MIN_FPS = 1;
+const MAX_FPS = 240;
+const MIN_DURATION_SECONDS = 1 / DEFAULT_FPS;
+const MAX_DURATION_SECONDS = 20000 / MIN_FPS;
+const TRACK_FRAME_LIMIT = 20000;
+const EPSILON = 0.00001;
+const DEFAULT_IK_CHAIN_ROOT = 'Hips,Spine,Chest,UpperArm.R,ForeArm.R,Hand.R';
+const DEFAULT_IK_END_EFFECTOR = 'Hand.R';
+const DEFAULT_LOOP_RANGE = { enabled: false, inFrame: 0, outFrame: 120 };
+const DEFAULT_EVENT_ACTION = 'Trigger';
+const DEFAULT_EVENT_CONDITION = 'Always';
+
+const transformPropertyDefinitions = [
+  {
+    path: 'position.x',
+    read: (value: TransformValue): number => value.position.x,
+    write: (value: TransformValue, nextValue: number): void => {
+      value.position.x = nextValue;
+    },
+  },
+  {
+    path: 'position.y',
+    read: (value: TransformValue): number => value.position.y,
+    write: (value: TransformValue, nextValue: number): void => {
+      value.position.y = nextValue;
+    },
+  },
+  {
+    path: 'position.z',
+    read: (value: TransformValue): number => value.position.z,
+    write: (value: TransformValue, nextValue: number): void => {
+      value.position.z = nextValue;
+    },
+  },
+  {
+    path: 'rotation.x',
+    read: (value: TransformValue): number => value.rotation.x,
+    write: (value: TransformValue, nextValue: number): void => {
+      value.rotation.x = nextValue;
+    },
+  },
+  {
+    path: 'rotation.y',
+    read: (value: TransformValue): number => value.rotation.y,
+    write: (value: TransformValue, nextValue: number): void => {
+      value.rotation.y = nextValue;
+    },
+  },
+  {
+    path: 'rotation.z',
+    read: (value: TransformValue): number => value.rotation.z,
+    write: (value: TransformValue, nextValue: number): void => {
+      value.rotation.z = nextValue;
+    },
+  },
+  {
+    path: 'scale.x',
+    read: (value: TransformValue): number => value.scale.x,
+    write: (value: TransformValue, nextValue: number): void => {
+      value.scale.x = nextValue;
+    },
+  },
+  {
+    path: 'scale.y',
+    read: (value: TransformValue): number => value.scale.y,
+    write: (value: TransformValue, nextValue: number): void => {
+      value.scale.y = nextValue;
+    },
+  },
+  {
+    path: 'scale.z',
+    read: (value: TransformValue): number => value.scale.z,
+    write: (value: TransformValue, nextValue: number): void => {
+      value.scale.z = nextValue;
+    },
+  },
+];
+
+const ikPropertyDefinitions = [
+  {
+    path: 'ik.target.x',
+    read: (value: IKValue): number => value.target.x,
+    write: (value: IKValue, nextValue: number): void => {
+      value.target.x = nextValue;
+    },
+  },
+  {
+    path: 'ik.target.y',
+    read: (value: IKValue): number => value.target.y,
+    write: (value: IKValue, nextValue: number): void => {
+      value.target.y = nextValue;
+    },
+  },
+  {
+    path: 'ik.target.z',
+    read: (value: IKValue): number => value.target.z,
+    write: (value: IKValue, nextValue: number): void => {
+      value.target.z = nextValue;
+    },
+  },
+  {
+    path: 'ik.pole.x',
+    read: (value: IKValue): number => value.pole.x,
+    write: (value: IKValue, nextValue: number): void => {
+      value.pole.x = nextValue;
+    },
+  },
+  {
+    path: 'ik.pole.y',
+    read: (value: IKValue): number => value.pole.y,
+    write: (value: IKValue, nextValue: number): void => {
+      value.pole.y = nextValue;
+    },
+  },
+  {
+    path: 'ik.pole.z',
+    read: (value: IKValue): number => value.pole.z,
+    write: (value: IKValue, nextValue: number): void => {
+      value.pole.z = nextValue;
+    },
+  },
+  {
+    path: 'ik.weight',
+    read: (value: IKValue): number => value.weight,
+    write: (value: IKValue, nextValue: number): void => {
+      value.weight = clampNumber(nextValue, 0, 1);
+    },
+  },
+];
+
+const createDefaultTransformValue = (): TransformValue => ({
+  position: { x: 0, y: 0, z: 0 },
+  rotation: { x: 0, y: 0, z: 0 },
+  scale: { x: 1, y: 1, z: 1 },
+});
+
+const createDefaultIKValue = (): IKValue => ({
+  target: { x: 0, y: 0, z: 0 },
+  pole: { x: 0, y: 1, z: 0 },
+  weight: 1,
+});
+
+const cloneTransformValue = (value: TransformValue): TransformValue => ({
+  position: { ...value.position },
+  rotation: { ...value.rotation },
+  scale: { ...value.scale },
+});
+
+const cloneIKValue = (value: IKValue): IKValue => ({
+  target: { ...value.target },
+  pole: { ...value.pole },
+  weight: value.weight,
+});
+
+const clampNumber = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
+
+const clampInteger = (value: number, min: number, max: number): number =>
+  Math.round(clampNumber(value, min, max));
+
+const parseFiniteNumber = (
+  value: string | number,
+  fallbackValue: number
+): number => {
+  const parsedValue =
+    typeof value === 'number' ? value : Number.parseFloat(value);
+  return Number.isFinite(parsedValue) ? parsedValue : fallbackValue;
+};
+
+const normalizeTransformValue = (value: any): TransformValue => {
+  const fallbackValue = createDefaultTransformValue();
+  if (!value || typeof value !== 'object') return fallbackValue;
+  const asObject = value;
+  return {
+    position: {
+      x: parseFiniteNumber(
+        asObject.position && asObject.position.x,
+        fallbackValue.position.x
+      ),
+      y: parseFiniteNumber(
+        asObject.position && asObject.position.y,
+        fallbackValue.position.y
+      ),
+      z: parseFiniteNumber(
+        asObject.position && asObject.position.z,
+        fallbackValue.position.z
+      ),
+    },
+    rotation: {
+      x: parseFiniteNumber(
+        asObject.rotation && asObject.rotation.x,
+        fallbackValue.rotation.x
+      ),
+      y: parseFiniteNumber(
+        asObject.rotation && asObject.rotation.y,
+        fallbackValue.rotation.y
+      ),
+      z: parseFiniteNumber(
+        asObject.rotation && asObject.rotation.z,
+        fallbackValue.rotation.z
+      ),
+    },
+    scale: {
+      x: parseFiniteNumber(
+        asObject.scale && asObject.scale.x,
+        fallbackValue.scale.x
+      ),
+      y: parseFiniteNumber(
+        asObject.scale && asObject.scale.y,
+        fallbackValue.scale.y
+      ),
+      z: parseFiniteNumber(
+        asObject.scale && asObject.scale.z,
+        fallbackValue.scale.z
+      ),
+    },
+  };
+};
+
+const normalizeIKValue = (value: any): IKValue => {
+  const fallbackValue = createDefaultIKValue();
+  if (!value || typeof value !== 'object') return fallbackValue;
+  const asObject = value;
+  return {
+    target: {
+      x: parseFiniteNumber(
+        asObject.target && asObject.target.x,
+        fallbackValue.target.x
+      ),
+      y: parseFiniteNumber(
+        asObject.target && asObject.target.y,
+        fallbackValue.target.y
+      ),
+      z: parseFiniteNumber(
+        asObject.target && asObject.target.z,
+        fallbackValue.target.z
+      ),
+    },
+    pole: {
+      x: parseFiniteNumber(asObject.pole && asObject.pole.x, fallbackValue.pole.x),
+      y: parseFiniteNumber(asObject.pole && asObject.pole.y, fallbackValue.pole.y),
+      z: parseFiniteNumber(asObject.pole && asObject.pole.z, fallbackValue.pole.z),
+    },
+    weight: clampNumber(
+      parseFiniteNumber(asObject.weight, fallbackValue.weight),
+      0,
+      1
+    ),
+  };
+};
+
+const sortByTime = (
+  values: Array<TimelinerLayerValue>
+): Array<TimelinerLayerValue> => [...values].sort((a, b) => a.time - b.time);
+
+const mapTweenToEasing = (tween: ?string): CinematicTimelineEasing => {
+  if (tween === 'none' || tween === 'step') return 'step';
+  if (
+    tween === 'quadEaseIn' ||
+    tween === 'quadEaseOut' ||
+    tween === 'quadEaseInOut'
+  ) {
+    return tween;
+  }
+  return 'linear';
+};
+
+const mapEasingToTween = (easing: ?CinematicTimelineEasing): string => {
+  if (easing === 'step' || easing === 'none') return 'none';
+  if (
+    easing === 'quadEaseIn' ||
+    easing === 'quadEaseOut' ||
+    easing === 'quadEaseInOut'
+  ) {
+    return easing;
+  }
+  return 'linear';
+};
+
+const easeProgress = (alpha: number, easing: CinematicTimelineEasing): number => {
+  const clampedAlpha = clampNumber(alpha, 0, 1);
+  if (easing === 'step' || easing === 'none') return 0;
+  if (easing === 'quadEaseIn') return clampedAlpha * clampedAlpha;
+  if (easing === 'quadEaseOut') return -clampedAlpha * (clampedAlpha - 2);
+  if (easing === 'quadEaseInOut') {
+    const doubleAlpha = clampedAlpha * 2;
+    if (doubleAlpha < 1) return 0.5 * doubleAlpha * doubleAlpha;
+    const normalized = doubleAlpha - 1;
+    return -0.5 * (normalized * (normalized - 2) - 1);
+  }
+  return clampedAlpha;
+};
+
+const frameToSeconds = (frame: number, fps: number): number =>
+  frame / Math.max(1, fps);
+
+const secondsToFrame = (seconds: number, fps: number): number =>
+  clampInteger(seconds * Math.max(1, fps), 0, TRACK_FRAME_LIMIT);
+
+const randomColor = (): string =>
+  `#${((Math.random() * 0xffffff) | 0).toString(16).padStart(6, '0')}`;
+
+const makeLayerName = (
+  targetId: string,
+  objectName: string,
+  propertyPath: string
+): string => `[${targetId}] ${objectName}.${propertyPath}`;
+
+const parseLayerName = (
+  layerName: string
+): ?{|
+  targetId: string,
+  objectName: string,
+  propertyPath: string,
+  trackType: 'transform' | 'ik',
+|} => {
+  const match = /^\[(.+?)\]\s+(.+)$/.exec(layerName);
+  if (!match) return null;
+  const targetId = match[1];
+  const descriptor = match[2];
+  for (const definition of transformPropertyDefinitions) {
+    const suffix = `.${definition.path}`;
+    if (descriptor.endsWith(suffix)) {
+      return {
+        targetId,
+        objectName: descriptor.slice(0, descriptor.length - suffix.length),
+        propertyPath: definition.path,
+        trackType: 'transform',
+      };
+    }
+  }
+  for (const definition of ikPropertyDefinitions) {
+    const suffix = `.${definition.path}`;
+    if (descriptor.endsWith(suffix)) {
+      return {
+        targetId,
+        objectName: descriptor.slice(0, descriptor.length - suffix.length),
+        propertyPath: definition.path,
+        trackType: 'ik',
+      };
+    }
+  }
+  return null;
+};
+
+const shortenTargetId = (targetId: string): string => {
+  if (!targetId) return '';
+  if (targetId.length <= 12) return targetId;
+  return `${targetId.slice(0, 8)}...`;
+};
+
+const createRuntimeId = (prefix: string): string =>
+  `${prefix}-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+
+const normalizeLoopRange = (
+  rawLoopRange: any,
+  durationFrames: number
+): CinematicTimelineLoopRange => {
+  const defaultOutFrame = clampInteger(
+    Math.max(1, durationFrames) - 1,
+    0,
+    TRACK_FRAME_LIMIT
+  );
+  if (!rawLoopRange || typeof rawLoopRange !== 'object') {
+    return {
+      enabled: false,
+      inFrame: 0,
+      outFrame: defaultOutFrame,
+    };
+  }
+  const inFrame = clampInteger(
+    parseFiniteNumber(rawLoopRange.inFrame, 0),
+    0,
+    TRACK_FRAME_LIMIT
+  );
+  const outFrame = clampInteger(
+    parseFiniteNumber(rawLoopRange.outFrame, defaultOutFrame),
+    0,
+    TRACK_FRAME_LIMIT
+  );
+  return {
+    enabled: !!rawLoopRange.enabled,
+    inFrame: Math.min(inFrame, outFrame),
+    outFrame: Math.max(inFrame, outFrame),
+  };
+};
+
+const normalizeShots = (
+  rawShots: any,
+  durationFrames: number
+): Array<CinematicTimelineShot> => {
+  if (!Array.isArray(rawShots)) return [];
+  return rawShots
+    .map((rawShot, index) => {
+      if (!rawShot || typeof rawShot !== 'object') return null;
+      const startFrame = clampInteger(
+        parseFiniteNumber(rawShot.startFrame, 0),
+        0,
+        TRACK_FRAME_LIMIT
+      );
+      const maxEndFrame = Math.max(startFrame, durationFrames);
+      const endFrame = clampInteger(
+        parseFiniteNumber(rawShot.endFrame, maxEndFrame),
+        startFrame,
+        TRACK_FRAME_LIMIT
+      );
+      return {
+        id:
+          typeof rawShot.id === 'string' && rawShot.id
+            ? rawShot.id
+            : `shot-${index + 1}`,
+        name:
+          typeof rawShot.name === 'string' && rawShot.name
+            ? rawShot.name
+            : `Shot ${index + 1}`,
+        startFrame,
+        endFrame,
+      };
+    })
+    .filter((shot): boolean => !!shot)
+    .sort((a, b) => a.startFrame - b.startFrame);
+};
+
+const normalizeEvents = (
+  rawEvents: any,
+  durationFrames: number
+): Array<CinematicTimelineEventMarker> => {
+  if (!Array.isArray(rawEvents)) return [];
+  return rawEvents
+    .map((rawEvent, index) => {
+      if (!rawEvent || typeof rawEvent !== 'object') return null;
+      return {
+        id:
+          typeof rawEvent.id === 'string' && rawEvent.id
+            ? rawEvent.id
+            : `event-${index + 1}`,
+        name:
+          typeof rawEvent.name === 'string' && rawEvent.name
+            ? rawEvent.name
+            : `Event ${index + 1}`,
+        action:
+          typeof rawEvent.action === 'string' && rawEvent.action
+            ? rawEvent.action
+            : DEFAULT_EVENT_ACTION,
+        condition:
+          typeof rawEvent.condition === 'string' && rawEvent.condition
+            ? rawEvent.condition
+            : DEFAULT_EVENT_CONDITION,
+        frame: clampInteger(
+          parseFiniteNumber(rawEvent.frame, 0),
+          0,
+          Math.max(0, durationFrames)
+        ),
+        payload:
+          typeof rawEvent.payload === 'string' ? rawEvent.payload : undefined,
+      };
+    })
+    .filter((event): boolean => !!event)
+    .sort((a, b) => a.frame - b.frame);
+};
+
+const getMetaObject = (data: TimelinerData): Object =>
+  data && data.gdCinematicMeta && typeof data.gdCinematicMeta === 'object'
+    ? data.gdCinematicMeta
+    : {};
+
+const getTrackSettingsByLayer = (data: TimelinerData): {
+  [string]: TrackSettings,
+} => {
+  const metaObject = getMetaObject(data);
+  const trackSettingsByLayer =
+    metaObject.trackSettingsByLayer &&
+    typeof metaObject.trackSettingsByLayer === 'object'
+      ? metaObject.trackSettingsByLayer
+      : {};
+  return trackSettingsByLayer;
+};
+
+const applyTrackSettingsToLayers = (
+  layers: Array<TimelinerLayer>,
+  trackSettingsByLayer: { [string]: TrackSettings }
+): Array<TimelinerLayer> =>
+  layers.map(layer => {
+    const settings = trackSettingsByLayer[layer.name] || {};
+    return {
+      ...layer,
+      _mute: !!settings.muted,
+      _solo: !!settings.solo,
+    };
+  });
+
+const isTargetLocked = (
+  data: TimelinerData,
+  targetId: string
+): boolean => {
+  if (!targetId) return false;
+  const layerNamePrefix = `[${targetId}] `;
+  const trackSettingsByLayer = getTrackSettingsByLayer(data);
+  return Object.keys(trackSettingsByLayer).some(
+    layerName =>
+      layerName.startsWith(layerNamePrefix) &&
+      !!(trackSettingsByLayer[layerName] && trackSettingsByLayer[layerName].locked)
+  );
+};
+
+const collectLayerGroups = (
+  data: TimelinerData
+): Array<{|
+  id: string,
+  targetId: string,
+  objectName: string,
+  trackType: 'transform' | 'ik',
+  layerNames: Array<string>,
+  keyframesCount: number,
+  muted: boolean,
+  solo: boolean,
+  locked: boolean,
+|}> => {
+  const groupsById = new Map<
+    string,
+    {|
+      id: string,
+      targetId: string,
+      objectName: string,
+      trackType: 'transform' | 'ik',
+      layerNames: Array<string>,
+      keyframesCount: number,
+      muted: boolean,
+      solo: boolean,
+      locked: boolean,
+    |}
+  >();
+  const trackSettingsByLayer = getTrackSettingsByLayer(data);
+  const layers = Array.isArray(data.layers) ? data.layers : [];
+  layers.forEach(layer => {
+    const parsedLayer = parseLayerName(layer.name);
+    if (!parsedLayer) return;
+    const groupId = `${parsedLayer.trackType}:${parsedLayer.targetId}:${parsedLayer.objectName}`;
+    const layerSettings = trackSettingsByLayer[layer.name] || {};
+    const keyframesCount = Array.isArray(layer.values) ? layer.values.length : 0;
+    const existingGroup = groupsById.get(groupId);
+    if (existingGroup) {
+      existingGroup.layerNames.push(layer.name);
+      existingGroup.keyframesCount += keyframesCount;
+      existingGroup.muted = existingGroup.muted || !!layerSettings.muted;
+      existingGroup.solo = existingGroup.solo || !!layerSettings.solo;
+      existingGroup.locked = existingGroup.locked || !!layerSettings.locked;
+      return;
+    }
+    groupsById.set(groupId, {
+      id: groupId,
+      targetId: parsedLayer.targetId,
+      objectName: parsedLayer.objectName,
+      trackType: parsedLayer.trackType,
+      layerNames: [layer.name],
+      keyframesCount,
+      muted: !!layerSettings.muted,
+      solo: !!layerSettings.solo,
+      locked: !!layerSettings.locked,
+    });
+  });
+
+  return Array.from(groupsById.values());
+};
+
+const buildDataWithDefaults = (
+  data: TimelinerData,
+  fps: number
+): TimelinerData => {
+  const safeFps = clampInteger(parseFiniteNumber(fps, DEFAULT_FPS), MIN_FPS, MAX_FPS);
+  const totalTimeSeconds = clampNumber(
+    parseFiniteNumber(data && data.ui && data.ui.totalTime, DEFAULT_DURATION_SECONDS),
+    MIN_DURATION_SECONDS,
+    MAX_DURATION_SECONDS
+  );
+  const durationFrames = clampInteger(
+    Math.max(1, totalTimeSeconds * safeFps),
+    1,
+    TRACK_FRAME_LIMIT
+  );
+  const metaObject = getMetaObject(data);
+  const trackSettingsByLayer = getTrackSettingsByLayer(data);
+  const normalizedLoopRange = normalizeLoopRange(metaObject.loopRange, durationFrames);
+  const normalizedShots = normalizeShots(metaObject.shots, durationFrames);
+  const normalizedEvents = normalizeEvents(metaObject.events, durationFrames);
+
+  return {
+    ...data,
+    title:
+      (metaObject.sceneName && String(metaObject.sceneName)) ||
+      data.title ||
+      'Cinematic',
+    layers: applyTrackSettingsToLayers(
+      Array.isArray(data.layers) ? data.layers : [],
+      trackSettingsByLayer
+    ),
+    gdCinematicMeta: {
+      ...metaObject,
+      fps: safeFps,
+      sceneName:
+        (metaObject.sceneName && String(metaObject.sceneName)) ||
+        data.title ||
+        'Cinematic',
+      loopRange: normalizedLoopRange,
+      shots: normalizedShots,
+      events: normalizedEvents,
+      trackSettingsByLayer,
+      ikConfigByTarget:
+        metaObject.ikConfigByTarget && typeof metaObject.ikConfigByTarget === 'object'
+          ? metaObject.ikConfigByTarget
+          : {},
+    },
+  };
+};
+
+const hasKeyframeForTargetAtFrame = (
+  data: TimelinerData,
+  targetId: string,
+  frame: number,
+  fps: number
+): boolean => {
+  if (!data || !targetId) return false;
+  const expectedTime = frameToSeconds(frame, fps);
+  const layerNamePrefix = `[${targetId}] `;
+  const layers = Array.isArray(data.layers) ? data.layers : [];
+  return layers.some(layer => {
+    if (!layer || typeof layer.name !== 'string') return false;
+    if (!layer.name.startsWith(layerNamePrefix)) return false;
+    const values = Array.isArray(layer.values) ? layer.values : [];
+    return values.some(value => {
+      const time = parseFiniteNumber(value && value.time, -1);
+      return Math.abs(time - expectedTime) <= EPSILON;
+    });
+  });
+};
+
+const createEmptyTimelinerData = (sceneName: string): TimelinerData => ({
+  version: '2.0.0-dev',
+  modified: new Date().toISOString(),
+  title: sceneName,
+  ui: {
+    currentTime: 0,
+    totalTime: DEFAULT_DURATION_SECONDS,
+    scrollTime: 0,
+    timeScale: 60,
+  },
+  layers: [],
+  gdCinematicMeta: {
+    fps: DEFAULT_FPS,
+    sceneName,
+    loopRange: {
+      ...DEFAULT_LOOP_RANGE,
+      outFrame: DEFAULT_DURATION_SECONDS * DEFAULT_FPS,
+    },
+    shots: [],
+    events: [],
+    trackSettingsByLayer: {},
+    ikConfigByTarget: {},
+  },
+});
+
+const evaluateChannelAtTime = (
+  values: Array<TimelinerLayerValue>,
+  timeInSeconds: number,
+  fallbackValue: number
+): number => {
+  if (!values.length) return fallbackValue;
+  const sortedValues = sortByTime(values);
+  const firstValue = sortedValues[0];
+  const lastValue = sortedValues[sortedValues.length - 1];
+  if (timeInSeconds <= firstValue.time) return firstValue.value;
+  if (timeInSeconds >= lastValue.time) return lastValue.value;
+
+  for (let index = 0; index < sortedValues.length - 1; index++) {
+    const from = sortedValues[index];
+    const to = sortedValues[index + 1];
+    if (Math.abs(timeInSeconds - from.time) <= EPSILON) return from.value;
+    if (Math.abs(timeInSeconds - to.time) <= EPSILON) return to.value;
+    if (timeInSeconds < from.time || timeInSeconds > to.time) continue;
+
+    const easing = mapTweenToEasing(from.tween);
+    if (easing === 'step' || easing === 'none') return from.value;
+
+    const alpha = (timeInSeconds - from.time) / (to.time - from.time);
+    const easedAlpha = easeProgress(alpha, easing);
+    return from.value + (to.value - from.value) * easedAlpha;
+  }
+
+  return lastValue.value;
+};
+
+const findKeyframeEasingAtTime = (
+  values: Array<TimelinerLayerValue>,
+  timeInSeconds: number
+): ?CinematicTimelineEasing => {
+  for (const value of values) {
+    if (Math.abs(value.time - timeInSeconds) <= EPSILON) {
+      return mapTweenToEasing(value.tween);
+    }
+  }
+  return null;
+};
+
+const timelinerDataToRuntimeScene = (
+  data: TimelinerData,
+  fps: number,
+  sceneName: string
+): CinematicScene => {
+  const normalizedData = buildDataWithDefaults(data, fps);
+  const safeFps = clampInteger(parseFiniteNumber(fps, DEFAULT_FPS), MIN_FPS, MAX_FPS);
+  const durationSeconds = clampNumber(
+    parseFiniteNumber(
+      normalizedData && normalizedData.ui && normalizedData.ui.totalTime,
+      DEFAULT_DURATION_SECONDS
+    ),
+    MIN_DURATION_SECONDS,
+    MAX_DURATION_SECONDS
+  );
+  const durationFrames = clampInteger(
+    durationSeconds * safeFps,
+    1,
+    TRACK_FRAME_LIMIT
+  );
+
+  const ikConfigByTarget =
+    (normalizedData.gdCinematicMeta &&
+      normalizedData.gdCinematicMeta.ikConfigByTarget) ||
+    {};
+  const loopRange = normalizeLoopRange(
+    normalizedData.gdCinematicMeta && normalizedData.gdCinematicMeta.loopRange,
+    durationFrames
+  );
+  const shots = normalizeShots(
+    normalizedData.gdCinematicMeta && normalizedData.gdCinematicMeta.shots,
+    durationFrames
+  );
+  const events = normalizeEvents(
+    normalizedData.gdCinematicMeta && normalizedData.gdCinematicMeta.events,
+    durationFrames
+  );
+  const targetChannels = new Map<
+    string,
+    {|
+      objectName: string,
+      transformChannelsByPropertyPath: { [string]: Array<TimelinerLayerValue> },
+      ikChannelsByPropertyPath: { [string]: Array<TimelinerLayerValue> },
+      ikConfig: {|
+        chainRoot?: string,
+        endEffector?: string,
+        name?: string,
+      |},
+    |}
+  >();
+
+  const layers = Array.isArray(normalizedData.layers) ? normalizedData.layers : [];
+  layers.forEach(layer => {
+    const parsedLayer = parseLayerName(layer.name);
+    if (!parsedLayer) return;
+    const { targetId, objectName, propertyPath, trackType } = parsedLayer;
+    let targetChannel = targetChannels.get(targetId);
+    if (!targetChannel) {
+      targetChannel = {
+        objectName,
+        transformChannelsByPropertyPath: {},
+        ikChannelsByPropertyPath: {},
+        ikConfig:
+          ikConfigByTarget && typeof ikConfigByTarget[targetId] === 'object'
+            ? ikConfigByTarget[targetId]
+            : {},
+      };
+      targetChannels.set(targetId, targetChannel);
+    }
+    if (trackType === 'ik') {
+      targetChannel.ikChannelsByPropertyPath[propertyPath] = sortByTime(
+        Array.isArray(layer.values) ? layer.values : []
+      );
+    } else {
+      targetChannel.transformChannelsByPropertyPath[propertyPath] = sortByTime(
+        Array.isArray(layer.values) ? layer.values : []
+      );
+    }
+  });
+
+  const tracks: Array<Track> = [];
+  let trackIndex = 0;
+  targetChannels.forEach((targetChannel, targetId) => {
+    const transformTimesSet = new Set<number>();
+    transformPropertyDefinitions.forEach(({ path }) => {
+      const channel = targetChannel.transformChannelsByPropertyPath[path];
+      if (!channel || !channel.length) return;
+      channel.forEach(value => {
+        transformTimesSet.add(value.time);
+      });
+    });
+
+    const transformTimes = Array.from(transformTimesSet.values()).sort(
+      (a, b) => a - b
+    );
+    if (transformTimes.length) {
+      const keyframesByFrame = new Map<number, Keyframe<TransformValue>>();
+      transformTimes.forEach(timeInSeconds => {
+        const transform = createDefaultTransformValue();
+        transformPropertyDefinitions.forEach(definition => {
+          const channel =
+            targetChannel.transformChannelsByPropertyPath[definition.path] || [];
+          definition.write(
+            transform,
+            evaluateChannelAtTime(
+              channel,
+              timeInSeconds,
+              definition.read(createDefaultTransformValue())
+            )
+          );
+        });
+
+        let easing: CinematicTimelineEasing = 'linear';
+        for (const definition of transformPropertyDefinitions) {
+          const channel =
+            targetChannel.transformChannelsByPropertyPath[definition.path] || [];
+          const channelEasing = findKeyframeEasingAtTime(channel, timeInSeconds);
+          if (channelEasing) {
+            easing = channelEasing;
+            break;
+          }
+        }
+
+        const frame = clampInteger(timeInSeconds * safeFps, 0, durationFrames);
+        keyframesByFrame.set(frame, {
+          frame,
+          easing,
+          value: cloneTransformValue(transform),
+        });
+      });
+
+      const keyframes = Array.from(keyframesByFrame.values()).sort(
+        (a, b) => a.frame - b.frame
+      );
+      if (keyframes.length) {
+        trackIndex++;
+        tracks.push({
+          id: `transform-track-${trackIndex}`,
+          type: 'transform',
+          name: targetChannel.objectName,
+          targetId,
+          keyframes,
+        });
+      }
+    }
+
+    const ikTimesSet = new Set<number>();
+    ikPropertyDefinitions.forEach(({ path }) => {
+      const channel = targetChannel.ikChannelsByPropertyPath[path];
+      if (!channel || !channel.length) return;
+      channel.forEach(value => {
+        ikTimesSet.add(value.time);
+      });
+    });
+    const ikTimes = Array.from(ikTimesSet.values()).sort((a, b) => a - b);
+    if (!ikTimes.length) return;
+
+    const ikKeyframesByFrame = new Map<number, Keyframe<IKValue>>();
+    ikTimes.forEach(timeInSeconds => {
+      const ikValue = createDefaultIKValue();
+      ikPropertyDefinitions.forEach(definition => {
+        const channel =
+          targetChannel.ikChannelsByPropertyPath[definition.path] || [];
+        definition.write(
+          ikValue,
+          evaluateChannelAtTime(
+            channel,
+            timeInSeconds,
+            definition.read(createDefaultIKValue())
+          )
+        );
+      });
+
+      let easing: CinematicTimelineEasing = 'linear';
+      for (const definition of ikPropertyDefinitions) {
+        const channel =
+          targetChannel.ikChannelsByPropertyPath[definition.path] || [];
+        const channelEasing = findKeyframeEasingAtTime(channel, timeInSeconds);
+        if (channelEasing) {
+          easing = channelEasing;
+          break;
+        }
+      }
+
+      const frame = clampInteger(timeInSeconds * safeFps, 0, durationFrames);
+      ikKeyframesByFrame.set(frame, {
+        frame,
+        easing,
+        value: cloneIKValue(ikValue),
+      });
+    });
+
+    const ikKeyframes = Array.from(ikKeyframesByFrame.values()).sort(
+      (a, b) => a.frame - b.frame
+    );
+    if (!ikKeyframes.length) return;
+
+    trackIndex++;
+    tracks.push({
+      id: `ik-track-${trackIndex}`,
+      type: 'ik',
+      name:
+        (targetChannel.ikConfig && targetChannel.ikConfig.name) ||
+        `${targetChannel.objectName} IK`,
+      targetId,
+      chainRoot:
+        (targetChannel.ikConfig && targetChannel.ikConfig.chainRoot) ||
+        DEFAULT_IK_CHAIN_ROOT,
+      endEffector:
+        (targetChannel.ikConfig && targetChannel.ikConfig.endEffector) ||
+        DEFAULT_IK_END_EFFECTOR,
+      keyframes: ikKeyframes,
+    });
+  });
+
+  return {
+    version: 1,
+    name: sceneName,
+    fps: safeFps,
+    duration: durationFrames,
+    tracks,
+    loopRange,
+    shots,
+    events,
+  };
+};
+
+const runtimeSceneToTimelinerData = (
+  scene: any,
+  fallbackSceneName: string
+): {| data: TimelinerData, fps: number, sceneName: string |} => {
+  const safeFps = clampInteger(
+    parseFiniteNumber(scene && scene.fps, DEFAULT_FPS),
+    MIN_FPS,
+    MAX_FPS
+  );
+  const safeSceneName =
+    scene && typeof scene.name === 'string' && scene.name
+      ? scene.name
+      : fallbackSceneName;
+  const durationFrames = clampInteger(
+    parseFiniteNumber(scene && scene.duration, DEFAULT_DURATION_SECONDS * safeFps),
+    1,
+    TRACK_FRAME_LIMIT
+  );
+  const durationSeconds = frameToSeconds(durationFrames, safeFps);
+
+  const layers: Array<TimelinerLayer> = [];
+  const ikConfigByTarget = {};
+  const tracks = Array.isArray(scene && scene.tracks) ? scene.tracks : [];
+  tracks.forEach((track, trackIndex) => {
+    if (!track || (track.type !== 'transform' && track.type !== 'ik')) return;
+    const targetId =
+      typeof track.targetId === 'string' && track.targetId
+        ? track.targetId
+        : `target-${trackIndex + 1}`;
+    const objectName =
+      typeof track.name === 'string' && track.name
+        ? track.name
+        : targetId;
+    const keyframes = Array.isArray(track.keyframes) ? track.keyframes : [];
+
+    if (track.type === 'ik') {
+      ikConfigByTarget[targetId] = {
+        chainRoot:
+          typeof track.chainRoot === 'string' && track.chainRoot
+            ? track.chainRoot
+            : DEFAULT_IK_CHAIN_ROOT,
+        endEffector:
+          typeof track.endEffector === 'string' && track.endEffector
+            ? track.endEffector
+            : DEFAULT_IK_END_EFFECTOR,
+        name:
+          typeof track.name === 'string' && track.name
+            ? track.name
+            : `${objectName} IK`,
+      };
+      ikPropertyDefinitions.forEach(definition => {
+        const values: Array<TimelinerLayerValue> = keyframes
+          .map(keyframe => {
+            const safeIKValue = normalizeIKValue(keyframe.value);
+            return {
+              time: frameToSeconds(
+                clampInteger(
+                  parseFiniteNumber(keyframe.frame, 0),
+                  0,
+                  durationFrames
+                ),
+                safeFps
+              ),
+              value: parseFiniteNumber(
+                definition.read(safeIKValue),
+                definition.read(createDefaultIKValue())
+              ),
+              tween: mapEasingToTween(keyframe.easing),
+              _color: randomColor(),
+            };
+          })
+          .sort((a, b) => a.time - b.time);
+
+        layers.push({
+          name: makeLayerName(targetId, objectName, definition.path),
+          values,
+          _value: values.length ? values[values.length - 1].value : 0,
+          _color: randomColor(),
+        });
+      });
+      return;
+    }
+
+    transformPropertyDefinitions.forEach(definition => {
+      const values: Array<TimelinerLayerValue> = keyframes
+        .map(keyframe => {
+          const safeTransform = normalizeTransformValue(keyframe.value);
+          return {
+            time: frameToSeconds(
+              clampInteger(
+                parseFiniteNumber(keyframe.frame, 0),
+                0,
+                durationFrames
+              ),
+              safeFps
+            ),
+            value: parseFiniteNumber(
+              definition.read(safeTransform),
+              definition.read(createDefaultTransformValue())
+            ),
+            tween: mapEasingToTween(keyframe.easing),
+            _color: randomColor(),
+          };
+        })
+        .sort((a, b) => a.time - b.time);
+
+      layers.push({
+        name: makeLayerName(targetId, objectName, definition.path),
+        values,
+        _value: values.length ? values[values.length - 1].value : 0,
+        _color: randomColor(),
+      });
+    });
+  });
+
+  const normalizedLoopRange = normalizeLoopRange(
+    scene && scene.loopRange,
+    durationFrames
+  );
+  const normalizedShots = normalizeShots(scene && scene.shots, durationFrames);
+  const normalizedEvents = normalizeEvents(scene && scene.events, durationFrames);
+
+  return {
+    data: {
+      version: '2.0.0-dev',
+      modified: new Date().toISOString(),
+      title: safeSceneName,
+      ui: {
+        currentTime: 0,
+        totalTime: durationSeconds,
+        scrollTime: 0,
+        timeScale: 60,
+      },
+      layers,
+      gdCinematicMeta: {
+        fps: safeFps,
+        sceneName: safeSceneName,
+        loopRange: normalizedLoopRange,
+        shots: normalizedShots,
+        events: normalizedEvents,
+        trackSettingsByLayer: {},
+        ikConfigByTarget,
+      },
+    },
+    fps: safeFps,
+    sceneName: safeSceneName,
+  };
+};
+
+const isTimelinerData = (value: any): boolean =>
+  !!value &&
+  typeof value === 'object' &&
+  value.ui &&
+  typeof value.ui === 'object' &&
+  Array.isArray(value.layers);
+
+const isRuntimeCinematicScene = (value: any): boolean =>
+  !!value &&
+  typeof value === 'object' &&
+  Array.isArray(value.tracks) &&
+  Number.isFinite(parseFiniteNumber(value.fps, NaN));
+
+const getProjectStorageVariable = (
+  project: gdProject,
+  createIfMissing: boolean
+): any => {
+  const variablesContainer = project.getVariables();
+  if (!variablesContainer) return null;
+  if (variablesContainer.has(PROJECT_STORAGE_VARIABLE)) {
+    return variablesContainer.get(PROJECT_STORAGE_VARIABLE);
+  }
+  if (!createIfMissing) return null;
+  return variablesContainer.insertNew(PROJECT_STORAGE_VARIABLE, 0);
+};
+
+const saveTimelinerDataToProject = (
+  project: gdProject,
+  data: TimelinerData,
+  fps: number,
+  sceneName: string
+) => {
+  const variable = getProjectStorageVariable(project, true);
+  if (!variable) return;
+  const normalizedData = buildDataWithDefaults(data, fps);
+  const existingMeta =
+    normalizedData.gdCinematicMeta &&
+    typeof normalizedData.gdCinematicMeta === 'object'
+      ? normalizedData.gdCinematicMeta
+      : {};
+  const payload = {
+    ...normalizedData,
+    title: sceneName,
+    gdCinematicMeta: {
+      ...existingMeta,
+      fps,
+      sceneName,
+    },
+  };
+  variable.setString(JSON.stringify(payload));
+};
+
+const loadTimelinerDataFromProject = (
+  project: gdProject
+): ?{| data: TimelinerData, fps: number, sceneName: string |} => {
+  const defaultSceneName = `${project.getName()} Cinematic`;
+  const variable = getProjectStorageVariable(project, false);
+  if (!variable) return null;
+  const rawString = variable.getString();
+  if (!rawString || typeof rawString !== 'string') return null;
+
+  try {
+    const parsedValue = JSON.parse(rawString);
+    if (isTimelinerData(parsedValue)) {
+      const parsedData = buildDataWithDefaults(
+        parsedValue,
+        clampInteger(
+          parseFiniteNumber(
+            parsedValue.gdCinematicMeta && parsedValue.gdCinematicMeta.fps,
+            DEFAULT_FPS
+          ),
+          MIN_FPS,
+          MAX_FPS
+        )
+      );
+      return {
+        data: parsedData,
+        fps: clampInteger(
+          parseFiniteNumber(
+            parsedData.gdCinematicMeta && parsedData.gdCinematicMeta.fps,
+            DEFAULT_FPS
+          ),
+          MIN_FPS,
+          MAX_FPS
+        ),
+        sceneName:
+          (parsedData.gdCinematicMeta &&
+            parsedData.gdCinematicMeta.sceneName) ||
+          parsedData.title ||
+          defaultSceneName,
+      };
+    }
+    if (isRuntimeCinematicScene(parsedValue)) {
+      return runtimeSceneToTimelinerData(parsedValue, defaultSceneName);
+    }
+  } catch (error) {
+    console.warn('Invalid cinematic timeline JSON in project variable.', error);
+  }
+  return null;
+};
+
+const downloadTextFile = (content: string, filename: string): void => {
+  const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  window.URL.revokeObjectURL(url);
+};
+
+const getSnapshotLayerEntries = (
+  snapshot: ActiveObjectSnapshot
+): Array<{| layerName: string, value: number |}> =>
+  transformPropertyDefinitions.map(definition => ({
+    layerName: makeLayerName(
+      snapshot.targetId,
+      snapshot.objectName,
+      definition.path
+    ),
+    value: definition.read(snapshot.transform),
+  }));
+
+const getSnapshotIKLayerEntries = (
+  snapshot: ActiveObjectSnapshot
+): Array<{| layerName: string, value: number |}> => {
+  const baseIKValue = createDefaultIKValue();
+  baseIKValue.target = { ...snapshot.transform.position };
+  baseIKValue.pole = {
+    x: snapshot.transform.position.x,
+    y: snapshot.transform.position.y + 100,
+    z: snapshot.transform.position.z,
+  };
+  return ikPropertyDefinitions.map(definition => ({
+    layerName: makeLayerName(
+      snapshot.targetId,
+      snapshot.objectName,
+      definition.path
+    ),
+    value: definition.read(baseIKValue),
+  }));
+};
+
+const shouldIgnoreKeyboardShortcut = (target: any): boolean => {
+  if (!target) return false;
+  const tagName =
+    typeof target.tagName === 'string' ? target.tagName.toLowerCase() : '';
+  return (
+    tagName === 'input' ||
+    tagName === 'textarea' ||
+    tagName === 'select' ||
+    !!target.isContentEditable
+  );
+};
+
+const CinematicTimeline3DEditor = ({
+  project,
+  previewDebuggerServer,
+  isActive,
+  displayMode = 'tab',
+  onRequestClose,
+  activeObjectSnapshot = null,
+}: Props): React.Node => {
+  const timelinerHostRef = React.useRef<?HTMLDivElement>(null);
+  const timelinerRef = React.useRef<?any>(null);
+  const resizeObserverRef = React.useRef<?ResizeObserver>(null);
+  const latestDataRef = React.useRef<TimelinerData>(
+    createEmptyTimelinerData(`${project.getName()} Cinematic`)
+  );
+  const previousAutoKeySnapshotRef = React.useRef<string>('');
+
+  const isPlayingRef = React.useRef<boolean>(false);
+  const autoSyncRef = React.useRef<boolean>(true);
+  const autoKeyRef = React.useRef<boolean>(true);
+  const fpsRef = React.useRef<number>(DEFAULT_FPS);
+  const sceneNameRef = React.useRef<string>(`${project.getName()} Cinematic`);
+  const ikChainRootRef = React.useRef<string>(DEFAULT_IK_CHAIN_ROOT);
+  const ikEndEffectorRef = React.useRef<string>(DEFAULT_IK_END_EFFECTOR);
+  const loopRangeRef = React.useRef<CinematicTimelineLoopRange>({
+    ...DEFAULT_LOOP_RANGE,
+  });
+  const shotsRef = React.useRef<Array<CinematicTimelineShot>>([]);
+  const eventsRef = React.useRef<Array<CinematicTimelineEventMarker>>([]);
+  const isActiveRef = React.useRef<boolean>(isActive);
+  const previewDebuggerServerRef = React.useRef<?PreviewDebuggerServer>(
+    previewDebuggerServer
+  );
+
+  const [fps, setFps] = React.useState<number>(DEFAULT_FPS);
+  const [sceneName, setSceneName] = React.useState<string>(
+    `${project.getName()} Cinematic`
+  );
+  const [durationSeconds, setDurationSeconds] = React.useState<number>(
+    DEFAULT_DURATION_SECONDS
+  );
+  const [currentFrame, setCurrentFrame] = React.useState<number>(0);
+  const [autoSync, setAutoSync] = React.useState<boolean>(true);
+  const [autoKey, setAutoKey] = React.useState<boolean>(true);
+  const [ikChainRoot, setIkChainRoot] = React.useState<string>(
+    DEFAULT_IK_CHAIN_ROOT
+  );
+  const [ikEndEffector, setIkEndEffector] = React.useState<string>(
+    DEFAULT_IK_END_EFFECTOR
+  );
+  const [loopRange, setLoopRange] = React.useState<CinematicTimelineLoopRange>({
+    ...DEFAULT_LOOP_RANGE,
+  });
+  const [shots, setShots] = React.useState<Array<CinematicTimelineShot>>([]);
+  const [events, setEvents] = React.useState<Array<CinematicTimelineEventMarker>>(
+    []
+  );
+  const [selectedTrackGroupId, setSelectedTrackGroupId] = React.useState<string>(
+    ''
+  );
+  const [eventNameDraft, setEventNameDraft] = React.useState<string>('Cue');
+  const [eventActionDraft, setEventActionDraft] = React.useState<string>(
+    DEFAULT_EVENT_ACTION
+  );
+  const [eventConditionDraft, setEventConditionDraft] = React.useState<string>(
+    DEFAULT_EVENT_CONDITION
+  );
+  const [eventPayloadDraft, setEventPayloadDraft] = React.useState<string>('');
+  const [showAdvanced, setShowAdvanced] = React.useState<boolean>(false);
+  const [dataRevision, setDataRevision] = React.useState<number>(0);
+  const [statusText, setStatusText] = React.useState<string>('Timeliner ready.');
+
+  React.useEffect(
+    () => {
+      previewDebuggerServerRef.current = previewDebuggerServer;
+    },
+    [previewDebuggerServer]
+  );
+  React.useEffect(
+    () => {
+      isActiveRef.current = isActive;
+    },
+    [isActive]
+  );
+  React.useEffect(
+    () => {
+      fpsRef.current = fps;
+    },
+    [fps]
+  );
+  React.useEffect(
+    () => {
+      sceneNameRef.current = sceneName;
+    },
+    [sceneName]
+  );
+  React.useEffect(
+    () => {
+      autoSyncRef.current = autoSync;
+    },
+    [autoSync]
+  );
+  React.useEffect(
+    () => {
+      autoKeyRef.current = autoKey;
+    },
+    [autoKey]
+  );
+  React.useEffect(
+    () => {
+      ikChainRootRef.current = ikChainRoot;
+    },
+    [ikChainRoot]
+  );
+  React.useEffect(
+    () => {
+      ikEndEffectorRef.current = ikEndEffector;
+    },
+    [ikEndEffector]
+  );
+  React.useEffect(
+    () => {
+      loopRangeRef.current = loopRange;
+    },
+    [loopRange]
+  );
+  React.useEffect(
+    () => {
+      shotsRef.current = shots;
+    },
+    [shots]
+  );
+  React.useEffect(
+    () => {
+      eventsRef.current = events;
+    },
+    [events]
+  );
+
+  const buildRuntimeScene = React.useCallback((): CinematicScene => {
+    return timelinerDataToRuntimeScene(
+      latestDataRef.current,
+      fpsRef.current,
+      sceneNameRef.current
+    );
+  }, []);
+
+  const sendRuntimeCommand = React.useCallback(
+    (command: string, payload: Object): boolean => {
+      const debuggerServer = previewDebuggerServerRef.current;
+      if (!debuggerServer) {
+        setStatusText('Preview debugger is not available.');
+        return false;
+      }
+      const debuggerIds = debuggerServer.getExistingDebuggerIds();
+      if (!debuggerIds.length) {
+        setStatusText('No runtime connected. Open embedded game or preview first.');
+        return false;
+      }
+
+      debuggerIds.forEach(debuggerId => {
+        debuggerServer.sendMessage(debuggerId, {
+          command,
+          payload,
+          source: 'cinematic-timeline-3d',
+        });
+      });
+      return true;
+    },
+    []
+  );
+
+  const sendCurrentFrameToRuntime = React.useCallback(
+    (scene: CinematicScene, frame: number): void => {
+      sendRuntimeCommand('cinematicTimeline.setFrame', {
+        scene,
+        frame,
+        fps: scene.fps,
+        duration: scene.duration,
+        loopPlayback: true,
+      });
+    },
+    [sendRuntimeCommand]
+  );
+
+  const captureSelectedTransform = React.useCallback(
+    (snapshot: ?ActiveObjectSnapshot, source: string) => {
+      const timeliner = timelinerRef.current;
+      if (!timeliner) return;
+      if (!snapshot) {
+        if (source === 'manual') {
+          const currentTrackGroups = collectLayerGroups(latestDataRef.current);
+          const selectedGroup =
+            currentTrackGroups.find(group => group.id === selectedTrackGroupId) ||
+            currentTrackGroups[0] ||
+            null;
+          if (!selectedGroup) {
+            setStatusText('Select an object in the 3D editor first.');
+            return;
+          }
+          if (isTargetLocked(latestDataRef.current, selectedGroup.targetId)) {
+            setStatusText(`"${selectedGroup.objectName}" track is locked.`);
+            return;
+          }
+          const selectedLayerNames = new Set(selectedGroup.layerNames);
+          const currentTime = timeliner.getCurrentTime();
+          const layers = Array.isArray(latestDataRef.current.layers)
+            ? latestDataRef.current.layers
+            : [];
+          let insertedLayerCount = 0;
+          layers.forEach(layer => {
+            if (!selectedLayerNames.has(layer.name)) return;
+            const values = sortByTime(Array.isArray(layer.values) ? layer.values : []);
+            const fallbackValue = parseFiniteNumber(layer._value, 0);
+            const valueAtCurrentTime = evaluateChannelAtTime(
+              values,
+              currentTime,
+              fallbackValue
+            );
+            timeliner.ensureLayer(layer.name);
+            timeliner.setLayerValueAtCurrentTime(layer.name, valueAtCurrentTime);
+            insertedLayerCount++;
+          });
+          if (!insertedLayerCount) {
+            setStatusText('Select an object in the 3D editor first.');
+            return;
+          }
+          setStatusText(
+            `Added keyframe on "${selectedGroup.objectName}" at frame ${secondsToFrame(
+              currentTime,
+              fpsRef.current
+            )}.`
+          );
+          if (autoSyncRef.current && !isPlayingRef.current && isActiveRef.current) {
+            const scene = buildRuntimeScene();
+            sendCurrentFrameToRuntime(
+              scene,
+              secondsToFrame(currentTime, scene.fps)
+            );
+          }
+        }
+        return;
+      }
+      if (isTargetLocked(latestDataRef.current, snapshot.targetId)) {
+        if (source === 'manual') {
+          setStatusText(`"${snapshot.objectName}" track is locked.`);
+        }
+        return;
+      }
+
+      const layerEntries = getSnapshotLayerEntries(snapshot);
+      layerEntries.forEach(entry => {
+        timeliner.ensureLayer(entry.layerName);
+      });
+      layerEntries.forEach(entry => {
+        timeliner.setLayerValueAtCurrentTime(entry.layerName, entry.value);
+      });
+      setStatusText(
+        `Captured ${snapshot.objectName} at frame ${secondsToFrame(
+          timeliner.getCurrentTime(),
+          fpsRef.current
+        )}.`
+      );
+
+      if (autoSyncRef.current && !isPlayingRef.current && isActiveRef.current) {
+        const scene = buildRuntimeScene();
+        sendCurrentFrameToRuntime(
+          scene,
+          secondsToFrame(timeliner.getCurrentTime(), scene.fps)
+        );
+      }
+    },
+    [buildRuntimeScene, selectedTrackGroupId, sendCurrentFrameToRuntime]
+  );
+
+  React.useEffect(
+    () => {
+      const timeliner = timelinerRef.current;
+      if (!timeliner || !activeObjectSnapshot) return;
+      const serializedSnapshot = JSON.stringify({
+        targetId: activeObjectSnapshot.targetId,
+        transform: activeObjectSnapshot.transform,
+      });
+      if (previousAutoKeySnapshotRef.current === serializedSnapshot) return;
+      previousAutoKeySnapshotRef.current = serializedSnapshot;
+      if (!autoKeyRef.current) return;
+      captureSelectedTransform(activeObjectSnapshot, 'auto');
+    },
+    [activeObjectSnapshot, captureSelectedTransform]
+  );
+
+  const applyTimelinerData = React.useCallback(
+    (nextData: TimelinerData, options?: {| showStatus?: boolean |}) => {
+      const timeliner = timelinerRef.current;
+      if (!timeliner) return;
+      const mergedData = buildDataWithDefaults(
+        {
+          ...latestDataRef.current,
+          ...nextData,
+          gdCinematicMeta: {
+            ...getMetaObject(latestDataRef.current),
+            ...getMetaObject(nextData),
+            fps: fpsRef.current,
+            sceneName: sceneNameRef.current,
+          },
+        },
+        fpsRef.current
+      );
+      timeliner.load(mergedData);
+      latestDataRef.current = buildDataWithDefaults(
+        {
+          ...timeliner.getData(),
+          gdCinematicMeta: {
+            ...getMetaObject(mergedData),
+            ...getMetaObject(timeliner.getData()),
+            fps: fpsRef.current,
+            sceneName: sceneNameRef.current,
+          },
+        },
+        fpsRef.current
+      );
+      const totalTime = clampNumber(
+        parseFiniteNumber(
+          latestDataRef.current.ui && latestDataRef.current.ui.totalTime,
+          DEFAULT_DURATION_SECONDS
+        ),
+        MIN_DURATION_SECONDS,
+        MAX_DURATION_SECONDS
+      );
+      setDurationSeconds(totalTime);
+      const currentTimeInSeconds = parseFiniteNumber(
+        latestDataRef.current.ui && latestDataRef.current.ui.currentTime,
+        0
+      );
+      const metaObject = getMetaObject(latestDataRef.current);
+      const durationFrames = clampInteger(
+        Math.max(1, totalTime * fpsRef.current),
+        1,
+        TRACK_FRAME_LIMIT
+      );
+      const nextLoopRange = normalizeLoopRange(metaObject.loopRange, durationFrames);
+      const nextShots = normalizeShots(metaObject.shots, durationFrames);
+      const nextEvents = normalizeEvents(metaObject.events, durationFrames);
+      setCurrentFrame(secondsToFrame(currentTimeInSeconds, fpsRef.current));
+      setLoopRange(nextLoopRange);
+      loopRangeRef.current = nextLoopRange;
+      setShots(nextShots);
+      shotsRef.current = nextShots;
+      setEvents(nextEvents);
+      eventsRef.current = nextEvents;
+      setDataRevision(previousValue => previousValue + 1);
+
+      saveTimelinerDataToProject(
+        project,
+        latestDataRef.current,
+        fpsRef.current,
+        sceneNameRef.current
+      );
+      if (options && options.showStatus) {
+        setStatusText('Timeline data loaded.');
+      }
+    },
+    [project]
+  );
+
+  const trackGroups = React.useMemo(
+    () => {
+      // Recompute from mutable timeline data whenever revision changes.
+      if (dataRevision < 0) return [];
+      return collectLayerGroups(latestDataRef.current);
+    },
+    [dataRevision]
+  );
+
+  React.useEffect(
+    () => {
+      if (!trackGroups.length) {
+        if (selectedTrackGroupId) setSelectedTrackGroupId('');
+        return;
+      }
+      const hasCurrentSelectedGroup = trackGroups.some(
+        group => group.id === selectedTrackGroupId
+      );
+      if (hasCurrentSelectedGroup) return;
+
+      if (activeObjectSnapshot) {
+        const preferredGroup = trackGroups.find(
+          group => group.targetId === activeObjectSnapshot.targetId
+        );
+        if (preferredGroup) {
+          setSelectedTrackGroupId(preferredGroup.id);
+          return;
+        }
+      }
+
+      setSelectedTrackGroupId(trackGroups[0].id);
+    },
+    [trackGroups, selectedTrackGroupId, activeObjectSnapshot]
+  );
+
+  React.useEffect(
+    () => {
+      const hostElement = timelinerHostRef.current;
+      if (!hostElement || timelinerRef.current) return;
+
+      const loaded = loadTimelinerDataFromProject(project);
+      const initialSceneName = loaded
+        ? loaded.sceneName
+        : `${project.getName()} Cinematic`;
+      const initialFps = loaded ? loaded.fps : DEFAULT_FPS;
+      const initialData = loaded
+        ? loaded.data
+        : createEmptyTimelinerData(initialSceneName);
+      const initialIkConfigByTarget =
+        (initialData.gdCinematicMeta &&
+          initialData.gdCinematicMeta.ikConfigByTarget) ||
+        {};
+      const firstIkTargetConfig =
+        Object.keys(initialIkConfigByTarget).length > 0
+          ? initialIkConfigByTarget[Object.keys(initialIkConfigByTarget)[0]]
+          : null;
+
+      setSceneName(initialSceneName);
+      sceneNameRef.current = initialSceneName;
+      setFps(initialFps);
+      fpsRef.current = initialFps;
+      const startingChainRoot =
+        firstIkTargetConfig &&
+        typeof firstIkTargetConfig.chainRoot === 'string' &&
+        firstIkTargetConfig.chainRoot
+          ? firstIkTargetConfig.chainRoot
+          : DEFAULT_IK_CHAIN_ROOT;
+      const startingEndEffector =
+        firstIkTargetConfig &&
+        typeof firstIkTargetConfig.endEffector === 'string' &&
+        firstIkTargetConfig.endEffector
+          ? firstIkTargetConfig.endEffector
+          : DEFAULT_IK_END_EFFECTOR;
+      setIkChainRoot(startingChainRoot);
+      ikChainRootRef.current = startingChainRoot;
+      setIkEndEffector(startingEndEffector);
+      ikEndEffectorRef.current = startingEndEffector;
+
+      const timeliner = new Timeliner(
+        {},
+        {
+          container: hostElement,
+          isEmbedded: true,
+          disableGlobalKeybindings: true,
+          onDataChanged: (data: TimelinerData) => {
+            latestDataRef.current = buildDataWithDefaults(
+              {
+                ...data,
+                gdCinematicMeta: {
+                  ...getMetaObject(latestDataRef.current),
+                  ...getMetaObject(data),
+                  fps: fpsRef.current,
+                  sceneName: sceneNameRef.current,
+                },
+              },
+              fpsRef.current
+            );
+            const totalTime = clampNumber(
+              parseFiniteNumber(
+                data.ui && data.ui.totalTime,
+                DEFAULT_DURATION_SECONDS
+              ),
+              MIN_DURATION_SECONDS,
+              MAX_DURATION_SECONDS
+            );
+            const durationFrames = clampInteger(
+              Math.max(1, totalTime * fpsRef.current),
+              1,
+              TRACK_FRAME_LIMIT
+            );
+            const metaObject = getMetaObject(latestDataRef.current);
+            const nextLoopRange = normalizeLoopRange(
+              metaObject.loopRange,
+              durationFrames
+            );
+            const nextShots = normalizeShots(metaObject.shots, durationFrames);
+            const nextEvents = normalizeEvents(metaObject.events, durationFrames);
+            setDurationSeconds(totalTime);
+            setLoopRange(nextLoopRange);
+            loopRangeRef.current = nextLoopRange;
+            setShots(nextShots);
+            shotsRef.current = nextShots;
+            setEvents(nextEvents);
+            eventsRef.current = nextEvents;
+            setDataRevision(previousValue => previousValue + 1);
+            saveTimelinerDataToProject(
+              project,
+              latestDataRef.current,
+              fpsRef.current,
+              sceneNameRef.current
+            );
+          },
+          onTimeChanged: (seconds: number) => {
+            let frame = secondsToFrame(seconds, fpsRef.current);
+            const currentLoopRange = loopRangeRef.current;
+            if (
+              isPlayingRef.current &&
+              currentLoopRange.enabled &&
+              frame > currentLoopRange.outFrame
+            ) {
+              frame = currentLoopRange.inFrame;
+              if (timelinerRef.current) {
+                timelinerRef.current.setCurrentTime(
+                  frameToSeconds(frame, fpsRef.current)
+                );
+              }
+            }
+            setCurrentFrame(frame);
+            if (
+              !autoSyncRef.current ||
+              isPlayingRef.current ||
+              !isActiveRef.current
+            ) {
+              return;
+            }
+            sendCurrentFrameToRuntime(buildRuntimeScene(), frame);
+          },
+          onPlaybackChanged: (isPlaying: boolean) => {
+            isPlayingRef.current = isPlaying;
+            if (!isActiveRef.current) return;
+            const scene = buildRuntimeScene();
+            const frame = timelinerRef.current
+              ? secondsToFrame(timelinerRef.current.getCurrentTime(), scene.fps)
+              : 0;
+            const shouldLoopRange = loopRangeRef.current.enabled;
+            setCurrentFrame(frame);
+            if (isPlaying) {
+              sendRuntimeCommand('cinematicTimeline.play', {
+                scene,
+                frame,
+                fps: scene.fps,
+                duration: scene.duration,
+                loopPlayback: shouldLoopRange,
+                startFrame: shouldLoopRange ? loopRangeRef.current.inFrame : 0,
+                endFrame: shouldLoopRange
+                  ? loopRangeRef.current.outFrame
+                  : scene.duration,
+              });
+            } else {
+              sendRuntimeCommand('cinematicTimeline.pause', {
+                scene,
+                frame,
+                fps: scene.fps,
+                duration: scene.duration,
+                loopPlayback: shouldLoopRange,
+                startFrame: shouldLoopRange ? loopRangeRef.current.inFrame : 0,
+                endFrame: shouldLoopRange
+                  ? loopRangeRef.current.outFrame
+                  : scene.duration,
+              });
+            }
+          },
+        }
+      );
+
+      timelinerRef.current = timeliner;
+      timeliner.resize(hostElement.clientWidth || 960, hostElement.clientHeight || 420);
+      applyTimelinerData(initialData);
+      setStatusText(loaded ? 'Timeline loaded from project.' : 'Timeline initialized.');
+
+      let fallbackResizeHandler = null;
+      if (window.ResizeObserver) {
+        const observer = new window.ResizeObserver(entries => {
+          const entry = entries && entries[0];
+          if (!entry || !timelinerRef.current) return;
+          const bounds = entry.contentRect;
+          timelinerRef.current.resize(bounds.width, bounds.height);
+        });
+        observer.observe(hostElement);
+        resizeObserverRef.current = observer;
+      } else {
+        fallbackResizeHandler = () => {
+          if (!timelinerRef.current || !timelinerHostRef.current) return;
+          timelinerRef.current.resize(
+            timelinerHostRef.current.clientWidth,
+            timelinerHostRef.current.clientHeight
+          );
+        };
+        window.addEventListener('resize', fallbackResizeHandler);
+      }
+
+      return () => {
+        if (resizeObserverRef.current) {
+          resizeObserverRef.current.disconnect();
+          resizeObserverRef.current = null;
+        }
+        if (fallbackResizeHandler) {
+          window.removeEventListener('resize', fallbackResizeHandler);
+        }
+        if (timelinerRef.current) {
+          timelinerRef.current.dispose();
+          timelinerRef.current = null;
+        }
+      };
+    },
+    [
+      applyTimelinerData,
+      buildRuntimeScene,
+      project,
+      sendCurrentFrameToRuntime,
+      sendRuntimeCommand,
+    ]
+  );
+
+  const onAddSelectedObjectLayers = React.useCallback(() => {
+    const timeliner = timelinerRef.current;
+    if (!timeliner) return;
+    const snapshot = activeObjectSnapshot;
+    if (!snapshot) {
+      setStatusText('Select an object in the 3D editor first.');
+      return;
+    }
+    if (isTargetLocked(latestDataRef.current, snapshot.targetId)) {
+      setStatusText(`"${snapshot.objectName}" track is locked.`);
+      return;
+    }
+    const layerEntries = getSnapshotLayerEntries(snapshot);
+    layerEntries.forEach(entry => {
+      timeliner.ensureLayer(entry.layerName);
+    });
+    layerEntries.forEach(entry => {
+      timeliner.setLayerValueAtCurrentTime(entry.layerName, entry.value);
+    });
+    setStatusText(
+      `Tracking "${snapshot.objectName}" and inserted keyframe at frame ${secondsToFrame(
+        timeliner.getCurrentTime(),
+        fpsRef.current
+      )}.`
+    );
+  }, [activeObjectSnapshot]);
+
+  const mutateTimelineData = React.useCallback(
+    (
+      mutate: (data: TimelinerData) => void,
+      statusMessage?: string
+    ): void => {
+      const baseData = buildDataWithDefaults(latestDataRef.current, fpsRef.current);
+      const mutableData = JSON.parse(JSON.stringify(baseData));
+      mutate(mutableData);
+      const nextData = buildDataWithDefaults(mutableData, fpsRef.current);
+      applyTimelinerData(nextData);
+      if (statusMessage) setStatusText(statusMessage);
+    },
+    [applyTimelinerData]
+  );
+
+  const getSelectedTrackGroup = React.useCallback(
+    () => trackGroups.find(group => group.id === selectedTrackGroupId) || null,
+    [trackGroups, selectedTrackGroupId]
+  );
+
+  const onJumpToSelectedTrack = React.useCallback(() => {
+    const selectedTrackGroup = getSelectedTrackGroup();
+    const timeliner = timelinerRef.current;
+    if (!selectedTrackGroup || !timeliner) return;
+    const selectedLayerNames = new Set(selectedTrackGroup.layerNames);
+    const layers = Array.isArray(latestDataRef.current.layers)
+      ? latestDataRef.current.layers
+      : [];
+    let firstTime = Number.POSITIVE_INFINITY;
+    layers.forEach(layer => {
+      if (!selectedLayerNames.has(layer.name)) return;
+      const values = Array.isArray(layer.values) ? layer.values : [];
+      values.forEach(value => {
+        const keyTime = parseFiniteNumber(value.time, Number.NaN);
+        if (!Number.isFinite(keyTime)) return;
+        firstTime = Math.min(firstTime, keyTime);
+      });
+    });
+    if (!Number.isFinite(firstTime)) {
+      setStatusText('Selected track has no keyframes.');
+      return;
+    }
+    timeliner.setCurrentTime(firstTime);
+    setCurrentFrame(secondsToFrame(firstTime, fpsRef.current));
+    setStatusText(`Jumped to "${selectedTrackGroup.objectName}".`);
+  }, [getSelectedTrackGroup]);
+
+  const setTrackGroupFlag = React.useCallback(
+    (flag: 'muted' | 'solo' | 'locked', enabled: boolean): void => {
+      const selectedTrackGroup = getSelectedTrackGroup();
+      if (!selectedTrackGroup) return;
+      mutateTimelineData(data => {
+        const metaObject = getMetaObject(data);
+        const trackSettingsByLayer = {
+          ...(getTrackSettingsByLayer(data): Object),
+        };
+
+        if (flag === 'solo' && enabled) {
+          Object.keys(trackSettingsByLayer).forEach(layerName => {
+            trackSettingsByLayer[layerName] = {
+              ...(trackSettingsByLayer[layerName] || {}),
+              solo: false,
+            };
+          });
+        }
+
+        selectedTrackGroup.layerNames.forEach(layerName => {
+          trackSettingsByLayer[layerName] = {
+            ...(trackSettingsByLayer[layerName] || {}),
+            [flag]: enabled,
+          };
+        });
+
+        data.gdCinematicMeta = {
+          ...metaObject,
+          trackSettingsByLayer,
+        };
+      });
+      setStatusText(
+        `${selectedTrackGroup.objectName} ${
+          enabled ? `${flag} enabled` : `${flag} disabled`
+        }.`
+      );
+    },
+    [getSelectedTrackGroup, mutateTimelineData]
+  );
+
+  const onRemoveSelectedTrackGroup = React.useCallback(() => {
+    const selectedTrackGroup = getSelectedTrackGroup();
+    if (!selectedTrackGroup) return;
+    mutateTimelineData(data => {
+      const selectedLayerNames = new Set(selectedTrackGroup.layerNames);
+      data.layers = (Array.isArray(data.layers) ? data.layers : []).filter(
+        layer => !selectedLayerNames.has(layer.name)
+      );
+      const metaObject = getMetaObject(data);
+      const trackSettingsByLayer = getTrackSettingsByLayer(data);
+      selectedTrackGroup.layerNames.forEach(layerName => {
+        delete trackSettingsByLayer[layerName];
+      });
+      data.gdCinematicMeta = {
+        ...metaObject,
+        trackSettingsByLayer,
+      };
+    });
+    setStatusText(`Removed "${selectedTrackGroup.objectName}" track.`);
+  }, [getSelectedTrackGroup, mutateTimelineData]);
+
+  const onDeleteKeyframeAtCurrentFrame = React.useCallback(() => {
+    const selectedTrackGroup = getSelectedTrackGroup();
+    if (!selectedTrackGroup) return;
+    const targetTime = frameToSeconds(currentFrame, fpsRef.current);
+    mutateTimelineData(data => {
+      const selectedLayerNames = new Set(selectedTrackGroup.layerNames);
+      data.layers = (Array.isArray(data.layers) ? data.layers : []).map(layer => {
+        if (!selectedLayerNames.has(layer.name)) return layer;
+        return {
+          ...layer,
+          values: (Array.isArray(layer.values) ? layer.values : []).filter(
+            value =>
+              Math.abs(parseFiniteNumber(value.time, -1) - targetTime) > EPSILON
+          ),
+        };
+      });
+    });
+    setStatusText(`Deleted keyframe at frame ${currentFrame}.`);
+  }, [currentFrame, getSelectedTrackGroup, mutateTimelineData]);
+
+  const onDuplicateKeyframeAtCurrentFrame = React.useCallback(() => {
+    const selectedTrackGroup = getSelectedTrackGroup();
+    if (!selectedTrackGroup) return;
+    const sourceTime = frameToSeconds(currentFrame, fpsRef.current);
+    const targetFrame = clampInteger(currentFrame + 1, 0, TRACK_FRAME_LIMIT);
+    const targetTime = frameToSeconds(targetFrame, fpsRef.current);
+    mutateTimelineData(data => {
+      const selectedLayerNames = new Set(selectedTrackGroup.layerNames);
+      data.layers = (Array.isArray(data.layers) ? data.layers : []).map(layer => {
+        if (!selectedLayerNames.has(layer.name)) return layer;
+        const sortedValues = sortByTime(Array.isArray(layer.values) ? layer.values : []);
+        if (!sortedValues.length) return layer;
+        const sourceMatch = sortedValues.find(
+          value => Math.abs(parseFiniteNumber(value.time, -1) - sourceTime) <= EPSILON
+        );
+        const copiedValue = sourceMatch
+          ? parseFiniteNumber(sourceMatch.value, 0)
+          : evaluateChannelAtTime(sortedValues, sourceTime, 0);
+        const nextValues = sortedValues.filter(
+          value => Math.abs(parseFiniteNumber(value.time, -1) - targetTime) > EPSILON
+        );
+        nextValues.push({
+          time: targetTime,
+          value: copiedValue,
+          tween: sourceMatch ? sourceMatch.tween : 'linear',
+          _color: sourceMatch && sourceMatch._color ? sourceMatch._color : randomColor(),
+        });
+        return {
+          ...layer,
+          values: sortByTime(nextValues),
+        };
+      });
+    });
+    setStatusText(`Duplicated keyframe to frame ${targetFrame}.`);
+  }, [currentFrame, getSelectedTrackGroup, mutateTimelineData]);
+
+  const onNudgeCurrentFrame = React.useCallback(
+    (delta: -1 | 1) => {
+      const timeliner = timelinerRef.current;
+      if (!timeliner) return;
+      const nextFrame = clampInteger(currentFrame + delta, 0, TRACK_FRAME_LIMIT);
+      timeliner.setCurrentTime(frameToSeconds(nextFrame, fpsRef.current));
+      setCurrentFrame(nextFrame);
+      if (autoSyncRef.current && isActiveRef.current) {
+        sendCurrentFrameToRuntime(buildRuntimeScene(), nextFrame);
+      }
+    },
+    [buildRuntimeScene, currentFrame, sendCurrentFrameToRuntime]
+  );
+
+  const onUpdateLoopRange = React.useCallback(
+    (partialLoopRange: $Shape<CinematicTimelineLoopRange>) => {
+      const durationFrames = clampInteger(
+        Math.max(1, durationSeconds * fpsRef.current),
+        1,
+        TRACK_FRAME_LIMIT
+      );
+      const nextLoopRange = normalizeLoopRange(
+        {
+          ...loopRangeRef.current,
+          ...partialLoopRange,
+        },
+        durationFrames
+      );
+      mutateTimelineData(data => {
+        const metaObject = getMetaObject(data);
+        data.gdCinematicMeta = {
+          ...metaObject,
+          loopRange: nextLoopRange,
+        };
+      });
+      setLoopRange(nextLoopRange);
+      loopRangeRef.current = nextLoopRange;
+    },
+    [durationSeconds, mutateTimelineData]
+  );
+
+  const onAddShotFromLoopRange = React.useCallback(() => {
+    const nextShot: CinematicTimelineShot = {
+      id: createRuntimeId('shot'),
+      name: `Shot ${shotsRef.current.length + 1}`,
+      startFrame: loopRangeRef.current.inFrame,
+      endFrame: loopRangeRef.current.outFrame,
+    };
+    mutateTimelineData(data => {
+      const metaObject = getMetaObject(data);
+      const nextShots = normalizeShots(
+        [...normalizeShots(metaObject.shots, TRACK_FRAME_LIMIT), nextShot],
+        TRACK_FRAME_LIMIT
+      );
+      data.gdCinematicMeta = {
+        ...metaObject,
+        shots: nextShots,
+      };
+    });
+    setStatusText(`Added ${nextShot.name}.`);
+  }, [mutateTimelineData]);
+
+  const onJumpToShot = React.useCallback(
+    (shot: CinematicTimelineShot) => {
+      const timeliner = timelinerRef.current;
+      if (!timeliner) return;
+      timeliner.setCurrentTime(frameToSeconds(shot.startFrame, fpsRef.current));
+      setCurrentFrame(shot.startFrame);
+      setStatusText(`Jumped to ${shot.name}.`);
+    },
+    []
+  );
+
+  const onRemoveShot = React.useCallback(
+    (shotId: string) => {
+      mutateTimelineData(data => {
+        const metaObject = getMetaObject(data);
+        const nextShots = normalizeShots(metaObject.shots, TRACK_FRAME_LIMIT).filter(
+          shot => shot.id !== shotId
+        );
+        data.gdCinematicMeta = {
+          ...metaObject,
+          shots: nextShots,
+        };
+      });
+    },
+    [mutateTimelineData]
+  );
+
+  const onAddEventMarker = React.useCallback(() => {
+    const nextMarker: CinematicTimelineEventMarker = {
+      id: createRuntimeId('evt'),
+      name: eventNameDraft || `Event ${eventsRef.current.length + 1}`,
+      action: eventActionDraft || DEFAULT_EVENT_ACTION,
+      condition: eventConditionDraft || DEFAULT_EVENT_CONDITION,
+      frame: currentFrame,
+      payload: eventPayloadDraft || undefined,
+    };
+    mutateTimelineData(data => {
+      const metaObject = getMetaObject(data);
+      const nextEvents = normalizeEvents(
+        [...normalizeEvents(metaObject.events, TRACK_FRAME_LIMIT), nextMarker],
+        TRACK_FRAME_LIMIT
+      );
+      data.gdCinematicMeta = {
+        ...metaObject,
+        events: nextEvents,
+      };
+    });
+    setStatusText(`Added event "${nextMarker.name}" at frame ${currentFrame}.`);
+  }, [
+    currentFrame,
+    eventActionDraft,
+    eventConditionDraft,
+    eventNameDraft,
+    eventPayloadDraft,
+    mutateTimelineData,
+  ]);
+
+  const onRemoveEventMarker = React.useCallback(
+    (eventId: string) => {
+      mutateTimelineData(data => {
+        const metaObject = getMetaObject(data);
+        const nextEvents = normalizeEvents(metaObject.events, TRACK_FRAME_LIMIT).filter(
+          event => event.id !== eventId
+        );
+        data.gdCinematicMeta = {
+          ...metaObject,
+          events: nextEvents,
+        };
+      });
+    },
+    [mutateTimelineData]
+  );
+
+  const onJumpToEventMarker = React.useCallback((eventMarker: CinematicTimelineEventMarker) => {
+    const timeliner = timelinerRef.current;
+    if (!timeliner) return;
+    const seconds = frameToSeconds(eventMarker.frame, fpsRef.current);
+    timeliner.setCurrentTime(seconds);
+    setCurrentFrame(eventMarker.frame);
+    setStatusText(`Jumped to event "${eventMarker.name}".`);
+  }, []);
+
+  const applyIKConfigForTarget = React.useCallback(
+    (targetId: string, objectName: string) => {
+      const currentData = latestDataRef.current;
+      const existingMeta =
+        currentData.gdCinematicMeta && typeof currentData.gdCinematicMeta === 'object'
+          ? currentData.gdCinematicMeta
+          : {};
+      const existingIkConfigByTarget =
+        existingMeta.ikConfigByTarget &&
+        typeof existingMeta.ikConfigByTarget === 'object'
+          ? existingMeta.ikConfigByTarget
+          : {};
+      const nextIkConfigByTarget = {
+        ...existingIkConfigByTarget,
+        [targetId]: {
+          chainRoot: ikChainRootRef.current || DEFAULT_IK_CHAIN_ROOT,
+          endEffector: ikEndEffectorRef.current || DEFAULT_IK_END_EFFECTOR,
+          name: `${objectName} IK`,
+        },
+      };
+      latestDataRef.current = {
+        ...currentData,
+        gdCinematicMeta: {
+          ...existingMeta,
+          ikConfigByTarget: nextIkConfigByTarget,
+        },
+      };
+      saveTimelinerDataToProject(
+        project,
+        latestDataRef.current,
+        fpsRef.current,
+        sceneNameRef.current
+      );
+    },
+    [project]
+  );
+
+  const onAddSelectedIKLayers = React.useCallback(() => {
+    const timeliner = timelinerRef.current;
+    if (!timeliner) return;
+    const snapshot = activeObjectSnapshot;
+    if (!snapshot) {
+      setStatusText('Select an object in the 3D editor first.');
+      return;
+    }
+    if (isTargetLocked(latestDataRef.current, snapshot.targetId)) {
+      setStatusText(`"${snapshot.objectName}" track is locked.`);
+      return;
+    }
+
+    applyIKConfigForTarget(snapshot.targetId, snapshot.objectName);
+    const ikEntries = getSnapshotIKLayerEntries(snapshot);
+    ikEntries.forEach(entry => {
+      timeliner.ensureLayer(entry.layerName);
+    });
+    ikEntries.forEach(entry => {
+      timeliner.setLayerValueAtCurrentTime(entry.layerName, entry.value);
+    });
+    setStatusText(`Added IK layers for "${snapshot.objectName}".`);
+  }, [activeObjectSnapshot, applyIKConfigForTarget]);
+
+  const onCaptureSelectedTransform = React.useCallback(() => {
+    captureSelectedTransform(activeObjectSnapshot || null, 'manual');
+  }, [activeObjectSnapshot, captureSelectedTransform]);
+
+  const onPlayPreview = React.useCallback(() => {
+    const timeliner = timelinerRef.current;
+    if (!timeliner) return;
+    timeliner.play();
+  }, []);
+
+  const onPlayShot = React.useCallback(
+    (shot: CinematicTimelineShot) => {
+      const timeliner = timelinerRef.current;
+      if (!timeliner) return;
+      timeliner.setCurrentTime(frameToSeconds(shot.startFrame, fpsRef.current));
+      setCurrentFrame(shot.startFrame);
+      const scene = buildRuntimeScene();
+      sendRuntimeCommand('cinematicTimeline.playShot', {
+        scene,
+        shotId: shot.id,
+        frame: shot.startFrame,
+        loopPlayback: false,
+      });
+      timeliner.play();
+      setStatusText(`Playing ${shot.name}.`);
+    },
+    [buildRuntimeScene, sendRuntimeCommand]
+  );
+
+  const onPausePreview = React.useCallback(() => {
+    const timeliner = timelinerRef.current;
+    if (!timeliner) return;
+    timeliner.pause();
+    const scene = buildRuntimeScene();
+    sendRuntimeCommand('cinematicTimeline.pause', {
+      scene,
+      frame: secondsToFrame(timeliner.getCurrentTime(), scene.fps),
+      fps: scene.fps,
+      duration: scene.duration,
+      loopPlayback: loopRangeRef.current.enabled,
+      startFrame: loopRangeRef.current.enabled ? loopRangeRef.current.inFrame : 0,
+      endFrame: loopRangeRef.current.enabled
+        ? loopRangeRef.current.outFrame
+        : scene.duration,
+    });
+  }, [buildRuntimeScene, sendRuntimeCommand]);
+
+  const onStopPreview = React.useCallback(() => {
+    const timeliner = timelinerRef.current;
+    if (!timeliner) return;
+    timeliner.stop();
+    const scene = buildRuntimeScene();
+    sendRuntimeCommand('cinematicTimeline.stop', {
+      scene,
+      frame: 0,
+      fps: scene.fps,
+      duration: scene.duration,
+      loopPlayback: loopRangeRef.current.enabled,
+      startFrame: loopRangeRef.current.enabled ? loopRangeRef.current.inFrame : 0,
+      endFrame: loopRangeRef.current.enabled
+        ? loopRangeRef.current.outFrame
+        : scene.duration,
+    });
+  }, [buildRuntimeScene, sendRuntimeCommand]);
+
+  const onSendCurrentFrame = React.useCallback(() => {
+    const timeliner = timelinerRef.current;
+    if (!timeliner) return;
+    const scene = buildRuntimeScene();
+    const frame = secondsToFrame(timeliner.getCurrentTime(), scene.fps);
+    setCurrentFrame(frame);
+    sendCurrentFrameToRuntime(scene, frame);
+    setStatusText(`Sent frame ${frame} to runtime.`);
+  }, [buildRuntimeScene, sendCurrentFrameToRuntime]);
+
+  const onExportRuntimeJson = React.useCallback(() => {
+    const scene = buildRuntimeScene();
+    const fileName =
+      scene.name.replace(/\s+/g, '_').toLowerCase() || 'cinematic_scene';
+    downloadTextFile(
+      JSON.stringify(scene, null, 2),
+      `${fileName}_timeline.json`
+    );
+    setStatusText('Exported cinematic runtime JSON.');
+  }, [buildRuntimeScene]);
+
+  const onImportJsonText = React.useCallback(
+    (jsonText: string) => {
+      if (!jsonText) return;
+      try {
+        const parsedData = JSON.parse(jsonText);
+        if (isTimelinerData(parsedData)) {
+          const importedFps = clampInteger(
+            parseFiniteNumber(
+              parsedData.gdCinematicMeta && parsedData.gdCinematicMeta.fps,
+              fpsRef.current
+            ),
+            MIN_FPS,
+            MAX_FPS
+          );
+          const importedSceneName =
+            (parsedData.gdCinematicMeta &&
+              parsedData.gdCinematicMeta.sceneName) ||
+            parsedData.title ||
+            sceneNameRef.current;
+          setFps(importedFps);
+          fpsRef.current = importedFps;
+          setSceneName(importedSceneName);
+          sceneNameRef.current = importedSceneName;
+          applyTimelinerData(parsedData, { showStatus: true });
+          setStatusText('Imported Timeliner JSON.');
+          return;
+        }
+
+        if (isRuntimeCinematicScene(parsedData)) {
+          const converted = runtimeSceneToTimelinerData(
+            parsedData,
+            sceneNameRef.current
+          );
+          setFps(converted.fps);
+          fpsRef.current = converted.fps;
+          setSceneName(converted.sceneName);
+          sceneNameRef.current = converted.sceneName;
+          applyTimelinerData(converted.data, { showStatus: true });
+          setStatusText('Imported runtime cinematic JSON.');
+          return;
+        }
+
+        setStatusText('JSON format is not recognized.');
+      } catch (error) {
+        console.warn('Failed to import timeline JSON.', error);
+        setStatusText('Invalid JSON.');
+      }
+    },
+    [applyTimelinerData]
+  );
+
+  const onImportJsonFile = React.useCallback(
+    (event: SyntheticInputEvent<HTMLInputElement>) => {
+      const input = event.currentTarget;
+      const file =
+        input.files && input.files.length ? input.files[0] : null;
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const content = reader.result;
+        if (typeof content === 'string') {
+          onImportJsonText(content);
+        }
+      };
+      reader.readAsText(file);
+      input.value = '';
+    },
+    [onImportJsonText]
+  );
+
+  const onChangeFps = React.useCallback(
+    (event: SyntheticInputEvent<HTMLInputElement>) => {
+      const nextFps = clampInteger(
+        parseFiniteNumber(event.currentTarget.value, fpsRef.current),
+        MIN_FPS,
+        MAX_FPS
+      );
+      setFps(nextFps);
+      fpsRef.current = nextFps;
+      saveTimelinerDataToProject(
+        project,
+        latestDataRef.current,
+        nextFps,
+        sceneNameRef.current
+      );
+      if (timelinerRef.current) {
+        setCurrentFrame(
+          secondsToFrame(timelinerRef.current.getCurrentTime(), nextFps)
+        );
+      }
+    },
+    [project]
+  );
+
+  const onChangeDuration = React.useCallback(
+    (event: SyntheticInputEvent<HTMLInputElement>) => {
+      const nextDuration = clampNumber(
+        parseFiniteNumber(event.currentTarget.value, durationSeconds),
+        MIN_DURATION_SECONDS,
+        MAX_DURATION_SECONDS
+      );
+      setDurationSeconds(nextDuration);
+      if (timelinerRef.current) {
+        timelinerRef.current.setDuration(nextDuration);
+      }
+    },
+    [durationSeconds]
+  );
+
+  const onChangeSceneName = React.useCallback(
+    (event: SyntheticInputEvent<HTMLInputElement>) => {
+      const nextSceneName = event.currentTarget.value || `${project.getName()} Cinematic`;
+      setSceneName(nextSceneName);
+      sceneNameRef.current = nextSceneName;
+      saveTimelinerDataToProject(
+        project,
+        latestDataRef.current,
+        fpsRef.current,
+        nextSceneName
+      );
+    },
+    [project]
+  );
+
+  const onChangeIKChainRoot = React.useCallback(
+    (event: SyntheticInputEvent<HTMLInputElement>) => {
+      const nextChainRoot = event.currentTarget.value || DEFAULT_IK_CHAIN_ROOT;
+      setIkChainRoot(nextChainRoot);
+      ikChainRootRef.current = nextChainRoot;
+    },
+    []
+  );
+
+  const onChangeIKEndEffector = React.useCallback(
+    (event: SyntheticInputEvent<HTMLInputElement>) => {
+      const nextEndEffector =
+        event.currentTarget.value || DEFAULT_IK_END_EFFECTOR;
+      setIkEndEffector(nextEndEffector);
+      ikEndEffectorRef.current = nextEndEffector;
+    },
+    []
+  );
+
+  const onToggleAutoSync = React.useCallback(() => {
+    setAutoSync(previousValue => !previousValue);
+  }, []);
+
+  const onToggleAutoKey = React.useCallback(() => {
+    setAutoKey(previousValue => !previousValue);
+  }, []);
+
+  const onToggleAdvanced = React.useCallback(() => {
+    setShowAdvanced(previousValue => !previousValue);
+  }, []);
+
+  const onKeyDownAddKeyframe = React.useCallback(
+    (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) return;
+      if (!isActiveRef.current) return;
+      if (shouldIgnoreKeyboardShortcut(event.target)) return;
+      if (event.key === 'k' || event.key === 'K') {
+        event.preventDefault();
+        captureSelectedTransform(activeObjectSnapshot || null, 'manual');
+        return;
+      }
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        onDeleteKeyframeAtCurrentFrame();
+        return;
+      }
+      if (event.key === 'd' || event.key === 'D') {
+        if (!event.ctrlKey && !event.metaKey) return;
+        event.preventDefault();
+        onDuplicateKeyframeAtCurrentFrame();
+        return;
+      }
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        onNudgeCurrentFrame(-1);
+        return;
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        onNudgeCurrentFrame(1);
+      }
+    },
+    [
+      activeObjectSnapshot,
+      captureSelectedTransform,
+      onDeleteKeyframeAtCurrentFrame,
+      onDuplicateKeyframeAtCurrentFrame,
+      onNudgeCurrentFrame,
+    ]
+  );
+
+  React.useEffect(
+    () => {
+      window.addEventListener('keydown', onKeyDownAddKeyframe);
+      return () => {
+        window.removeEventListener('keydown', onKeyDownAddKeyframe);
+      };
+    },
+    [onKeyDownAddKeyframe]
+  );
+
+  const selectedTrackGroup =
+    trackGroups.find(group => group.id === selectedTrackGroupId) || null;
+  const selectedLabel = activeObjectSnapshot
+    ? `${activeObjectSnapshot.objectName} (${shortenTargetId(
+        activeObjectSnapshot.targetId
+      )})`
+    : selectedTrackGroup
+      ? `${selectedTrackGroup.objectName} (track)`
+      : 'None';
+  const keyframeTargetId = activeObjectSnapshot
+    ? activeObjectSnapshot.targetId
+    : selectedTrackGroup
+      ? selectedTrackGroup.targetId
+      : null;
+  const hasKeyframeAtCurrentFrame = !!keyframeTargetId
+    ? hasKeyframeForTargetAtFrame(
+        latestDataRef.current,
+        keyframeTargetId,
+        currentFrame,
+        fps
+      )
+    : false;
+  const loopInFrame = loopRange.inFrame;
+  const loopOutFrame = loopRange.outFrame;
+
+  return (
+    <div className="ct3d-root">
+      <div className="ct3d-toolbar">
+        <div className="ct3d-toolbarRow ct3d-toolbarRow-main">
+          {displayMode === 'overlay' && onRequestClose ? (
+            <button className="ct3d-btn ct3d-btn-ghost" onClick={onRequestClose}>
+              Close
+            </button>
+          ) : null}
+
+          <label className="ct3d-inlineField ct3d-field-scene">
+            <span className="ct3d-fieldLabel">Scene</span>
+            <input
+              className="ct3d-input"
+              value={sceneName}
+              onChange={onChangeSceneName}
+            />
+          </label>
+
+          <label className="ct3d-inlineField ct3d-field-fps">
+            <span className="ct3d-fieldLabel">FPS</span>
+            <input
+              className="ct3d-input"
+              type="number"
+              min={MIN_FPS}
+              max={MAX_FPS}
+              step={1}
+              value={fps}
+              onChange={onChangeFps}
+            />
+          </label>
+
+          <label className="ct3d-inlineField ct3d-field-duration">
+            <span className="ct3d-fieldLabel">Duration (sec)</span>
+            <input
+              className="ct3d-input"
+              type="number"
+              min={MIN_DURATION_SECONDS}
+              max={MAX_DURATION_SECONDS}
+              step={0.1}
+              value={durationSeconds}
+              onChange={onChangeDuration}
+            />
+          </label>
+
+          <button className="ct3d-btn" onClick={onAddSelectedObjectLayers}>
+            Add Object
+          </button>
+          <button className="ct3d-btn" onClick={onCaptureSelectedTransform}>
+            Add Keyframe (K)
+          </button>
+          <button
+            className={`ct3d-btn ct3d-btn-record ${autoKey ? 'is-active' : ''}`}
+            onClick={onToggleAutoKey}
+          >
+            {autoKey ? 'Recording' : 'Record'}
+          </button>
+          <button className="ct3d-btn ct3d-btn-primary" onClick={onPlayPreview}>
+            Play
+          </button>
+          <button className="ct3d-btn" onClick={onPausePreview}>
+            Pause
+          </button>
+          <button className="ct3d-btn" onClick={onStopPreview}>
+            Stop
+          </button>
+
+          <label className="ct3d-checkRow ct3d-checkRow-inline">
+            <input
+              type="checkbox"
+              checked={autoSync}
+              onChange={onToggleAutoSync}
+            />
+            Live Sync
+          </label>
+
+          <button className="ct3d-btn ct3d-btn-ghost" onClick={onToggleAdvanced}>
+            {showAdvanced ? 'Hide Advanced' : 'Advanced'}
+          </button>
+        </div>
+
+        <div className="ct3d-toolbarRow ct3d-toolbarRow-meta">
+          <span className="ct3d-selectedText">Selected: {selectedLabel}</span>
+          <span className={`ct3d-chip ${hasKeyframeAtCurrentFrame ? 'is-good' : ''}`}>
+            {hasKeyframeAtCurrentFrame ? 'Keyframe Here' : 'No Keyframe'}
+          </span>
+          <span className="ct3d-chip ct3d-chip-frame">Frame {currentFrame}</span>
+          <span className={`ct3d-hintInline ${autoKey ? 'is-recording' : ''}`}>
+            {autoKey
+              ? 'Record ON: move selected object to auto-create keyframes.'
+              : 'Press K to add keyframe at current frame (selected track fallback).'}
+          </span>
+        </div>
+
+        {showAdvanced ? (
+          <div className="ct3d-advancedPanel">
+            <div className="ct3d-advancedBlock">
+              <div className="ct3d-advancedTitle">Track Manager</div>
+              <label className="ct3d-inlineField ct3d-field-trackSelect">
+                <span className="ct3d-fieldLabel">Track</span>
+                <select
+                  className="ct3d-input"
+                  value={selectedTrackGroupId}
+                  onChange={event => setSelectedTrackGroupId(event.currentTarget.value)}
+                >
+                  {trackGroups.length ? null : (
+                    <option value="">No tracks</option>
+                  )}
+                  {trackGroups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.objectName} [{group.trackType}] ({group.keyframesCount})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button className="ct3d-btn" onClick={onJumpToSelectedTrack}>
+                Jump
+              </button>
+              <button
+                className={`ct3d-btn ${selectedTrackGroup && selectedTrackGroup.muted ? 'ct3d-btn-record is-active' : ''}`}
+                onClick={() =>
+                  selectedTrackGroup &&
+                  setTrackGroupFlag('muted', !selectedTrackGroup.muted)
+                }
+              >
+                {selectedTrackGroup && selectedTrackGroup.muted ? 'Muted' : 'Mute'}
+              </button>
+              <button
+                className={`ct3d-btn ${selectedTrackGroup && selectedTrackGroup.solo ? 'ct3d-btn-primary' : ''}`}
+                onClick={() =>
+                  selectedTrackGroup &&
+                  setTrackGroupFlag('solo', !selectedTrackGroup.solo)
+                }
+              >
+                {selectedTrackGroup && selectedTrackGroup.solo ? 'Solo ON' : 'Solo'}
+              </button>
+              <button
+                className={`ct3d-btn ${selectedTrackGroup && selectedTrackGroup.locked ? 'ct3d-btn-record is-active' : ''}`}
+                onClick={() =>
+                  selectedTrackGroup &&
+                  setTrackGroupFlag('locked', !selectedTrackGroup.locked)
+                }
+              >
+                {selectedTrackGroup && selectedTrackGroup.locked ? 'Locked' : 'Lock'}
+              </button>
+              <button className="ct3d-btn" onClick={onDeleteKeyframeAtCurrentFrame}>
+                Delete Key
+              </button>
+              <button className="ct3d-btn" onClick={onDuplicateKeyframeAtCurrentFrame}>
+                Duplicate Key
+              </button>
+              <button className="ct3d-btn" onClick={() => onNudgeCurrentFrame(-1)}>
+                Frame -
+              </button>
+              <button className="ct3d-btn" onClick={() => onNudgeCurrentFrame(1)}>
+                Frame +
+              </button>
+              <button className="ct3d-btn" onClick={onRemoveSelectedTrackGroup}>
+                Remove Track
+              </button>
+            </div>
+
+            <div className="ct3d-advancedBlock">
+              <div className="ct3d-advancedTitle">Loop, Shots, IK</div>
+              <label className="ct3d-checkRow ct3d-checkRow-inline">
+                <input
+                  type="checkbox"
+                  checked={loopRange.enabled}
+                  onChange={event =>
+                    onUpdateLoopRange({ enabled: event.currentTarget.checked })
+                  }
+                />
+                Loop Range
+              </label>
+              <label className="ct3d-inlineField ct3d-field-small">
+                <span className="ct3d-fieldLabel">In</span>
+                <input
+                  className="ct3d-input"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={loopInFrame}
+                  onChange={event =>
+                    onUpdateLoopRange({
+                      inFrame: clampInteger(
+                        parseFiniteNumber(event.currentTarget.value, loopInFrame),
+                        0,
+                        TRACK_FRAME_LIMIT
+                      ),
+                    })
+                  }
+                />
+              </label>
+              <label className="ct3d-inlineField ct3d-field-small">
+                <span className="ct3d-fieldLabel">Out</span>
+                <input
+                  className="ct3d-input"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={loopOutFrame}
+                  onChange={event =>
+                    onUpdateLoopRange({
+                      outFrame: clampInteger(
+                        parseFiniteNumber(event.currentTarget.value, loopOutFrame),
+                        0,
+                        TRACK_FRAME_LIMIT
+                      ),
+                    })
+                  }
+                />
+              </label>
+              <button className="ct3d-btn" onClick={onAddShotFromLoopRange}>
+                Add Shot
+              </button>
+              <button className="ct3d-btn" onClick={onAddSelectedIKLayers}>
+                Add IK Layers
+              </button>
+              <label className="ct3d-inlineField ct3d-field-chain">
+                <span className="ct3d-fieldLabel">IK Chain</span>
+                <input
+                  className="ct3d-input"
+                  value={ikChainRoot}
+                  onChange={onChangeIKChainRoot}
+                />
+              </label>
+              <label className="ct3d-inlineField ct3d-field-effector">
+                <span className="ct3d-fieldLabel">IK Effector</span>
+                <input
+                  className="ct3d-input"
+                  value={ikEndEffector}
+                  onChange={onChangeIKEndEffector}
+                />
+              </label>
+              <button className="ct3d-btn" onClick={onSendCurrentFrame}>
+                Send Frame
+              </button>
+              <button className="ct3d-btn" onClick={onExportRuntimeJson}>
+                Export JSON
+              </button>
+              <label className="ct3d-btn ct3d-importButton">
+                Import JSON
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={onImportJsonFile}
+                  className="ct3d-hiddenInput"
+                />
+              </label>
+            </div>
+
+            <div className="ct3d-advancedBlock ct3d-advancedBlock-list">
+              <div className="ct3d-advancedTitle">Shots</div>
+              <div className="ct3d-miniList">
+                {shots.length ? null : (
+                  <div className="ct3d-listEmpty">No shots</div>
+                )}
+                {shots.map(shot => (
+                  <div key={shot.id} className="ct3d-listRow">
+                    <span className="ct3d-listLabel">
+                      {shot.name} [{shot.startFrame} - {shot.endFrame}]
+                    </span>
+                    <button className="ct3d-btn ct3d-btn-mini" onClick={() => onJumpToShot(shot)}>
+                      Jump
+                    </button>
+                    <button className="ct3d-btn ct3d-btn-mini" onClick={() => onPlayShot(shot)}>
+                      Play
+                    </button>
+                    <button className="ct3d-btn ct3d-btn-mini" onClick={() => onRemoveShot(shot.id)}>
+                      Del
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="ct3d-advancedBlock ct3d-advancedBlock-list">
+              <div className="ct3d-advancedTitle">Action Events</div>
+              <label className="ct3d-inlineField ct3d-field-smallGrow">
+                <span className="ct3d-fieldLabel">Name</span>
+                <input
+                  className="ct3d-input"
+                  value={eventNameDraft}
+                  onChange={event => setEventNameDraft(event.currentTarget.value)}
+                />
+              </label>
+              <label className="ct3d-inlineField ct3d-field-small">
+                <span className="ct3d-fieldLabel">Action</span>
+                <select
+                  className="ct3d-input"
+                  value={eventActionDraft}
+                  onChange={event => setEventActionDraft(event.currentTarget.value)}
+                >
+                  <option value="Trigger">Trigger</option>
+                  <option value="PlaySound">PlaySound</option>
+                  <option value="Spawn">Spawn</option>
+                  <option value="Cut">Cut</option>
+                  <option value="Message">Message</option>
+                </select>
+              </label>
+              <label className="ct3d-inlineField ct3d-field-small">
+                <span className="ct3d-fieldLabel">Condition</span>
+                <select
+                  className="ct3d-input"
+                  value={eventConditionDraft}
+                  onChange={event => setEventConditionDraft(event.currentTarget.value)}
+                >
+                  <option value="Always">Always</option>
+                  <option value="OnShotStart">OnShotStart</option>
+                  <option value="OnShotEnd">OnShotEnd</option>
+                  <option value="Manual">Manual</option>
+                </select>
+              </label>
+              <label className="ct3d-inlineField ct3d-field-smallGrow">
+                <span className="ct3d-fieldLabel">Payload</span>
+                <input
+                  className="ct3d-input"
+                  value={eventPayloadDraft}
+                  onChange={event => setEventPayloadDraft(event.currentTarget.value)}
+                />
+              </label>
+              <button className="ct3d-btn" onClick={onAddEventMarker}>
+                Add Event @ Frame {currentFrame}
+              </button>
+              <div className="ct3d-miniList">
+                {events.length ? null : (
+                  <div className="ct3d-listEmpty">No events</div>
+                )}
+                {events.map(eventMarker => (
+                  <div key={eventMarker.id} className="ct3d-listRow">
+                    <span className="ct3d-listLabel">
+                      F{eventMarker.frame} {eventMarker.name} [{eventMarker.action}]
+                    </span>
+                    <button
+                      className="ct3d-btn ct3d-btn-mini"
+                      onClick={() => onJumpToEventMarker(eventMarker)}
+                    >
+                      Jump
+                    </button>
+                    <button
+                      className="ct3d-btn ct3d-btn-mini"
+                      onClick={() => onRemoveEventMarker(eventMarker.id)}
+                    >
+                      Del
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="ct3d-timelineDock">
+        <div ref={timelinerHostRef} className="ct3d-host" />
+      </div>
+      <div className="ct3d-statusBar">{statusText}</div>
+    </div>
+  );
+};
+
+export default CinematicTimeline3DEditor;

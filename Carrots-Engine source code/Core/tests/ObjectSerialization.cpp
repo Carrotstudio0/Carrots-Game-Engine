@@ -411,4 +411,49 @@ TEST_CASE("ObjectSerialization", "[common]") {
 
     REQUIRE(eventsExtension.GetEventsBasedObjects().GetCount() == 1);
   }
+
+  SECTION("Keeps extension event instructions unchanged when opening an old project") {
+    gd::Platform platform;
+    gd::Project writtenProject;
+    SetupProjectWithDummyPlatform(writtenProject, platform);
+
+    auto &eventsExtension =
+        writtenProject.InsertNewEventsFunctionsExtension("MyEventsExtension", 0);
+    auto &eventsFunction =
+        eventsExtension.GetEventsFunctions().InsertNewEventsFunction(
+            "MyFunction", 0);
+    auto standardEvent = std::make_shared<gd::StandardEvent>();
+
+    gd::Instruction condition;
+    condition.SetType("NumberVariable");
+    condition.SetParametersCount(3);
+    condition.SetParameter(0, "MyVariable");
+    condition.SetParameter(1, ">=");
+    condition.SetParameter(2, "-1");
+    standardEvent->GetConditions().Insert(condition);
+    eventsFunction.GetEvents().InsertEvent(standardEvent);
+
+    SerializerElement projectElement;
+    writtenProject.SerializeTo(projectElement);
+    auto &gdVersionElement = projectElement.GetChild("gdVersion");
+    gdVersionElement.SetAttribute("major", 2);
+    gdVersionElement.SetAttribute("minor", 0);
+    gdVersionElement.SetAttribute("build", 0);
+
+    gd::Project readProject;
+    readProject.AddPlatform(platform);
+    readProject.UnserializeFrom(projectElement);
+
+    auto &readEventsFunction =
+        readProject.GetEventsFunctionsExtension("MyEventsExtension")
+            .GetEventsFunctions()
+            .GetEventsFunction("MyFunction");
+    auto &readEvent = dynamic_cast<gd::StandardEvent &>(
+        readEventsFunction.GetEvents().GetEvent(0));
+    REQUIRE(readEvent.GetConditions().size() == 1);
+    const auto &readCondition = readEvent.GetConditions()[0];
+    REQUIRE(readCondition.GetParameter(0).GetPlainString() == "MyVariable");
+    REQUIRE(readCondition.GetParameter(1).GetPlainString() == ">=");
+    REQUIRE(readCondition.GetParameter(2).GetPlainString() == "-1");
+  }
 }

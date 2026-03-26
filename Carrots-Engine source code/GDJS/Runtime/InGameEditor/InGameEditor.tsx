@@ -10,6 +10,7 @@ namespace gdjs {
     attrs: {
       style?: Partial<CSSStyleDeclaration>;
       onClick?: (event: Event) => void;
+      [attributeName: string]: any;
     },
     ...nodes: (HTMLElement | string)[]
   ): HTMLElement {

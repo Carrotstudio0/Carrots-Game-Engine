@@ -20,6 +20,7 @@ import LayersIcon from '../../UI/CustomSvgIcons/Layers';
 import ProjectResourcesIcon from '../../UI/CustomSvgIcons/ProjectResources';
 import ConsoleIcon from '../../UI/CustomSvgIcons/Console';
 import BuildIcon from '../../UI/CustomSvgIcons/Hammer';
+import VideoIcon from '../../UI/CustomSvgIcons/Video';
 import UndoIcon from '../../UI/CustomSvgIcons/Undo';
 import RedoIcon from '../../UI/CustomSvgIcons/Redo';
 import TrashIcon from '../../UI/CustomSvgIcons/Trash';
@@ -38,6 +39,7 @@ import {
   OPEN_OBJECT_GROUPS_PANEL_BUTTON_ID,
   OPEN_OBJECTS_PANEL_BUTTON_ID,
   OPEN_PROPERTIES_PANEL_BUTTON_ID,
+  TOGGLE_CINEMATIC_TIMELINE_BUTTON_ID,
 } from '../utils';
 import CompactToggleButtons from '../../UI/CompactToggleButtons';
 import Grid2d from '../../UI/CustomSvgIcons/Grid2d';
@@ -50,6 +52,8 @@ type Props = {|
   isObjectsListShown: boolean,
   toggleObjectGroupsList: () => void,
   isObjectGroupsListShown: boolean,
+  toggleCinematicTimeline: () => void,
+  isCinematicTimelineShown: boolean,
   onOpenScenesManager: () => void,
   onOpenSceneEvents: () => void,
   sceneEventsEnabled: boolean,
@@ -239,6 +243,23 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
           }
         >
           <ObjectGroupIcon />
+        </IconButton>
+        <IconButton
+          size="small"
+          color="default"
+          id={TOGGLE_CINEMATIC_TIMELINE_BUTTON_ID}
+          onClick={props.toggleCinematicTimeline}
+          selected={props.isCinematicTimelineShown}
+          disabled={props.gameEditorMode !== 'embedded-game'}
+          tooltip={
+            props.gameEditorMode !== 'embedded-game'
+              ? t`Switch to 3D editor to use Cinematic Timeline`
+              : props.isCinematicTimelineShown
+              ? t`Close Cinematic Timeline`
+              : t`Open Cinematic Timeline`
+          }
+        >
+          <VideoIcon />
         </IconButton>
         <IconButton
           size="small"

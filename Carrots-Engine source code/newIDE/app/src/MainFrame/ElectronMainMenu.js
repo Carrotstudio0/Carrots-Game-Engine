@@ -195,6 +195,11 @@ const ElectronMainMenu = ({
     shouldApply: isFocusedOnMainWindow,
   });
   useIPCEventListener({
+    ipcEvent: 'main-menu-open-cinematic-timeline-3d',
+    callback: callbacks.onOpenCinematicTimeline3D || (() => {}),
+    shouldApply: isFocusedOnMainWindow,
+  });
+  useIPCEventListener({
     ipcEvent: 'main-menu-open-debugger',
     callback: callbacks.onOpenDebugger,
     shouldApply: isFocusedOnMainWindow,

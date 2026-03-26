@@ -319,14 +319,24 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
               scope="scene-editor-canvas"
             >
               {gameEditorMode === 'embedded-game' ? (
-                <EmbeddedGameFrameHole
-                  marginBottom={bottomContainerHeight}
-                  isActive={isActive}
-                  onRestartInGameEditor={onRestartInGameEditor}
-                  showRestartInGameEditorAfterErrorButton={
-                    showRestartInGameEditorAfterErrorButton
-                  }
-                />
+                <div
+                  style={{
+                    position: 'relative',
+                    width: '100%',
+                    height: '100%',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <EmbeddedGameFrameHole
+                    marginBottom={bottomContainerHeight}
+                    isActive={isActive}
+                    onRestartInGameEditor={onRestartInGameEditor}
+                    showRestartInGameEditorAfterErrorButton={
+                      showRestartInGameEditorAfterErrorButton
+                    }
+                  />
+                  {props.embeddedEditorOverlay || null}
+                </div>
               ) : (
                 <InstancesEditor
                   ref={editorRef}

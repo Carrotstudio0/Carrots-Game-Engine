@@ -1,0 +1,2 @@
+var gdjs;(function(e){let r;(function(a){let p;(function(n){let s;(function(i){i.setAutoUpdateInterval=t=>{firebase.remoteConfig().settings.minimumFetchIntervalMillis=t},i.setDefaultConfig=t=>{firebase.remoteConfig().defaultConfig=t.toJSObject()},e.evtTools.firebaseTools.onAppCreated.push(()=>{firebase.remoteConfig().settings.minimumFetchIntervalMillis=-1})})(s=n.remoteConfig||(n.remoteConfig={}))})(p=a.firebaseTools||(a.firebaseTools={}))})(r=e.evtTools||(e.evtTools={}))})(gdjs||(gdjs={}));
+//# sourceMappingURL=D_remoteconfigtools.js.map

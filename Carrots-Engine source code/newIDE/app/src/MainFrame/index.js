@@ -8,6 +8,7 @@ import DebuggerIcon from '../UI/CustomSvgIcons/Debug';
 import ProjectResourcesIcon from '../UI/CustomSvgIcons/ProjectResources';
 import SceneIcon from '../UI/CustomSvgIcons/Scene';
 import EventsIcon from '../UI/CustomSvgIcons/Events';
+import VideoIcon from '../UI/CustomSvgIcons/Video';
 import ExternalEventsIcon from '../UI/CustomSvgIcons/ExternalEvents';
 import ExternalLayoutIcon from '../UI/CustomSvgIcons/ExternalLayout';
 import ExtensionIcon from '../UI/CustomSvgIcons/Extension';
@@ -58,6 +59,7 @@ import { renderHomePageContainer } from './EditorContainers/HomePage';
 import { type OpenAskAiOptions } from '../AiGeneration/Utils';
 import { renderAskAiEditorContainer } from '../AiGeneration/AskAiEditorContainer';
 import { renderResourcesEditorContainer } from './EditorContainers/ResourcesEditorContainer';
+import { renderCinematicTimeline3DEditorContainer } from './EditorContainers/CinematicTimeline3DEditorContainer';
 import {
   type RenderEditorContainerPropsWithRef,
   type SceneEventsOutsideEditorChanges,
@@ -253,6 +255,7 @@ const editorKindToRenderer: {
   'custom object': renderCustomObjectEditorContainer,
   'start page': renderHomePageContainer,
   resources: renderResourcesEditorContainer,
+  'cinematic timeline 3d': renderCinematicTimeline3DEditorContainer,
   'ask-ai': renderAskAiEditorContainer,
 };
 
@@ -708,6 +711,8 @@ const MainFrame = (props: Props): React.MixedElement => {
       const label =
         kind === 'resources'
           ? i18n._(t`Resources`)
+          : kind === 'cinematic timeline 3d'
+          ? i18n._(t`Cinematic Timeline 3D`)
           : kind === 'ask-ai'
           ? i18n._(t`Ask AI`)
           : kind === 'start page'
@@ -757,6 +762,8 @@ const MainFrame = (props: Props): React.MixedElement => {
           <DebuggerIcon />
         ) : kind === 'resources' ? (
           <ProjectResourcesIcon />
+        ) : kind === 'cinematic timeline 3d' ? (
+          <VideoIcon />
         ) : kind === 'layout' ? (
           <SceneIcon />
         ) : kind === 'layout events' ? (
@@ -2799,6 +2806,20 @@ const MainFrame = (props: Props): React.MixedElement => {
     [getEditorOpeningOptions, setState]
   );
 
+  const openCinematicTimeline3D = React.useCallback(
+    () => {
+      setState(state => ({
+        ...state,
+        editorTabs: openEditorTab(
+          state.editorTabs,
+          // $FlowFixMe[incompatible-type]
+          getEditorOpeningOptions({ kind: 'cinematic timeline 3d', name: '' })
+        ),
+      }));
+    },
+    [getEditorOpeningOptions, setState]
+  );
+
   const openHomePage = React.useCallback(
     () => {
       setState(state => ({
@@ -4778,6 +4799,7 @@ const MainFrame = (props: Props): React.MixedElement => {
     onLaunchPreviewWithDiagnosticReport: launchPreviewWithDiagnosticReport,
     onOpenDiagnosticReport: () => setDiagnosticReportDialogOpen(true),
     onOpenHomePage: openHomePage,
+    onOpenCinematicTimeline3D: openCinematicTimeline3D,
     onCreateProject: () => setNewProjectSetupDialogOpen(true),
     onOpenProject: () => openOpenFromStorageProviderDialog(),
     onSaveProject: saveProject,
@@ -4902,6 +4924,7 @@ const MainFrame = (props: Props): React.MixedElement => {
     onCreateProject: () => setNewProjectSetupDialogOpen(true),
     onOpenProjectManager: () => openProjectManager(true),
     onOpenHomePage: openHomePage,
+    onOpenCinematicTimeline3D: openCinematicTimeline3D,
     onOpenDebugger: openDebugger,
     onOpenAbout: () => openAboutDialog(true),
     onOpenPreferences: () => openPreferencesDialog(true),

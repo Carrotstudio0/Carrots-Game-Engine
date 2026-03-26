@@ -410,13 +410,23 @@ const MosaicEditorsDisplay: React.ComponentType<{
               noTitleBar: true,
               noSoftKeyboardAvoidance: true,
               renderEditor: () => (
-                <EmbeddedGameFrameHole
-                  isActive={isActive}
-                  onRestartInGameEditor={onRestartInGameEditor}
-                  showRestartInGameEditorAfterErrorButton={
-                    showRestartInGameEditorAfterErrorButton
-                  }
-                />
+                <div
+                  style={{
+                    position: 'relative',
+                    width: '100%',
+                    height: '100%',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <EmbeddedGameFrameHole
+                    isActive={isActive}
+                    onRestartInGameEditor={onRestartInGameEditor}
+                    showRestartInGameEditorAfterErrorButton={
+                      showRestartInGameEditorAfterErrorButton
+                    }
+                  />
+                  {props.embeddedEditorOverlay || null}
+                </div>
               ),
             }
           : {

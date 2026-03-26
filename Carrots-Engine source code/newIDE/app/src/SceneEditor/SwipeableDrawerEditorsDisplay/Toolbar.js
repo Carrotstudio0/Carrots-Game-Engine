@@ -16,6 +16,7 @@ import ZoomInIcon from '../../UI/CustomSvgIcons/ZoomIn';
 import EditSceneIcon from '../../UI/CustomSvgIcons/EditScene';
 import EventsIcon from '../../UI/CustomSvgIcons/Events';
 import RectangleIcon from '../../UI/CustomSvgIcons/Rectangle';
+import VideoIcon from '../../UI/CustomSvgIcons/Video';
 import CompactToggleButtons from '../../UI/CompactToggleButtons';
 import Grid2d from '../../UI/CustomSvgIcons/Grid2d';
 import Grid3d from '../../UI/CustomSvgIcons/Grid3d';
@@ -25,6 +26,8 @@ type Props = {|
   setGameEditorMode: ('embedded-game' | 'instances-editor') => void,
   toggleObjectsList: () => void,
   toggleObjectGroupsList: () => void,
+  toggleCinematicTimeline: () => void,
+  isCinematicTimelineShown: boolean,
   toggleProperties: () => void,
   onOpenSceneEvents: () => void,
   sceneEventsEnabled: boolean,
@@ -111,6 +114,22 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function(props) {
         tooltip={t`Open Scene Events`}
       >
         <EventsIcon />
+      </IconButton>
+      <IconButton
+        size="small"
+        color="default"
+        onClick={props.toggleCinematicTimeline}
+        selected={props.isCinematicTimelineShown}
+        disabled={props.gameEditorMode !== 'embedded-game'}
+        tooltip={
+          props.gameEditorMode !== 'embedded-game'
+            ? t`Switch to 3D editor to use Cinematic Timeline`
+            : props.isCinematicTimelineShown
+            ? t`Close Cinematic Timeline`
+            : t`Open Cinematic Timeline`
+        }
+      >
+        <VideoIcon />
       </IconButton>
       <IconButton
         size="small"

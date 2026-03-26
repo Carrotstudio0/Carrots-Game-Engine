@@ -44,6 +44,7 @@ export type MainMenuCallbacks = {|
   onCreateProject: () => void,
   onOpenProjectManager: (open?: boolean) => void,
   onOpenHomePage: () => void,
+  onOpenCinematicTimeline3D?: () => void,
   onOpenDebugger: () => void,
   onOpenAbout: (open?: boolean) => void,
   onOpenPreferences: (open?: boolean) => void,
@@ -71,6 +72,7 @@ export type MainMenuEvent =
   | 'main-menu-create-blank'
   | 'main-menu-open-project-manager'
   | 'main-menu-open-home-page'
+  | 'main-menu-open-cinematic-timeline-3d'
   | 'main-menu-open-debugger'
   | 'main-menu-open-about'
   | 'main-menu-open-preferences'
@@ -96,6 +98,8 @@ const getMainMenuEventCallback = (
     'main-menu-create-project': callbacks.onCreateProject,
     'main-menu-open-project-manager': callbacks.onOpenProjectManager,
     'main-menu-open-home-page': callbacks.onOpenHomePage,
+    'main-menu-open-cinematic-timeline-3d':
+      callbacks.onOpenCinematicTimeline3D,
     'main-menu-open-debugger': callbacks.onOpenDebugger,
     'main-menu-open-about': callbacks.onOpenAbout,
     'main-menu-open-preferences': callbacks.onOpenPreferences,
@@ -231,6 +235,14 @@ export const buildMainMenuDeclarativeTemplate = ({
       {
         label: i18n._(t`Show Home`),
         onClickSendEvent: 'main-menu-open-home-page',
+      },
+      {
+        label: i18n._(t`Open Cinematic Timeline 3D`),
+        accelerator: getElectronAccelerator(
+          shortcutMap['OPEN_CINEMATIC_TIMELINE_3D']
+        ),
+        onClickSendEvent: 'main-menu-open-cinematic-timeline-3d',
+        enabled: !!project,
       },
       {
         label: i18n._(t`Open Debugger`),

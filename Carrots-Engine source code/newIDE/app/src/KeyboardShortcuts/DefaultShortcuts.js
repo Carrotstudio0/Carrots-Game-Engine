@@ -12,6 +12,7 @@ const defaultShortcuts: ShortcutMap = {
   LAUNCH_NETWORK_PREVIEW: 'F8',
   OPEN_DIAGNOSTIC_REPORT: 'F7',
   OPEN_HOME_PAGE: '',
+  OPEN_CINEMATIC_TIMELINE_3D: '',
   CREATE_NEW_PROJECT: 'CmdOrCtrl+Alt+KeyN',
   OPEN_PROJECT: 'CmdOrCtrl+KeyO',
   SAVE_PROJECT: 'CmdOrCtrl+KeyS',

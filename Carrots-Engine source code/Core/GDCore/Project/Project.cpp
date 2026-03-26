@@ -967,6 +967,17 @@ void Project::UnserializeAndInsertExtensionsFrom(
         *this, eventsFunctionsExtensionElement);
   }
 
+  // Event-based extensions are serialized independently from the project file.
+  // Reusing the project's saved version here can wrongly trigger legacy
+  // project migrations on modern extension events (for example, GD2.x operator
+  // parameter swaps on variable conditions).
+  const auto savedGdMajorVersion = gdMajorVersion;
+  const auto savedGdMinorVersion = gdMinorVersion;
+  const auto savedGdBuildVersion = gdBuildVersion;
+  gdMajorVersion = gd::VersionWrapper::Major();
+  gdMinorVersion = gd::VersionWrapper::Minor();
+  gdBuildVersion = gd::VersionWrapper::Build();
+
   // Then unserialize functions, behaviors and objects content.
   for (gd::String &extensionName :
        GetUnserializingOrderExtensionNames(eventsFunctionsExtensionsElement)) {
@@ -1001,6 +1012,10 @@ void Project::UnserializeAndInsertExtensionsFrom(
                                                               variantsElement);
     }
   }
+
+  gdMajorVersion = savedGdMajorVersion;
+  gdMinorVersion = savedGdMinorVersion;
+  gdBuildVersion = savedGdBuildVersion;
 }
 
 std::vector<gd::String> Project::GetUnserializingOrderExtensionNames(

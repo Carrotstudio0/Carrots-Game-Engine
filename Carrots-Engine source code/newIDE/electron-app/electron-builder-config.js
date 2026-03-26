@@ -1,3 +1,5 @@
+const path = require('path');
+
 /**
  * @type {import('electron-builder').Configuration}
  * @see https://www.electron.build/configuration/configuration
@@ -20,6 +22,7 @@ const config = {
     },
   ],
   linux: {
+    icon: path.join(__dirname, '../app/build/android-chrome-512x512.png'),
     target: [
       {
         target: 'AppImage',

@@ -12,6 +12,7 @@ export type CommandName =
   | 'LAUNCH_PREVIEW_WITH_DIAGNOSTIC_REPORT'
   | 'OPEN_DIAGNOSTIC_REPORT'
   | 'OPEN_HOME_PAGE'
+  | 'OPEN_CINEMATIC_TIMELINE_3D'
   | 'CREATE_NEW_PROJECT'
   | 'OPEN_PROJECT'
   | 'SAVE_PROJECT'
@@ -127,6 +128,10 @@ const commandsList: { [CommandName]: CommandMetadata } = {
     displayText: t`Show diagnostic report`,
   },
   OPEN_HOME_PAGE: { area: 'IDE', displayText: t`Show Home` },
+  OPEN_CINEMATIC_TIMELINE_3D: {
+    area: 'IDE',
+    displayText: t`Open cinematic timeline 3D`,
+  },
   CREATE_NEW_PROJECT: {
     area: 'GENERAL',
     displayText: t`Create a new project`,
