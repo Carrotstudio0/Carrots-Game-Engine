@@ -74,9 +74,65 @@ declare namespace gdjs {
   class RuntimeScene {}
   class RuntimeObject {
     getBehavior(name: string): RuntimeBehavior;
+    getAllBehaviors(): RuntimeBehavior[];
+    getAllBehaviorNames(): string[];
+    getBehaviorByType(behaviorType: string): RuntimeBehavior | null;
+    getBehaviorsByType(behaviorType: string): RuntimeBehavior[];
   }
   class RuntimeBehavior {
     owner: RuntimeObject;
+    type: string;
+    getName(): string;
+    activated(): boolean;
+  }
+  function getRegisteredObjectTypes(): string[];
+  function getRegisteredBehaviorTypes(): string[];
+  function getRegisteredExtensionNames(): string[];
+  namespace runtimeCapabilities {
+    function getRuntimeCapabilitiesSummary(): any;
+    function listObjectBehaviors(object: RuntimeObject): any[];
+    function listBehaviorMethods(
+      object: RuntimeObject,
+      behaviorNameOrType: string
+    ): string[];
+    function invokeBehaviorMethod(
+      object: RuntimeObject,
+      behaviorNameOrType: string,
+      methodName: string,
+      ...args: any[]
+    ): any;
+    function registerBehaviorCapability(capability: any): void;
+    function registerExtensionCapability(capability: any): void;
+    function registerExtensionNamespace(
+      extensionName: string,
+      extensionNamespace: any
+    ): void;
+    function autoRegisterKnownExtensionNamespaces(): void;
+    function invokeExtensionMethod(
+      extensionName: string,
+      methodName: string,
+      ...args: any[]
+    ): any;
+    function bindManualExtensionToObject(
+      object: RuntimeObject,
+      binding: any
+    ): void;
+    function setManualObjectExtensionConfig(
+      object: RuntimeObject,
+      extensionName: string,
+      configPatch: { [key: string]: unknown }
+    ): boolean;
+    function invokeObjectExtensionMethod(
+      object: RuntimeObject,
+      extensionName: string,
+      methodName: string,
+      ...args: any[]
+    ): any;
+  }
+  namespace variables {
+    const scene: any;
+    const global: any;
+    const object: any;
   }
   const evtTools: any;
   namespace ts {

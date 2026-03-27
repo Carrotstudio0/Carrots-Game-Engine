@@ -89,7 +89,7 @@ void GD_CORE_API BuiltinExtensionsImplementer::ImplementsSceneExtension(
       .AddCodeOnlyParameter("currentScene", "")
       .AddParameter("sceneName", _("Name of the new scene"))
       .AddParameter("yesorno", _("Stop any other paused scenes?"))
-      .SetDefaultValue("true")
+      .SetDefaultValue("yes")
       .MarkAsAdvanced();
 
   extension

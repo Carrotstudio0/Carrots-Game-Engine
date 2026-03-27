@@ -13,6 +13,13 @@
 #include "GDCore/Tools/Localization.h"
 
 namespace gdjs {
+namespace {
+bool IsTruthyBooleanParameter(const gd::String& value) {
+  const auto normalizedValue = value.LowerCase();
+  return normalizedValue == "true" || normalizedValue == "vrai" ||
+         normalizedValue == "yes" || normalizedValue == "oui";
+}
+}  // namespace
 
 AdvancedExtension::AdvancedExtension() {
   gd::BuiltinExtensionsImplementer::ImplementsAdvancedExtension(*this);
@@ -61,7 +68,7 @@ AdvancedExtension::AdvancedExtension() {
         // This is duplicated from EventsCodeGenerator::GenerateParameterCodes
         gd::String parameter = instruction.GetParameter(0).GetPlainString();
         gd::String booleanCode =
-            (parameter == "True" || parameter == "Vrai") ? "true" : "false";
+            IsTruthyBooleanParameter(parameter) ? "true" : "false";
 
         return "eventsFunctionContext.returnValue = " + booleanCode + ";";
       });

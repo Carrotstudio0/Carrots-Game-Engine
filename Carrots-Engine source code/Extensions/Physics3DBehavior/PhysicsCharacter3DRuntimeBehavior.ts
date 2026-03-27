@@ -31,6 +31,29 @@ namespace gdjs {
     sf: float;
     tscjs: float;
     jkhsjs: boolean;
+    mvm?: float;
+    spm?: float;
+    air?: float;
+    gfr?: float;
+    afr?: float;
+    vdm?: float;
+    spk?: boolean;
+    jms?: float;
+    jpr?: float;
+    jmh?: integer;
+    jhc?: float;
+    jsx?: float;
+    jsy?: float;
+    jsz?: float;
+    jwc?: float;
+    jwd?: float;
+    jsd?: float;
+    jpc?: float;
+    jci?: integer;
+    jct?: integer;
+    jmt?: float;
+    jco?: float;
+    jcp?: float;
   }
 
   /** @category Behaviors > Physics 3D */
@@ -47,6 +70,96 @@ namespace gdjs {
     bodyFilter: Jolt.BodyFilter;
     shapeFilter: Jolt.ShapeFilter;
   };
+
+  export type PhysicsCharacter3DVector3 = {
+    x: float;
+    y: float;
+    z: float;
+  };
+
+  export interface PhysicsCharacter3DMovementTuning {
+    movementSpeedMultiplier: float;
+    sprintMultiplier: float;
+    airControl: float;
+    groundFriction: float;
+    airFriction: float;
+    verticalVelocityDamping: float;
+  }
+
+  export interface PhysicsCharacter3DJoltTuning {
+    maxStrength?: float;
+    penetrationRecoverySpeed?: float;
+    maxHits?: integer;
+    hitReductionCosMaxAngle?: float;
+    shapeOffset?: PhysicsCharacter3DVector3;
+    walkStairsCosAngleForwardContact?: float;
+    walkStairsStepDownExtra?: float;
+    stickToFloorStepDownExtra?: float;
+    predictiveContactDistance?: float;
+    maxCollisionIterations?: integer;
+    maxConstraintIterations?: integer;
+    minTimeRemaining?: float;
+    collisionTolerance?: float;
+    characterPadding?: float;
+  }
+
+  export type PhysicsCharacter3DInputKey = string | number;
+
+  export type PhysicsCharacter3DInputBinding =
+    | PhysicsCharacter3DInputKey
+    | ReadonlyArray<PhysicsCharacter3DInputKey>;
+
+  export interface PhysicsCharacter3DMovementInputState {
+    forward: boolean;
+    backward: boolean;
+    left: boolean;
+    right: boolean;
+    jump: boolean;
+    sprint: boolean;
+    stickForwardAxis: float;
+    stickRightAxis: float;
+    stickAngle: float;
+    stickForce: float;
+  }
+
+  export interface PhysicsCharacter3DMovementInputBindings {
+    forward: PhysicsCharacter3DInputBinding;
+    backward: PhysicsCharacter3DInputBinding;
+    left: PhysicsCharacter3DInputBinding;
+    right: PhysicsCharacter3DInputBinding;
+    jump: PhysicsCharacter3DInputBinding;
+    sprint: PhysicsCharacter3DInputBinding;
+  }
+
+  export interface PhysicsCharacter3DKeyboardInputOptions {
+    useJustPressedForJump: boolean;
+    useJustPressedForSprint: boolean;
+  }
+
+  export interface PhysicsCharacter3DMovementAxesOptions {
+    deadZone: float;
+    forceMultiplier: float;
+    simulateDigitalKeys: boolean;
+    digitalThreshold: float;
+  }
+
+  export interface PhysicsCharacter3DPhysicsProfile {
+    slopeMaxAngle: float;
+    stairHeightMax: float;
+    gravity: float;
+    maxFallingSpeed: float;
+    forwardAcceleration: float;
+    forwardDeceleration: float;
+    forwardSpeedMax: float;
+    sidewaysAcceleration: float;
+    sidewaysDeceleration: float;
+    sidewaysSpeedMax: float;
+    jumpSpeed: float;
+    jumpSustainTime: float;
+    bindObjectAndForwardAngle: boolean;
+    movementTuning: PhysicsCharacter3DMovementTuning;
+    joltTuning: PhysicsCharacter3DJoltTuning;
+  }
 
   /**
    * @category Behaviors > Physics 3D
@@ -87,12 +200,22 @@ namespace gdjs {
     private _jumpSustainTime: float;
     private _stairHeightMax: float;
     _canBePushed: boolean;
+    private _movementTuning: PhysicsCharacter3DMovementTuning = {
+      movementSpeedMultiplier: 1,
+      sprintMultiplier: 1,
+      airControl: 1,
+      groundFriction: 1,
+      airFriction: 1,
+      verticalVelocityDamping: 1,
+    };
+    private _joltTuning: PhysicsCharacter3DJoltTuning = {};
 
     private _hasPressedForwardKey: boolean = false;
     private _hasPressedBackwardKey: boolean = false;
     private _hasPressedRightKey: boolean = false;
     private _hasPressedLeftKey: boolean = false;
     private _hasPressedJumpKey: boolean = false;
+    private _hasPressedSprintKey: boolean = false;
     private _hasUsedStick: boolean = false;
     private _stickAngle: float = 0;
     private _stickForce: float = 0;
@@ -114,6 +237,7 @@ namespace gdjs {
     private _wasForwardKeyPressed: boolean = false;
     private _wasBackwardKeyPressed: boolean = false;
     private _wasJumpKeyPressed: boolean = false;
+    private _wasSprintKeyPressed: boolean = false;
     private _wasStickUsed: boolean = false;
 
     // This is useful when the object is synchronized by an external source
@@ -125,11 +249,37 @@ namespace gdjs {
      * A very small value compare to 1 pixel, yet very huge compare to rounding errors.
      */
     private static readonly epsilon = 2 ** -20;
+    private static readonly defaultKeyboardInputBindings: PhysicsCharacter3DMovementInputBindings =
+      {
+        forward: ['w', 'Up'],
+        backward: ['s', 'Down'],
+        left: ['a', 'Left'],
+        right: ['d', 'Right'],
+        jump: ['Space'],
+        sprint: ['LShift', 'RShift'],
+      };
+    private static readonly defaultKeyboardInputOptions: PhysicsCharacter3DKeyboardInputOptions =
+      {
+        useJustPressedForJump: false,
+        useJustPressedForSprint: false,
+      };
+    private static readonly defaultMovementAxesOptions: PhysicsCharacter3DMovementAxesOptions =
+      {
+        deadZone: 0.15,
+        forceMultiplier: 1,
+        simulateDigitalKeys: false,
+        digitalThreshold: 0.5,
+      };
 
     /** Handle collisions between characters that can push each other. */
     charactersManager: gdjs.PhysicsCharacter3DRuntimeBehavior.CharactersManager;
     private _physicsRotationEulerZYX = new THREE.Euler(0, 0, 0, 'ZYX');
     private _physicsRotationFallbackQuaternion = new THREE.Quaternion();
+    private _autoMovementInputFromKeyboard: boolean = false;
+    private _keyboardMovementInputBindings: PhysicsCharacter3DMovementInputBindings =
+      PhysicsCharacter3DRuntimeBehavior.getMergedMovementInputBindings();
+    private _keyboardMovementInputOptions: PhysicsCharacter3DKeyboardInputOptions =
+      PhysicsCharacter3DRuntimeBehavior.getMergedKeyboardInputOptions();
 
     constructor(
       instanceContainer: gdjs.RuntimeInstanceContainer,
@@ -174,12 +324,497 @@ namespace gdjs {
         behaviorData.canBePushed === undefined
           ? true
           : behaviorData.canBePushed;
+
+      if (behaviorData.movementTuning) {
+        this.setMovementTuning(behaviorData.movementTuning);
+      }
+      if (behaviorData.joltTuning) {
+        this._joltTuning = this.sanitizeJoltTuning(behaviorData.joltTuning);
+      }
     }
 
     private getVec3(x: float, y: float, z: float): Jolt.Vec3 {
       const tempVec3 = this._sharedData._tempVec3;
       tempVec3.Set(x, y, z);
       return tempVec3;
+    }
+
+    private static toFiniteOrFallback(value: unknown, fallback: float): float {
+      return Number.isFinite(value) ? (value as float) : fallback;
+    }
+
+    private static toNonNegativeOrFallback(
+      value: unknown,
+      fallback: float
+    ): float {
+      const safeValue = PhysicsCharacter3DRuntimeBehavior.toFiniteOrFallback(
+        value,
+        fallback
+      );
+      return Math.max(0, safeValue);
+    }
+
+    private static toClampedOrFallback(
+      value: unknown,
+      min: float,
+      max: float,
+      fallback: float
+    ): float {
+      const safeValue = PhysicsCharacter3DRuntimeBehavior.toFiniteOrFallback(
+        value,
+        fallback
+      );
+      return gdjs.evtTools.common.clamp(safeValue, min, max);
+    }
+
+    private static toIntegerOrFallback(
+      value: unknown,
+      fallback: integer,
+      minimum: integer = 0
+    ): integer {
+      if (!Number.isFinite(value)) {
+        return Math.max(minimum, fallback);
+      }
+      return Math.max(minimum, Math.round(value as float));
+    }
+
+    private static cloneInputBinding(
+      inputBinding: PhysicsCharacter3DInputBinding
+    ): PhysicsCharacter3DInputBinding {
+      if (Array.isArray(inputBinding)) {
+        return [...inputBinding];
+      }
+      return inputBinding;
+    }
+
+    private static getMergedMovementInputBindings(
+      inputBindings?: Partial<PhysicsCharacter3DMovementInputBindings>
+    ): PhysicsCharacter3DMovementInputBindings {
+      const defaultBindings =
+        PhysicsCharacter3DRuntimeBehavior.defaultKeyboardInputBindings;
+      return {
+        forward: PhysicsCharacter3DRuntimeBehavior.cloneInputBinding(
+          inputBindings && inputBindings.forward !== undefined
+            ? inputBindings.forward
+            : defaultBindings.forward
+        ),
+        backward: PhysicsCharacter3DRuntimeBehavior.cloneInputBinding(
+          inputBindings && inputBindings.backward !== undefined
+            ? inputBindings.backward
+            : defaultBindings.backward
+        ),
+        left: PhysicsCharacter3DRuntimeBehavior.cloneInputBinding(
+          inputBindings && inputBindings.left !== undefined
+            ? inputBindings.left
+            : defaultBindings.left
+        ),
+        right: PhysicsCharacter3DRuntimeBehavior.cloneInputBinding(
+          inputBindings && inputBindings.right !== undefined
+            ? inputBindings.right
+            : defaultBindings.right
+        ),
+        jump: PhysicsCharacter3DRuntimeBehavior.cloneInputBinding(
+          inputBindings && inputBindings.jump !== undefined
+            ? inputBindings.jump
+            : defaultBindings.jump
+        ),
+        sprint: PhysicsCharacter3DRuntimeBehavior.cloneInputBinding(
+          inputBindings && inputBindings.sprint !== undefined
+            ? inputBindings.sprint
+            : defaultBindings.sprint
+        ),
+      };
+    }
+
+    private static getMergedKeyboardInputOptions(
+      options?: Partial<PhysicsCharacter3DKeyboardInputOptions>
+    ): PhysicsCharacter3DKeyboardInputOptions {
+      const defaultOptions =
+        PhysicsCharacter3DRuntimeBehavior.defaultKeyboardInputOptions;
+      return {
+        useJustPressedForJump:
+          options && options.useJustPressedForJump !== undefined
+            ? !!options.useJustPressedForJump
+            : defaultOptions.useJustPressedForJump,
+        useJustPressedForSprint:
+          options && options.useJustPressedForSprint !== undefined
+            ? !!options.useJustPressedForSprint
+            : defaultOptions.useJustPressedForSprint,
+      };
+    }
+
+    private static getMergedMovementAxesOptions(
+      options?: Partial<PhysicsCharacter3DMovementAxesOptions>
+    ): PhysicsCharacter3DMovementAxesOptions {
+      const defaultOptions =
+        PhysicsCharacter3DRuntimeBehavior.defaultMovementAxesOptions;
+      return {
+        deadZone:
+          options && options.deadZone !== undefined
+            ? PhysicsCharacter3DRuntimeBehavior.toClampedOrFallback(
+                options.deadZone,
+                0,
+                1,
+                defaultOptions.deadZone
+              )
+            : defaultOptions.deadZone,
+        forceMultiplier:
+          options && options.forceMultiplier !== undefined
+            ? PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+                options.forceMultiplier,
+                defaultOptions.forceMultiplier
+              )
+            : defaultOptions.forceMultiplier,
+        simulateDigitalKeys:
+          options && options.simulateDigitalKeys !== undefined
+            ? !!options.simulateDigitalKeys
+            : defaultOptions.simulateDigitalKeys,
+        digitalThreshold:
+          options && options.digitalThreshold !== undefined
+            ? PhysicsCharacter3DRuntimeBehavior.toClampedOrFallback(
+                options.digitalThreshold,
+                0,
+                1,
+                defaultOptions.digitalThreshold
+              )
+            : defaultOptions.digitalThreshold,
+      };
+    }
+
+    private static resolveInputKeyCode(
+      inputKey: PhysicsCharacter3DInputKey
+    ): number | null {
+      if (typeof inputKey === 'number' && Number.isFinite(inputKey)) {
+        return Math.round(inputKey);
+      }
+      if (typeof inputKey !== 'string') {
+        return null;
+      }
+      const keyName = inputKey.trim();
+      if (!keyName) {
+        return null;
+      }
+
+      const numericCode = Number(keyName);
+      if (Number.isFinite(numericCode) && `${Math.round(numericCode)}` === keyName) {
+        return Math.round(numericCode);
+      }
+
+      const keysNameToCode = gdjs.evtTools.input.keysNameToCode as {
+        [key: string]: number;
+      };
+      if (Object.prototype.hasOwnProperty.call(keysNameToCode, keyName)) {
+        return keysNameToCode[keyName];
+      }
+
+      const lowerCaseKeyName = keyName.toLowerCase();
+      if (Object.prototype.hasOwnProperty.call(keysNameToCode, lowerCaseKeyName)) {
+        return keysNameToCode[lowerCaseKeyName];
+      }
+
+      for (const mappedKeyName in keysNameToCode) {
+        if (!Object.prototype.hasOwnProperty.call(keysNameToCode, mappedKeyName)) {
+          continue;
+        }
+        if (mappedKeyName.toLowerCase() === lowerCaseKeyName) {
+          return keysNameToCode[mappedKeyName];
+        }
+      }
+      return null;
+    }
+
+    private static isInputBindingPressed(
+      inputManager: gdjs.InputManager,
+      inputBinding: PhysicsCharacter3DInputBinding,
+      useJustPressed: boolean
+    ): boolean {
+      const bindingsArray = Array.isArray(inputBinding)
+        ? inputBinding
+        : [inputBinding];
+      for (const bindingEntry of bindingsArray) {
+        const keyCode =
+          PhysicsCharacter3DRuntimeBehavior.resolveInputKeyCode(bindingEntry);
+        if (keyCode === null) {
+          continue;
+        }
+        if (
+          useJustPressed
+            ? inputManager.wasKeyJustPressed(keyCode)
+            : inputManager.isKeyPressed(keyCode)
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    private static getStickFromAxes(
+      forwardAxis: float,
+      rightAxis: float
+    ): { angle: float; force: float } {
+      const safeForwardAxis = PhysicsCharacter3DRuntimeBehavior.toClampedOrFallback(
+        forwardAxis,
+        -1,
+        1,
+        0
+      );
+      const safeRightAxis = PhysicsCharacter3DRuntimeBehavior.toClampedOrFallback(
+        rightAxis,
+        -1,
+        1,
+        0
+      );
+      const normalizedForce = Math.min(
+        1,
+        Math.hypot(safeForwardAxis, safeRightAxis)
+      );
+      if (normalizedForce <= PhysicsCharacter3DRuntimeBehavior.epsilon) {
+        return { angle: 0, force: 0 };
+      }
+
+      return {
+        angle: gdjs.toDegrees(Math.atan2(-safeForwardAxis, safeRightAxis)),
+        force: normalizedForce,
+      };
+    }
+
+    private sanitizeJoltTuning(
+      tuning: Partial<PhysicsCharacter3DJoltTuning>
+    ): PhysicsCharacter3DJoltTuning {
+      const sanitizedTuning: PhysicsCharacter3DJoltTuning = {};
+
+      if (tuning.maxStrength !== undefined) {
+        sanitizedTuning.maxStrength =
+          PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+            tuning.maxStrength,
+            0
+          );
+      }
+      if (tuning.penetrationRecoverySpeed !== undefined) {
+        sanitizedTuning.penetrationRecoverySpeed =
+          PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+            tuning.penetrationRecoverySpeed,
+            0
+          );
+      }
+      if (tuning.maxHits !== undefined) {
+        sanitizedTuning.maxHits =
+          PhysicsCharacter3DRuntimeBehavior.toIntegerOrFallback(
+            tuning.maxHits,
+            1,
+            1
+          );
+      }
+      if (tuning.hitReductionCosMaxAngle !== undefined) {
+        sanitizedTuning.hitReductionCosMaxAngle =
+          PhysicsCharacter3DRuntimeBehavior.toClampedOrFallback(
+            tuning.hitReductionCosMaxAngle,
+            -1,
+            1,
+            1
+          );
+      }
+      if (tuning.shapeOffset !== undefined) {
+        sanitizedTuning.shapeOffset = {
+          x: PhysicsCharacter3DRuntimeBehavior.toFiniteOrFallback(
+            tuning.shapeOffset.x,
+            0
+          ),
+          y: PhysicsCharacter3DRuntimeBehavior.toFiniteOrFallback(
+            tuning.shapeOffset.y,
+            0
+          ),
+          z: PhysicsCharacter3DRuntimeBehavior.toFiniteOrFallback(
+            tuning.shapeOffset.z,
+            0
+          ),
+        };
+      }
+      if (tuning.walkStairsCosAngleForwardContact !== undefined) {
+        sanitizedTuning.walkStairsCosAngleForwardContact =
+          PhysicsCharacter3DRuntimeBehavior.toClampedOrFallback(
+            tuning.walkStairsCosAngleForwardContact,
+            -1,
+            1,
+            0
+          );
+      }
+      if (tuning.walkStairsStepDownExtra !== undefined) {
+        sanitizedTuning.walkStairsStepDownExtra =
+          PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+            tuning.walkStairsStepDownExtra,
+            0
+          );
+      }
+      if (tuning.stickToFloorStepDownExtra !== undefined) {
+        sanitizedTuning.stickToFloorStepDownExtra =
+          PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+            tuning.stickToFloorStepDownExtra,
+            0
+          );
+      }
+      if (tuning.predictiveContactDistance !== undefined) {
+        sanitizedTuning.predictiveContactDistance =
+          PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+            tuning.predictiveContactDistance,
+            0
+          );
+      }
+      if (tuning.maxCollisionIterations !== undefined) {
+        sanitizedTuning.maxCollisionIterations =
+          PhysicsCharacter3DRuntimeBehavior.toIntegerOrFallback(
+            tuning.maxCollisionIterations,
+            1,
+            1
+          );
+      }
+      if (tuning.maxConstraintIterations !== undefined) {
+        sanitizedTuning.maxConstraintIterations =
+          PhysicsCharacter3DRuntimeBehavior.toIntegerOrFallback(
+            tuning.maxConstraintIterations,
+            1,
+            1
+          );
+      }
+      if (tuning.minTimeRemaining !== undefined) {
+        sanitizedTuning.minTimeRemaining =
+          PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+            tuning.minTimeRemaining,
+            0
+          );
+      }
+      if (tuning.collisionTolerance !== undefined) {
+        sanitizedTuning.collisionTolerance =
+          PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+            tuning.collisionTolerance,
+            0
+          );
+      }
+      if (tuning.characterPadding !== undefined) {
+        sanitizedTuning.characterPadding =
+          PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+            tuning.characterPadding,
+            0
+          );
+      }
+      return sanitizedTuning;
+    }
+
+    private static cloneJoltTuning(
+      tuning: PhysicsCharacter3DJoltTuning
+    ): PhysicsCharacter3DJoltTuning {
+      return {
+        ...tuning,
+        shapeOffset: tuning.shapeOffset
+          ? { ...tuning.shapeOffset }
+          : undefined,
+      };
+    }
+
+    private shouldRecreateCharacterAfterJoltTuningUpdate(
+      newTuning: PhysicsCharacter3DJoltTuning
+    ): boolean {
+      return (
+        newTuning.predictiveContactDistance !== undefined ||
+        newTuning.maxCollisionIterations !== undefined ||
+        newTuning.maxConstraintIterations !== undefined ||
+        newTuning.minTimeRemaining !== undefined ||
+        newTuning.collisionTolerance !== undefined ||
+        newTuning.characterPadding !== undefined
+      );
+    }
+
+    applyJoltTuningToCharacterSettings(
+      settings: Jolt.CharacterVirtualSettings
+    ): void {
+      const worldInvScale = this._sharedData.worldInvScale;
+      const tuning = this._joltTuning;
+
+      if (tuning.maxStrength !== undefined) {
+        settings.mMaxStrength = tuning.maxStrength;
+      }
+      if (tuning.penetrationRecoverySpeed !== undefined) {
+        settings.mPenetrationRecoverySpeed = tuning.penetrationRecoverySpeed;
+      }
+      if (tuning.maxHits !== undefined) {
+        settings.mMaxNumHits = tuning.maxHits;
+      }
+      if (tuning.hitReductionCosMaxAngle !== undefined) {
+        settings.mHitReductionCosMaxAngle = tuning.hitReductionCosMaxAngle;
+      }
+      if (tuning.shapeOffset !== undefined) {
+        settings.mShapeOffset = this.getVec3(
+          tuning.shapeOffset.x * worldInvScale,
+          tuning.shapeOffset.y * worldInvScale,
+          tuning.shapeOffset.z * worldInvScale
+        );
+      }
+      if (tuning.predictiveContactDistance !== undefined) {
+        settings.mPredictiveContactDistance =
+          tuning.predictiveContactDistance * worldInvScale;
+      }
+      if (tuning.maxCollisionIterations !== undefined) {
+        settings.mMaxCollisionIterations = tuning.maxCollisionIterations;
+      }
+      if (tuning.maxConstraintIterations !== undefined) {
+        settings.mMaxConstraintIterations = tuning.maxConstraintIterations;
+      }
+      if (tuning.minTimeRemaining !== undefined) {
+        settings.mMinTimeRemaining = tuning.minTimeRemaining;
+      }
+      if (tuning.collisionTolerance !== undefined) {
+        settings.mCollisionTolerance = tuning.collisionTolerance * worldInvScale;
+      }
+      if (tuning.characterPadding !== undefined) {
+        settings.mCharacterPadding = tuning.characterPadding * worldInvScale;
+      }
+    }
+
+    applyJoltTuningToRuntimeCharacter(physics3D: Physics3D): void {
+      if (!this.character) {
+        return;
+      }
+      const tuning = this._joltTuning;
+      const worldInvScale = this._sharedData.worldInvScale;
+      const { extendedUpdateSettings } = physics3D;
+
+      if (tuning.maxStrength !== undefined) {
+        this.character.SetMaxStrength(tuning.maxStrength);
+      }
+      if (tuning.penetrationRecoverySpeed !== undefined) {
+        this.character.SetPenetrationRecoverySpeed(
+          tuning.penetrationRecoverySpeed
+        );
+      }
+      if (tuning.maxHits !== undefined) {
+        this.character.SetMaxNumHits(tuning.maxHits);
+      }
+      if (tuning.hitReductionCosMaxAngle !== undefined) {
+        this.character.SetHitReductionCosMaxAngle(tuning.hitReductionCosMaxAngle);
+      }
+      if (tuning.shapeOffset !== undefined) {
+        this.character.SetShapeOffset(
+          this.getVec3(
+            tuning.shapeOffset.x * worldInvScale,
+            tuning.shapeOffset.y * worldInvScale,
+            tuning.shapeOffset.z * worldInvScale
+          )
+        );
+      }
+
+      if (tuning.walkStairsCosAngleForwardContact !== undefined) {
+        extendedUpdateSettings.mWalkStairsCosAngleForwardContact =
+          tuning.walkStairsCosAngleForwardContact;
+      }
+      const walkStairsStepDownExtra =
+        tuning.walkStairsStepDownExtra !== undefined
+          ? tuning.walkStairsStepDownExtra
+          : 0;
+      extendedUpdateSettings.mWalkStairsStepDownExtra.Set(
+        0,
+        0,
+        -walkStairsStepDownExtra * worldInvScale
+      );
     }
 
     getPhysics3D(): Physics3D | null {
@@ -258,6 +893,7 @@ namespace gdjs {
 
       // Always begin in the direction of the object.
       this._forwardAngle = this.owner.getAngle();
+      this.applyJoltTuningToRuntimeCharacter(this._physics3D);
 
       return this._physics3D;
     }
@@ -301,6 +937,12 @@ namespace gdjs {
       if (behaviorData.stairHeightMax !== undefined) {
         this.setStairHeightMax(behaviorData.stairHeightMax);
       }
+      if (behaviorData.movementTuning !== undefined) {
+        this.setMovementTuning(behaviorData.movementTuning);
+      }
+      if (behaviorData.joltTuning !== undefined) {
+        this.setJoltTuning(behaviorData.joltTuning);
+      }
       return true;
     }
 
@@ -343,6 +985,35 @@ namespace gdjs {
           sf: this._stickForce,
           tscjs: this._timeSinceCurrentJumpStart,
           jkhsjs: this._jumpKeyHeldSinceJumpStart,
+          mvm: this._movementTuning.movementSpeedMultiplier,
+          spm: this._movementTuning.sprintMultiplier,
+          air: this._movementTuning.airControl,
+          gfr: this._movementTuning.groundFriction,
+          afr: this._movementTuning.airFriction,
+          vdm: this._movementTuning.verticalVelocityDamping,
+          spk: this._wasSprintKeyPressed,
+          jms: this._joltTuning.maxStrength,
+          jpr: this._joltTuning.penetrationRecoverySpeed,
+          jmh: this._joltTuning.maxHits,
+          jhc: this._joltTuning.hitReductionCosMaxAngle,
+          jsx: this._joltTuning.shapeOffset
+            ? this._joltTuning.shapeOffset.x
+            : undefined,
+          jsy: this._joltTuning.shapeOffset
+            ? this._joltTuning.shapeOffset.y
+            : undefined,
+          jsz: this._joltTuning.shapeOffset
+            ? this._joltTuning.shapeOffset.z
+            : undefined,
+          jwc: this._joltTuning.walkStairsCosAngleForwardContact,
+          jwd: this._joltTuning.walkStairsStepDownExtra,
+          jsd: this._joltTuning.stickToFloorStepDownExtra,
+          jpc: this._joltTuning.predictiveContactDistance,
+          jci: this._joltTuning.maxCollisionIterations,
+          jct: this._joltTuning.maxConstraintIterations,
+          jmt: this._joltTuning.minTimeRemaining,
+          jco: this._joltTuning.collisionTolerance,
+          jcp: this._joltTuning.characterPadding,
         },
       };
     }
@@ -383,6 +1054,110 @@ namespace gdjs {
       this._stickForce = behaviorSpecificProps.sf;
       this._timeSinceCurrentJumpStart = behaviorSpecificProps.tscjs;
       this._jumpKeyHeldSinceJumpStart = behaviorSpecificProps.jkhsjs;
+      this._hasPressedSprintKey = !!behaviorSpecificProps.spk;
+      this._wasSprintKeyPressed = !!behaviorSpecificProps.spk;
+
+      if (
+        behaviorSpecificProps.mvm !== undefined ||
+        behaviorSpecificProps.spm !== undefined ||
+        behaviorSpecificProps.air !== undefined ||
+        behaviorSpecificProps.gfr !== undefined ||
+        behaviorSpecificProps.afr !== undefined ||
+        behaviorSpecificProps.vdm !== undefined
+      ) {
+        this.setMovementTuning({
+          movementSpeedMultiplier:
+            behaviorSpecificProps.mvm !== undefined
+              ? behaviorSpecificProps.mvm
+              : this._movementTuning.movementSpeedMultiplier,
+          sprintMultiplier:
+            behaviorSpecificProps.spm !== undefined
+              ? behaviorSpecificProps.spm
+              : this._movementTuning.sprintMultiplier,
+          airControl:
+            behaviorSpecificProps.air !== undefined
+              ? behaviorSpecificProps.air
+              : this._movementTuning.airControl,
+          groundFriction:
+            behaviorSpecificProps.gfr !== undefined
+              ? behaviorSpecificProps.gfr
+              : this._movementTuning.groundFriction,
+          airFriction:
+            behaviorSpecificProps.afr !== undefined
+              ? behaviorSpecificProps.afr
+              : this._movementTuning.airFriction,
+          verticalVelocityDamping:
+            behaviorSpecificProps.vdm !== undefined
+              ? behaviorSpecificProps.vdm
+              : this._movementTuning.verticalVelocityDamping,
+        });
+      }
+
+      const joltTuningFromSync: PhysicsCharacter3DJoltTuning = {};
+      if (behaviorSpecificProps.jms !== undefined) {
+        joltTuningFromSync.maxStrength = behaviorSpecificProps.jms;
+      }
+      if (behaviorSpecificProps.jpr !== undefined) {
+        joltTuningFromSync.penetrationRecoverySpeed = behaviorSpecificProps.jpr;
+      }
+      if (behaviorSpecificProps.jmh !== undefined) {
+        joltTuningFromSync.maxHits = behaviorSpecificProps.jmh;
+      }
+      if (behaviorSpecificProps.jhc !== undefined) {
+        joltTuningFromSync.hitReductionCosMaxAngle = behaviorSpecificProps.jhc;
+      }
+      if (
+        behaviorSpecificProps.jsx !== undefined ||
+        behaviorSpecificProps.jsy !== undefined ||
+        behaviorSpecificProps.jsz !== undefined
+      ) {
+        joltTuningFromSync.shapeOffset = {
+          x:
+            behaviorSpecificProps.jsx !== undefined
+              ? behaviorSpecificProps.jsx
+              : 0,
+          y:
+            behaviorSpecificProps.jsy !== undefined
+              ? behaviorSpecificProps.jsy
+              : 0,
+          z:
+            behaviorSpecificProps.jsz !== undefined
+              ? behaviorSpecificProps.jsz
+              : 0,
+        };
+      }
+      if (behaviorSpecificProps.jwc !== undefined) {
+        joltTuningFromSync.walkStairsCosAngleForwardContact =
+          behaviorSpecificProps.jwc;
+      }
+      if (behaviorSpecificProps.jwd !== undefined) {
+        joltTuningFromSync.walkStairsStepDownExtra = behaviorSpecificProps.jwd;
+      }
+      if (behaviorSpecificProps.jsd !== undefined) {
+        joltTuningFromSync.stickToFloorStepDownExtra = behaviorSpecificProps.jsd;
+      }
+      if (behaviorSpecificProps.jpc !== undefined) {
+        joltTuningFromSync.predictiveContactDistance =
+          behaviorSpecificProps.jpc;
+      }
+      if (behaviorSpecificProps.jci !== undefined) {
+        joltTuningFromSync.maxCollisionIterations = behaviorSpecificProps.jci;
+      }
+      if (behaviorSpecificProps.jct !== undefined) {
+        joltTuningFromSync.maxConstraintIterations = behaviorSpecificProps.jct;
+      }
+      if (behaviorSpecificProps.jmt !== undefined) {
+        joltTuningFromSync.minTimeRemaining = behaviorSpecificProps.jmt;
+      }
+      if (behaviorSpecificProps.jco !== undefined) {
+        joltTuningFromSync.collisionTolerance = behaviorSpecificProps.jco;
+      }
+      if (behaviorSpecificProps.jcp !== undefined) {
+        joltTuningFromSync.characterPadding = behaviorSpecificProps.jcp;
+      }
+      if (Object.keys(joltTuningFromSync).length > 0) {
+        this.setJoltTuning(joltTuningFromSync);
+      }
 
       // Clear user inputs between frames only if requested.
       this._clearInputsBetweenFrames = !!options.clearInputs;
@@ -524,6 +1299,13 @@ namespace gdjs {
     }
 
     override doStepPreEvents(instanceContainer: gdjs.RuntimeInstanceContainer) {
+      if (this._autoMovementInputFromKeyboard) {
+        this.applyMovementInputFromKeyboard(
+          instanceContainer,
+          this._keyboardMovementInputBindings,
+          this._keyboardMovementInputOptions
+        );
+      }
       // Trigger createAndAddBody()
       this.getPhysics3D();
     }
@@ -536,6 +1318,9 @@ namespace gdjs {
     }
 
     doBeforePhysicsStep(timeDelta: float): void {
+      if (!Number.isFinite(timeDelta) || timeDelta <= 0) {
+        return;
+      }
       if (!this.activated()) {
         return;
       }
@@ -568,7 +1353,8 @@ namespace gdjs {
         this._forwardAngle = this.owner.getAngle();
       }
 
-      this.updateCharacterSpeedFromInputs(timeDelta);
+      const isGroundedBeforeMove = this.isOnFloor();
+      this.updateCharacterSpeedFromInputs(timeDelta, isGroundedBeforeMove);
 
       if (this._currentJumpSpeed > 0) {
         this._timeSinceCurrentJumpStart += timeDelta;
@@ -625,10 +1411,23 @@ namespace gdjs {
       let forwardSpeed = this._currentForwardSpeed;
       let sidewaysSpeed = this._currentSidewaysSpeed;
       if (sidewaysSpeed !== 0 && forwardSpeed !== 0) {
+        const speedMultiplier =
+          this._movementTuning.movementSpeedMultiplier *
+          (this._hasPressedSprintKey
+            ? this._movementTuning.sprintMultiplier
+            : 1);
+        const normalizedForwardSpeedMax = Math.max(
+          Math.abs(this._forwardSpeedMax * speedMultiplier),
+          PhysicsCharacter3DRuntimeBehavior.epsilon
+        );
+        const normalizedSidewaysSpeedMax = Math.max(
+          Math.abs(this._sidewaysSpeedMax * speedMultiplier),
+          PhysicsCharacter3DRuntimeBehavior.epsilon
+        );
         // It avoids the speed vector to go outside of an ellipse.
         const speedNormalizationInverseRatio = Math.hypot(
-          forwardSpeed / this._forwardSpeedMax,
-          sidewaysSpeed / this._sidewaysSpeedMax
+          forwardSpeed / normalizedForwardSpeedMax,
+          sidewaysSpeed / normalizedSidewaysSpeedMax
         );
         if (speedNormalizationInverseRatio > 1) {
           forwardSpeed /= speedNormalizationInverseRatio;
@@ -642,12 +1441,19 @@ namespace gdjs {
       const sinA = Math.sin(angle);
       const speedX = forwardSpeed * cosA - sidewaysSpeed * sinA;
       const speedY = forwardSpeed * sinA + sidewaysSpeed * cosA;
+      const verticalVelocityDamping = isGroundedBeforeMove
+        ? 1
+        : this._movementTuning.verticalVelocityDamping;
+      const verticalVelocity =
+        (this._currentJumpSpeed - this._currentFallSpeed) *
+        worldInvScale *
+        verticalVelocityDamping;
       this.character.SetLinearVelocity(
         this.getVec3(
           groundVelocityX + speedX,
           groundVelocityY + speedY,
           // The ground velocity is not added on Z as it's handled by mStickToFloorStepDown.
-          (this._currentJumpSpeed - this._currentFallSpeed) * worldInvScale
+          verticalVelocity
         )
       );
 
@@ -665,11 +1471,16 @@ namespace gdjs {
         );
         this._oldPhysicsPosition[0] = this.character.GetPosition().GetX();
         this._oldPhysicsPosition[1] = this.character.GetPosition().GetY();
+        const stickToFloorExtraDown =
+          (this._joltTuning.stickToFloorStepDownExtra !== undefined
+            ? this._joltTuning.stickToFloorStepDownExtra
+            : 0) * worldInvScale;
 
         // A safety margin is taken as if the ground normal is too steep, the
         // character will fall next step anyway.
         const stickToFloorStepDownZ = Math.max(
-          -0.01 +
+          -0.01 -
+            stickToFloorExtraDown +
             1.01 *
               Math.min(
                 // Follow the platform slope...
@@ -712,6 +1523,7 @@ namespace gdjs {
       this._wasRightKeyPressed = this._hasPressedRightKey;
       this._wasLeftKeyPressed = this._hasPressedLeftKey;
       this._wasJumpKeyPressed = this._hasPressedJumpKey;
+      this._wasSprintKeyPressed = this._hasPressedSprintKey;
       this._wasStickUsed = this._hasUsedStick;
 
       if (this._clearInputsBetweenFrames) {
@@ -720,6 +1532,7 @@ namespace gdjs {
         this._hasPressedRightKey = false;
         this._hasPressedLeftKey = false;
         this._hasPressedJumpKey = false;
+        this._hasPressedSprintKey = false;
         this._hasUsedStick = false;
       }
 
@@ -732,20 +1545,40 @@ namespace gdjs {
           PhysicsCharacter3DRuntimeBehavior.epsilon;
     }
 
-    private updateCharacterSpeedFromInputs(timeDelta: float) {
+    private updateCharacterSpeedFromInputs(
+      timeDelta: float,
+      isGrounded: boolean
+    ) {
+      if (!Number.isFinite(timeDelta) || timeDelta <= 0) {
+        return;
+      }
+      const speedMultiplier =
+        this._movementTuning.movementSpeedMultiplier *
+        (this._hasPressedSprintKey ? this._movementTuning.sprintMultiplier : 1);
+      const forwardSpeedMax = this._forwardSpeedMax * speedMultiplier;
+      const sidewaysSpeedMax = this._sidewaysSpeedMax * speedMultiplier;
+      const controlFactor = isGrounded ? 1 : this._movementTuning.airControl;
+      const frictionFactor = isGrounded
+        ? this._movementTuning.groundFriction
+        : this._movementTuning.airFriction;
+      const forwardAcceleration = this._forwardAcceleration * controlFactor;
+      const forwardDeceleration = this._forwardDeceleration * frictionFactor;
+      const sidewaysAcceleration = this._sidewaysAcceleration * controlFactor;
+      const sidewaysDeceleration = this._sidewaysDeceleration * frictionFactor;
+
       /** A stick with a half way force targets a lower speed than the maximum speed. */
       let targetedForwardSpeed = 0;
       // Change the speed according to the player's input.
       // TODO Give priority to the last key for faster reaction time.
       if (this._hasPressedBackwardKey !== this._hasPressedForwardKey) {
         if (this._hasPressedBackwardKey) {
-          targetedForwardSpeed = -this._forwardSpeedMax;
+          targetedForwardSpeed = -forwardSpeedMax;
         } else if (this._hasPressedForwardKey) {
-          targetedForwardSpeed = this._forwardSpeedMax;
+          targetedForwardSpeed = forwardSpeedMax;
         }
       } else if (this._hasUsedStick) {
         targetedForwardSpeed =
-          -this._forwardSpeedMax *
+          -forwardSpeedMax *
           this._stickForce *
           Math.sin(gdjs.toRad(this._stickAngle));
       }
@@ -753,22 +1586,22 @@ namespace gdjs {
         PhysicsCharacter3DRuntimeBehavior.getAcceleratedSpeed(
           this._currentForwardSpeed,
           targetedForwardSpeed,
-          this._forwardSpeedMax,
-          this._forwardAcceleration,
-          this._forwardDeceleration,
+          forwardSpeedMax,
+          forwardAcceleration,
+          forwardDeceleration,
           timeDelta
         );
       /** A stick with a half way force targets a lower speed than the maximum speed. */
       let targetedSidewaysSpeed = 0;
       if (this._hasPressedLeftKey !== this._hasPressedRightKey) {
         if (this._hasPressedLeftKey) {
-          targetedSidewaysSpeed = -this._sidewaysSpeedMax;
+          targetedSidewaysSpeed = -sidewaysSpeedMax;
         } else if (this._hasPressedRightKey) {
-          targetedSidewaysSpeed = this._sidewaysSpeedMax;
+          targetedSidewaysSpeed = sidewaysSpeedMax;
         }
       } else if (this._hasUsedStick) {
         targetedSidewaysSpeed =
-          this._sidewaysSpeedMax *
+          sidewaysSpeedMax *
           this._stickForce *
           Math.cos(gdjs.toRad(this._stickAngle));
       }
@@ -776,9 +1609,9 @@ namespace gdjs {
         PhysicsCharacter3DRuntimeBehavior.getAcceleratedSpeed(
           this._currentSidewaysSpeed,
           targetedSidewaysSpeed,
-          this._sidewaysSpeedMax,
-          this._sidewaysAcceleration,
-          this._sidewaysDeceleration,
+          sidewaysSpeedMax,
+          sidewaysAcceleration,
+          sidewaysDeceleration,
           timeDelta
         );
     }
@@ -791,54 +1624,52 @@ namespace gdjs {
       deceleration: float,
       timeDelta: float
     ): float {
-      let newSpeed = currentSpeed;
-      if (targetedSpeed < 0) {
-        if (currentSpeed <= targetedSpeed) {
-          // Reduce the speed to match the stick force.
-          newSpeed = Math.min(
-            targetedSpeed,
-            currentSpeed + deceleration * timeDelta
-          );
-        } else if (currentSpeed <= 0) {
-          // Accelerate
-          newSpeed -= Math.max(-speedMax, acceleration * timeDelta);
-        } else {
-          // Turn back at least as fast as it would stop.
-          newSpeed = Math.max(
-            targetedSpeed,
-            currentSpeed - Math.max(acceleration, deceleration) * timeDelta
-          );
-        }
-      } else if (targetedSpeed > 0) {
-        if (currentSpeed >= targetedSpeed) {
-          // Reduce the speed to match the stick force.
-          newSpeed = Math.max(
-            targetedSpeed,
-            currentSpeed - deceleration * timeDelta
-          );
-        } else if (currentSpeed >= 0) {
-          // Accelerate
-          newSpeed = Math.min(
-            speedMax,
-            currentSpeed + acceleration * timeDelta
-          );
-        } else {
-          // Turn back at least as fast as it would stop.
-          newSpeed = Math.min(
-            targetedSpeed,
-            currentSpeed + Math.max(acceleration, deceleration) * timeDelta
-          );
-        }
-      } else {
-        // Decelerate and stop.
-        if (currentSpeed < 0) {
-          newSpeed = Math.min(currentSpeed + deceleration * timeDelta, 0);
-        }
-        if (currentSpeed > 0) {
-          newSpeed = Math.max(currentSpeed - deceleration * timeDelta, 0);
-        }
+      const safeSpeedMax = Math.max(0, Math.abs(speedMax));
+      const safeAcceleration = Math.max(0, acceleration);
+      const safeDeceleration = Math.max(0, deceleration);
+      const safeTimeDelta = Math.max(0, timeDelta);
+
+      const clampedCurrentSpeed = gdjs.evtTools.common.clamp(
+        Number.isFinite(currentSpeed) ? currentSpeed : 0,
+        -safeSpeedMax,
+        safeSpeedMax
+      );
+      const clampedTargetedSpeed = gdjs.evtTools.common.clamp(
+        Number.isFinite(targetedSpeed) ? targetedSpeed : 0,
+        -safeSpeedMax,
+        safeSpeedMax
+      );
+
+      if (safeTimeDelta === 0 || clampedCurrentSpeed === clampedTargetedSpeed) {
+        return clampedCurrentSpeed;
       }
-      return newSpeed;
+
+      const shouldAccelerateMagnitude =
+        Math.abs(clampedTargetedSpeed) > Math.abs(clampedCurrentSpeed);
+      const baseRate = shouldAccelerateMagnitude
+        ? safeAcceleration
+        : safeDeceleration;
+      const turningBackRate = Math.max(safeAcceleration, safeDeceleration);
+
+      if (clampedTargetedSpeed > clampedCurrentSpeed) {
+        const rate =
+          clampedCurrentSpeed < 0 && clampedTargetedSpeed > 0
+            ? turningBackRate
+            : baseRate;
+        return Math.min(
+          clampedTargetedSpeed,
+          clampedCurrentSpeed + rate * safeTimeDelta
+        );
+      }
+
+      const rate =
+        clampedCurrentSpeed > 0 && clampedTargetedSpeed < 0
+          ? turningBackRate
+          : baseRate;
+      return Math.max(
+        clampedTargetedSpeed,
+        clampedCurrentSpeed - rate * safeTimeDelta
+      );
     }
 
     private updateGroundVelocity(
@@ -869,7 +1700,7 @@ namespace gdjs {
       if (stillKinematicPlatform) {
         const groundBehavior = groundBody.gdjsAssociatedBehavior;
         if (groundBehavior) {
-          const inverseTimeDelta = 1 / timeDelta;
+          const inverseTimeDelta = 1 / Math.max(timeDelta, 1 / 240);
           // The platform may be moved by position changes instead of velocity.
           // Emulate a velocity from the position changes.
           groundBody.SetLinearVelocity(
@@ -1209,6 +2040,295 @@ namespace gdjs {
       this._shouldBindObjectAndForwardAngle = shouldBindObjectAndForwardAngle;
     }
 
+    getPhysicsProfile(): PhysicsCharacter3DPhysicsProfile {
+      return {
+        slopeMaxAngle: this.getSlopeMaxAngle(),
+        stairHeightMax: this.getStairHeightMax(),
+        gravity: this.getGravity(),
+        maxFallingSpeed: this.getMaxFallingSpeed(),
+        forwardAcceleration: this.getForwardAcceleration(),
+        forwardDeceleration: this.getForwardDeceleration(),
+        forwardSpeedMax: this.getForwardSpeedMax(),
+        sidewaysAcceleration: this.getSidewaysAcceleration(),
+        sidewaysDeceleration: this.getSidewaysDeceleration(),
+        sidewaysSpeedMax: this.getSidewaysSpeedMax(),
+        jumpSpeed: this.getJumpSpeed(),
+        jumpSustainTime: this.getJumpSustainTime(),
+        bindObjectAndForwardAngle: this.shouldBindObjectAndForwardAngle(),
+        movementTuning: this.getMovementTuning(),
+        joltTuning: this.getJoltTuning(),
+      };
+    }
+
+    setPhysicsProfile(profile: Partial<PhysicsCharacter3DPhysicsProfile>): void {
+      if (profile.slopeMaxAngle !== undefined) {
+        this.setSlopeMaxAngle(profile.slopeMaxAngle);
+      }
+      if (profile.stairHeightMax !== undefined) {
+        this.setStairHeightMax(profile.stairHeightMax);
+      }
+      if (profile.gravity !== undefined) {
+        this.setGravity(profile.gravity);
+      }
+      if (profile.maxFallingSpeed !== undefined) {
+        this.setMaxFallingSpeed(profile.maxFallingSpeed);
+      }
+      if (profile.forwardAcceleration !== undefined) {
+        this.setForwardAcceleration(profile.forwardAcceleration);
+      }
+      if (profile.forwardDeceleration !== undefined) {
+        this.setForwardDeceleration(profile.forwardDeceleration);
+      }
+      if (profile.forwardSpeedMax !== undefined) {
+        this.setForwardSpeedMax(profile.forwardSpeedMax);
+      }
+      if (profile.sidewaysAcceleration !== undefined) {
+        this.setSidewaysAcceleration(profile.sidewaysAcceleration);
+      }
+      if (profile.sidewaysDeceleration !== undefined) {
+        this.setSidewaysDeceleration(profile.sidewaysDeceleration);
+      }
+      if (profile.sidewaysSpeedMax !== undefined) {
+        this.setSidewaysSpeedMax(profile.sidewaysSpeedMax);
+      }
+      if (profile.jumpSpeed !== undefined) {
+        this.setJumpSpeed(profile.jumpSpeed);
+      }
+      if (profile.jumpSustainTime !== undefined) {
+        this.setJumpSustainTime(profile.jumpSustainTime);
+      }
+      if (profile.bindObjectAndForwardAngle !== undefined) {
+        this.setShouldBindObjectAndForwardAngle(
+          profile.bindObjectAndForwardAngle
+        );
+      }
+      if (profile.movementTuning !== undefined) {
+        this.setMovementTuning(profile.movementTuning);
+      }
+      if (profile.joltTuning !== undefined) {
+        this.setJoltTuning(profile.joltTuning);
+      }
+    }
+
+    shouldClearMovementInputsBetweenFrames(): boolean {
+      return this._clearInputsBetweenFrames;
+    }
+
+    setClearMovementInputsBetweenFrames(clearInputs: boolean): void {
+      this._clearInputsBetweenFrames = !!clearInputs;
+    }
+
+    getMovementTuning(): PhysicsCharacter3DMovementTuning {
+      return { ...this._movementTuning };
+    }
+
+    setMovementTuning(
+      tuning: Partial<PhysicsCharacter3DMovementTuning>
+    ): void {
+      const fallback = this._movementTuning;
+      this._movementTuning = {
+        movementSpeedMultiplier:
+          tuning.movementSpeedMultiplier !== undefined
+            ? PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+                tuning.movementSpeedMultiplier,
+                fallback.movementSpeedMultiplier
+              )
+            : fallback.movementSpeedMultiplier,
+        sprintMultiplier:
+          tuning.sprintMultiplier !== undefined
+            ? PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+                tuning.sprintMultiplier,
+                fallback.sprintMultiplier
+              )
+            : fallback.sprintMultiplier,
+        airControl:
+          tuning.airControl !== undefined
+            ? PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+                tuning.airControl,
+                fallback.airControl
+              )
+            : fallback.airControl,
+        groundFriction:
+          tuning.groundFriction !== undefined
+            ? PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+                tuning.groundFriction,
+                fallback.groundFriction
+              )
+            : fallback.groundFriction,
+        airFriction:
+          tuning.airFriction !== undefined
+            ? PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+                tuning.airFriction,
+                fallback.airFriction
+              )
+            : fallback.airFriction,
+        verticalVelocityDamping:
+          tuning.verticalVelocityDamping !== undefined
+            ? PhysicsCharacter3DRuntimeBehavior.toNonNegativeOrFallback(
+                tuning.verticalVelocityDamping,
+                fallback.verticalVelocityDamping
+              )
+            : fallback.verticalVelocityDamping,
+      };
+    }
+
+    resetMovementTuning(): void {
+      this._movementTuning = {
+        movementSpeedMultiplier: 1,
+        sprintMultiplier: 1,
+        airControl: 1,
+        groundFriction: 1,
+        airFriction: 1,
+        verticalVelocityDamping: 1,
+      };
+    }
+
+    getJoltTuning(): PhysicsCharacter3DJoltTuning {
+      return PhysicsCharacter3DRuntimeBehavior.cloneJoltTuning(this._joltTuning);
+    }
+
+    setJoltTuning(tuning: Partial<PhysicsCharacter3DJoltTuning>): void {
+      const sanitizedTuning = this.sanitizeJoltTuning(tuning);
+      if (Object.keys(sanitizedTuning).length === 0) {
+        return;
+      }
+
+      const mergedTuning: PhysicsCharacter3DJoltTuning = {
+        ...this._joltTuning,
+        ...sanitizedTuning,
+        shapeOffset:
+          sanitizedTuning.shapeOffset !== undefined
+            ? { ...sanitizedTuning.shapeOffset }
+            : this._joltTuning.shapeOffset
+              ? { ...this._joltTuning.shapeOffset }
+              : undefined,
+      };
+      this._joltTuning = mergedTuning;
+
+      const physics3D = this.getPhysics3D();
+      if (!physics3D) {
+        return;
+      }
+
+      if (this.shouldRecreateCharacterAfterJoltTuningUpdate(sanitizedTuning)) {
+        physics3D.behavior.recreateBody();
+      }
+      this.applyJoltTuningToRuntimeCharacter(physics3D);
+    }
+
+    clearJoltTuning(): void {
+      this._joltTuning = {};
+      const physics3D = this.getPhysics3D();
+      if (!physics3D) {
+        return;
+      }
+      physics3D.behavior.recreateBody();
+      this.applyJoltTuningToRuntimeCharacter(physics3D);
+    }
+
+    getLinearVelocityInPhysicsUnits(): PhysicsCharacter3DVector3 {
+      if (!this.character) {
+        return { x: 0, y: 0, z: 0 };
+      }
+      const linearVelocity = this.character.GetLinearVelocity();
+      return {
+        x: linearVelocity.GetX(),
+        y: linearVelocity.GetY(),
+        z: linearVelocity.GetZ(),
+      };
+    }
+
+    getLinearVelocity(): PhysicsCharacter3DVector3 {
+      const linearVelocity = this.getLinearVelocityInPhysicsUnits();
+      const worldScale = this._sharedData.worldScale;
+      return {
+        x: linearVelocity.x * worldScale,
+        y: linearVelocity.y * worldScale,
+        z: linearVelocity.z * worldScale,
+      };
+    }
+
+    setLinearVelocity(
+      linearVelocity: PhysicsCharacter3DVector3,
+      inputInPhysicsUnits: boolean = false
+    ): void {
+      if (!this.character) {
+        return;
+      }
+
+      const safeVelocityX = PhysicsCharacter3DRuntimeBehavior.toFiniteOrFallback(
+        linearVelocity.x,
+        0
+      );
+      const safeVelocityY = PhysicsCharacter3DRuntimeBehavior.toFiniteOrFallback(
+        linearVelocity.y,
+        0
+      );
+      const safeVelocityZ = PhysicsCharacter3DRuntimeBehavior.toFiniteOrFallback(
+        linearVelocity.z,
+        0
+      );
+      const velocityScale = inputInPhysicsUnits
+        ? 1
+        : this._sharedData.worldInvScale;
+      this.character.SetLinearVelocity(
+        this.getVec3(
+          safeVelocityX * velocityScale,
+          safeVelocityY * velocityScale,
+          safeVelocityZ * velocityScale
+        )
+      );
+
+      const speedScale = inputInPhysicsUnits ? this._sharedData.worldScale : 1;
+      const sceneVelocityX = safeVelocityX * speedScale;
+      const sceneVelocityY = safeVelocityY * speedScale;
+      const sceneVelocityZ = safeVelocityZ * speedScale;
+      const forwardAngle = gdjs.toRad(this._forwardAngle);
+      const cosA = Math.cos(forwardAngle);
+      const sinA = Math.sin(forwardAngle);
+      this._currentForwardSpeed = sceneVelocityX * cosA + sceneVelocityY * sinA;
+      this._currentSidewaysSpeed = -sceneVelocityX * sinA + sceneVelocityY * cosA;
+      if (sceneVelocityZ >= 0) {
+        this._currentJumpSpeed = sceneVelocityZ;
+        this._currentFallSpeed = 0;
+      } else {
+        this._currentJumpSpeed = 0;
+        this._currentFallSpeed = -sceneVelocityZ;
+      }
+    }
+
+    addLinearVelocity(
+      deltaLinearVelocity: PhysicsCharacter3DVector3,
+      inputInPhysicsUnits: boolean = false
+    ): void {
+      if (!this.character) {
+        return;
+      }
+      const currentVelocity = inputInPhysicsUnits
+        ? this.getLinearVelocityInPhysicsUnits()
+        : this.getLinearVelocity();
+      const deltaX = PhysicsCharacter3DRuntimeBehavior.toFiniteOrFallback(
+        deltaLinearVelocity.x,
+        0
+      );
+      const deltaY = PhysicsCharacter3DRuntimeBehavior.toFiniteOrFallback(
+        deltaLinearVelocity.y,
+        0
+      );
+      const deltaZ = PhysicsCharacter3DRuntimeBehavior.toFiniteOrFallback(
+        deltaLinearVelocity.z,
+        0
+      );
+      this.setLinearVelocity(
+        {
+          x: currentVelocity.x + deltaX,
+          y: currentVelocity.y + deltaY,
+          z: currentVelocity.z + deltaZ,
+        },
+        inputInPhysicsUnits
+      );
+    }
+
     /**
      * Get the current speed of the Character.
      * @returns The current speed.
@@ -1312,6 +2432,306 @@ namespace gdjs {
       }
     }
 
+    getMovementInputState(): PhysicsCharacter3DMovementInputState {
+      const isStickUsed = this._hasUsedStick;
+      const stickAngle = isStickUsed ? this._stickAngle : 0;
+      const stickForce = isStickUsed ? this._stickForce : 0;
+      let stickForwardAxis = 0;
+      let stickRightAxis = 0;
+      if (isStickUsed && stickForce > PhysicsCharacter3DRuntimeBehavior.epsilon) {
+        const stickAngleInRadians = gdjs.toRad(stickAngle);
+        stickForwardAxis = -Math.sin(stickAngleInRadians) * stickForce;
+        stickRightAxis = Math.cos(stickAngleInRadians) * stickForce;
+      }
+
+      return {
+        forward: this._hasPressedForwardKey,
+        backward: this._hasPressedBackwardKey,
+        left: this._hasPressedLeftKey,
+        right: this._hasPressedRightKey,
+        jump: this._hasPressedJumpKey,
+        sprint: this._hasPressedSprintKey,
+        stickForwardAxis,
+        stickRightAxis,
+        stickAngle,
+        stickForce,
+      };
+    }
+
+    clearMovementInputState(clearStick: boolean = true): void {
+      this._hasPressedForwardKey = false;
+      this._hasPressedBackwardKey = false;
+      this._hasPressedLeftKey = false;
+      this._hasPressedRightKey = false;
+      this._hasPressedJumpKey = false;
+      this._hasPressedSprintKey = false;
+      if (clearStick) {
+        this._hasUsedStick = false;
+        this._stickAngle = 0;
+        this._stickForce = 0;
+      }
+    }
+
+    setMovementInputState(
+      inputState: Partial<PhysicsCharacter3DMovementInputState>,
+      resetOtherInputs: boolean = false
+    ): void {
+      if (resetOtherInputs) {
+        this.clearMovementInputState(true);
+      }
+
+      if (inputState.forward !== undefined) {
+        this._hasPressedForwardKey = !!inputState.forward;
+      }
+      if (inputState.backward !== undefined) {
+        this._hasPressedBackwardKey = !!inputState.backward;
+      }
+      if (inputState.left !== undefined) {
+        this._hasPressedLeftKey = !!inputState.left;
+      }
+      if (inputState.right !== undefined) {
+        this._hasPressedRightKey = !!inputState.right;
+      }
+      if (inputState.jump !== undefined) {
+        this._hasPressedJumpKey = !!inputState.jump;
+      }
+      if (inputState.sprint !== undefined) {
+        this._hasPressedSprintKey = !!inputState.sprint;
+      }
+
+      const hasStickAxesInput =
+        inputState.stickForwardAxis !== undefined ||
+        inputState.stickRightAxis !== undefined;
+      if (hasStickAxesInput) {
+        const currentInputState = this.getMovementInputState();
+        const stickFromAxes = PhysicsCharacter3DRuntimeBehavior.getStickFromAxes(
+          inputState.stickForwardAxis !== undefined
+            ? inputState.stickForwardAxis
+            : currentInputState.stickForwardAxis,
+          inputState.stickRightAxis !== undefined
+            ? inputState.stickRightAxis
+            : currentInputState.stickRightAxis
+        );
+        if (stickFromAxes.force <= PhysicsCharacter3DRuntimeBehavior.epsilon) {
+          this._hasUsedStick = false;
+          this._stickForce = 0;
+        } else {
+          this._hasUsedStick = true;
+          this._stickAngle = stickFromAxes.angle;
+          this._stickForce = stickFromAxes.force;
+        }
+        return;
+      }
+
+      if (
+        inputState.stickAngle !== undefined ||
+        inputState.stickForce !== undefined
+      ) {
+        const currentInputState = this.getMovementInputState();
+        const safeStickForce = PhysicsCharacter3DRuntimeBehavior.toClampedOrFallback(
+          inputState.stickForce,
+          0,
+          1,
+          currentInputState.stickForce
+        );
+        if (safeStickForce <= PhysicsCharacter3DRuntimeBehavior.epsilon) {
+          this._hasUsedStick = false;
+          this._stickForce = 0;
+        } else {
+          this._hasUsedStick = true;
+          this._stickAngle = PhysicsCharacter3DRuntimeBehavior.toFiniteOrFallback(
+            inputState.stickAngle,
+            currentInputState.stickAngle
+          );
+          this._stickForce = safeStickForce;
+        }
+      }
+    }
+
+    applyMovementInputAxes(
+      forwardAxis: float,
+      rightAxis: float,
+      options?: Partial<PhysicsCharacter3DMovementAxesOptions>
+    ): void {
+      const mergedOptions =
+        PhysicsCharacter3DRuntimeBehavior.getMergedMovementAxesOptions(options);
+      const safeForwardAxis = PhysicsCharacter3DRuntimeBehavior.toClampedOrFallback(
+        forwardAxis,
+        -1,
+        1,
+        0
+      );
+      const safeRightAxis = PhysicsCharacter3DRuntimeBehavior.toClampedOrFallback(
+        rightAxis,
+        -1,
+        1,
+        0
+      );
+      if (mergedOptions.simulateDigitalKeys) {
+        this._hasPressedForwardKey = safeForwardAxis >= mergedOptions.digitalThreshold;
+        this._hasPressedBackwardKey =
+          safeForwardAxis <= -mergedOptions.digitalThreshold;
+        this._hasPressedRightKey = safeRightAxis >= mergedOptions.digitalThreshold;
+        this._hasPressedLeftKey = safeRightAxis <= -mergedOptions.digitalThreshold;
+      }
+
+      const stickFromAxes = PhysicsCharacter3DRuntimeBehavior.getStickFromAxes(
+        safeForwardAxis,
+        safeRightAxis
+      );
+      const stickForce = Math.min(
+        1,
+        stickFromAxes.force * mergedOptions.forceMultiplier
+      );
+      if (stickForce <= mergedOptions.deadZone) {
+        this._hasUsedStick = false;
+        this._stickForce = 0;
+        return;
+      }
+      this._hasUsedStick = true;
+      this._stickAngle = stickFromAxes.angle;
+      this._stickForce = stickForce;
+    }
+
+    isAutoMovementInputFromKeyboardEnabled(): boolean {
+      return this._autoMovementInputFromKeyboard;
+    }
+
+    setAutoMovementInputFromKeyboard(enabled: boolean): void {
+      this._autoMovementInputFromKeyboard = !!enabled;
+    }
+
+    getKeyboardMovementInputBindings(): PhysicsCharacter3DMovementInputBindings {
+      return PhysicsCharacter3DRuntimeBehavior.getMergedMovementInputBindings(
+        this._keyboardMovementInputBindings
+      );
+    }
+
+    setKeyboardMovementInputBindings(
+      inputBindings: Partial<PhysicsCharacter3DMovementInputBindings>
+    ): void {
+      this._keyboardMovementInputBindings =
+        PhysicsCharacter3DRuntimeBehavior.getMergedMovementInputBindings({
+          ...this._keyboardMovementInputBindings,
+          ...inputBindings,
+        });
+    }
+
+    resetKeyboardMovementInputBindings(): void {
+      this._keyboardMovementInputBindings =
+        PhysicsCharacter3DRuntimeBehavior.getMergedMovementInputBindings();
+    }
+
+    getKeyboardMovementInputOptions(): PhysicsCharacter3DKeyboardInputOptions {
+      return { ...this._keyboardMovementInputOptions };
+    }
+
+    setKeyboardMovementInputOptions(
+      options: Partial<PhysicsCharacter3DKeyboardInputOptions>
+    ): void {
+      this._keyboardMovementInputOptions =
+        PhysicsCharacter3DRuntimeBehavior.getMergedKeyboardInputOptions({
+          ...this._keyboardMovementInputOptions,
+          ...options,
+        });
+    }
+
+    resetKeyboardMovementInputOptions(): void {
+      this._keyboardMovementInputOptions =
+        PhysicsCharacter3DRuntimeBehavior.getMergedKeyboardInputOptions();
+    }
+
+    sampleMovementInputFromKeyboard(
+      instanceContainer: gdjs.RuntimeInstanceContainer,
+      inputBindings?: Partial<PhysicsCharacter3DMovementInputBindings>,
+      options?: Partial<PhysicsCharacter3DKeyboardInputOptions>
+    ): PhysicsCharacter3DMovementInputState {
+      const mergedBindings =
+        PhysicsCharacter3DRuntimeBehavior.getMergedMovementInputBindings(
+          inputBindings
+        );
+      const mergedOptions =
+        PhysicsCharacter3DRuntimeBehavior.getMergedKeyboardInputOptions(options);
+      const inputManager = instanceContainer.getGame().getInputManager();
+
+      const forward = PhysicsCharacter3DRuntimeBehavior.isInputBindingPressed(
+        inputManager,
+        mergedBindings.forward,
+        false
+      );
+      const backward = PhysicsCharacter3DRuntimeBehavior.isInputBindingPressed(
+        inputManager,
+        mergedBindings.backward,
+        false
+      );
+      const left = PhysicsCharacter3DRuntimeBehavior.isInputBindingPressed(
+        inputManager,
+        mergedBindings.left,
+        false
+      );
+      const right = PhysicsCharacter3DRuntimeBehavior.isInputBindingPressed(
+        inputManager,
+        mergedBindings.right,
+        false
+      );
+      const jump = PhysicsCharacter3DRuntimeBehavior.isInputBindingPressed(
+        inputManager,
+        mergedBindings.jump,
+        mergedOptions.useJustPressedForJump
+      );
+      const sprint = PhysicsCharacter3DRuntimeBehavior.isInputBindingPressed(
+        inputManager,
+        mergedBindings.sprint,
+        mergedOptions.useJustPressedForSprint
+      );
+
+      const stickForwardAxis = (forward ? 1 : 0) - (backward ? 1 : 0);
+      const stickRightAxis = (right ? 1 : 0) - (left ? 1 : 0);
+      const stickFromAxes = PhysicsCharacter3DRuntimeBehavior.getStickFromAxes(
+        stickForwardAxis,
+        stickRightAxis
+      );
+
+      return {
+        forward,
+        backward,
+        left,
+        right,
+        jump,
+        sprint,
+        stickForwardAxis,
+        stickRightAxis,
+        stickAngle: stickFromAxes.angle,
+        stickForce: stickFromAxes.force,
+      };
+    }
+
+    applyMovementInputFromKeyboard(
+      instanceContainer: gdjs.RuntimeInstanceContainer,
+      inputBindings?: Partial<PhysicsCharacter3DMovementInputBindings>,
+      options?: Partial<PhysicsCharacter3DKeyboardInputOptions>
+    ): PhysicsCharacter3DMovementInputState {
+      const inputState = this.sampleMovementInputFromKeyboard(
+        instanceContainer,
+        inputBindings,
+        options
+      );
+      this.setMovementInputState(
+        {
+          forward: inputState.forward,
+          backward: inputState.backward,
+          left: inputState.left,
+          right: inputState.right,
+          jump: inputState.jump,
+          sprint: inputState.sprint,
+          stickForce: 0,
+          stickAngle: 0,
+        },
+        true
+      );
+      return inputState;
+    }
+
     simulateForwardKey(): void {
       this._hasPressedForwardKey = true;
     }
@@ -1350,6 +2770,18 @@ namespace gdjs {
 
     wasJumpKeyPressed(): boolean {
       return this._wasJumpKeyPressed;
+    }
+
+    simulateSprintKey(): void {
+      this._hasPressedSprintKey = true;
+    }
+
+    wasSprintKeyPressed(): boolean {
+      return this._wasSprintKeyPressed;
+    }
+
+    isSprinting(): boolean {
+      return this._hasPressedSprintKey || this._wasSprintKeyPressed;
     }
 
     simulateStick(stickAngle: float, stickForce: float) {
@@ -1514,6 +2946,42 @@ namespace gdjs {
     gdjs.PhysicsCharacter3DRuntimeBehavior
   );
 
+  gdjs.runtimeCapabilities.registerBehaviorCapability({
+    behaviorType: 'Physics3D::PhysicsCharacter3D',
+    methods: {
+      setPhysicsProfile: (behavior, profile) =>
+        (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).setPhysicsProfile(
+          profile
+        ),
+      getPhysicsProfile: (behavior) =>
+        (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).getPhysicsProfile(),
+      setMovementInputState: (behavior, inputState, resetOtherInputs) =>
+        (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).setMovementInputState(
+          inputState,
+          resetOtherInputs
+        ),
+      getMovementInputState: (behavior) =>
+        (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).getMovementInputState(),
+      applyMovementInputAxes: (behavior, forwardAxis, rightAxis, options) =>
+        (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).applyMovementInputAxes(
+          forwardAxis,
+          rightAxis,
+          options
+        ),
+      applyMovementInputFromKeyboard: (
+        behavior,
+        instanceContainer,
+        inputBindings,
+        options
+      ) =>
+        (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).applyMovementInputFromKeyboard(
+          instanceContainer,
+          inputBindings,
+          options
+        ),
+    },
+  });
+
   /** @category Behaviors > Physics 3D */
   export namespace PhysicsCharacter3DRuntimeBehavior {
     /**
@@ -1607,6 +3075,7 @@ namespace gdjs {
         settings.mShape = shape;
         settings.mUp = Jolt.Vec3.prototype.sAxisZ();
         settings.mBackFaceMode = Jolt.EBackFaceMode_CollideWithBackFaces;
+        this.characterBehavior.applyJoltTuningToCharacterSettings(settings);
         // TODO Should we make them configurable?
         //settings.mMaxStrength = maxStrength;
         //settings.mCharacterPadding = characterPadding;
@@ -1651,6 +3120,9 @@ namespace gdjs {
           Jolt.destroy(this.characterBehavior.character);
         }
         this.characterBehavior.character = character;
+        if (physics3D) {
+          this.characterBehavior.applyJoltTuningToRuntimeCharacter(physics3D);
+        }
 
         if (this.characterBehavior._canBePushed) {
           // CharacterVsCharacterCollisionSimple handle characters pushing each other.

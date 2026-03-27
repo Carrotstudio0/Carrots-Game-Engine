@@ -2719,6 +2719,58 @@ namespace gdjs {
     }
 
     /**
+     * Get every behavior attached to this object.
+     *
+     * The returned array is a shallow copy, so editing it will not mutate
+     * the object behavior list.
+     */
+    getAllBehaviors(): gdjs.RuntimeBehavior[] {
+      const behaviors: gdjs.RuntimeBehavior[] = [];
+      this._behaviorsTable.values(behaviors);
+      return behaviors;
+    }
+
+    /**
+     * Get every behavior name attached to this object.
+     */
+    getAllBehaviorNames(): string[] {
+      const behaviorNames: string[] = [];
+      this._behaviorsTable.keys(behaviorNames);
+      return behaviorNames;
+    }
+
+    /**
+     * Get the first behavior whose type matches `behaviorType`.
+     * @param behaviorType The full behavior type name (for example "Physics3DBehavior::PhysicsCharacter3D").
+     */
+    getBehaviorByType(behaviorType: string): gdjs.RuntimeBehavior | null {
+      const behaviors = this.getAllBehaviors();
+      for (let i = 0, len = behaviors.length; i < len; ++i) {
+        const behavior = behaviors[i];
+        if (behavior.type === behaviorType) {
+          return behavior;
+        }
+      }
+      return null;
+    }
+
+    /**
+     * Get all behaviors whose type matches `behaviorType`.
+     * @param behaviorType The full behavior type name.
+     */
+    getBehaviorsByType(behaviorType: string): gdjs.RuntimeBehavior[] {
+      const matchingBehaviors: gdjs.RuntimeBehavior[] = [];
+      const behaviors = this.getAllBehaviors();
+      for (let i = 0, len = behaviors.length; i < len; ++i) {
+        const behavior = behaviors[i];
+        if (behavior.type === behaviorType) {
+          matchingBehaviors.push(behavior);
+        }
+      }
+      return matchingBehaviors;
+    }
+
+    /**
      * Check if a behavior is used by the object.
      *
      * @param name {String} The behavior name.

@@ -50,6 +50,8 @@ namespace gdjs {
         return new (class implements gdjs.PixiFiltersTools.Filter {
           private _isEnabled = false;
           private _skyMesh: THREE.Mesh | null = null;
+          private _fallbackBackgroundColor: THREE.Color | null = null;
+          private _isBackgroundOverrideDirty = true;
           private readonly _backgroundOverrideOwnerId = `Scene3D::Sky:${nextScene3DSkyBackgroundOverrideId++}`;
 
           private _turbidity = 4.2;
@@ -194,6 +196,33 @@ namespace gdjs {
             if (!renderer || !renderer.getThreeCamera) return null;
 
             return renderer.getThreeCamera();
+          }
+
+          private _computeSkyRadius(cameraFar: number | undefined): number {
+            const safeFar =
+              typeof cameraFar === 'number' && Number.isFinite(cameraFar)
+                ? cameraFar
+                : 2000;
+            return Math.max(512, safeFar * 0.98);
+          }
+
+          private _getFallbackBackgroundColor(): THREE.Color {
+            if (!this._fallbackBackgroundColor) {
+              this._fallbackBackgroundColor = new THREE.Color();
+            }
+            const safeExposure = clamp(this._exposure, 0, 2);
+            const positiveSunIntensity = clamp(this._sunIntensity, 0, 8);
+            const brightness = clamp(
+              0.16 + safeExposure * 0.32 + positiveSunIntensity * 0.045,
+              0.08,
+              1
+            );
+            const sunBlendFactor = clamp(positiveSunIntensity * 0.05, 0, 0.35);
+            this._fallbackBackgroundColor
+              .setHex(this._skyTintColorHex)
+              .multiplyScalar(brightness)
+              .lerp(new THREE.Color(this._sunColorHex), sunBlendFactor);
+            return this._fallbackBackgroundColor;
           }
 
           private _createSkyMesh(): void {
@@ -452,7 +481,7 @@ namespace gdjs {
               `,
               side: THREE.BackSide,
               depthWrite: false,
-              depthTest: true,
+              depthTest: false,
               toneMapped: false,
               fog: false,
             });
@@ -474,7 +503,7 @@ namespace gdjs {
               if (!cameraWithFar.position) return;
 
               this._skyMesh.position.copy(cameraWithFar.position);
-              const farDistance = Math.max(100, (cameraWithFar.far || 2000) * 0.95);
+              const farDistance = this._computeSkyRadius(cameraWithFar.far);
               this._skyMesh.scale.setScalar(farDistance);
             };
             this._skyMesh.frustumCulled = false;
@@ -641,7 +670,8 @@ namespace gdjs {
             if (this._skyMesh.parent !== scene) {
               scene.add(this._skyMesh);
             }
-            this._applyBackgroundOverride(scene, null);
+            this._applyBackgroundOverride(scene, this._getFallbackBackgroundColor());
+            this._isBackgroundOverrideDirty = false;
 
             this._isEnabled = true;
             this.updatePreRender(target);
@@ -656,6 +686,7 @@ namespace gdjs {
 
             this._removeBackgroundOverride(scene);
             this._disposeSkyMesh();
+            this._isBackgroundOverrideDirty = true;
             this._isEnabled = false;
             return true;
           }
@@ -670,6 +701,13 @@ namespace gdjs {
             }
             if (this._skyMesh.parent !== scene) {
               scene.add(this._skyMesh);
+            }
+            if (this._isBackgroundOverrideDirty) {
+              this._applyBackgroundOverride(
+                scene,
+                this._getFallbackBackgroundColor()
+              );
+              this._isBackgroundOverrideDirty = false;
             }
 
             this._cloudTime += (target.getElapsedTime() / 1000) * this._cloudSpeed;
@@ -686,7 +724,7 @@ namespace gdjs {
             }
 
             this._skyMesh.position.copy(camera.position);
-            const farDistance = Math.max(100, (camera.far || 2000) * 0.95);
+            const farDistance = this._computeSkyRadius(camera.far);
             this._skyMesh.scale.setScalar(farDistance);
           }
 
@@ -718,6 +756,7 @@ namespace gdjs {
             } else if (parameterName === 'cloudSpeed') {
               this._cloudSpeed = clamp(value, 0, 10);
             }
+            this._isBackgroundOverrideDirty = true;
             this._updateUniforms();
           }
 
@@ -753,6 +792,7 @@ namespace gdjs {
               // Legacy aliases for compatibility with previous Sky effect versions.
               this._skyTintColorHex = gdjs.rgbOrHexStringToNumber(value);
             }
+            this._isBackgroundOverrideDirty = true;
             this._updateUniforms();
           }
 
@@ -771,6 +811,7 @@ namespace gdjs {
               // Legacy aliases for compatibility with previous Sky effect versions.
               this._skyTintColorHex = value;
             }
+            this._isBackgroundOverrideDirty = true;
             this._updateUniforms();
           }
 
@@ -842,6 +883,7 @@ namespace gdjs {
               this._cloudColorHex = syncData.cc;
             }
 
+            this._isBackgroundOverrideDirty = true;
             this._updateUniforms();
           }
         })();

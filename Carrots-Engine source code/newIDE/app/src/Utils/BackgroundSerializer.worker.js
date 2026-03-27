@@ -17,8 +17,25 @@ const buildVersionedAssetUrl = (
   const cacheBuster = isLikelyLocalhost
     ? `${versionWithHash}-${Date.now()}`
     : versionWithHash;
+  const query = `cache-buster=${cacheBuster}`;
+  const protocol = workerLocation && workerLocation.protocol;
+  const href = workerLocation && workerLocation.href;
+
+  // For Electron workers loaded from `file://`, absolute root paths fail.
+  // Resolve assets relative to the worker file location.
+  if (protocol === 'file:' && href) {
+    try {
+      return new URL(`${normalizedFileName}?${query}`, href).toString();
+    } catch (error) {
+      return `./${normalizedFileName}?${query}`;
+    }
+  }
+
   const origin = (workerLocation && workerLocation.origin) || '';
-  return `${origin}/${normalizedFileName}?cache-buster=${cacheBuster}`;
+  if (!origin || origin === 'null') {
+    return `./${normalizedFileName}?${query}`;
+  }
+  return `${origin}/${normalizedFileName}?${query}`;
 };
 
 const log = (message /*: string */) => {

@@ -357,6 +357,62 @@ namespace gdjs {
   };
 
   /**
+   * List every registered object type.
+   * @category Core Engine > Object
+   */
+  export const getRegisteredObjectTypes = function (): string[] {
+    const objectTypes: string[] = [];
+    gdjs.objectsTypes.keys(objectTypes);
+    return objectTypes.filter((objectTypeName) => objectTypeName !== '');
+  };
+
+  /**
+   * List every registered behavior type.
+   * @category Core Engine > Behavior
+   */
+  export const getRegisteredBehaviorTypes = function (): string[] {
+    const behaviorTypes: string[] = [];
+    gdjs.behaviorsTypes.keys(behaviorTypes);
+    return behaviorTypes.filter((behaviorTypeName) => behaviorTypeName !== '');
+  };
+
+  /**
+   * List extension names discovered from registered object/behavior types.
+   *
+   * For example, "Physics3DBehavior::PhysicsCharacter3D" contributes
+   * "Physics3DBehavior".
+   * @category Core Engine > Extensions
+   */
+  export const getRegisteredExtensionNames = function (): string[] {
+    const extensionNamesByKey: { [key: string]: true } = {};
+
+    const addTypePrefix = (typeName: string) => {
+      const separatorIndex = typeName.indexOf('::');
+      if (separatorIndex <= 0) {
+        return;
+      }
+      const extensionName = typeName.substring(0, separatorIndex);
+      if (extensionName) {
+        extensionNamesByKey[extensionName] = true;
+      }
+    };
+
+    const objectTypes = gdjs.getRegisteredObjectTypes();
+    for (const objectType of objectTypes) {
+      addTypePrefix(objectType);
+    }
+
+    const behaviorTypes = gdjs.getRegisteredBehaviorTypes();
+    for (const behaviorType of behaviorTypes) {
+      addTypePrefix(behaviorType);
+    }
+
+    const extensionNames = Object.keys(extensionNamesByKey);
+    extensionNames.sort();
+    return extensionNames;
+  };
+
+  /**
    * Register a function to be called when the first {@link gdjs.RuntimeScene} is loaded, after
    * resources loading is done. This can be considered as the "start of the game".
    *
