@@ -161,6 +161,429 @@ namespace gdjs {
     joltTuning: PhysicsCharacter3DJoltTuning;
   }
 
+  type PhysicsCharacter3DCharactersManagerLike = {
+    addCharacter(character: Jolt.CharacterVirtual): void;
+    removeCharacter(character: Jolt.CharacterVirtual): void;
+    destroy(): void;
+  };
+
+  class PhysicsCharacter3DCharactersManagerFallback
+    implements PhysicsCharacter3DCharactersManagerLike
+  {
+    private characterVsCharacterCollision: Jolt.CharacterVsCharacterCollisionSimple;
+
+    constructor(instanceContainer: gdjs.RuntimeInstanceContainer) {
+      this.characterVsCharacterCollision =
+        new Jolt.CharacterVsCharacterCollisionSimple();
+    }
+
+    static getManager(instanceContainer: gdjs.RuntimeInstanceContainer) {
+      const instanceContainerAsAny = instanceContainer as any;
+      if (!instanceContainerAsAny.charactersManager) {
+        instanceContainerAsAny.charactersManager =
+          new PhysicsCharacter3DCharactersManagerFallback(instanceContainer);
+      }
+      return instanceContainerAsAny.charactersManager as PhysicsCharacter3DCharactersManagerLike;
+    }
+
+    addCharacter(character: Jolt.CharacterVirtual) {
+      this.characterVsCharacterCollision.Add(character);
+      character.SetCharacterVsCharacterCollision(this.characterVsCharacterCollision);
+    }
+
+    removeCharacter(character: Jolt.CharacterVirtual) {
+      this.characterVsCharacterCollision.Remove(character);
+    }
+
+    destroy() {
+      Jolt.destroy(this.characterVsCharacterCollision);
+    }
+  }
+
+  class PhysicsCharacter3DCharacterCollisionCheckerFallback
+    implements gdjs.Physics3DRuntimeBehavior.CollisionChecker
+  {
+    characterBehavior: gdjs.PhysicsCharacter3DRuntimeBehavior;
+
+    private _currentContacts: Array<gdjs.Physics3DRuntimeBehavior> = [];
+    private _previousContacts: Array<gdjs.Physics3DRuntimeBehavior> = [];
+
+    constructor(characterBehavior: gdjs.PhysicsCharacter3DRuntimeBehavior) {
+      this.characterBehavior = characterBehavior;
+    }
+
+    clearContacts(): void {
+      this._previousContacts.length = 0;
+      this._currentContacts.length = 0;
+    }
+
+    updateContacts(): void {
+      const swap = this._previousContacts;
+      this._previousContacts = this._currentContacts;
+      this._currentContacts = swap;
+      this._currentContacts.length = 0;
+
+      const { character, _sharedData } = this.characterBehavior;
+      if (!character) {
+        return;
+      }
+      const contacts = character.GetActiveContacts();
+      for (let index = 0; index < contacts.size(); index++) {
+        const contact = contacts.at(index);
+
+        const bodyLockInterface = _sharedData.physicsSystem.GetBodyLockInterface();
+        const body = bodyLockInterface.TryGetBody(contact.mBodyB);
+        const behavior = body ? body.gdjsAssociatedBehavior : null;
+        if (behavior) {
+          this._currentContacts.push(behavior);
+        }
+      }
+    }
+
+    isColliding(object: gdjs.RuntimeObject): boolean {
+      const { character } = this.characterBehavior;
+      if (!character) {
+        return false;
+      }
+      return this._currentContacts.some((behavior) => behavior.owner === object);
+    }
+
+    hasCollisionStartedWith(object: gdjs.RuntimeObject): boolean {
+      const { character } = this.characterBehavior;
+      if (!character) {
+        return false;
+      }
+      return (
+        this._currentContacts.some((behavior) => behavior.owner === object) &&
+        !this._previousContacts.some((behavior) => behavior.owner === object)
+      );
+    }
+
+    hasCollisionStoppedWith(object: gdjs.RuntimeObject): boolean {
+      const { character } = this.characterBehavior;
+      if (!character) {
+        return false;
+      }
+      return (
+        !this._currentContacts.some((behavior) => behavior.owner === object) &&
+        this._previousContacts.some((behavior) => behavior.owner === object)
+      );
+    }
+  }
+
+  class PhysicsCharacter3DCharacterBodyUpdaterFallback
+    implements gdjs.Physics3DRuntimeBehavior.BodyUpdater
+  {
+    characterBehavior: gdjs.PhysicsCharacter3DRuntimeBehavior;
+
+    constructor(characterBehavior: gdjs.PhysicsCharacter3DRuntimeBehavior) {
+      this.characterBehavior = characterBehavior;
+    }
+
+    createAndAddBody(): Jolt.Body | null {
+      const physics3D = this.characterBehavior.getPhysics3D();
+      if (!physics3D) {
+        return null;
+      }
+      const { behavior } = physics3D;
+      const { _slopeMaxAngle, owner3D, _sharedData } = this.characterBehavior;
+
+      // Jolt doesn't support center of mass offset for characters.
+      const shape = behavior.createShapeWithoutMassCenterOffset();
+
+      const settings = new Jolt.CharacterVirtualSettings();
+      // Characters innerBody are Kinematic body, they don't allow other
+      // characters to push them.
+      // The layer 0 doesn't allow any collision as masking them always result to 0.
+      // This allows CharacterVsCharacterCollisionSimple to handle the collisions.
+      settings.mInnerBodyLayer = this.characterBehavior._canBePushed
+        ? 0
+        : behavior.getBodyLayer();
+      settings.mInnerBodyShape = shape;
+      settings.mMass = shape.GetMassProperties().get_mMass();
+      settings.mMaxSlopeAngle = gdjs.toRad(_slopeMaxAngle);
+      settings.mShape = shape;
+      settings.mUp = Jolt.Vec3.prototype.sAxisZ();
+      settings.mBackFaceMode = Jolt.EBackFaceMode_CollideWithBackFaces;
+      this.characterBehavior.applyJoltTuningToCharacterSettings(settings);
+      const depth = owner3D.getDepth() * _sharedData.worldInvScale;
+      const width = owner3D.getWidth() * _sharedData.worldInvScale;
+      const height = owner3D.getHeight() * _sharedData.worldInvScale;
+      // Only the bottom of the capsule can make a contact with the floor.
+      // It avoids characters from sticking to walls.
+      const capsuleHalfLength = depth / 2;
+      const capsuleRadius = Math.sqrt(width * height) / 2;
+      settings.mSupportingVolume = new Jolt.Plane(
+        Jolt.Vec3.prototype.sAxisZ(),
+        capsuleHalfLength -
+          capsuleRadius *
+            (1 - Math.cos(gdjs.toRad(Math.min(_slopeMaxAngle + 20, 70))))
+      );
+      const character = new Jolt.CharacterVirtual(
+        settings,
+        this.characterBehavior._getPhysicsPosition(_sharedData.getRVec3(0, 0, 0)),
+        behavior._getPhysicsRotation(_sharedData.getQuat(0, 0, 0, 1)),
+        _sharedData.physicsSystem
+      );
+      Jolt.destroy(settings);
+      const body = _sharedData.physicsSystem
+        .GetBodyLockInterface()
+        .TryGetBody(character.GetInnerBodyID());
+      if (this.characterBehavior.character) {
+        if (this.characterBehavior._canBePushed) {
+          this.characterBehavior.charactersManager.removeCharacter(
+            this.characterBehavior.character
+          );
+          // Character.mListener is a plain pointer, it's not destroyed with the character.
+          Jolt.destroy(this.characterBehavior.character.GetListener());
+        }
+        Jolt.destroy(this.characterBehavior.character);
+      }
+      this.characterBehavior.character = character;
+      if (physics3D) {
+        this.characterBehavior.applyJoltTuningToRuntimeCharacter(physics3D);
+      }
+
+      if (this.characterBehavior._canBePushed) {
+        // CharacterVsCharacterCollisionSimple handle characters pushing each other.
+        this.characterBehavior.charactersManager.addCharacter(character);
+
+        const characterContactListener = new Jolt.CharacterContactListenerJS();
+        characterContactListener.OnAdjustBodyVelocity = (
+          character,
+          body2Ptr,
+          linearVelocityPtr,
+          angularVelocity
+        ) => {};
+        characterContactListener.OnContactValidate = (
+          character,
+          bodyID2,
+          subShapeID2
+        ) => {
+          return true;
+        };
+        characterContactListener.OnCharacterContactValidate = (
+          characterPtr,
+          otherCharacterPtr,
+          subShapeID2
+        ) => {
+          // CharacterVsCharacterCollisionSimple doesn't handle collision layers.
+          // We have to filter characters ourself.
+          const character = Jolt.wrapPointer(
+            characterPtr,
+            Jolt.CharacterVirtual
+          );
+          const otherCharacter = Jolt.wrapPointer(
+            otherCharacterPtr,
+            Jolt.CharacterVirtual
+          );
+
+          const body = _sharedData.physicsSystem
+            .GetBodyLockInterface()
+            .TryGetBody(character.GetInnerBodyID());
+          const otherBody = _sharedData.physicsSystem
+            .GetBodyLockInterface()
+            .TryGetBody(otherCharacter.GetInnerBodyID());
+
+          if (!body || !otherBody) {
+            return true;
+          }
+          const physicsBehavior = body.gdjsAssociatedBehavior;
+          const otherPhysicsBehavior = otherBody.gdjsAssociatedBehavior;
+
+          if (!physicsBehavior || !otherPhysicsBehavior) {
+            return true;
+          }
+          return physicsBehavior.canCollideAgainst(otherPhysicsBehavior);
+        };
+        characterContactListener.OnContactAdded = (
+          character,
+          bodyID2,
+          subShapeID2,
+          contactPosition,
+          contactNormal,
+          settings
+        ) => {};
+        characterContactListener.OnContactPersisted = (
+          inCharacter,
+          inBodyID2,
+          inSubShapeID2,
+          inContactPosition,
+          inContactNormal,
+          ioSettings
+        ) => {};
+        characterContactListener.OnContactRemoved = (
+          inCharacter,
+          inBodyID2,
+          inSubShapeID2
+        ) => {};
+        characterContactListener.OnCharacterContactAdded = (
+          character,
+          otherCharacter,
+          subShapeID2,
+          contactPosition,
+          contactNormal,
+          settings
+        ) => {};
+        characterContactListener.OnCharacterContactPersisted = (
+          inCharacter,
+          inOtherCharacter,
+          inSubShapeID2,
+          inContactPosition,
+          inContactNormal,
+          ioSettings
+        ) => {};
+        characterContactListener.OnCharacterContactRemoved = (
+          inCharacter,
+          inOtherCharacter,
+          inSubShapeID2
+        ) => {};
+        characterContactListener.OnContactSolve = (
+          character,
+          bodyID2,
+          subShapeID2,
+          contactPosition,
+          contactNormal,
+          contactVelocity,
+          contactMaterial,
+          characterVelocity,
+          newCharacterVelocity
+        ) => {};
+        characterContactListener.OnCharacterContactSolve = (
+          character,
+          otherCharacter,
+          subShapeID2,
+          contactPosition,
+          contactNormal,
+          contactVelocity,
+          contactMaterial,
+          characterVelocityPtr,
+          newCharacterVelocityPtr
+        ) => {};
+        character.SetListener(characterContactListener);
+      }
+
+      return body;
+    }
+
+    updateObjectFromBody() {
+      const { character } = this.characterBehavior;
+      if (!character) {
+        return;
+      }
+      // We can't rely on the body position because of mCharacterPadding.
+      this.characterBehavior._moveObjectToPhysicsPosition(character.GetPosition());
+      this.characterBehavior._moveObjectToPhysicsRotation(character.GetRotation());
+    }
+
+    capturePhysicsSnapshot(
+      snapshotBuffer: Float32Array,
+      snapshotOffset: integer
+    ): boolean {
+      const physics3D = this.characterBehavior.getPhysics3D();
+      if (!physics3D) {
+        return false;
+      }
+      const { character } = this.characterBehavior;
+      if (!character) {
+        return false;
+      }
+
+      const characterPosition = character.GetPosition();
+      const characterRotation = character.GetRotation();
+      physics3D.behavior._writePhysicsSnapshotValues(
+        snapshotBuffer,
+        snapshotOffset,
+        characterPosition.GetX(),
+        characterPosition.GetY(),
+        characterPosition.GetZ(),
+        characterRotation.GetX(),
+        characterRotation.GetY(),
+        characterRotation.GetZ(),
+        characterRotation.GetW()
+      );
+      return true;
+    }
+
+    updateBodyFromObject() {
+      const physics3D = this.characterBehavior.getPhysics3D();
+      if (!physics3D) {
+        return;
+      }
+      const { behavior } = physics3D;
+      const { character, owner3D, _sharedData } = this.characterBehavior;
+      if (!character) {
+        return;
+      }
+      if (
+        behavior._objectOldX !== owner3D.getX() ||
+        behavior._objectOldY !== owner3D.getY() ||
+        behavior._objectOldZ !== owner3D.getZ()
+      ) {
+        this.updateCharacterPosition();
+      }
+      if (
+        behavior._objectOldRotationX !== owner3D.getRotationX() ||
+        behavior._objectOldRotationY !== owner3D.getRotationY() ||
+        behavior._objectOldRotationZ !== owner3D.getAngle()
+      ) {
+        character.SetRotation(
+          this.characterBehavior._getPhysicsRotation(_sharedData.getQuat(0, 0, 0, 1))
+        );
+      }
+    }
+
+    updateCharacterPosition() {
+      const { character, _sharedData } = this.characterBehavior;
+      if (!character) {
+        return;
+      }
+      character.SetPosition(
+        this.characterBehavior._getPhysicsPosition(_sharedData.getRVec3(0, 0, 0))
+      );
+    }
+
+    recreateShape() {
+      const physics3D = this.characterBehavior.getPhysics3D();
+      if (!physics3D) {
+        return;
+      }
+      const {
+        behavior,
+        broadPhaseLayerFilter,
+        objectLayerFilter,
+        bodyFilter,
+        shapeFilter,
+      } = physics3D;
+      const { character, _sharedData } = this.characterBehavior;
+      if (!character) {
+        return;
+      }
+      const shape = behavior.createShapeWithoutMassCenterOffset();
+      const isShapeValid = character.SetShape(
+        shape,
+        Number.MAX_VALUE,
+        broadPhaseLayerFilter,
+        objectLayerFilter,
+        bodyFilter,
+        shapeFilter,
+        _sharedData.jolt.GetTempAllocator()
+      );
+      if (!isShapeValid) {
+        return;
+      }
+      character.SetInnerBodyShape(shape);
+      character.SetMass(shape.GetMassProperties().get_mMass());
+
+      // shapeHalfDepth may have changed, update the character position accordingly.
+      this.updateCharacterPosition();
+    }
+
+    destroyBody() {
+      this.characterBehavior._destroyBody();
+    }
+  }
+
   /**
    * @category Behaviors > Physics 3D
    */
@@ -179,7 +602,7 @@ namespace gdjs {
      * before stepping the world.
      */
     _sharedData: gdjs.Physics3DSharedData;
-    collisionChecker: gdjs.PhysicsCharacter3DRuntimeBehavior.CharacterCollisionChecker;
+    collisionChecker: gdjs.Physics3DRuntimeBehavior.CollisionChecker;
     private _destroyedDuringFrameLogic: boolean = false;
 
     // TODO Should there be angle were the character can climb but will slip?
@@ -271,8 +694,45 @@ namespace gdjs {
         digitalThreshold: 0.5,
       };
 
+    private static getCharacterBodyUpdaterConstructor():
+      new (
+        characterBehavior: gdjs.PhysicsCharacter3DRuntimeBehavior
+      ) => gdjs.Physics3DRuntimeBehavior.BodyUpdater {
+      const namespaceBehavior = gdjs.PhysicsCharacter3DRuntimeBehavior as any;
+      if (typeof namespaceBehavior.CharacterBodyUpdater === 'function') {
+        return namespaceBehavior.CharacterBodyUpdater;
+      }
+      return PhysicsCharacter3DCharacterBodyUpdaterFallback;
+    }
+
+    private static getCharacterCollisionCheckerConstructor():
+      new (
+        characterBehavior: gdjs.PhysicsCharacter3DRuntimeBehavior
+      ) => gdjs.Physics3DRuntimeBehavior.CollisionChecker {
+      const namespaceBehavior = gdjs.PhysicsCharacter3DRuntimeBehavior as any;
+      if (typeof namespaceBehavior.CharacterCollisionChecker === 'function') {
+        return namespaceBehavior.CharacterCollisionChecker;
+      }
+      return PhysicsCharacter3DCharacterCollisionCheckerFallback;
+    }
+
+    private static getCharactersManager(
+      instanceContainer: gdjs.RuntimeInstanceContainer
+    ): PhysicsCharacter3DCharactersManagerLike {
+      const namespaceBehavior = gdjs.PhysicsCharacter3DRuntimeBehavior as any;
+      if (
+        namespaceBehavior.CharactersManager &&
+        typeof namespaceBehavior.CharactersManager.getManager === 'function'
+      ) {
+        return namespaceBehavior.CharactersManager.getManager(instanceContainer);
+      }
+      return PhysicsCharacter3DCharactersManagerFallback.getManager(
+        instanceContainer
+      );
+    }
+
     /** Handle collisions between characters that can push each other. */
-    charactersManager: gdjs.PhysicsCharacter3DRuntimeBehavior.CharactersManager;
+    charactersManager: PhysicsCharacter3DCharactersManagerLike;
     private _physicsRotationEulerZYX = new THREE.Euler(0, 0, 0, 'ZYX');
     private _physicsRotationFallbackQuaternion = new THREE.Quaternion();
     private _autoMovementInputFromKeyboard: boolean = false;
@@ -293,12 +753,11 @@ namespace gdjs {
         instanceContainer.getScene(),
         behaviorData.Physics3D
       );
-      this.collisionChecker =
-        new gdjs.PhysicsCharacter3DRuntimeBehavior.CharacterCollisionChecker(
-          this
-        );
+      const collisionCheckerConstructor =
+        PhysicsCharacter3DRuntimeBehavior.getCharacterCollisionCheckerConstructor();
+      this.collisionChecker = new collisionCheckerConstructor(this);
       this.charactersManager =
-        gdjs.PhysicsCharacter3DRuntimeBehavior.CharactersManager.getManager(
+        PhysicsCharacter3DRuntimeBehavior.getCharactersManager(
           instanceContainer
         );
 
@@ -886,8 +1345,9 @@ namespace gdjs {
         behavior.bodyUpdater.destroyBody();
       }
 
-      behavior.bodyUpdater =
-        new gdjs.PhysicsCharacter3DRuntimeBehavior.CharacterBodyUpdater(this);
+      const characterBodyUpdaterConstructor =
+        PhysicsCharacter3DRuntimeBehavior.getCharacterBodyUpdaterConstructor();
+      behavior.bodyUpdater = new characterBodyUpdaterConstructor(this);
       behavior.collisionChecker = this.collisionChecker;
       behavior.recreateBody(previousBodyData);
 
