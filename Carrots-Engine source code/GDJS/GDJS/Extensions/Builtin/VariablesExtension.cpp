@@ -19,6 +19,23 @@
 using namespace gd;
 
 namespace gdjs {
+namespace {
+bool IsTruthyBooleanParameter(const gd::String& value) {
+  const auto normalizedValue = value.LowerCase();
+  return normalizedValue == "true" || normalizedValue == "vrai" ||
+         normalizedValue == "yes" || normalizedValue == "oui";
+}
+
+bool IsFalsyBooleanParameter(const gd::String& value) {
+  const auto normalizedValue = value.LowerCase();
+  return normalizedValue == "false" || normalizedValue == "faux" ||
+         normalizedValue == "no" || normalizedValue == "non";
+}
+
+bool IsToggleBooleanOperator(const gd::String& value) {
+  return value.LowerCase() == "toggle";
+}
+}  // namespace
 
 VariablesExtension::VariablesExtension() {
   gd::BuiltinExtensionsImplementer::ImplementsVariablesExtension(*this);
@@ -101,8 +118,8 @@ VariablesExtension::VariablesExtension() {
             gd::ExpressionCodeGenerator::GenerateExpressionCode(
                 codeGenerator, context, "variableOrPropertyOrParameter",
                 instruction.GetParameters()[0].GetPlainString());
-        bool isOperandTrue =
-            instruction.GetParameters()[1].GetPlainString() == "True";
+        bool isOperandTrue = IsTruthyBooleanParameter(
+            instruction.GetParameters()[1].GetPlainString());
 
         const auto variablesContainersList =
             codeGenerator.GetProjectScopedContainers().GetVariablesContainersList();
@@ -176,7 +193,6 @@ VariablesExtension::VariablesExtension() {
                 context,
                 "variableOrProperty",
                 variableName);
-        gd::String op = instruction.GetParameters()[1].GetPlainString();
 
         const auto variablesContainersList =
             codeGenerator.GetProjectScopedContainers().GetVariablesContainersList();
@@ -184,25 +200,26 @@ VariablesExtension::VariablesExtension() {
             variablesContainersList.GetVariablesContainerFromVariableOrPropertyName(
                 variableName);
         const auto sourceType = variablesContainer.GetSourceType();
+        const auto boolOperator = instruction.GetParameters()[1].GetPlainString();
         if (sourceType == gd::VariablesContainer::SourceType::Properties) {
             const auto &propertiesContainersList =
                 codeGenerator.GetProjectScopedContainers().GetPropertiesContainersList();
             const auto &propertiesContainerAndProperty =
                 propertiesContainersList.Get(variableName);
 
-          if (op == "True") {
+          if (IsTruthyBooleanParameter(boolOperator)) {
             return codeGenerator.GeneratePropertySetterWithoutCasting(
                 propertiesContainerAndProperty.first,
                 propertiesContainerAndProperty.second,
                 "true");
           }
-          else if (op == "False") {
+          else if (IsFalsyBooleanParameter(boolOperator)) {
             return codeGenerator.GeneratePropertySetterWithoutCasting(
                 propertiesContainerAndProperty.first,
                 propertiesContainerAndProperty.second,
                 "false");
           }
-          else if (op == "Toggle") {
+          else if (IsToggleBooleanOperator(boolOperator)) {
             return codeGenerator.GeneratePropertySetterWithoutCasting(
                 propertiesContainerAndProperty.first,
                 propertiesContainerAndProperty.second,
@@ -211,11 +228,11 @@ VariablesExtension::VariablesExtension() {
           return gd::String("");
         }
 
-        if (op == "True")
+        if (IsTruthyBooleanParameter(boolOperator))
           return getterCode + ".setBoolean(true);\n";
-        else if (op == "False")
+        else if (IsFalsyBooleanParameter(boolOperator))
           return getterCode + ".setBoolean(false);\n";
-        else if (op == "Toggle")
+        else if (IsToggleBooleanOperator(boolOperator))
           return "gdjs.evtTools.variable.toggleVariableBoolean(" + getterCode + ");\n";
 
         return gd::String("");

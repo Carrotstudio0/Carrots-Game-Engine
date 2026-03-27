@@ -29,8 +29,26 @@ const publicAssetPrefix =
 const libGdCacheBuster = isDev
   ? `${VersionMetadata.versionWithHash}-${Date.now()}`
   : VersionMetadata.versionWithHash;
-const getVersionedPublicAssetPath = (fileName: string): string =>
-  `${publicAssetPrefix}/${fileName}?cache-buster=${libGdCacheBuster}`;
+const getVersionedPublicAssetPath = (fileName: string): string => {
+  const normalizedFileName = (fileName || '').replace(/^\/+/, '');
+  const query = `cache-buster=${libGdCacheBuster}`;
+  const isFileProtocol =
+    typeof window !== 'undefined' &&
+    window.location &&
+    window.location.protocol === 'file:';
+
+  // In Electron (`file://`), absolute "/libGD.js" resolves to disk root and fails.
+  // Keep paths relative to index.html so bundled runtime files are found.
+  if (isFileProtocol || !!electron) {
+    return `./${normalizedFileName}?${query}`;
+  }
+
+  if (publicAssetPrefix) {
+    return `${publicAssetPrefix}/${normalizedFileName}?${query}`;
+  }
+
+  return `/${normalizedFileName}?${query}`;
+};
 
 // No i18n in this file
 

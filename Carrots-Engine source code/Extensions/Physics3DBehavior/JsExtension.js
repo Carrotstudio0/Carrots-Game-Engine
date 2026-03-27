@@ -109,6 +109,162 @@ module.exports = {
           return true;
         }
 
+        if (propertyName === 'meshColliderMode') {
+          if (!behaviorContent.hasChild('meshColliderMode')) {
+            behaviorContent.addChild('meshColliderMode').setStringValue('Auto');
+          }
+          const normalizedValue = newValue.toLowerCase();
+          let meshColliderModeValue = '';
+          if (normalizedValue === 'auto') meshColliderModeValue = 'Auto';
+          else if (normalizedValue === 'triangles')
+            meshColliderModeValue = 'Triangles';
+          else if (normalizedValue === 'convexhull')
+            meshColliderModeValue = 'ConvexHull';
+          else if (normalizedValue === 'boundingbox')
+            meshColliderModeValue = 'BoundingBox';
+          else return false;
+
+          behaviorContent
+            .getChild('meshColliderMode')
+            .setStringValue(meshColliderModeValue);
+          return true;
+        }
+
+        if (propertyName === 'meshColliderMaxTrianglesPerSubMesh') {
+          if (!behaviorContent.hasChild('meshColliderMaxTrianglesPerSubMesh')) {
+            behaviorContent
+              .addChild('meshColliderMaxTrianglesPerSubMesh')
+              .setDoubleValue(0);
+          }
+          const newValueAsNumber = parseFloat(newValue);
+          if (newValueAsNumber !== newValueAsNumber) return false;
+          behaviorContent
+            .getChild('meshColliderMaxTrianglesPerSubMesh')
+            .setDoubleValue(newValueAsNumber);
+          return true;
+        }
+
+        if (propertyName === 'meshColliderMaxTrianglesPerLeaf') {
+          if (!behaviorContent.hasChild('meshColliderMaxTrianglesPerLeaf')) {
+            behaviorContent
+              .addChild('meshColliderMaxTrianglesPerLeaf')
+              .setDoubleValue(0);
+          }
+          const newValueAsNumber = parseFloat(newValue);
+          if (newValueAsNumber !== newValueAsNumber) return false;
+          behaviorContent
+            .getChild('meshColliderMaxTrianglesPerLeaf')
+            .setDoubleValue(newValueAsNumber);
+          return true;
+        }
+
+        if (propertyName === 'meshColliderActiveEdgeCosThresholdAngle') {
+          if (
+            !behaviorContent.hasChild('meshColliderActiveEdgeCosThresholdAngle')
+          ) {
+            behaviorContent
+              .addChild('meshColliderActiveEdgeCosThresholdAngle')
+              .setDoubleValue(2);
+          }
+          const newValueAsNumber = parseFloat(newValue);
+          if (newValueAsNumber !== newValueAsNumber) return false;
+          behaviorContent
+            .getChild('meshColliderActiveEdgeCosThresholdAngle')
+            .setDoubleValue(newValueAsNumber);
+          return true;
+        }
+
+        if (propertyName === 'meshColliderBuildQuality') {
+          if (!behaviorContent.hasChild('meshColliderBuildQuality')) {
+            behaviorContent
+              .addChild('meshColliderBuildQuality')
+              .setStringValue('Auto');
+          }
+          const normalizedValue = newValue.toLowerCase();
+          let meshColliderBuildQualityValue = '';
+          if (normalizedValue === 'auto') meshColliderBuildQualityValue = 'Auto';
+          else if (normalizedValue === 'favorruntimeperformance')
+            meshColliderBuildQualityValue = 'FavorRuntimePerformance';
+          else if (normalizedValue === 'favorbuildspeed')
+            meshColliderBuildQualityValue = 'FavorBuildSpeed';
+          else return false;
+
+          behaviorContent
+            .getChild('meshColliderBuildQuality')
+            .setStringValue(meshColliderBuildQualityValue);
+          return true;
+        }
+
+        if (propertyName === 'meshColliderMaxConvexHullPoints') {
+          if (!behaviorContent.hasChild('meshColliderMaxConvexHullPoints')) {
+            behaviorContent
+              .addChild('meshColliderMaxConvexHullPoints')
+              .setDoubleValue(1024);
+          }
+          const newValueAsNumber = parseFloat(newValue);
+          if (newValueAsNumber !== newValueAsNumber) return false;
+          behaviorContent
+            .getChild('meshColliderMaxConvexHullPoints')
+            .setDoubleValue(newValueAsNumber);
+          return true;
+        }
+
+        if (propertyName === 'meshColliderSamplesPerMesh') {
+          if (!behaviorContent.hasChild('meshColliderSamplesPerMesh')) {
+            behaviorContent
+              .addChild('meshColliderSamplesPerMesh')
+              .setDoubleValue(128);
+          }
+          const newValueAsNumber = parseFloat(newValue);
+          if (newValueAsNumber !== newValueAsNumber) return false;
+          behaviorContent
+            .getChild('meshColliderSamplesPerMesh')
+            .setDoubleValue(newValueAsNumber);
+          return true;
+        }
+
+        if (propertyName === 'meshColliderMaxConvexRadius') {
+          if (!behaviorContent.hasChild('meshColliderMaxConvexRadius')) {
+            behaviorContent
+              .addChild('meshColliderMaxConvexRadius')
+              .setDoubleValue(0);
+          }
+          const newValueAsNumber = parseFloat(newValue);
+          if (newValueAsNumber !== newValueAsNumber) return false;
+          behaviorContent
+            .getChild('meshColliderMaxConvexRadius')
+            .setDoubleValue(newValueAsNumber);
+          return true;
+        }
+
+        if (propertyName === 'meshColliderMaxErrorConvexRadius') {
+          if (!behaviorContent.hasChild('meshColliderMaxErrorConvexRadius')) {
+            behaviorContent
+              .addChild('meshColliderMaxErrorConvexRadius')
+              .setDoubleValue(0);
+          }
+          const newValueAsNumber = parseFloat(newValue);
+          if (newValueAsNumber !== newValueAsNumber) return false;
+          behaviorContent
+            .getChild('meshColliderMaxErrorConvexRadius')
+            .setDoubleValue(newValueAsNumber);
+          return true;
+        }
+
+        if (propertyName === 'meshColliderHullTolerance') {
+          if (!behaviorContent.hasChild('meshColliderHullTolerance')) {
+            behaviorContent
+              .addChild('meshColliderHullTolerance')
+              .setDoubleValue(0);
+          }
+          const newValueAsNumber = parseFloat(newValue);
+          if (newValueAsNumber !== newValueAsNumber) return false;
+          behaviorContent
+            .getChild('meshColliderHullTolerance')
+            .setDoubleValue(newValueAsNumber);
+          return true;
+        }
+
         if (propertyName === 'shapeOrientation') {
           const normalizedValue = newValue.toLowerCase();
           let orientationValue = '';
@@ -700,6 +856,188 @@ module.exports = {
           // Hidden as required to be changed in the full editor.
           .setHidden(true)
           .setHasImpactOnOtherProperties(true);
+        if (!behaviorContent.hasChild('meshColliderMode')) {
+          behaviorContent.addChild('meshColliderMode').setStringValue('Auto');
+        }
+        behaviorProperties
+          .getOrCreate('meshColliderMode')
+          .setValue(behaviorContent.getChild('meshColliderMode').getStringValue())
+          .setType('Choice')
+          .setLabel(_('Mesh collider mode'))
+          .setDescription(
+            _(
+              'Auto picks Triangles for static bodies and Convex Hull for dynamic/kinematic bodies.'
+            )
+          )
+          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden)
+          .setGroup(_('Physics body advanced settings'))
+          .setAdvanced(true)
+          .addChoice('Auto', _('Auto'))
+          .addChoice('Triangles', _('Triangles'))
+          .addChoice('ConvexHull', _('Convex Hull'))
+          .addChoice('BoundingBox', _('Bounding Box'));
+        if (!behaviorContent.hasChild('meshColliderBuildQuality')) {
+          behaviorContent
+            .addChild('meshColliderBuildQuality')
+            .setStringValue('Auto');
+        }
+        behaviorProperties
+          .getOrCreate('meshColliderBuildQuality')
+          .setValue(
+            behaviorContent.getChild('meshColliderBuildQuality').getStringValue()
+          )
+          .setType('Choice')
+          .setLabel(_('Mesh collider build quality'))
+          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden)
+          .setGroup(_('Physics body advanced settings'))
+          .setAdvanced(true)
+          .addChoice('Auto', _('Auto'))
+          .addChoice(
+            'FavorRuntimePerformance',
+            _('Favor runtime performance')
+          )
+          .addChoice('FavorBuildSpeed', _('Favor build speed'));
+        if (!behaviorContent.hasChild('meshColliderMaxTrianglesPerSubMesh')) {
+          behaviorContent
+            .addChild('meshColliderMaxTrianglesPerSubMesh')
+            .setDoubleValue(0);
+        }
+        behaviorProperties
+          .getOrCreate('meshColliderMaxTrianglesPerSubMesh')
+          .setValue(
+            behaviorContent
+              .getChild('meshColliderMaxTrianglesPerSubMesh')
+              .getDoubleValue()
+              .toString(10)
+          )
+          .setType('Number')
+          .setLabel(_('Mesh max triangles per sub-mesh (0 = no limit)'))
+          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden)
+          .setGroup(_('Physics body advanced settings'))
+          .setAdvanced(true);
+        if (!behaviorContent.hasChild('meshColliderMaxTrianglesPerLeaf')) {
+          behaviorContent
+            .addChild('meshColliderMaxTrianglesPerLeaf')
+            .setDoubleValue(0);
+        }
+        behaviorProperties
+          .getOrCreate('meshColliderMaxTrianglesPerLeaf')
+          .setValue(
+            behaviorContent
+              .getChild('meshColliderMaxTrianglesPerLeaf')
+              .getDoubleValue()
+              .toString(10)
+          )
+          .setType('Number')
+          .setLabel(_('Mesh max triangles per leaf (0 = Jolt default)'))
+          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden)
+          .setGroup(_('Physics body advanced settings'))
+          .setAdvanced(true);
+        if (!behaviorContent.hasChild('meshColliderActiveEdgeCosThresholdAngle')) {
+          behaviorContent
+            .addChild('meshColliderActiveEdgeCosThresholdAngle')
+            .setDoubleValue(2);
+        }
+        behaviorProperties
+          .getOrCreate('meshColliderActiveEdgeCosThresholdAngle')
+          .setValue(
+            behaviorContent
+              .getChild('meshColliderActiveEdgeCosThresholdAngle')
+              .getDoubleValue()
+              .toString(10)
+          )
+          .setType('Number')
+          .setLabel(_('Mesh active edge cos threshold (-1..1, other = default)'))
+          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden)
+          .setGroup(_('Physics body advanced settings'))
+          .setAdvanced(true);
+        if (!behaviorContent.hasChild('meshColliderMaxConvexHullPoints')) {
+          behaviorContent
+            .addChild('meshColliderMaxConvexHullPoints')
+            .setDoubleValue(1024);
+        }
+        behaviorProperties
+          .getOrCreate('meshColliderMaxConvexHullPoints')
+          .setValue(
+            behaviorContent
+              .getChild('meshColliderMaxConvexHullPoints')
+              .getDoubleValue()
+              .toString(10)
+          )
+          .setType('Number')
+          .setLabel(_('Convex hull max points'))
+          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden)
+          .setGroup(_('Physics body advanced settings'))
+          .setAdvanced(true);
+        if (!behaviorContent.hasChild('meshColliderSamplesPerMesh')) {
+          behaviorContent.addChild('meshColliderSamplesPerMesh').setDoubleValue(128);
+        }
+        behaviorProperties
+          .getOrCreate('meshColliderSamplesPerMesh')
+          .setValue(
+            behaviorContent
+              .getChild('meshColliderSamplesPerMesh')
+              .getDoubleValue()
+              .toString(10)
+          )
+          .setType('Number')
+          .setLabel(_('Convex hull samples per mesh'))
+          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden)
+          .setGroup(_('Physics body advanced settings'))
+          .setAdvanced(true);
+        if (!behaviorContent.hasChild('meshColliderMaxConvexRadius')) {
+          behaviorContent.addChild('meshColliderMaxConvexRadius').setDoubleValue(0);
+        }
+        behaviorProperties
+          .getOrCreate('meshColliderMaxConvexRadius')
+          .setValue(
+            behaviorContent
+              .getChild('meshColliderMaxConvexRadius')
+              .getDoubleValue()
+              .toString(10)
+          )
+          .setType('Number')
+          .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+          .setLabel(_('Convex hull max convex radius'))
+          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden)
+          .setGroup(_('Physics body advanced settings'))
+          .setAdvanced(true);
+        if (!behaviorContent.hasChild('meshColliderMaxErrorConvexRadius')) {
+          behaviorContent
+            .addChild('meshColliderMaxErrorConvexRadius')
+            .setDoubleValue(0);
+        }
+        behaviorProperties
+          .getOrCreate('meshColliderMaxErrorConvexRadius')
+          .setValue(
+            behaviorContent
+              .getChild('meshColliderMaxErrorConvexRadius')
+              .getDoubleValue()
+              .toString(10)
+          )
+          .setType('Number')
+          .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+          .setLabel(_('Convex hull max error convex radius'))
+          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden)
+          .setGroup(_('Physics body advanced settings'))
+          .setAdvanced(true);
+        if (!behaviorContent.hasChild('meshColliderHullTolerance')) {
+          behaviorContent.addChild('meshColliderHullTolerance').setDoubleValue(0);
+        }
+        behaviorProperties
+          .getOrCreate('meshColliderHullTolerance')
+          .setValue(
+            behaviorContent
+              .getChild('meshColliderHullTolerance')
+              .getDoubleValue()
+              .toString(10)
+          )
+          .setType('Number')
+          .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+          .setLabel(_('Convex hull tolerance'))
+          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden)
+          .setGroup(_('Physics body advanced settings'))
+          .setAdvanced(true);
         behaviorProperties
           .getOrCreate('shapeOrientation')
           .setValue(
@@ -1482,6 +1820,34 @@ module.exports = {
         behaviorContent.addChild('shape').setStringValue('Box');
         behaviorContent.addChild('showCollider').setBoolValue(false);
         behaviorContent.addChild('meshShapeResourceName').setStringValue('');
+        behaviorContent.addChild('meshColliderMode').setStringValue('Auto');
+        behaviorContent
+          .addChild('meshColliderMaxTrianglesPerSubMesh')
+          .setDoubleValue(0);
+        behaviorContent
+          .addChild('meshColliderMaxTrianglesPerLeaf')
+          .setDoubleValue(0);
+        behaviorContent
+          .addChild('meshColliderActiveEdgeCosThresholdAngle')
+          .setDoubleValue(2);
+        behaviorContent
+          .addChild('meshColliderBuildQuality')
+          .setStringValue('Auto');
+        behaviorContent
+          .addChild('meshColliderMaxConvexHullPoints')
+          .setDoubleValue(1024);
+        behaviorContent
+          .addChild('meshColliderSamplesPerMesh')
+          .setDoubleValue(128);
+        behaviorContent
+          .addChild('meshColliderMaxConvexRadius')
+          .setDoubleValue(0);
+        behaviorContent
+          .addChild('meshColliderMaxErrorConvexRadius')
+          .setDoubleValue(0);
+        behaviorContent
+          .addChild('meshColliderHullTolerance')
+          .setDoubleValue(0);
         behaviorContent.addChild('shapeOrientation').setStringValue('Z');
         behaviorContent.addChild('shapeDimensionA').setDoubleValue(0);
         behaviorContent.addChild('shapeDimensionB').setDoubleValue(0);

@@ -1589,6 +1589,16 @@ namespace gdjs {
     fixedRotation: boolean;
     _shape: string;
     private meshShapeResourceName: string;
+    private meshColliderMode: string;
+    private meshColliderMaxTrianglesPerSubMesh: integer;
+    private meshColliderMaxTrianglesPerLeaf: integer;
+    private meshColliderActiveEdgeCosThresholdAngle: float;
+    private meshColliderBuildQuality: string;
+    private meshColliderMaxConvexHullPoints: integer;
+    private meshColliderSamplesPerMesh: integer;
+    private meshColliderMaxConvexRadius: float;
+    private meshColliderMaxErrorConvexRadius: float;
+    private meshColliderHullTolerance: float;
     private showCollider: boolean;
     private shapeOrientation: string;
     private shapeDimensionA: float;
@@ -1736,6 +1746,44 @@ namespace gdjs {
       this.fixedRotation = behaviorData.fixedRotation;
       this._shape = behaviorData.shape;
       this.meshShapeResourceName = behaviorData.meshShapeResourceName || '';
+      this.meshColliderMode = this._normalizeMeshColliderMode(
+        behaviorData.meshColliderMode || 'Auto'
+      );
+      this.meshColliderMaxTrianglesPerSubMesh = Math.max(
+        0,
+        behaviorData.meshColliderMaxTrianglesPerSubMesh || 0
+      );
+      this.meshColliderMaxTrianglesPerLeaf = Math.max(
+        0,
+        behaviorData.meshColliderMaxTrianglesPerLeaf || 0
+      );
+      this.meshColliderActiveEdgeCosThresholdAngle =
+        behaviorData.meshColliderActiveEdgeCosThresholdAngle === undefined
+          ? 2
+          : behaviorData.meshColliderActiveEdgeCosThresholdAngle;
+      this.meshColliderBuildQuality = this._normalizeMeshColliderBuildQuality(
+        behaviorData.meshColliderBuildQuality || 'Auto'
+      );
+      this.meshColliderMaxConvexHullPoints = Math.max(
+        16,
+        behaviorData.meshColliderMaxConvexHullPoints || 1024
+      );
+      this.meshColliderSamplesPerMesh = Math.max(
+        8,
+        behaviorData.meshColliderSamplesPerMesh || 128
+      );
+      this.meshColliderMaxConvexRadius = Math.max(
+        0,
+        behaviorData.meshColliderMaxConvexRadius || 0
+      );
+      this.meshColliderMaxErrorConvexRadius = Math.max(
+        0,
+        behaviorData.meshColliderMaxErrorConvexRadius || 0
+      );
+      this.meshColliderHullTolerance = Math.max(
+        0,
+        behaviorData.meshColliderHullTolerance || 0
+      );
       this.showCollider = !!behaviorData.showCollider;
       this.shapeOrientation =
         behaviorData.shape === 'Box' ? 'Z' : behaviorData.shapeOrientation;
@@ -1998,6 +2046,50 @@ namespace gdjs {
       if (behaviorData.showCollider !== undefined) {
         this.setShowCollider(!!behaviorData.showCollider);
       }
+      if (behaviorData.meshColliderMode !== undefined) {
+        this.setMeshColliderMode(behaviorData.meshColliderMode);
+      }
+      if (behaviorData.meshColliderMaxTrianglesPerSubMesh !== undefined) {
+        this.setMeshColliderMaxTrianglesPerSubMesh(
+          behaviorData.meshColliderMaxTrianglesPerSubMesh
+        );
+      }
+      if (behaviorData.meshColliderMaxTrianglesPerLeaf !== undefined) {
+        this.setMeshColliderMaxTrianglesPerLeaf(
+          behaviorData.meshColliderMaxTrianglesPerLeaf
+        );
+      }
+      if (behaviorData.meshColliderActiveEdgeCosThresholdAngle !== undefined) {
+        this.setMeshColliderActiveEdgeCosThresholdAngle(
+          behaviorData.meshColliderActiveEdgeCosThresholdAngle
+        );
+      }
+      if (behaviorData.meshColliderBuildQuality !== undefined) {
+        this.setMeshColliderBuildQuality(behaviorData.meshColliderBuildQuality);
+      }
+      if (behaviorData.meshColliderMaxConvexHullPoints !== undefined) {
+        this.setMeshColliderMaxConvexHullPoints(
+          behaviorData.meshColliderMaxConvexHullPoints
+        );
+      }
+      if (behaviorData.meshColliderSamplesPerMesh !== undefined) {
+        this.setMeshColliderSamplesPerMesh(
+          behaviorData.meshColliderSamplesPerMesh
+        );
+      }
+      if (behaviorData.meshColliderMaxConvexRadius !== undefined) {
+        this.setMeshColliderMaxConvexRadius(
+          behaviorData.meshColliderMaxConvexRadius
+        );
+      }
+      if (behaviorData.meshColliderMaxErrorConvexRadius !== undefined) {
+        this.setMeshColliderMaxErrorConvexRadius(
+          behaviorData.meshColliderMaxErrorConvexRadius
+        );
+      }
+      if (behaviorData.meshColliderHullTolerance !== undefined) {
+        this.setMeshColliderHullTolerance(behaviorData.meshColliderHullTolerance);
+      }
 
       // TODO: make these properties updatable.
       if (behaviorData.layers !== undefined) {
@@ -2232,6 +2324,98 @@ namespace gdjs {
       return shape;
     }
 
+    private _normalizeMeshColliderMode(mode: string): string {
+      const normalizedMode = (mode || '').toLowerCase();
+      if (normalizedMode === 'triangles') {
+        return 'Triangles';
+      }
+      if (normalizedMode === 'convexhull') {
+        return 'ConvexHull';
+      }
+      if (normalizedMode === 'boundingbox') {
+        return 'BoundingBox';
+      }
+      return 'Auto';
+    }
+
+    private _normalizeMeshColliderBuildQuality(buildQuality: string): string {
+      const normalizedBuildQuality = (buildQuality || '').toLowerCase();
+      if (normalizedBuildQuality === 'favorbuildspeed') {
+        return 'FavorBuildSpeed';
+      }
+      if (normalizedBuildQuality === 'favorruntimeperformance') {
+        return 'FavorRuntimePerformance';
+      }
+      return 'Auto';
+    }
+
+    private _getEffectiveMeshColliderMode():
+      | 'Triangles'
+      | 'ConvexHull'
+      | 'BoundingBox' {
+      if (this.meshColliderMode === 'BoundingBox') {
+        return 'BoundingBox';
+      }
+      if (this.meshColliderMode === 'ConvexHull') {
+        return 'ConvexHull';
+      }
+      if (this.meshColliderMode === 'Triangles') {
+        return this.isStatic() ? 'Triangles' : 'ConvexHull';
+      }
+      return this.isStatic() ? 'Triangles' : 'ConvexHull';
+    }
+
+    private _getMeshBuildQuality():
+      | Jolt.MeshShapeSettings_EBuildQuality
+      | null {
+      if (this.meshColliderBuildQuality === 'FavorBuildSpeed') {
+        return Jolt.MeshShapeSettings_EBuildQuality_FavorBuildSpeed;
+      }
+      if (this.meshColliderBuildQuality === 'FavorRuntimePerformance') {
+        return Jolt.MeshShapeSettings_EBuildQuality_FavorRuntimePerformance;
+      }
+      return null;
+    }
+
+    private _applyMeshShapeSettings(
+      meshShapeSettings: Jolt.MeshShapeSettings
+    ): void {
+      if (this.meshColliderMaxTrianglesPerLeaf > 0) {
+        meshShapeSettings.mMaxTrianglesPerLeaf =
+          this.meshColliderMaxTrianglesPerLeaf;
+      }
+      if (
+        this.meshColliderActiveEdgeCosThresholdAngle >= -1 &&
+        this.meshColliderActiveEdgeCosThresholdAngle <= 1
+      ) {
+        meshShapeSettings.mActiveEdgeCosThresholdAngle =
+          this.meshColliderActiveEdgeCosThresholdAngle;
+      }
+      const buildQuality = this._getMeshBuildQuality();
+      if (buildQuality !== null) {
+        meshShapeSettings.mBuildQuality = buildQuality;
+      }
+      meshShapeSettings.Sanitize();
+    }
+
+    private _applyConvexHullShapeSettings(
+      convexHullShapeSettings: Jolt.ConvexHullShapeSettings
+    ): void {
+      const worldInvScale = this._sharedData.worldInvScale;
+      if (this.meshColliderMaxConvexRadius > 0) {
+        convexHullShapeSettings.mMaxConvexRadius =
+          this.meshColliderMaxConvexRadius * worldInvScale;
+      }
+      if (this.meshColliderMaxErrorConvexRadius > 0) {
+        convexHullShapeSettings.mMaxErrorConvexRadius =
+          this.meshColliderMaxErrorConvexRadius * worldInvScale;
+      }
+      if (this.meshColliderHullTolerance > 0) {
+        convexHullShapeSettings.mHullTolerance =
+          this.meshColliderHullTolerance * worldInvScale;
+      }
+    }
+
     private _createNewShapeSettingsWithoutMassCenterOffset(): Jolt.RotatedTranslatedShapeSettings {
       let width = this.owner3D.getWidth() * this._sharedData.worldInvScale;
       let height = this.owner3D.getHeight() * this._sharedData.worldInvScale;
@@ -2257,7 +2441,11 @@ namespace gdjs {
       let shapeSettings: Jolt.ShapeSettings | null = null;
       /** This is fine only because no other Quat is used locally. */
       let quat: Jolt.Quat = this.getQuat(0, 0, 0, 1);
-      if (this._shape === 'Mesh') {
+      if (
+        this._shape === 'Mesh' &&
+        this._getEffectiveMeshColliderMode() !== 'BoundingBox'
+      ) {
+        const meshColliderMode = this._getEffectiveMeshColliderMode();
         const meshWidth = width > 0 ? width : onePixel;
         const meshHeight = height > 0 ? height : onePixel;
         const meshDepth = depth > 0 ? depth : onePixel;
@@ -2265,13 +2453,16 @@ namespace gdjs {
         this._shapeHalfHeight = meshHeight / 2;
         this._shapeHalfDepth = meshDepth / 2;
 
-        if (this.bodyType === 'Static') {
+        if (meshColliderMode === 'Triangles') {
           const meshShapeSettings: Array<Jolt.MeshShapeSettings> =
             gdjs.staticArray(
               Physics3DRuntimeBehavior.prototype
                 ._createNewShapeSettingsWithoutMassCenterOffset
             );
           this.getMeshShapeSettings(width, height, depth, meshShapeSettings);
+          for (let index = 0; index < meshShapeSettings.length; index++) {
+            this._applyMeshShapeSettings(meshShapeSettings[index]);
+          }
           if (meshShapeSettings.length === 1) {
             shapeSettings = meshShapeSettings[0];
           } else if (meshShapeSettings.length > 1) {
@@ -2287,10 +2478,11 @@ namespace gdjs {
             shapeSettings = compoundShapeSettings;
           }
           meshShapeSettings.length = 0;
-        } else {
+        } else if (meshColliderMode === 'ConvexHull') {
           const convexHullShapeSettings =
             this._createMeshConvexHullShapeSettings(width, height, depth);
           if (convexHullShapeSettings) {
+            this._applyConvexHullShapeSettings(convexHullShapeSettings);
             convexHullShapeSettings.mDensity = this.density;
             shapeSettings = convexHullShapeSettings;
           }
@@ -2506,6 +2698,10 @@ namespace gdjs {
         object3d.getWorldScale(vector3);
         const shouldTrianglesBeFlipped = vector3.x * vector3.y * vector3.z < 0;
         const index = mesh.geometry.getIndex();
+        const maxTrianglesPerSubMesh =
+          this.meshColliderMaxTrianglesPerSubMesh > 0
+            ? this.meshColliderMaxTrianglesPerSubMesh
+            : Number.MAX_SAFE_INTEGER;
         if (index) {
           vertexList.clear();
           for (let i = 0; i < positionAttribute.count; i++) {
@@ -2518,7 +2714,17 @@ namespace gdjs {
             vertexList.push_back(float3);
           }
           indexedTriangleList.clear();
-          for (let i = 0; i < index.count; i += 3) {
+          const indexedTriangleCount = Math.floor(index.count / 3);
+          const indexedTriangleStep = Math.max(
+            1,
+            Math.ceil(indexedTriangleCount / maxTrianglesPerSubMesh)
+          );
+          for (
+            let triangleIndex = 0;
+            triangleIndex < indexedTriangleCount;
+            triangleIndex += indexedTriangleStep
+          ) {
+            const i = triangleIndex * 3;
             indexedTriangle.set_mIdx(
               0,
               index.getX(shouldTrianglesBeFlipped ? i + 1 : i)
@@ -2542,7 +2748,17 @@ namespace gdjs {
           );
         } else {
           triangleList.clear();
-          for (let i = 0; i < positionAttribute.count; i += 3) {
+          const nonIndexedTriangleCount = Math.floor(positionAttribute.count / 3);
+          const nonIndexedTriangleStep = Math.max(
+            1,
+            Math.ceil(nonIndexedTriangleCount / maxTrianglesPerSubMesh)
+          );
+          for (
+            let triangleIndex = 0;
+            triangleIndex < nonIndexedTriangleCount;
+            triangleIndex += nonIndexedTriangleStep
+          ) {
+            const i = triangleIndex * 3;
             vector3.fromBufferAttribute(positionAttribute, i);
             object3d.localToWorld(vector3);
             a.Set(vector3.x, vector3.y, vector3.z);
@@ -2603,7 +2819,7 @@ namespace gdjs {
       const points = convexHullShapeSettings.mPoints;
       const vector3 = new THREE.Vector3();
       const point = new Jolt.Vec3();
-      const maxPoints = 1024;
+      const maxPoints = Math.max(16, this.meshColliderMaxConvexHullPoints);
 
       let pushedPoints = 0;
       sourceObject.traverse((object3d) => {
@@ -2619,7 +2835,10 @@ namespace gdjs {
           return;
         }
 
-        const step = Math.max(1, Math.floor(positionAttribute.count / 128));
+        const step = Math.max(
+          1,
+          Math.floor(positionAttribute.count / this.meshColliderSamplesPerMesh)
+        );
         for (
           let i = 0;
           i < positionAttribute.count && pushedPoints < maxPoints;
@@ -2638,6 +2857,7 @@ namespace gdjs {
         Jolt.destroy(convexHullShapeSettings);
         return null;
       }
+      this._applyConvexHullShapeSettings(convexHullShapeSettings);
       return convexHullShapeSettings;
     }
 
@@ -2671,6 +2891,161 @@ namespace gdjs {
         this.shapeScale = shapeScale;
         this._needToRecreateShape = true;
       }
+    }
+
+    getMeshColliderMode(): string {
+      return this.meshColliderMode;
+    }
+
+    setMeshColliderMode(meshColliderMode: string): void {
+      const normalizedMode = this._normalizeMeshColliderMode(meshColliderMode);
+      if (this.meshColliderMode === normalizedMode) {
+        return;
+      }
+      this.meshColliderMode = normalizedMode;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderMaxTrianglesPerSubMesh(): integer {
+      return this.meshColliderMaxTrianglesPerSubMesh;
+    }
+
+    setMeshColliderMaxTrianglesPerSubMesh(maxTriangles: integer): void {
+      const normalizedMaxTriangles = Number.isFinite(maxTriangles)
+        ? Math.max(0, Math.round(maxTriangles))
+        : 0;
+      if (this.meshColliderMaxTrianglesPerSubMesh === normalizedMaxTriangles) {
+        return;
+      }
+      this.meshColliderMaxTrianglesPerSubMesh = normalizedMaxTriangles;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderMaxTrianglesPerLeaf(): integer {
+      return this.meshColliderMaxTrianglesPerLeaf;
+    }
+
+    setMeshColliderMaxTrianglesPerLeaf(maxTrianglesPerLeaf: integer): void {
+      const normalizedMaxTrianglesPerLeaf = Number.isFinite(maxTrianglesPerLeaf)
+        ? Math.max(0, Math.round(maxTrianglesPerLeaf))
+        : 0;
+      if (this.meshColliderMaxTrianglesPerLeaf === normalizedMaxTrianglesPerLeaf) {
+        return;
+      }
+      this.meshColliderMaxTrianglesPerLeaf = normalizedMaxTrianglesPerLeaf;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderActiveEdgeCosThresholdAngle(): float {
+      return this.meshColliderActiveEdgeCosThresholdAngle;
+    }
+
+    setMeshColliderActiveEdgeCosThresholdAngle(cosThresholdAngle: float): void {
+      // Values outside [-1, 1] disable this override and keep Jolt defaults.
+      const normalizedCosThresholdAngle = Number.isFinite(cosThresholdAngle)
+        ? cosThresholdAngle
+        : 2;
+      if (
+        this.meshColliderActiveEdgeCosThresholdAngle === normalizedCosThresholdAngle
+      ) {
+        return;
+      }
+      this.meshColliderActiveEdgeCosThresholdAngle = normalizedCosThresholdAngle;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderBuildQuality(): string {
+      return this.meshColliderBuildQuality;
+    }
+
+    setMeshColliderBuildQuality(meshColliderBuildQuality: string): void {
+      const normalizedBuildQuality = this._normalizeMeshColliderBuildQuality(
+        meshColliderBuildQuality
+      );
+      if (this.meshColliderBuildQuality === normalizedBuildQuality) {
+        return;
+      }
+      this.meshColliderBuildQuality = normalizedBuildQuality;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderMaxConvexHullPoints(): integer {
+      return this.meshColliderMaxConvexHullPoints;
+    }
+
+    setMeshColliderMaxConvexHullPoints(maxPoints: integer): void {
+      const normalizedMaxPoints = Number.isFinite(maxPoints)
+        ? Math.max(16, Math.round(maxPoints))
+        : 1024;
+      if (this.meshColliderMaxConvexHullPoints === normalizedMaxPoints) {
+        return;
+      }
+      this.meshColliderMaxConvexHullPoints = normalizedMaxPoints;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderSamplesPerMesh(): integer {
+      return this.meshColliderSamplesPerMesh;
+    }
+
+    setMeshColliderSamplesPerMesh(samplesPerMesh: integer): void {
+      const normalizedSamplesPerMesh = Number.isFinite(samplesPerMesh)
+        ? Math.max(8, Math.round(samplesPerMesh))
+        : 128;
+      if (this.meshColliderSamplesPerMesh === normalizedSamplesPerMesh) {
+        return;
+      }
+      this.meshColliderSamplesPerMesh = normalizedSamplesPerMesh;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderMaxConvexRadius(): float {
+      return this.meshColliderMaxConvexRadius;
+    }
+
+    setMeshColliderMaxConvexRadius(maxConvexRadius: float): void {
+      const normalizedMaxConvexRadius = Number.isFinite(maxConvexRadius)
+        ? Math.max(0, maxConvexRadius)
+        : 0;
+      if (this.meshColliderMaxConvexRadius === normalizedMaxConvexRadius) {
+        return;
+      }
+      this.meshColliderMaxConvexRadius = normalizedMaxConvexRadius;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderMaxErrorConvexRadius(): float {
+      return this.meshColliderMaxErrorConvexRadius;
+    }
+
+    setMeshColliderMaxErrorConvexRadius(maxErrorConvexRadius: float): void {
+      const normalizedMaxErrorConvexRadius = Number.isFinite(
+        maxErrorConvexRadius
+      )
+        ? Math.max(0, maxErrorConvexRadius)
+        : 0;
+      if (
+        this.meshColliderMaxErrorConvexRadius === normalizedMaxErrorConvexRadius
+      ) {
+        return;
+      }
+      this.meshColliderMaxErrorConvexRadius = normalizedMaxErrorConvexRadius;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderHullTolerance(): float {
+      return this.meshColliderHullTolerance;
+    }
+
+    setMeshColliderHullTolerance(hullTolerance: float): void {
+      const normalizedHullTolerance = Number.isFinite(hullTolerance)
+        ? Math.max(0, hullTolerance)
+        : 0;
+      if (this.meshColliderHullTolerance === normalizedHullTolerance) {
+        return;
+      }
+      this.meshColliderHullTolerance = normalizedHullTolerance;
+      this._needToRecreateShape = true;
     }
 
     getBody(): Jolt.Body {
@@ -4706,6 +5081,16 @@ namespace gdjs {
         this.shapeOffsetY,
         this.shapeOffsetZ,
         this.meshShapeResourceName,
+        this.meshColliderMode,
+        this.meshColliderMaxTrianglesPerSubMesh,
+        this.meshColliderMaxTrianglesPerLeaf,
+        this.meshColliderActiveEdgeCosThresholdAngle,
+        this.meshColliderBuildQuality,
+        this.meshColliderMaxConvexHullPoints,
+        this.meshColliderSamplesPerMesh,
+        this.meshColliderMaxConvexRadius,
+        this.meshColliderMaxErrorConvexRadius,
+        this.meshColliderHullTolerance,
         this.owner3D.getWidth(),
         this.owner3D.getHeight(),
         this.owner3D.getDepth(),

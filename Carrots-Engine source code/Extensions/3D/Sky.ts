@@ -20,6 +20,21 @@ namespace gdjs {
 
   const clamp = (value: number, min: number, max: number): number =>
     Math.min(max, Math.max(min, value));
+  const sanitizeSunIntensity = (value: number): number =>
+    Number.isFinite(value) ? clamp(value, -4, 8) : 0;
+
+  const sceneBackgroundOverridesUserDataKeyForSky =
+    '__gdjsSceneBackgroundOverrides';
+  type SceneBackgroundOverrideValueForSky = THREE.Texture | THREE.Color | null;
+  type SceneBackgroundOverrideEntryForSky = {
+    ownerId: string;
+    value: SceneBackgroundOverrideValueForSky;
+  };
+  type SceneBackgroundOverrideStateForSky = {
+    baseValue: SceneBackgroundOverrideValueForSky;
+    entries: SceneBackgroundOverrideEntryForSky[];
+  };
+  let nextScene3DSkyBackgroundOverrideId = 1;
 
   gdjs.PixiFiltersTools.registerFilterCreator(
     'Scene3D::Sky',
@@ -35,7 +50,9 @@ namespace gdjs {
         return new (class implements gdjs.PixiFiltersTools.Filter {
           private _isEnabled = false;
           private _skyMesh: THREE.Mesh | null = null;
-          private _oldBackground: THREE.Texture | THREE.Color | null = null;
+          private _fallbackBackgroundColor: THREE.Color | null = null;
+          private _isBackgroundOverrideDirty = true;
+          private readonly _backgroundOverrideOwnerId = `Scene3D::Sky:${nextScene3DSkyBackgroundOverrideId++}`;
 
           private _turbidity = 4.2;
           private _rayleigh = 1.35;
@@ -85,8 +102,7 @@ namespace gdjs {
               0,
               0.999
             );
-            this._sunIntensity = Math.max(
-              0,
+            this._sunIntensity = sanitizeSunIntensity(
               effectData.doubleParameters.sunIntensity !== undefined
                 ? effectData.doubleParameters.sunIntensity
                 : this._sunIntensity
@@ -182,6 +198,33 @@ namespace gdjs {
             return renderer.getThreeCamera();
           }
 
+          private _computeSkyRadius(cameraFar: number | undefined): number {
+            const safeFar =
+              typeof cameraFar === 'number' && Number.isFinite(cameraFar)
+                ? cameraFar
+                : 2000;
+            return Math.max(512, safeFar * 0.98);
+          }
+
+          private _getFallbackBackgroundColor(): THREE.Color {
+            if (!this._fallbackBackgroundColor) {
+              this._fallbackBackgroundColor = new THREE.Color();
+            }
+            const safeExposure = clamp(this._exposure, 0, 2);
+            const positiveSunIntensity = clamp(this._sunIntensity, 0, 8);
+            const brightness = clamp(
+              0.16 + safeExposure * 0.32 + positiveSunIntensity * 0.045,
+              0.08,
+              1
+            );
+            const sunBlendFactor = clamp(positiveSunIntensity * 0.05, 0, 0.35);
+            this._fallbackBackgroundColor
+              .setHex(this._skyTintColorHex)
+              .multiplyScalar(brightness)
+              .lerp(new THREE.Color(this._sunColorHex), sunBlendFactor);
+            return this._fallbackBackgroundColor;
+          }
+
           private _createSkyMesh(): void {
             if (this._skyMesh) return;
 
@@ -213,7 +256,7 @@ namespace gdjs {
                 uniform float mieCoefficient;
                 uniform vec3 up;
 
-                varying vec3 vWorldPosition;
+                varying vec3 vDirection;
                 varying vec3 vSunDirection;
                 varying float vSunfade;
                 varying vec3 vBetaR;
@@ -250,8 +293,7 @@ namespace gdjs {
                 }
 
                 void main() {
-                  vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                  vWorldPosition = worldPosition.xyz;
+                  vDirection = normalize((modelMatrix * vec4(position, 0.0)).xyz);
 
                   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                   gl_Position.z = gl_Position.w;
@@ -268,7 +310,7 @@ namespace gdjs {
                 }
               `,
               fragmentShader: `
-                varying vec3 vWorldPosition;
+                varying vec3 vDirection;
                 varying vec3 vSunDirection;
                 varying float vSunfade;
                 varying vec3 vBetaR;
@@ -343,12 +385,17 @@ namespace gdjs {
                 }
 
                 void main() {
-                  vec3 direction = normalize(vWorldPosition - cameraPosition);
+                  vec3 direction = normalize(vDirection);
 
-                  float zenithAngle = acos(max(0.0, dot(up, direction)));
-                  float inverse = 1.0 / (
-                    cos(zenithAngle) +
-                    0.15 * pow(93.885 - ((zenithAngle * 180.0) / pi), -1.253)
+                  float zenithDot = clamp(dot(up, direction), -1.0, 1.0);
+                  float zenithAngle = acos(zenithDot);
+                  float zenithBase = max(
+                    0.0001,
+                    93.885 - ((zenithAngle * 180.0) / pi)
+                  );
+                  float inverse = 1.0 / max(
+                    0.0001,
+                    cos(zenithAngle) + 0.15 * pow(zenithBase, -1.253)
                   );
                   float sR = rayleighZenithLength * inverse;
                   float sM = mieZenithLength * inverse;
@@ -376,7 +423,10 @@ namespace gdjs {
                   vec3 skyBase = Lin * 0.04 + vec3(0.00002, 0.00028, 0.00055);
                   skyBase *= skyTintColor;
 
+                  float positiveSunIntensity = max(0.0, sunIntensity);
+                  float nightAmount = clamp(-sunIntensity, 0.0, 1.0);
                   vec3 nightBase = vec3(0.1) * Fex;
+                  vec3 nightTint = vec3(0.01, 0.02, 0.045);
                   float sundisk = smoothstep(
                     sunAngularDiameterCos,
                     sunAngularDiameterCos + 0.00002,
@@ -384,9 +434,11 @@ namespace gdjs {
                   );
                   vec3 sunDiskColor =
                     sunColor *
-                    ((vSunE * 18000.0 * Fex) * sundisk * max(0.0, 0.35 + sunIntensity));
+                    ((vSunE * 18000.0 * Fex) * sundisk * clamp(0.35 + positiveSunIntensity, 0.0, 8.0));
 
                   vec3 texColor = skyBase + nightBase + sunDiskColor;
+                  texColor *= mix(1.0, 0.18, nightAmount);
+                  texColor += nightTint * nightAmount;
 
                   vec2 cloudUv = direction.xy / max(direction.z + 0.22, 0.04);
                   cloudUv *= max(0.1, cloudScale);
@@ -417,7 +469,8 @@ namespace gdjs {
                     (0.78 + 0.22 * clamp(direction.z * 0.8 + 0.2, 0.0, 1.0));
                   vec3 cloudLitColor =
                     cloudBaseColor +
-                    sunColor * (0.18 * sunScatter * (0.4 + sunIntensity));
+                    sunColor * (0.18 * sunScatter * clamp(0.4 + positiveSunIntensity, 0.0, 8.0));
+                  cloudLitColor *= mix(1.0, 0.6, nightAmount);
 
                   texColor = mix(texColor, cloudLitColor, cloudBlend);
 
@@ -428,7 +481,7 @@ namespace gdjs {
               `,
               side: THREE.BackSide,
               depthWrite: false,
-              depthTest: true,
+              depthTest: false,
               toneMapped: false,
               fog: false,
             });
@@ -437,6 +490,22 @@ namespace gdjs {
               new THREE.SphereGeometry(1, 32, 16),
               skyMaterial
             );
+            this._skyMesh.onBeforeRender = (
+              renderer: THREE.WebGLRenderer,
+              scene: THREE.Scene,
+              camera: THREE.Camera
+            ) => {
+              if (!this._skyMesh) return;
+              const cameraWithFar = camera as THREE.Camera & {
+                far?: number;
+                position?: THREE.Vector3;
+              };
+              if (!cameraWithFar.position) return;
+
+              this._skyMesh.position.copy(cameraWithFar.position);
+              const farDistance = this._computeSkyRadius(cameraWithFar.far);
+              this._skyMesh.scale.setScalar(farDistance);
+            };
             this._skyMesh.frustumCulled = false;
             this._skyMesh.renderOrder = -1000000;
             this._updateUniforms();
@@ -484,8 +553,89 @@ namespace gdjs {
             } else {
               material.dispose();
             }
+            this._skyMesh.onBeforeRender = () => {};
 
             this._skyMesh = null;
+          }
+
+          private _getBackgroundOverridesState(
+            scene: THREE.Scene
+          ): SceneBackgroundOverrideStateForSky | null {
+            const userData = scene.userData as {
+              [sceneBackgroundOverridesUserDataKeyForSky]?:
+                | SceneBackgroundOverrideStateForSky
+                | undefined;
+            };
+            return (
+              userData[sceneBackgroundOverridesUserDataKeyForSky] || null
+            );
+          }
+
+          private _ensureBackgroundOverridesState(
+            scene: THREE.Scene
+          ): SceneBackgroundOverrideStateForSky {
+            const existingState = this._getBackgroundOverridesState(scene);
+            if (existingState) {
+              return existingState;
+            }
+
+            const state: SceneBackgroundOverrideStateForSky = {
+              baseValue: scene.background,
+              entries: [],
+            };
+            const userData = scene.userData as {
+              [sceneBackgroundOverridesUserDataKeyForSky]?:
+                | SceneBackgroundOverrideStateForSky
+                | undefined;
+            };
+            userData[sceneBackgroundOverridesUserDataKeyForSky] = state;
+            return state;
+          }
+
+          private _applyBackgroundOverride(
+            scene: THREE.Scene,
+            value: SceneBackgroundOverrideValueForSky
+          ): void {
+            const state = this._ensureBackgroundOverridesState(scene);
+            const existingIndex = state.entries.findIndex(
+              entry => entry.ownerId === this._backgroundOverrideOwnerId
+            );
+            if (existingIndex !== -1) {
+              state.entries.splice(existingIndex, 1);
+            }
+            state.entries.push({
+              ownerId: this._backgroundOverrideOwnerId,
+              value,
+            });
+            scene.background = value;
+          }
+
+          private _removeBackgroundOverride(scene: THREE.Scene): void {
+            const state = this._getBackgroundOverridesState(scene);
+            if (!state) {
+              return;
+            }
+
+            const existingIndex = state.entries.findIndex(
+              entry => entry.ownerId === this._backgroundOverrideOwnerId
+            );
+            if (existingIndex === -1) {
+              return;
+            }
+            state.entries.splice(existingIndex, 1);
+
+            if (state.entries.length === 0) {
+              scene.background = state.baseValue;
+              const userData = scene.userData as {
+                [sceneBackgroundOverridesUserDataKeyForSky]?:
+                  | SceneBackgroundOverrideStateForSky
+                  | undefined;
+              };
+              delete userData[sceneBackgroundOverridesUserDataKeyForSky];
+              return;
+            }
+
+            scene.background = state.entries[state.entries.length - 1].value;
           }
 
           isEnabled(target: EffectsTarget): boolean {
@@ -508,15 +658,20 @@ namespace gdjs {
             if (!scene) {
               return false;
             }
+            if (this._isEnabled) {
+              return true;
+            }
 
             this._createSkyMesh();
             if (!this._skyMesh) {
               return false;
             }
 
-            this._oldBackground = scene.background;
-            scene.background = null;
-            scene.add(this._skyMesh);
+            if (this._skyMesh.parent !== scene) {
+              scene.add(this._skyMesh);
+            }
+            this._applyBackgroundOverride(scene, this._getFallbackBackgroundColor());
+            this._isBackgroundOverrideDirty = false;
 
             this._isEnabled = true;
             this.updatePreRender(target);
@@ -529,8 +684,9 @@ namespace gdjs {
               return false;
             }
 
-            scene.background = this._oldBackground;
+            this._removeBackgroundOverride(scene);
             this._disposeSkyMesh();
+            this._isBackgroundOverrideDirty = true;
             this._isEnabled = false;
             return true;
           }
@@ -538,6 +694,20 @@ namespace gdjs {
           updatePreRender(target: EffectsTarget): void {
             if (!this._isEnabled || !this._skyMesh) {
               return;
+            }
+            const scene = this._getScene(target);
+            if (!scene) {
+              return;
+            }
+            if (this._skyMesh.parent !== scene) {
+              scene.add(this._skyMesh);
+            }
+            if (this._isBackgroundOverrideDirty) {
+              this._applyBackgroundOverride(
+                scene,
+                this._getFallbackBackgroundColor()
+              );
+              this._isBackgroundOverrideDirty = false;
             }
 
             this._cloudTime += (target.getElapsedTime() / 1000) * this._cloudSpeed;
@@ -554,7 +724,7 @@ namespace gdjs {
             }
 
             this._skyMesh.position.copy(camera.position);
-            const farDistance = Math.max(100, (camera.far || 2000) * 0.95);
+            const farDistance = this._computeSkyRadius(camera.far);
             this._skyMesh.scale.setScalar(farDistance);
           }
 
@@ -568,7 +738,7 @@ namespace gdjs {
             } else if (parameterName === 'mieDirectionalG') {
               this._mieDirectionalG = clamp(value, 0, 0.999);
             } else if (parameterName === 'sunIntensity') {
-              this._sunIntensity = Math.max(0, value);
+              this._sunIntensity = sanitizeSunIntensity(value);
             } else if (parameterName === 'sunElevation') {
               this._sunElevation = clamp(value, -10, 90);
             } else if (parameterName === 'sunAzimuth') {
@@ -586,6 +756,7 @@ namespace gdjs {
             } else if (parameterName === 'cloudSpeed') {
               this._cloudSpeed = clamp(value, 0, 10);
             }
+            this._isBackgroundOverrideDirty = true;
             this._updateUniforms();
           }
 
@@ -621,6 +792,7 @@ namespace gdjs {
               // Legacy aliases for compatibility with previous Sky effect versions.
               this._skyTintColorHex = gdjs.rgbOrHexStringToNumber(value);
             }
+            this._isBackgroundOverrideDirty = true;
             this._updateUniforms();
           }
 
@@ -639,6 +811,7 @@ namespace gdjs {
               // Legacy aliases for compatibility with previous Sky effect versions.
               this._skyTintColorHex = value;
             }
+            this._isBackgroundOverrideDirty = true;
             this._updateUniforms();
           }
 
@@ -684,7 +857,7 @@ namespace gdjs {
             this._rayleigh = clamp(syncData.ry, 0, 6);
             this._mieCoefficient = clamp(syncData.mc, 0, 0.1);
             this._mieDirectionalG = clamp(syncData.mg, 0, 0.999);
-            this._sunIntensity = Math.max(0, syncData.si);
+            this._sunIntensity = sanitizeSunIntensity(syncData.si);
             this._sunElevation = clamp(syncData.se, -10, 90);
             this._sunAzimuth = syncData.sa;
             this._exposure = clamp(syncData.ex, 0, 2);
@@ -710,6 +883,7 @@ namespace gdjs {
               this._cloudColorHex = syncData.cc;
             }
 
+            this._isBackgroundOverrideDirty = true;
             this._updateUniforms();
           }
         })();
