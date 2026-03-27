@@ -1,0 +1,443 @@
+export type CodeLanguage = 'javascript' | 'typescript';
+export type TypeScriptDiagnostic = {
+  message: string;
+  filePath: string;
+  startLineNumber: number;
+  startColumn: number;
+  endLineNumber: number;
+  endColumn: number;
+};
+
+type TypeScriptModule = {
+  transpileModule: (source: string, options: unknown) => any;
+  ModuleKind: {
+    None: number;
+    CommonJS: number;
+  };
+  ScriptTarget: {
+    ES2017: number;
+  };
+  DiagnosticCategory: {
+    Error: number;
+  };
+  flattenDiagnosticMessageText: (
+    messageText: unknown,
+    newLine: string
+  ) => string;
+};
+
+export type TypeScriptTranspilationResult = {
+  transpiledJavaScriptCode: string;
+  errorMessage: string | null;
+  diagnostics: Array<TypeScriptDiagnostic>;
+};
+
+export type TypeScriptTranspileOptions = {
+  moduleKind?: 'none' | 'commonjs';
+  inlineSourceMap?: boolean;
+  fileName?: string;
+};
+
+type PendingTypeScriptWorkerRequest = {
+  resolve: (result: TypeScriptTranspilationResult) => void;
+  reject: (error: Error) => void;
+};
+
+type TypeScriptWorkerResponse =
+  | {
+      type: 'DONE';
+      requestId: number;
+      result: TypeScriptTranspilationResult;
+    }
+  | {
+      type: 'ERROR';
+      requestId: number;
+      message: string;
+    };
+
+const TYPE_SCRIPT_SOURCE_PREFIX = '//__GDEVELOP_TS_SOURCE_BASE64__:';
+
+let typeScriptModulePromise: Promise<TypeScriptModule> | null = null;
+let typeScriptCompilerWorker: Worker | null = null;
+let nextTypeScriptWorkerRequestId = 1;
+let hasLoggedWorkerFallback = false;
+const pendingTypeScriptWorkerRequests = new Map<
+  number,
+  PendingTypeScriptWorkerRequest
+>();
+
+const createTypeScriptCompilerWorker = (): Worker =>
+  new Worker(new URL('./TypeScriptCompiler.worker.js', import.meta.url));
+
+const GDEVELOP_COMPILER_AMBIENT_DECLARATIONS = `
+declare namespace gdjs {
+  class RuntimeScene {}
+  class RuntimeObject {
+    getBehavior(name: string): RuntimeBehavior;
+  }
+  class RuntimeBehavior {
+    owner: RuntimeObject;
+  }
+  const evtTools: any;
+  namespace ts {
+    function setExternalModule(moduleName: string, moduleValue: any): void;
+    function registerProjectBehavior(
+      behaviorType: string,
+      behaviorConstructor: typeof RuntimeBehavior
+    ): void;
+    function evalJavaScript(code: string): any;
+    function test(testName: string, testFunction: () => void): void;
+    function runTests(): {
+      total: number;
+      passed: number;
+      failed: number;
+      failures: Array<{ name: string; message: string }>;
+    };
+    function clearTests(): void;
+  }
+}
+
+interface EventsFunctionContext {}
+
+declare const sceneObjects: { [name: string]: gdjs.RuntimeObject[] };
+declare const scene: gdjs.RuntimeScene;
+declare const evtTools: typeof gdjs.evtTools;
+
+declare const tsModules: {
+  setExternal(moduleName: string, moduleValue: any): void;
+  evalJavaScript(code: string): any;
+  registerTest(testName: string, testFunction: () => void): void;
+  runTests(): {
+    total: number;
+    passed: number;
+    failed: number;
+    failures: Array<{ name: string; message: string }>;
+  };
+  clearTests(): void;
+};
+
+declare type __GDevelopProjectObjectLists = {
+  [name: string]: gdjs.RuntimeObject[];
+};
+declare type __GDevelopProjectBehaviorByName = {
+  [name: string]: gdjs.RuntimeBehavior;
+};
+
+declare function registerProjectBehavior(
+  behaviorType: string,
+  behaviorConstructor: typeof gdjs.RuntimeBehavior
+): void;
+declare function liveRepl(code: string): any;
+`;
+
+const appendCompilerAmbientDeclarations = (source: string): string =>
+  `${source || ''}\n\n${GDEVELOP_COMPILER_AMBIENT_DECLARATIONS}`;
+
+const encodeBase64 = (text: string): string => {
+  if (typeof btoa !== 'function') return '';
+  if (typeof TextEncoder === 'undefined') return btoa(text);
+
+  const encoded = new TextEncoder().encode(text);
+  let binary = '';
+  for (let i = 0; i < encoded.length; i++) {
+    binary += String.fromCharCode(encoded[i]);
+  }
+  return btoa(binary);
+};
+
+const decodeBase64 = (encodedText: string): string | null => {
+  try {
+    if (typeof atob !== 'function') return null;
+    const binary = atob(encodedText);
+    if (typeof TextDecoder === 'undefined') return binary;
+
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch (error) {
+    return null;
+  }
+};
+
+const loadTypeScript = async (): Promise<TypeScriptModule> => {
+  if (!typeScriptModulePromise) {
+    typeScriptModulePromise = import(
+      /* webpackChunkName: "typescript-compiler" */ 'typescript'
+    ).then(module => {
+      const resolvedModule = (module.default || module) as TypeScriptModule;
+      return resolvedModule;
+    });
+  }
+  return typeScriptModulePromise;
+};
+
+const getDiagnosticErrorMessage = (
+  typeScript: TypeScriptModule,
+  diagnostic: any
+): string => {
+  const message = typeScript.flattenDiagnosticMessageText(
+    diagnostic.messageText,
+    '\n'
+  );
+  if (!diagnostic.file || typeof diagnostic.start !== 'number') return message;
+
+  const position = diagnostic.file.getLineAndCharacterOfPosition(
+    diagnostic.start
+  );
+  const filePath =
+    diagnostic.file && typeof diagnostic.file.fileName === 'string'
+      ? diagnostic.file.fileName
+      : '';
+  return `${filePath}:${position.line + 1}:${position.character + 1} ${message}`;
+};
+
+const toTypeScriptDiagnostic = (
+  typeScript: TypeScriptModule,
+  diagnostic: any
+): TypeScriptDiagnostic => {
+  const message = typeScript.flattenDiagnosticMessageText(
+    diagnostic.messageText,
+    '\n'
+  );
+
+  if (!diagnostic.file || typeof diagnostic.start !== 'number') {
+    return {
+      message,
+      filePath: '',
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 1,
+      endColumn: 1,
+    };
+  }
+
+  const startPosition = diagnostic.file.getLineAndCharacterOfPosition(
+    diagnostic.start
+  );
+  const endPosition = diagnostic.file.getLineAndCharacterOfPosition(
+    diagnostic.start + (diagnostic.length || 1)
+  );
+
+  return {
+    message,
+    filePath:
+      diagnostic.file && typeof diagnostic.file.fileName === 'string'
+        ? diagnostic.file.fileName
+        : '',
+    startLineNumber: startPosition.line + 1,
+    startColumn: startPosition.character + 1,
+    endLineNumber: endPosition.line + 1,
+    endColumn: endPosition.character + 1,
+  };
+};
+
+const transpileTypeScriptCodeOnMainThread = async (
+  typeScriptSource: string,
+  options?: TypeScriptTranspileOptions
+): Promise<TypeScriptTranspilationResult> => {
+  try {
+    const typeScript = await loadTypeScript();
+    const moduleKind =
+      options && options.moduleKind === 'commonjs'
+        ? typeScript.ModuleKind.CommonJS
+        : typeScript.ModuleKind.None;
+    const transpilationInput =
+      appendCompilerAmbientDeclarations(typeScriptSource);
+    const transpiled = typeScript.transpileModule(transpilationInput, {
+      compilerOptions: {
+        module: moduleKind,
+        target: typeScript.ScriptTarget.ES2017,
+        allowJs: false,
+        sourceMap: !!options?.inlineSourceMap,
+        inlineSources: !!options?.inlineSourceMap,
+      },
+      fileName: options?.fileName || 'script.ts',
+      reportDiagnostics: true,
+    });
+
+    const diagnostics = transpiled.diagnostics || [];
+    const errorDiagnostics = diagnostics.filter(
+      (diagnostic: any) =>
+        diagnostic.category === typeScript.DiagnosticCategory.Error
+    );
+    const diagnosticError = diagnostics.find(
+      (diagnostic: any) =>
+        diagnostic.category === typeScript.DiagnosticCategory.Error
+    );
+
+    let transpiledJavaScriptCode = transpiled.outputText || '';
+    if (options?.inlineSourceMap && transpiled.sourceMapText) {
+      transpiledJavaScriptCode = transpiledJavaScriptCode.replace(
+        /\n\/\/# sourceMappingURL=.*$/g,
+        ''
+      );
+      const encodedSourceMap = encodeBase64(transpiled.sourceMapText);
+      if (encodedSourceMap) {
+        transpiledJavaScriptCode += `\n//# sourceMappingURL=data:application/json;base64,${encodedSourceMap}`;
+      }
+    }
+
+    return {
+      transpiledJavaScriptCode,
+      errorMessage: diagnosticError
+        ? getDiagnosticErrorMessage(typeScript, diagnosticError)
+        : null,
+      diagnostics: errorDiagnostics.map((diagnostic: any) =>
+        toTypeScriptDiagnostic(typeScript, diagnostic)
+      ),
+    };
+  } catch (error) {
+    const errorDetails =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+        ? error
+        : 'Unknown transpilation error.';
+    console.error('Unable to transpile TypeScript code.', error);
+    const detailedErrorMessage = `Unable to transpile TypeScript code: ${errorDetails}`;
+    return {
+      transpiledJavaScriptCode:
+        '// TypeScript transpilation failed. Check editor diagnostics.',
+      errorMessage: detailedErrorMessage,
+      diagnostics: [
+        {
+          message: detailedErrorMessage,
+          filePath: '',
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: 1,
+        },
+      ],
+    };
+  }
+};
+
+const rejectAllPendingWorkerRequests = (message: string): void => {
+  pendingTypeScriptWorkerRequests.forEach(({ reject }) => {
+    reject(new Error(message));
+  });
+  pendingTypeScriptWorkerRequests.clear();
+};
+
+const getOrCreateTypeScriptCompilerWorker = (): Worker => {
+  if (typeScriptCompilerWorker) return typeScriptCompilerWorker;
+
+  typeScriptCompilerWorker = createTypeScriptCompilerWorker();
+  typeScriptCompilerWorker.onmessage = (event: MessageEvent) => {
+    const data = event.data as TypeScriptWorkerResponse;
+    const pendingRequest = pendingTypeScriptWorkerRequests.get(data.requestId);
+    if (!pendingRequest) return;
+
+    pendingTypeScriptWorkerRequests.delete(data.requestId);
+    if (data.type === 'DONE') {
+      pendingRequest.resolve(data.result);
+      return;
+    }
+    pendingRequest.reject(
+      new Error(data.message || 'TypeScript worker returned an error.')
+    );
+  };
+
+  typeScriptCompilerWorker.onerror = () => {
+    rejectAllPendingWorkerRequests('TypeScript worker crashed.');
+    if (typeScriptCompilerWorker) {
+      typeScriptCompilerWorker.terminate();
+      typeScriptCompilerWorker = null;
+    }
+  };
+
+  return typeScriptCompilerWorker;
+};
+
+const transpileTypeScriptCodeInWorker = (
+  typeScriptSource: string,
+  options?: TypeScriptTranspileOptions
+): Promise<TypeScriptTranspilationResult> => {
+  if (typeof Worker === 'undefined') {
+    return Promise.reject(new Error('Web Workers are not available.'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const worker = getOrCreateTypeScriptCompilerWorker();
+    const requestId = nextTypeScriptWorkerRequestId++;
+    pendingTypeScriptWorkerRequests.set(requestId, {
+      resolve,
+      reject,
+    });
+    worker.postMessage({
+      type: 'TRANSPILE',
+      requestId,
+      typeScriptSource,
+      options: options || {},
+    });
+  });
+};
+
+export const preloadTypeScriptCompiler = (): void => {
+  if (typeof Worker !== 'undefined') {
+    try {
+      const worker = getOrCreateTypeScriptCompilerWorker();
+      worker.postMessage({ type: 'PRELOAD' });
+      return;
+    } catch (error) {}
+  }
+
+  loadTypeScript().catch(error => {
+    console.error('Unable to preload the TypeScript compiler.', error);
+  });
+};
+
+export const isTypeScriptStoredCode = (inlineCode: string): boolean =>
+  inlineCode.startsWith(TYPE_SCRIPT_SOURCE_PREFIX);
+
+export const extractTypeScriptSource = (inlineCode: string): string | null => {
+  if (!isTypeScriptStoredCode(inlineCode)) return null;
+
+  const firstNewLineIndex = inlineCode.indexOf('\n');
+  const encodedSource =
+    firstNewLineIndex === -1
+      ? inlineCode.slice(TYPE_SCRIPT_SOURCE_PREFIX.length)
+      : inlineCode.slice(TYPE_SCRIPT_SOURCE_PREFIX.length, firstNewLineIndex);
+
+  if (!encodedSource.trim()) return '';
+  return decodeBase64(encodedSource.trim());
+};
+
+export const extractTranspiledJavaScriptCode = (inlineCode: string): string => {
+  if (!isTypeScriptStoredCode(inlineCode)) return inlineCode;
+
+  const firstNewLineIndex = inlineCode.indexOf('\n');
+  if (firstNewLineIndex === -1) return '';
+
+  return inlineCode.slice(firstNewLineIndex + 1);
+};
+
+export const buildTypeScriptStoredCode = ({
+  typeScriptSource,
+  transpiledJavaScriptCode,
+}: {
+  typeScriptSource: string;
+  transpiledJavaScriptCode: string;
+}): string =>
+  `${TYPE_SCRIPT_SOURCE_PREFIX}${encodeBase64(typeScriptSource)}\n${transpiledJavaScriptCode}`;
+
+export const transpileTypeScriptCode = async (
+  typeScriptSource: string,
+  options?: TypeScriptTranspileOptions
+): Promise<TypeScriptTranspilationResult> => {
+  try {
+    return await transpileTypeScriptCodeInWorker(typeScriptSource, options);
+  } catch (workerError) {
+    if (!hasLoggedWorkerFallback) {
+      hasLoggedWorkerFallback = true;
+      console.warn(
+        'TypeScript worker unavailable. Falling back to main-thread transpilation.',
+        workerError
+      );
+    }
+    return transpileTypeScriptCodeOnMainThread(typeScriptSource, options);
+  }
+};

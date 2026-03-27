@@ -87,7 +87,7 @@ const getEventKindLabel = (eventType: string): string => {
     return 'Loop';
   }
   if (eventType === 'BuiltinCommonInstructions::Link') return 'Link';
-  if (eventType === 'BuiltinCommonInstructions::JsCode') return 'JavaScript';
+  if (eventType === 'BuiltinCommonInstructions::JsCode') return 'Removed';
   return 'Other';
 };
 
@@ -320,17 +320,6 @@ const EventInspectorPanel = ({
       : 'Not set';
   const isJsCodeEvent =
     selectedEventType === 'BuiltinCommonInstructions::JsCode';
-  const jsCodeEvent =
-    isJsCodeEvent && selectedEvent ? gd.asJsCodeEvent(selectedEvent) : null;
-  const jsCodeLinesCount = jsCodeEvent
-    ? jsCodeEvent
-        .getInlineCode()
-        .split(/\r?\n/)
-        .filter(line => line.trim().length > 0).length
-    : 0;
-  const jsCodeParameterObjects = jsCodeEvent
-    ? jsCodeEvent.getParameterObjects()
-    : '';
   const repeatExpression =
     selectedEventType === 'BuiltinCommonInstructions::Repeat' && selectedEvent
       ? gd
@@ -802,26 +791,14 @@ const EventInspectorPanel = ({
       {isJsCodeEvent && selectedEvent && (
         <div className="events-inspector-section">
           <Text size="sub-title" noMargin>
-            <Trans>JavaScript Event</Trans>
+            <Trans>Removed Script Event</Trans>
           </Text>
-          <div className="events-inspector-overview-grid">
-            <div className="events-inspector-overview-row">
-              <Text size="body-small" color="secondary" noMargin>
-                <Trans>Code lines</Trans>
-              </Text>
-              <Text size="body2" noMargin>
-                {jsCodeLinesCount}
-              </Text>
-            </div>
-            <div className="events-inspector-overview-row">
-              <Text size="body-small" color="secondary" noMargin>
-                <Trans>Parameter objects</Trans>
-              </Text>
-              <Text size="body2" noMargin allowSelection>
-                {jsCodeParameterObjects || '-'}
-              </Text>
-            </div>
-          </div>
+          <Text size="body-small" color="secondary" noMargin>
+            <Trans>
+              The old script event system in Events is disabled. Use the Script
+              tab in the scene toolbar.
+            </Trans>
+          </Text>
         </div>
       )}
 

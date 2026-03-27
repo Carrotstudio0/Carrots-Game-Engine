@@ -34,3 +34,7 @@
 .Trashes
 Thumbs.db
 .claude
+.codex-cmake-check/
+.codex-cmake-check-mingw/
+.codex-cmake-gdjs-check/
+.playwright-cli/

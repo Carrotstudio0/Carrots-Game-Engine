@@ -1141,67 +1141,18 @@ CommonInstructionsExtension::CommonInstructionsExtension() {
         return outputCode;
       });
 
-  AddEvent("JsCode", _("Javascript code"),
-           _("Insert some Javascript code into events"), "",
+  AddEvent("JsCode", _("JavaScript / TypeScript code"),
+           _("Legacy script event (disabled). Use the Script tab instead."), "",
            "res/source_cpp16.png",
            std::shared_ptr<gd::BaseEvent>(new JsCodeEvent))
+      .SetHidden()
       .SetCodeGenerator([](gd::BaseEvent &event_,
                            gd::EventsCodeGenerator &codeGenerator,
                            gd::EventsCodeGenerationContext &parentContext) {
-        JsCodeEvent &event = dynamic_cast<JsCodeEvent &>(event_);
-
-        gd::String functionName = codeGenerator.GetCodeNamespaceAccessor() +
-                                  "userFunc" + gd::String::From(&event);
-        gd::String functionParameters = "runtimeScene";
-        gd::String callArguments = "runtimeScene";
-        if (!event.GetParameterObjects().empty()) {
-          functionParameters += ", objects";
-          callArguments += ", objects";
-        }
-        if (!codeGenerator.HasProjectAndLayout()) {
-          functionParameters += ", eventsFunctionContext";
-          callArguments += ", eventsFunctionContext";
-        }
-
-        // Generate the function code
-        gd::String functionCode;
-        functionCode += functionName + " = function GDJSInlineCode(" +
-                        functionParameters + ") {\n";
-        functionCode += event.IsUseStrict() ? "\"use strict\";\n" : "";
-        functionCode += event.GetInlineCode();
-        functionCode += "\n};\n";
-        codeGenerator.AddCustomCodeOutsideMain(functionCode);
-
-        // Generate the code to call the function
-        gd::String callingCode;
-        if (!event.GetParameterObjects().empty()) {
-          std::vector<gd::String> realObjects =
-              codeGenerator.GetObjectsContainersList().ExpandObjectName(
-                  event.GetParameterObjects(),
-                  parentContext.GetCurrentObject());
-
-          if (realObjects.size() == 1) {
-            parentContext.ObjectsListNeeded(realObjects[0]);
-            callingCode +=
-                "const objects = " +
-                codeGenerator.GetObjectListName(realObjects[0], parentContext) +
-                ";\n";
-          } else {
-            // Groups are rarely used in JS events so it's fine to make
-            // allocations.
-            callingCode += "const objects = [];\n";
-            for (unsigned int i = 0; i < realObjects.size(); ++i) {
-              parentContext.ObjectsListNeeded(realObjects[i]);
-              callingCode += "objects.push.apply(objects," +
-                             codeGenerator.GetObjectListName(realObjects[i],
-                                                             parentContext) +
-                             ");\n";
-            }
-          }
-        }
-
-        callingCode += functionName + "(" + callArguments + ");\n";
-        return callingCode;
+        (void)event_;
+        (void)codeGenerator;
+        (void)parentContext;
+        return gd::String();
       });
 }
 

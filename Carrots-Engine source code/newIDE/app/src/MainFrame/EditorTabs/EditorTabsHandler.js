@@ -9,6 +9,7 @@ import { ExternalLayoutEditorContainer } from '../EditorContainers/ExternalLayou
 import { ResourcesEditorContainer } from '../EditorContainers/ResourcesEditorContainer';
 import { SceneEditorContainer } from '../EditorContainers/SceneEditorContainer';
 import { CinematicTimeline3DEditorContainer } from '../EditorContainers/CinematicTimeline3DEditorContainer';
+import { TypeScriptScriptsEditorContainer } from '../EditorContainers/TypeScriptScriptsEditorContainer';
 import { type HomePageEditorInterface } from '../EditorContainers/HomePage';
 import {
   type RenderEditorContainerPropsWithRef,
@@ -28,6 +29,7 @@ type EditorRef =
   | ResourcesEditorContainer
   | SceneEditorContainer
   | CinematicTimeline3DEditorContainer
+  | TypeScriptScriptsEditorContainer
   | HomePageEditorInterface
   | AskAiEditorInterface;
 
@@ -42,6 +44,7 @@ export type EditorKind =
   | 'custom object'
   | 'debugger'
   | 'resources'
+  | 'typescript scripts'
   | 'cinematic timeline 3d'
   | 'ask-ai'
   | 'start page';

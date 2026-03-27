@@ -9,13 +9,19 @@ import { UINumber } from '../ui/ui_number.js'
 
 const { STORAGE_PREFIX, style } = utils
 
-function LayerCabinet(data, dispatcher) {
+function LayerCabinet(data, dispatcher, options) {
+	options = options || {};
+	var compactMode = !!options.compactMode;
 	var layer_store = data.get('layers');
 
 	var div = document.createElement('div');
 
 	var top = document.createElement('div');
 	top.style.cssText = 'margin: 0px; top: 0; left: 0; height: ' + LayoutConstants.MARKER_TRACK_HEIGHT + 'px';
+	if (compactMode) {
+		top.style.display = 'none';
+		top.style.pointerEvents = 'none';
+	}
 	// top.style.textAlign = 'right';
 
 	var layer_scroll = document.createElement('div');

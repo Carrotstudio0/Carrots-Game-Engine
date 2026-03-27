@@ -7,6 +7,7 @@ type Props = {|
   onOpenProjectLoadingScreen: () => void,
   onOpenProjectVariables: () => void,
   onOpenResourcesDialog: () => void,
+  onOpenTypeScriptScriptsDialog: () => void,
   onOpenSearchExtensionDialog: () => void,
   onOpenPlatformSpecificAssetsDialog: () => void,
 |};
@@ -29,6 +30,10 @@ const ProjectManagerCommands = (props: Props): null => {
 
   useCommand('OPEN_PROJECT_RESOURCES', !!props.project, {
     handler: props.onOpenResourcesDialog,
+  });
+
+  useCommand('OPEN_PROJECT_TYPESCRIPT_SCRIPTS', !!props.project, {
+    handler: props.onOpenTypeScriptScriptsDialog,
   });
 
   useCommand('OPEN_SEARCH_EXTENSIONS_DIALOG', !!props.project, {

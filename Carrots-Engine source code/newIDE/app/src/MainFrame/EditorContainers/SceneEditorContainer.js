@@ -246,6 +246,9 @@ export class SceneEditorContainer extends React.Component<RenderEditorContainerP
         unsavedChanges={this.props.unsavedChanges}
         ref={editor => (this.editor = editor)}
         project={project}
+        projectFilePath={
+          this.props.fileMetadata ? this.props.fileMetadata.fileIdentifier : null
+        }
         projectScopedContainersAccessor={projectScopedContainersAccessor}
         layout={layout}
         eventsFunctionsExtension={null}
@@ -266,6 +269,7 @@ export class SceneEditorContainer extends React.Component<RenderEditorContainerP
         }
         onOpenProjectManager={this.props.onOpenProjectManager}
         onOpenEvents={this.props.onOpenEvents}
+        onOpenTypeScriptScripts={this.props.onOpenTypeScriptScripts}
         isActive={isActive}
         previewDebuggerServer={this.props.previewDebuggerServer}
         hotReloadPreviewButtonProps={this.props.hotReloadPreviewButtonProps}

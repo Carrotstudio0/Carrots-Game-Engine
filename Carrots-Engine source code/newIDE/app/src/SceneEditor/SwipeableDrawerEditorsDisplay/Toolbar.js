@@ -5,6 +5,7 @@ import * as React from 'react';
 import { ToolbarGroup } from '../../UI/Toolbar';
 import ToolbarSeparator from '../../UI/ToolbarSeparator';
 import IconButton from '../../UI/IconButton';
+import TextButton from '../../UI/TextButton';
 import ElementWithMenu from '../../UI/Menu/ElementWithMenu';
 import ToolbarCommands from '../ToolbarCommands';
 import { type MenuItemTemplate } from '../../UI/Menu/Menu.flow';
@@ -15,6 +16,7 @@ import GridIcon from '../../UI/CustomSvgIcons/Grid';
 import ZoomInIcon from '../../UI/CustomSvgIcons/ZoomIn';
 import EditSceneIcon from '../../UI/CustomSvgIcons/EditScene';
 import EventsIcon from '../../UI/CustomSvgIcons/Events';
+import FileWithLinesIcon from '../../UI/CustomSvgIcons/FileWithLines';
 import RectangleIcon from '../../UI/CustomSvgIcons/Rectangle';
 import VideoIcon from '../../UI/CustomSvgIcons/Video';
 import CompactToggleButtons from '../../UI/CompactToggleButtons';
@@ -30,7 +32,9 @@ type Props = {|
   isCinematicTimelineShown: boolean,
   toggleProperties: () => void,
   onOpenSceneEvents: () => void,
+  onOpenSceneScript: () => void,
   sceneEventsEnabled: boolean,
+  sceneScriptEnabled: boolean,
   toggleInstancesList: () => void,
   toggleLayersList: () => void,
   toggleProjectPanel: () => void,
@@ -106,15 +110,20 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function(props) {
           },
         ]}
       />
-      <IconButton
-        size="small"
-        color="default"
+      <TextButton
+        id="scene-toolbar-open-events-button-mobile"
+        label={<Trans>Events</Trans>}
+        icon={<EventsIcon />}
         onClick={props.onOpenSceneEvents}
         disabled={!props.sceneEventsEnabled}
-        tooltip={t`Open Scene Events`}
-      >
-        <EventsIcon />
-      </IconButton>
+      />
+      <TextButton
+        id="scene-toolbar-open-script-button-mobile"
+        label={<Trans>Script</Trans>}
+        icon={<FileWithLinesIcon />}
+        onClick={props.onOpenSceneScript}
+        disabled={!props.sceneScriptEnabled}
+      />
       <IconButton
         size="small"
         color="default"

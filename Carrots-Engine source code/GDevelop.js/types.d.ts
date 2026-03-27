@@ -3191,6 +3191,10 @@ export class JsCodeEvent extends EmscriptenObject {
   constructor();
   getInlineCode(): string;
   setInlineCode(type: string): void;
+  getCodeLanguage(): string;
+  setCodeLanguage(language: string): void;
+  getTranspiledCode(): string;
+  setTranspiledCode(code: string): void;
   getParameterObjects(): string;
   setParameterObjects(type: string): void;
   isEventsSheetExpanded(): boolean;

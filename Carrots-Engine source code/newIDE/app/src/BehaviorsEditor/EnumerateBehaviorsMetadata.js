@@ -1,6 +1,7 @@
 // @flow
 import { mapFor } from '../Utils/MapFor';
 import flatten from 'lodash/flatten';
+import { refreshTypeScriptProjectBehaviorsExtension } from '../TypeScriptProjectScripts/TypeScriptProjectBehaviorsRegistry';
 
 export type EnumeratedBehaviorMetadata = {|
   extension: gdPlatformExtension,
@@ -46,6 +47,8 @@ export const enumerateBehaviorsMetadata = (
   project: gdProject,
   eventsFunctionsExtension: gdEventsFunctionsExtension | null
 ): Array<EnumeratedBehaviorMetadata> => {
+  refreshTypeScriptProjectBehaviorsExtension(project);
+
   const show3DContent = shouldShow3DContent();
   const extensionsList = platform.getAllPlatformExtensions();
 

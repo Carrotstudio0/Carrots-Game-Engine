@@ -1,7 +1,5 @@
 // @flow
 import * as React from 'react';
-// Import the worker (will be handled by worker-loader)
-import Resource3DPreviewWorker from './Resource3DPreview.worker';
 
 type WorkerInitMessage = {|
   type: 'INIT',
@@ -57,6 +55,10 @@ const MESSAGE_TYPES = {
   INIT: 'INIT',
 };
 
+const createResource3DPreviewWorker = (): Worker =>
+  // $FlowFixMe[prop-missing]
+  new Worker(new URL('./Resource3DPreview.worker.js', import.meta.url));
+
 // Worker manager that handles initialization and communication
 class Resource3DPreviewWorkerManager {
   worker: Worker;
@@ -68,9 +70,7 @@ class Resource3DPreviewWorkerManager {
   fallbackImagePath: string = 'JsPlatform/Extensions/3d_model.svg';
 
   constructor() {
-    // $FlowFixMe[incompatible-type] - worker-loader types aren't recognized by Flow
-    // $FlowFixMe[invalid-constructor]
-    this.worker = new Resource3DPreviewWorker();
+    this.worker = createResource3DPreviewWorker();
     this.setupMessageHandlers();
     this.initWorker();
   }

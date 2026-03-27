@@ -39,6 +39,11 @@ import PlatformSpecificAssets, {
   iosIconSizes,
 } from '../PlatformSpecificAssetsEditor/PlatformSpecificAssets';
 import { ProjectScopedContainersAccessor } from '../InstructionOrExpression/EventsScope';
+import {
+  getProjectScriptingMode,
+  setProjectScriptingMode,
+  type ScriptingMode,
+} from '../Utils/ScriptingMode';
 
 type ProjectPropertiesTab = 'properties' | 'loading-screen' | 'icons';
 
@@ -58,6 +63,7 @@ type Props = {|
 |};
 
 type ProjectProperties = {|
+  scriptingMode: ScriptingMode,
   gameResolutionWidth: number,
   gameResolutionHeight: number,
   adaptGameResolutionAtRuntime: boolean,
@@ -92,6 +98,7 @@ type ProjectProperties = {|
 const loadPropertiesFromProject = (project: gdProject): ProjectProperties => {
   const platformSpecificAssets = project.getPlatformSpecificAssets();
   return {
+    scriptingMode: getProjectScriptingMode(project),
     gameResolutionWidth: project.getGameResolutionWidth(),
     gameResolutionHeight: project.getGameResolutionHeight(),
     adaptGameResolutionAtRuntime: project.getAdaptGameResolutionAtRuntime(),
@@ -177,7 +184,9 @@ function applyPropertiesToProject(
     iosIconResourceNames,
     sceneResourcesPreloading,
     sceneResourcesUnloading,
+    scriptingMode,
   } = newProperties;
+  setProjectScriptingMode(project, scriptingMode);
   project.setGameResolutionSize(gameResolutionWidth, gameResolutionHeight);
   project.setAdaptGameResolutionAtRuntime(adaptGameResolutionAtRuntime);
   project.setName(name);
@@ -251,6 +260,9 @@ const ProjectPropertiesDialog = (props: Props) => {
   let [name, setName] = React.useState(initialProperties.name);
   let [description, setDescription] = React.useState(
     initialProperties.description
+  );
+  let [scriptingMode, setScriptingMode] = React.useState<ScriptingMode>(
+    initialProperties.scriptingMode
   );
   let [authorIds, setAuthorIds] = React.useState(initialProperties.authorIds);
   let [authorUsernames, setAuthorUsernames] = React.useState(
@@ -407,6 +419,7 @@ const ProjectPropertiesDialog = (props: Props) => {
         iosIconResourceNames,
         sceneResourcesPreloading,
         sceneResourcesUnloading,
+        scriptingMode,
       }
     );
 
@@ -523,6 +536,27 @@ const ProjectPropertiesDialog = (props: Props) => {
                     notifyOfChange();
                   }}
                 />
+                <SelectField
+                  fullWidth
+                  floatingLabelText={<Trans>Scripting workflow</Trans>}
+                  value={scriptingMode}
+                  onChange={(e, i, newScriptingMode: ScriptingMode) => {
+                    if (newScriptingMode === scriptingMode) {
+                      return;
+                    }
+                    setScriptingMode(newScriptingMode);
+                    notifyOfChange();
+                  }}
+                >
+                  <SelectOption
+                    value="event-sheet"
+                    label={t`Event Sheet (visual logic)`}
+                  />
+                  <SelectOption
+                    value="typescript"
+                    label={t`TypeScript + Event Sheet (hybrid)`}
+                  />
+                </SelectField>
                 <Text size="block-title">
                   <Trans>Packaging</Trans>
                 </Text>

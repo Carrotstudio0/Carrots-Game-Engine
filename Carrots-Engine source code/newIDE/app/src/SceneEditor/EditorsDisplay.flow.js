@@ -160,6 +160,15 @@ export type SceneEditorsDisplayProps = {|
   showRestartInGameEditorAfterErrorButton: boolean,
   onEventsBasedObjectChildrenEdited: gdEventsBasedObject => void,
   onOpenEvents: (sceneName: string) => void,
+  onOpenTypeScriptScripts: (
+    sceneName: string,
+    preferredScriptTarget?: ?{|
+      contextKind: 'scene' | 'object' | 'behavior',
+      sceneName?: string,
+      objectName?: string,
+      behaviorName?: string,
+    |}
+  ) => void,
   embeddedEditorOverlay?: ?React.Node,
 |};
 

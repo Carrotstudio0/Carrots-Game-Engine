@@ -42,6 +42,8 @@ JsCodeEvent::GetAllExpressionsWithMetadata() const {
 
 void JsCodeEvent::SerializeTo(gd::SerializerElement& element) const {
   element.AddChild("inlineCode").SetMultilineStringValue(inlineCode);
+  element.AddChild("codeLanguage").SetValue(codeLanguage);
+  element.AddChild("transpiledCode").SetMultilineStringValue(transpiledCode);
   element.AddChild("parameterObjects")
       .SetValue(parameterObjects.GetPlainString());
   element.AddChild("useStrict").SetValue(useStrict);
@@ -51,6 +53,16 @@ void JsCodeEvent::SerializeTo(gd::SerializerElement& element) const {
 void JsCodeEvent::UnserializeFrom(gd::Project& project,
                                   const gd::SerializerElement& element) {
   inlineCode = element.GetChild("inlineCode").GetMultilineStringValue();
+  if (!element.HasChild("codeLanguage")) {
+    codeLanguage = "javascript";
+  } else {
+    SetCodeLanguage(element.GetChild("codeLanguage").GetValue().GetString());
+  }
+  if (!element.HasChild("transpiledCode")) {
+    transpiledCode = "";
+  } else {
+    transpiledCode = element.GetChild("transpiledCode").GetMultilineStringValue();
+  }
   parameterObjects = gd::Expression(
       element.GetChild("parameterObjects").GetValue().GetString());
 
@@ -74,6 +86,8 @@ void JsCodeEvent::UnserializeFrom(gd::Project& project,
 JsCodeEvent::JsCodeEvent()
     : BaseEvent(),
       inlineCode("runtimeScene.setBackgroundColor(100,100,240);\n"),
+      codeLanguage("javascript"),
+      transpiledCode(""),
       useStrict(true),
       eventsSheetExpanded(false) {}
 

@@ -2,7 +2,11 @@
 import * as React from 'react';
 import { Timeliner } from './vendor/timeliner/timeliner';
 import { type PreviewDebuggerServer } from '../ExportAndShare/PreviewLauncher.flow';
+import optionalRequire from '../Utils/OptionalRequire';
 import './CinematicTimeline3DEditor.css';
+
+const fs = optionalRequire('fs');
+const path = optionalRequire('path');
 
 type CinematicTimelineEasing =
   | 'linear'
@@ -170,13 +174,15 @@ type Props = {|
   previewDebuggerServer: ?PreviewDebuggerServer,
   isActive: boolean,
   displayMode?: 'tab' | 'overlay',
+  projectFilePath?: ?string,
   onRequestClose?: () => void,
   activeObjectSnapshot?: ?ActiveObjectSnapshot,
 |};
 
 const PROJECT_STORAGE_VARIABLE = '__carrots_cinematic_timeliner_v1';
 const DEFAULT_FPS = 30;
-const DEFAULT_DURATION_SECONDS = 8;
+const DEFAULT_DURATION_SECONDS = 32;
+const DEFAULT_TIME_SCALE = 36;
 const MIN_FPS = 1;
 const MAX_FPS = 240;
 const MIN_DURATION_SECONDS = 1 / DEFAULT_FPS;
@@ -188,6 +194,9 @@ const DEFAULT_IK_END_EFFECTOR = 'Hand.R';
 const DEFAULT_LOOP_RANGE = { enabled: false, inFrame: 0, outFrame: 120 };
 const DEFAULT_EVENT_ACTION = 'Trigger';
 const DEFAULT_EVENT_CONDITION = 'Always';
+const PROJECT_TIMELINES_FOLDER = '.carrots/cinematics';
+const PROJECT_TIMELINE_FILE_EXTENSION = '.timeline.json';
+const TIMELINE_FILE_FORMAT = 'carrots-cinematic-timeliner-v1';
 
 const transformPropertyDefinitions = [
   {
@@ -759,6 +768,21 @@ const buildDataWithDefaults = (
     1,
     TRACK_FRAME_LIMIT
   );
+  const safeCurrentTime = clampNumber(
+    parseFiniteNumber(data && data.ui && data.ui.currentTime, 0),
+    0,
+    totalTimeSeconds
+  );
+  const safeScrollTime = clampNumber(
+    parseFiniteNumber(data && data.ui && data.ui.scrollTime, 0),
+    0,
+    totalTimeSeconds
+  );
+  const safeTimeScale = clampNumber(
+    parseFiniteNumber(data && data.ui && data.ui.timeScale, DEFAULT_TIME_SCALE),
+    24,
+    96
+  );
   const metaObject = getMetaObject(data);
   const trackSettingsByLayer = getTrackSettingsByLayer(data);
   const normalizedLoopRange = normalizeLoopRange(metaObject.loopRange, durationFrames);
@@ -771,6 +795,13 @@ const buildDataWithDefaults = (
       (metaObject.sceneName && String(metaObject.sceneName)) ||
       data.title ||
       'Cinematic',
+    ui: {
+      ...(data && data.ui ? data.ui : {}),
+      currentTime: safeCurrentTime,
+      totalTime: totalTimeSeconds,
+      scrollTime: safeScrollTime,
+      timeScale: safeTimeScale,
+    },
     layers: applyTrackSettingsToLayers(
       Array.isArray(data.layers) ? data.layers : [],
       trackSettingsByLayer
@@ -823,7 +854,7 @@ const createEmptyTimelinerData = (sceneName: string): TimelinerData => ({
     currentTime: 0,
     totalTime: DEFAULT_DURATION_SECONDS,
     scrollTime: 0,
-    timeScale: 60,
+    timeScale: DEFAULT_TIME_SCALE,
   },
   layers: [],
   gdCinematicMeta: {
@@ -1240,7 +1271,7 @@ const runtimeSceneToTimelinerData = (
         currentTime: 0,
         totalTime: durationSeconds,
         scrollTime: 0,
-        timeScale: 60,
+        timeScale: DEFAULT_TIME_SCALE,
       },
       layers,
       gdCinematicMeta: {
@@ -1371,6 +1402,86 @@ const downloadTextFile = (content: string, filename: string): void => {
   window.URL.revokeObjectURL(url);
 };
 
+const toSafeFileNameSegment = (value: string): string => {
+  const sanitized = (value || '')
+    .trim()
+    .replace(/[<>:"/\\|?*]/g, '_')
+    .replace(/[\r\n\t]/g, '_')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+  return sanitized || 'timeline';
+};
+
+const isLikelyLocalProjectFilePath = (projectFilePath: ?string): boolean => {
+  if (!projectFilePath || typeof projectFilePath !== 'string') return false;
+  const trimmedPath = projectFilePath.trim();
+  if (!trimmedPath) return false;
+  const hasPathSeparator =
+    trimmedPath.includes('/') || trimmedPath.includes('\\');
+  return hasPathSeparator && !!path;
+};
+
+const getProjectTimelineFilePath = (
+  projectFilePath: ?string,
+  sceneName: string
+): ?string => {
+  if (!path || !isLikelyLocalProjectFilePath(projectFilePath)) return null;
+  const projectRootPath = path.dirname((projectFilePath: any));
+  const timelinesDirectoryPath = path.join(
+    projectRootPath,
+    PROJECT_TIMELINES_FOLDER
+  );
+  const timelineFileName = `${toSafeFileNameSegment(
+    sceneName
+  )}${PROJECT_TIMELINE_FILE_EXTENSION}`;
+  return path.join(timelinesDirectoryPath, timelineFileName);
+};
+
+const saveTimelinerDataToProjectFile = (
+  projectFilePath: ?string,
+  data: TimelinerData,
+  fps: number,
+  sceneName: string
+): ?{| filePath: string, relativePath: string |} => {
+  if (!fs || !path) return null;
+  const resolvedFilePath = getProjectTimelineFilePath(projectFilePath, sceneName);
+  if (!resolvedFilePath) return null;
+
+  const projectRootPath = path.dirname((projectFilePath: any));
+  const normalizedData = buildDataWithDefaults(data, fps);
+  const payload = {
+    format: TIMELINE_FILE_FORMAT,
+    sceneName,
+    fps,
+    savedAt: new Date().toISOString(),
+    timelinerData: normalizedData,
+  };
+
+  const targetDirectory = path.dirname(resolvedFilePath);
+  fs.mkdirSync(targetDirectory, { recursive: true });
+  fs.writeFileSync(
+    resolvedFilePath,
+    JSON.stringify(payload, null, 2),
+    'utf8'
+  );
+  return {
+    filePath: resolvedFilePath,
+    relativePath: path.relative(projectRootPath, resolvedFilePath),
+  };
+};
+
+const loadTimelinerDataFromProjectFile = (
+  projectFilePath: ?string,
+  sceneName: string
+): ?string => {
+  if (!fs) return null;
+  const resolvedFilePath = getProjectTimelineFilePath(projectFilePath, sceneName);
+  if (!resolvedFilePath || !fs.existsSync(resolvedFilePath)) return null;
+  return fs.readFileSync(resolvedFilePath, 'utf8');
+};
+
 const getSnapshotLayerEntries = (
   snapshot: ActiveObjectSnapshot
 ): Array<{| layerName: string, value: number |}> =>
@@ -1420,6 +1531,7 @@ const CinematicTimeline3DEditor = ({
   previewDebuggerServer,
   isActive,
   displayMode = 'tab',
+  projectFilePath = null,
   onRequestClose,
   activeObjectSnapshot = null,
 }: Props): React.Node => {
@@ -1862,6 +1974,7 @@ const CinematicTimeline3DEditor = ({
         {
           container: hostElement,
           isEmbedded: true,
+          compactEmbeddedControls: true,
           disableGlobalKeybindings: true,
           onDataChanged: (data: TimelinerData) => {
             latestDataRef.current = buildDataWithDefaults(
@@ -1975,7 +2088,32 @@ const CinematicTimeline3DEditor = ({
       );
 
       timelinerRef.current = timeliner;
-      timeliner.resize(hostElement.clientWidth || 960, hostElement.clientHeight || 420);
+      const resizeTimelinerToHost = () => {
+        if (!timelinerRef.current || !timelinerHostRef.current) return;
+        const nextWidth = Math.max(
+          320,
+          Math.round(
+            timelinerHostRef.current.clientWidth ||
+              timelinerHostRef.current.offsetWidth ||
+              0
+          )
+        );
+        const nextHeight = Math.max(
+          120,
+          Math.round(
+            timelinerHostRef.current.clientHeight ||
+              timelinerHostRef.current.offsetHeight ||
+              0
+          )
+        );
+        timelinerRef.current.resize(nextWidth, nextHeight);
+      };
+      resizeTimelinerToHost();
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+          resizeTimelinerToHost();
+        });
+      }
       applyTimelinerData(initialData);
       setStatusText(loaded ? 'Timeline loaded from project.' : 'Timeline initialized.');
 
@@ -1985,17 +2123,16 @@ const CinematicTimeline3DEditor = ({
           const entry = entries && entries[0];
           if (!entry || !timelinerRef.current) return;
           const bounds = entry.contentRect;
-          timelinerRef.current.resize(bounds.width, bounds.height);
+          timelinerRef.current.resize(
+            Math.max(320, Math.round(bounds.width || 0)),
+            Math.max(120, Math.round(bounds.height || 0))
+          );
         });
         observer.observe(hostElement);
         resizeObserverRef.current = observer;
       } else {
         fallbackResizeHandler = () => {
-          if (!timelinerRef.current || !timelinerHostRef.current) return;
-          timelinerRef.current.resize(
-            timelinerHostRef.current.clientWidth,
-            timelinerHostRef.current.clientHeight
-          );
+          resizeTimelinerToHost();
         };
         window.addEventListener('resize', fallbackResizeHandler);
       }
@@ -2509,7 +2646,15 @@ const CinematicTimeline3DEditor = ({
     (jsonText: string) => {
       if (!jsonText) return;
       try {
-        const parsedData = JSON.parse(jsonText);
+        const parsedPayload = JSON.parse(jsonText);
+        const parsedData =
+          parsedPayload &&
+          typeof parsedPayload === 'object' &&
+          parsedPayload.format === TIMELINE_FILE_FORMAT &&
+          isTimelinerData(parsedPayload.timelinerData)
+            ? parsedPayload.timelinerData
+            : parsedPayload;
+
         if (isTimelinerData(parsedData)) {
           const importedFps = clampInteger(
             parseFiniteNumber(
@@ -2522,6 +2667,10 @@ const CinematicTimeline3DEditor = ({
           const importedSceneName =
             (parsedData.gdCinematicMeta &&
               parsedData.gdCinematicMeta.sceneName) ||
+            (parsedPayload &&
+              parsedPayload.sceneName &&
+              typeof parsedPayload.sceneName === 'string' &&
+              parsedPayload.sceneName) ||
             parsedData.title ||
             sceneNameRef.current;
           setFps(importedFps);
@@ -2574,6 +2723,69 @@ const CinematicTimeline3DEditor = ({
     },
     [onImportJsonText]
   );
+
+  const projectTimelineFilePath = React.useMemo(
+    () => getProjectTimelineFilePath(projectFilePath, sceneName),
+    [projectFilePath, sceneName]
+  );
+
+  const onSaveToProjectFile = React.useCallback(() => {
+    saveTimelinerDataToProject(
+      project,
+      latestDataRef.current,
+      fpsRef.current,
+      sceneNameRef.current
+    );
+
+    try {
+      const saveResult = saveTimelinerDataToProjectFile(
+        projectFilePath,
+        latestDataRef.current,
+        fpsRef.current,
+        sceneNameRef.current
+      );
+      if (!saveResult) {
+        setStatusText(
+          'Saved in project state. Local project file path is unavailable.'
+        );
+        return;
+      }
+      setStatusText(`Saved timeline to ${saveResult.relativePath}.`);
+    } catch (error) {
+      console.warn('Unable to save cinematic timeline project file.', error);
+      setStatusText('Failed to save timeline file. Check write permissions.');
+    }
+  }, [project, projectFilePath]);
+
+  const onLoadFromProjectFile = React.useCallback(() => {
+    try {
+      const rawText = loadTimelinerDataFromProjectFile(
+        projectFilePath,
+        sceneNameRef.current
+      );
+      if (rawText) {
+        onImportJsonText(rawText);
+        setStatusText('Loaded timeline from project file.');
+        return;
+      }
+
+      const storedData = loadTimelinerDataFromProject(project);
+      if (storedData) {
+        setFps(storedData.fps);
+        fpsRef.current = storedData.fps;
+        setSceneName(storedData.sceneName);
+        sceneNameRef.current = storedData.sceneName;
+        applyTimelinerData(storedData.data, { showStatus: false });
+        setStatusText('Loaded timeline from project state.');
+        return;
+      }
+
+      setStatusText('No timeline file found for this cinematic yet.');
+    } catch (error) {
+      console.warn('Unable to load cinematic timeline project file.', error);
+      setStatusText('Failed to load timeline file.');
+    }
+  }, [applyTimelinerData, onImportJsonText, project, projectFilePath]);
 
   const onChangeFps = React.useCallback(
     (event: SyntheticInputEvent<HTMLInputElement>) => {
@@ -2735,49 +2947,38 @@ const CinematicTimeline3DEditor = ({
   const loopInFrame = loopRange.inFrame;
   const loopOutFrame = loopRange.outFrame;
 
+  const rootClassName =
+    displayMode === 'overlay' ? 'ct3d-root ct3d-root--overlay' : 'ct3d-root';
+
   return (
-    <div className="ct3d-root">
+    <div className={rootClassName}>
       <div className="ct3d-toolbar">
-        <div className="ct3d-toolbarRow ct3d-toolbarRow-main">
+        <div className="ct3d-headerRow">
           {displayMode === 'overlay' && onRequestClose ? (
-            <button className="ct3d-btn ct3d-btn-ghost" onClick={onRequestClose}>
-              Close
+            <button className="ct3d-btn ct3d-btn-ghost ct3d-btn-square" onClick={onRequestClose}>
+              X
             </button>
           ) : null}
+          <span className="ct3d-titleText">{sceneName || `${project.getName()} Cinematic`}</span>
+          <span className="ct3d-headerMeta">
+            {fps} FPS | {durationSeconds.toFixed(2)}s
+          </span>
+        </div>
 
-          <label className="ct3d-inlineField ct3d-field-scene">
-            <span className="ct3d-fieldLabel">Scene</span>
-            <input
-              className="ct3d-input"
-              value={sceneName}
-              onChange={onChangeSceneName}
-            />
-          </label>
-
-          <label className="ct3d-inlineField ct3d-field-fps">
-            <span className="ct3d-fieldLabel">FPS</span>
-            <input
-              className="ct3d-input"
-              type="number"
-              min={MIN_FPS}
-              max={MAX_FPS}
-              step={1}
-              value={fps}
-              onChange={onChangeFps}
-            />
-          </label>
-
-          <label className="ct3d-inlineField ct3d-field-duration">
-            <span className="ct3d-fieldLabel">Duration (sec)</span>
-            <input
-              className="ct3d-input"
-              type="number"
-              min={MIN_DURATION_SECONDS}
-              max={MAX_DURATION_SECONDS}
-              step={0.1}
-              value={durationSeconds}
-              onChange={onChangeDuration}
-            />
+        <div className="ct3d-toolbarRow ct3d-toolbarRow-main">
+          <label className="ct3d-inlineField ct3d-field-trackSelect">
+            <select
+              className="ct3d-input ct3d-trackSelectInput"
+              value={selectedTrackGroupId}
+              onChange={event => setSelectedTrackGroupId(event.currentTarget.value)}
+            >
+              {trackGroups.length ? null : <option value="">No tracked object</option>}
+              {trackGroups.map(group => (
+                <option key={group.id} value={group.id}>
+                  {group.objectName} [{group.trackType}]
+                </option>
+              ))}
+            </select>
           </label>
 
           <button className="ct3d-btn" onClick={onAddSelectedObjectLayers}>
@@ -2800,6 +3001,12 @@ const CinematicTimeline3DEditor = ({
           </button>
           <button className="ct3d-btn" onClick={onStopPreview}>
             Stop
+          </button>
+          <button className="ct3d-btn ct3d-btn-ghost" onClick={onSaveToProjectFile}>
+            Save
+          </button>
+          <button className="ct3d-btn ct3d-btn-ghost" onClick={onLoadFromProjectFile}>
+            Load
           </button>
 
           <label className="ct3d-checkRow ct3d-checkRow-inline">
@@ -2827,10 +3034,69 @@ const CinematicTimeline3DEditor = ({
               ? 'Record ON: move selected object to auto-create keyframes.'
               : 'Press K to add keyframe at current frame (selected track fallback).'}
           </span>
+          <span className="ct3d-fileHint">
+            {projectTimelineFilePath
+              ? `File: ${projectTimelineFilePath.split(/[/\\]/).slice(-2).join('/')}`
+              : 'File: project path unavailable'}
+          </span>
         </div>
 
         {showAdvanced ? (
           <div className="ct3d-advancedPanel">
+            <div className="ct3d-advancedBlock">
+              <div className="ct3d-advancedTitle">Project File</div>
+              <label className="ct3d-inlineField ct3d-field-scene">
+                <span className="ct3d-fieldLabel">Scene Name</span>
+                <input
+                  className="ct3d-input"
+                  value={sceneName}
+                  onChange={onChangeSceneName}
+                />
+              </label>
+              <label className="ct3d-inlineField ct3d-field-fps">
+                <span className="ct3d-fieldLabel">FPS</span>
+                <input
+                  className="ct3d-input"
+                  type="number"
+                  min={MIN_FPS}
+                  max={MAX_FPS}
+                  step={1}
+                  value={fps}
+                  onChange={onChangeFps}
+                />
+              </label>
+              <label className="ct3d-inlineField ct3d-field-duration">
+                <span className="ct3d-fieldLabel">Duration (sec)</span>
+                <input
+                  className="ct3d-input"
+                  type="number"
+                  min={MIN_DURATION_SECONDS}
+                  max={MAX_DURATION_SECONDS}
+                  step={0.1}
+                  value={durationSeconds}
+                  onChange={onChangeDuration}
+                />
+              </label>
+              <button className="ct3d-btn" onClick={onSaveToProjectFile}>
+                Save To Project File
+              </button>
+              <button className="ct3d-btn" onClick={onLoadFromProjectFile}>
+                Load From Project File
+              </button>
+              <button className="ct3d-btn" onClick={onExportRuntimeJson}>
+                Export JSON
+              </button>
+              <label className="ct3d-btn ct3d-importButton">
+                Import JSON
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={onImportJsonFile}
+                  className="ct3d-hiddenInput"
+                />
+              </label>
+            </div>
+
             <div className="ct3d-advancedBlock">
               <div className="ct3d-advancedTitle">Track Manager</div>
               <label className="ct3d-inlineField ct3d-field-trackSelect">
@@ -2972,18 +3238,6 @@ const CinematicTimeline3DEditor = ({
               <button className="ct3d-btn" onClick={onSendCurrentFrame}>
                 Send Frame
               </button>
-              <button className="ct3d-btn" onClick={onExportRuntimeJson}>
-                Export JSON
-              </button>
-              <label className="ct3d-btn ct3d-importButton">
-                Import JSON
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={onImportJsonFile}
-                  className="ct3d-hiddenInput"
-                />
-              </label>
             </div>
 
             <div className="ct3d-advancedBlock ct3d-advancedBlock-list">

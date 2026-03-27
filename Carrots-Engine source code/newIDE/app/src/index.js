@@ -18,6 +18,19 @@ import { loadPreferencesFromLocalStorage } from './MainFrame/Preferences/Prefere
 import { getFullTheme } from './UI/Theme';
 
 const GD_STARTUP_TIMES = global.GD_STARTUP_TIMES || [];
+// $FlowFixMe[cannot-resolve-name]
+const PUBLIC_URL: string = process.env.PUBLIC_URL || '';
+// $FlowFixMe[cannot-resolve-name]
+const isDev = process.env.NODE_ENV !== 'production';
+const publicAssetPrefix =
+  PUBLIC_URL && PUBLIC_URL !== '.'
+    ? PUBLIC_URL.replace(/\/$/, '')
+    : '';
+const libGdCacheBuster = isDev
+  ? `${VersionMetadata.versionWithHash}-${Date.now()}`
+  : VersionMetadata.versionWithHash;
+const getVersionedPublicAssetPath = (fileName: string): string =>
+  `${publicAssetPrefix}/${fileName}?cache-buster=${libGdCacheBuster}`;
 
 // No i18n in this file
 
@@ -82,58 +95,58 @@ class Bootstrapper extends Component<{}, State> {
     GD_STARTUP_TIMES.push(['bootstrapperComponentDidMount', performance.now()]);
 
     // Load GDevelop.js, ensuring a new version is fetched when the version changes.
-    loadScript(
-      `./libGD.js?cache-buster=${VersionMetadata.versionWithHash}`
-    ).then(() => {
-      GD_STARTUP_TIMES.push(['libGDLoadedTime', performance.now()]);
-      const initializeGDevelopJs = global.initializeGDevelopJs;
-      if (!initializeGDevelopJs) {
-        this.handleEditorLoadError(
-          new Error('Missing initializeGDevelopJs in libGD.js')
-        );
-        return;
-      }
-
-      initializeGDevelopJs({
-        // Override the resolved URL for the .wasm file,
-        // to ensure a new version is fetched when the version changes.
-        locateFile: (path: string, prefix: string) => {
-          // This function is called by Emscripten to locate the .wasm file only.
-          // As the wasm is at the root of the public folder, we can just return
-          // the path to the file.
-          // Plus, on Electron, the prefix seems to be pointing to the root of the
-          // app.asar archive, which is completely wrong.
-          return path + `?cache-buster=${VersionMetadata.versionWithHash}`;
-        },
-      }).then(gd => {
-        global.gd = gd;
-        GD_STARTUP_TIMES.push([
-          'libGD.js initialization done',
-          performance.now(),
-        ]);
-        sendProgramOpening();
-
-        if (electron) {
-          import(/* webpackChunkName: "local-app" */ './LocalApp')
-            .then(module =>
-              this.setState({
-                App: module.create(this.authentication),
-                loadingMessage: '',
-              })
-            )
-            .catch(this.handleEditorLoadError);
-        } else {
-          import(/* webpackChunkName: "browser-app" */ './BrowserApp')
-            .then(module =>
-              this.setState({
-                App: module.create(this.authentication),
-                loadingMessage: '',
-              })
-            )
-            .catch(this.handleEditorLoadError);
+    loadScript(getVersionedPublicAssetPath('libGD.js')).then(
+      () => {
+        GD_STARTUP_TIMES.push(['libGDLoadedTime', performance.now()]);
+        const initializeGDevelopJs = global.initializeGDevelopJs;
+        if (!initializeGDevelopJs) {
+          this.handleEditorLoadError(
+            new Error('Missing initializeGDevelopJs in libGD.js')
+          );
+          return;
         }
-      });
-    }, this.handleEditorLoadError);
+
+        initializeGDevelopJs({
+          // Override the resolved URL for the .wasm file,
+          // to ensure a new version is fetched when the version changes.
+          locateFile: (path: string) => {
+            // This function is called by Emscripten to locate the .wasm file only.
+            // Using the public root avoids resolving from nested/chunk paths.
+            return getVersionedPublicAssetPath(path);
+          },
+        })
+          .then(gd => {
+            global.gd = gd;
+            GD_STARTUP_TIMES.push([
+              'libGD.js initialization done',
+              performance.now(),
+            ]);
+            sendProgramOpening();
+
+            if (electron) {
+              import(/* webpackChunkName: "local-app" */ './LocalApp')
+                .then(module =>
+                  this.setState({
+                    App: module.create(this.authentication),
+                    loadingMessage: '',
+                  })
+                )
+                .catch(this.handleEditorLoadError);
+            } else {
+              import(/* webpackChunkName: "browser-app" */ './BrowserApp')
+                .then(module =>
+                  this.setState({
+                    App: module.create(this.authentication),
+                    loadingMessage: '',
+                  })
+                )
+                .catch(this.handleEditorLoadError);
+            }
+          })
+          .catch(this.handleEditorLoadError);
+      },
+      this.handleEditorLoadError
+    );
   }
 
   // $FlowFixMe[missing-local-annot]
