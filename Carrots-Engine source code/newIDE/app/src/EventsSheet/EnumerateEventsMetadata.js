@@ -23,15 +23,21 @@ export const enumerateEventsMetadata = (): Array<EventMetadata> => {
       return extensionEvents
         .keys()
         .toJSArray()
-        .filter(type => type !== 'BuiltinAsync::Async')
+        .filter(
+          type =>
+            type !== 'BuiltinAsync::Async' &&
+            type !== 'BuiltinCommonInstructions::JsCode'
+        )
         .map(type => {
           const metadata = extensionEvents.get(type);
+          if (metadata.isHidden && metadata.isHidden()) return null;
           return {
             type,
             fullName: metadata.getFullName(),
             description: metadata.getDescription(),
           };
-        });
+        })
+        .filter(Boolean);
     })
   );
 };

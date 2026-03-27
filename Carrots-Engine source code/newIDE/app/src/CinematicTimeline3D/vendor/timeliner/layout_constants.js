@@ -1,5 +1,5 @@
 /* eslint-disable */
-var DEFAULT_TIME_SCALE = 60;
+var DEFAULT_TIME_SCALE = 36;
 
 // Dimensions
 var LayoutConstants = {
@@ -11,7 +11,7 @@ var LayoutConstants = {
 	TIMELINE_SCROLL_HEIGHT: 0,
 	LEFT_PANE_WIDTH: 220,
 	time_scale: DEFAULT_TIME_SCALE, // number of pixels to 1 second
-	default_length: 20, // seconds
+	default_length: 32, // seconds
 	DEFAULT_TIME_SCALE
 };
 

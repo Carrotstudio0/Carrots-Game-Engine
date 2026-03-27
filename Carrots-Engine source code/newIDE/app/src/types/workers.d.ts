@@ -1,0 +1,26 @@
+declare module '*.worker' {
+  class WebpackWorker extends Worker {
+    constructor();
+  }
+  export default WebpackWorker;
+}
+
+declare module '*.worker.ts' {
+  class WebpackWorker extends Worker {
+    constructor();
+  }
+  export default WebpackWorker;
+}
+
+declare module '*.worker.js' {
+  class WebpackWorker extends Worker {
+    constructor();
+  }
+  export default WebpackWorker;
+}
+
+interface Window {
+  MonacoEnvironment?: {
+    getWorkerUrl: (workerId: string, label: string) => string;
+  };
+}

@@ -20,13 +20,33 @@ const isValidGdjsRoot = async (
   if (!candidatePath) return false;
 
   const runtimePath = path.join(candidatePath, 'Runtime');
+  const runtimeSourcesPath = path.join(candidatePath, 'Runtime-sources');
+  const runtimeTypesPath = path.join(runtimePath, 'types');
   const runtimeExtensionsPath = path.join(runtimePath, 'Extensions');
-  const [hasRuntime, hasRuntimeExtensions] = await Promise.all([
+  const extensionsPath = path.join(candidatePath, 'Extensions');
+  const gdjsExtensionsPath = path.join(candidatePath, 'GDJS', 'Extensions');
+  const [
+    hasRuntime,
+    hasRuntimeSources,
+    hasRuntimeTypes,
+    hasRuntimeExtensions,
+    hasExtensions,
+    hasGdjsExtensions,
+  ] = await Promise.all([
     hasReadAccess(runtimePath),
+    hasReadAccess(runtimeSourcesPath),
+    hasReadAccess(runtimeTypesPath),
     hasReadAccess(runtimeExtensionsPath),
+    hasReadAccess(extensionsPath),
+    hasReadAccess(gdjsExtensionsPath),
   ]);
 
-  return hasRuntime && hasRuntimeExtensions;
+  const hasAnyRuntime = hasRuntime || hasRuntimeSources;
+  const hasAnyExtensions =
+    hasRuntimeExtensions || hasExtensions || hasGdjsExtensions;
+
+  // Support both legacy and modern GDJS layouts.
+  return hasAnyRuntime && (hasRuntimeTypes || hasAnyExtensions);
 };
 
 const deduplicatePaths = (paths /*: Array<string> */) /*: Array<string> */ => {
@@ -59,6 +79,11 @@ const getCandidateGdjsRoots = (
     path.join(process.cwd(), 'newIDE', 'app', 'resources', 'GDJS'),
     // Legacy fallback for unusual packaging layouts.
     path.join(appPath, '..', '..', 'GDJS'),
+    path.join(appPath, '..', '..', '..', 'GDJS'),
+    // Common development locations when running from newIDE/app.
+    path.join(process.cwd(), 'GDJS'),
+    path.join(process.cwd(), '..', 'GDJS'),
+    path.join(process.cwd(), '..', '..', 'GDJS'),
   ]);
 };
 

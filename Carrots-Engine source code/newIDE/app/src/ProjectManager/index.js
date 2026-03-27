@@ -120,6 +120,9 @@ const gamePropertiesItemId = getProjectManagerItemId('game-properties');
 const gameDashboardItemId = 'manage';
 const globalVariablesItemId = getProjectManagerItemId('global-variables');
 const gameResourcesItemId = getProjectManagerItemId('game-resources');
+const gameTypeScriptScriptsItemId = getProjectManagerItemId(
+  'game-typescript-scripts'
+);
 export const scenesRootFolderId: string = getProjectManagerItemId('scenes');
 export const extensionsRootFolderId: string = getProjectManagerItemId(
   'extensions'
@@ -518,6 +521,7 @@ type Props = {|
   ...ExternalEventsTreeViewItemCallbacks,
   ...ExternalLayoutTreeViewItemCallbacks,
   onOpenResources: () => void,
+  onOpenTypeScriptScripts: () => void,
   onReloadEventsFunctionsExtensions: () => void,
   isOpen: boolean,
   hotReloadPreviewButtonProps: HotReloadPreviewButtonProps,
@@ -563,6 +567,7 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
       onOpenExternalLayout,
       onOpenEventsFunctionsExtension,
       onOpenResources,
+      onOpenTypeScriptScripts,
       onReloadEventsFunctionsExtensions,
       isOpen,
       hotReloadPreviewButtonProps,
@@ -1070,6 +1075,7 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
       },
       [
         project,
+        projectSceneNames,
         projectSceneNamesKey,
         sceneWorkflowMetadata,
         normalizeSceneWorkflowMetadataForProject,
@@ -1221,113 +1227,128 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
       [project, getSceneOrderFromMetadata]
     );
 
-    const insertAt = (
-      list: Array<any>,
-      index: ?number,
-      item: any
-    ): Array<any> => {
-      const next = [...list];
-      const insertionIndex =
-        index === undefined || index === null
-          ? next.length
-          : Math.max(0, Math.min(index, next.length));
-      next.splice(insertionIndex, 0, item);
-      return next;
-    };
+    const insertAt = React.useCallback(
+      (
+        list: Array<any>,
+        index: ?number,
+        item: any
+      ): Array<any> => {
+        const next = [...list];
+        const insertionIndex =
+          index === undefined || index === null
+            ? next.length
+            : Math.max(0, Math.min(index, next.length));
+        next.splice(insertionIndex, 0, item);
+        return next;
+      },
+      []
+    );
 
-    const removeSceneFromFolders = (
-      sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
-      sceneName: string
-    ) => ({
-      ...sceneFolders,
-      rootSceneNames: sceneFolders.rootSceneNames.filter(
-        name => name !== sceneName
-      ),
-      folders: sceneFolders.folders.map(folder => ({
-        ...folder,
-        sceneNames: folder.sceneNames.filter(name => name !== sceneName),
-      })),
-    });
+    const removeSceneFromFolders = React.useCallback(
+      (
+        sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
+        sceneName: string
+      ) => ({
+        ...sceneFolders,
+        rootSceneNames: sceneFolders.rootSceneNames.filter(
+          name => name !== sceneName
+        ),
+        folders: sceneFolders.folders.map(folder => ({
+          ...folder,
+          sceneNames: folder.sceneNames.filter(name => name !== sceneName),
+        })),
+      }),
+      []
+    );
 
-    const updateSceneFoldersForSceneMove = (
-      sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
-      sceneName: string,
-      destinationFolderId: ?string,
-      destinationIndex: ?number
-    ) => {
-      const withoutScene = removeSceneFromFolders(sceneFolders, sceneName);
-      if (destinationFolderId) {
+    const updateSceneFoldersForSceneMove = React.useCallback(
+      (
+        sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
+        sceneName: string,
+        destinationFolderId: ?string,
+        destinationIndex: ?number
+      ) => {
+        const withoutScene = removeSceneFromFolders(sceneFolders, sceneName);
+        if (destinationFolderId) {
+          return {
+            ...withoutScene,
+            folders: withoutScene.folders.map(folder =>
+              folder.id === destinationFolderId
+                ? {
+                    ...folder,
+                    sceneNames: insertAt(
+                      folder.sceneNames,
+                      destinationIndex,
+                      sceneName
+                    ),
+                  }
+                : folder
+            ),
+          };
+        }
         return {
           ...withoutScene,
-          folders: withoutScene.folders.map(folder =>
-            folder.id === destinationFolderId
-              ? {
-                  ...folder,
-                  sceneNames: insertAt(
-                    folder.sceneNames,
-                    destinationIndex,
-                    sceneName
-                  ),
-                }
-              : folder
+          rootSceneNames: insertAt(
+            withoutScene.rootSceneNames,
+            destinationIndex,
+            sceneName
           ),
         };
-      }
-      return {
-        ...withoutScene,
-        rootSceneNames: insertAt(
-          withoutScene.rootSceneNames,
-          destinationIndex,
-          sceneName
-        ),
-      };
-    };
+      },
+      [insertAt, removeSceneFromFolders]
+    );
 
-    const removeFolderFromParents = (
-      sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
-      folderId: string
-    ) => ({
-      ...sceneFolders,
-      rootFolderIds: sceneFolders.rootFolderIds.filter(id => id !== folderId),
-      folders: sceneFolders.folders.map(folder => ({
-        ...folder,
-        childFolderIds: folder.childFolderIds.filter(id => id !== folderId),
-      })),
-    });
+    const removeFolderFromParents = React.useCallback(
+      (
+        sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
+        folderId: string
+      ) => ({
+        ...sceneFolders,
+        rootFolderIds: sceneFolders.rootFolderIds.filter(id => id !== folderId),
+        folders: sceneFolders.folders.map(folder => ({
+          ...folder,
+          childFolderIds: folder.childFolderIds.filter(id => id !== folderId),
+        })),
+      }),
+      []
+    );
 
-    const updateSceneFoldersForFolderMove = (
-      sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
-      folderId: string,
-      destinationFolderId: ?string,
-      destinationIndex: ?number
-    ) => {
-      const withoutFolder = removeFolderFromParents(sceneFolders, folderId);
-      if (destinationFolderId) {
+    const updateSceneFoldersForFolderMove = React.useCallback(
+      (
+        sceneFolders: $PropertyType<SceneWorkflowMetadata, 'sceneFolders'>,
+        folderId: string,
+        destinationFolderId: ?string,
+        destinationIndex: ?number
+      ) => {
+        const withoutFolder = removeFolderFromParents(sceneFolders, folderId);
+        if (destinationFolderId) {
+          return {
+            ...withoutFolder,
+            folders: withoutFolder.folders.map(folder =>
+              folder.id === destinationFolderId
+                ? {
+                    ...folder,
+                    childFolderIds: insertAt(
+                      folder.childFolderIds,
+                      destinationIndex,
+                      folderId
+                    ),
+                  }
+                : folder
+            ),
+          };
+        }
         return {
           ...withoutFolder,
-          folders: withoutFolder.folders.map(folder =>
-            folder.id === destinationFolderId
-              ? {
-                  ...folder,
-                  childFolderIds: insertAt(
-                    folder.childFolderIds,
-                    destinationIndex,
-                    folderId
-                  ),
-                }
-              : folder
+          rootFolderIds: insertAt(
+            withoutFolder.rootFolderIds,
+            destinationIndex,
+            folderId
           ),
         };
-      }
-      return {
-        ...withoutFolder,
-        rootFolderIds: insertAt(
-          withoutFolder.rootFolderIds,
-          destinationIndex,
-          folderId
-        ),
-      };
-    };
+      },
+      [insertAt, removeFolderFromParents]
+    );
 
     const onAddSceneFolder = React.useCallback(
       (parentFolderId: ?string, defaultName: string) => {
@@ -1361,7 +1382,11 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
           return nextMetadata;
         });
       },
-      [updateSceneWorkflowMetadata, applySceneOrderToProject]
+      [
+        updateSceneWorkflowMetadata,
+        applySceneOrderToProject,
+        updateSceneFoldersForFolderMove,
+      ]
     );
 
     const onCreateSceneFolderWithScene = React.useCallback(
@@ -1401,7 +1426,11 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
           return nextMetadata;
         });
       },
-      [updateSceneWorkflowMetadata, applySceneOrderToProject]
+      [
+        updateSceneWorkflowMetadata,
+        applySceneOrderToProject,
+        updateSceneFoldersForSceneMove,
+      ]
     );
 
     const onRenameSceneFolder = React.useCallback(
@@ -1474,6 +1503,7 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
         showDeleteConfirmation,
         updateSceneWorkflowMetadata,
         applySceneOrderToProject,
+        removeFolderFromParents,
       ]
     );
 
@@ -1494,7 +1524,11 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
           return nextMetadata;
         });
       },
-      [updateSceneWorkflowMetadata, applySceneOrderToProject]
+      [
+        updateSceneWorkflowMetadata,
+        applySceneOrderToProject,
+        updateSceneFoldersForSceneMove,
+      ]
     );
 
     const onSceneCreated = React.useCallback(
@@ -1548,7 +1582,11 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
           return nextMetadata;
         });
       },
-      [updateSceneWorkflowMetadata, applySceneOrderToProject]
+      [
+        updateSceneWorkflowMetadata,
+        applySceneOrderToProject,
+        updateSceneFoldersForSceneMove,
+      ]
     );
 
     const scenePtrNameMapRef = React.useRef<?Map<string, string>>(null);
@@ -2128,6 +2166,14 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
                     ),
                     new LeafTreeViewItem(
                       new ActionTreeViewItemContent(
+                        gameTypeScriptScriptsItemId,
+                        i18n._(t`Script`),
+                        onOpenTypeScriptScripts,
+                        'res/icons_default/events24_black.svg'
+                      )
+                    ),
+                    new LeafTreeViewItem(
+                      new ActionTreeViewItemContent(
                         gameDashboardItemId,
                         i18n._(t`Game Dashboard`),
                         onOpenGamesDashboardDialog,
@@ -2350,6 +2396,7 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
         externalLayoutTreeViewItemProps,
         onOpenGamesDashboardDialog,
         onOpenResources,
+        onOpenTypeScriptScripts,
         openProjectProperties,
         openProjectVariables,
         openSearchExtensionDialog,
@@ -2565,6 +2612,8 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
         sceneFolderParentById,
         updateSceneWorkflowMetadata,
         applySceneOrderToProject,
+        updateSceneFoldersForFolderMove,
+        updateSceneFoldersForSceneMove,
         onTreeModified,
       ]
     );
@@ -2623,6 +2672,7 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
           onOpenProjectLoadingScreen={openProjectLoadingScreen}
           onOpenProjectVariables={openProjectVariables}
           onOpenResourcesDialog={onOpenResources}
+          onOpenTypeScriptScriptsDialog={onOpenTypeScriptScripts}
           onOpenPlatformSpecificAssetsDialog={openProjectIcons}
           onOpenSearchExtensionDialog={openSearchExtensionDialog}
         />

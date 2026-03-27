@@ -28,6 +28,7 @@ export type CommandName =
   | 'OPEN_PROJECT_VARIABLES'
   | 'OPEN_PLATFORM_SPECIFIC_ASSETS_DIALOG'
   | 'OPEN_PROJECT_RESOURCES'
+  | 'OPEN_PROJECT_TYPESCRIPT_SCRIPTS'
   | 'OPEN_SEARCH_EXTENSIONS_DIALOG'
   | 'OPEN_LAYOUT'
   | 'OPEN_EXTERNAL_EVENTS'
@@ -201,6 +202,10 @@ const commandsList: { [CommandName]: CommandMetadata } = {
   OPEN_PROJECT_RESOURCES: {
     area: 'PROJECT',
     displayText: t`Open project resources`,
+  },
+  OPEN_PROJECT_TYPESCRIPT_SCRIPTS: {
+    area: 'PROJECT',
+    displayText: t`Open TypeScript scripts`,
   },
   OPEN_SEARCH_EXTENSIONS_DIALOG: {
     area: 'PROJECT',

@@ -41,6 +41,7 @@ function Timeliner(target, options) {
 	options = options || {};
 	var container = options.container || document.body;
 	var isEmbedded = !!options.isEmbedded;
+	var compactEmbeddedControls = !!options.compactEmbeddedControls;
 	var disableGlobalKeybindings = !!options.disableGlobalKeybindings;
 	var onTimeChanged = typeof options.onTimeChanged === 'function' ? options.onTimeChanged : null;
 	var onDataChanged = typeof options.onDataChanged === 'function' ? options.onDataChanged : null;
@@ -78,7 +79,9 @@ function Timeliner(target, options) {
 
 	// Views
 	var timeline = new TimelinePanel(data, dispatcher);
-	var layer_panel = new LayerCabinet(data, dispatcher);
+	var layer_panel = new LayerCabinet(data, dispatcher, {
+		compactMode: compactEmbeddedControls
+	});
 
 	setTimeout(function() {
 		// hack!
@@ -455,7 +458,7 @@ function Timeliner(target, options) {
 		textAlign: 'left',
 		lineHeight: '1em',
 		position: 'absolute',
-		top: '22px'
+		top: compactEmbeddedControls ? '0px' : '20px'
 	});
 
 	var pane = document.createElement('div');
@@ -467,14 +470,14 @@ function Timeliner(target, options) {
 		right: isEmbedded ? '0px' : 'auto',
 		bottom: isEmbedded ? '0px' : 'auto',
 		margin: 0,
-		border: '1px solid ' + Theme.a,
+		border: isEmbedded ? '0' : '1px solid ' + Theme.a,
 		padding: 0,
 		overflow: 'hidden',
-		backgroundColor: Theme.a,
+		backgroundColor: isEmbedded ? 'transparent' : Theme.a,
 		color: Theme.d,
 		zIndex: Z_INDEX,
-		fontFamily: 'monospace',
-		fontSize: '12px'
+		fontFamily: 'Segoe UI, "Noto Sans", sans-serif',
+		fontSize: '10px'
 	});
 
 
@@ -482,15 +485,15 @@ function Timeliner(target, options) {
 		position: 'absolute',
 		top: '0px',
 		width: '100%',
-		height: '22px',
-		lineHeight: '22px',
+		height: '20px',
+		lineHeight: '20px',
 		overflow: 'hidden'
 	};
 
 	var button_styles = {
-		width: '20px',
-		height: '20px',
-		padding: '2px',
+		width: '18px',
+		height: '18px',
+		padding: '1px',
 		marginRight: '2px'
 	};
 
@@ -527,21 +530,31 @@ function Timeliner(target, options) {
 	var footer_styles = {
 		position: 'absolute',
 		width: '100%',
-		height: '22px',
-		lineHeight: '22px',
+		height: '20px',
+		lineHeight: '20px',
 		bottom: '0',
 		// padding: '2px',
 		background: Theme.a,
-		fontSize: '11px'
+		fontSize: '10px'
 	};
 
 	style(pane_status, footer_styles, {
 		borderTop: '1px solid ' + Theme.b,
 	});
+	if (compactEmbeddedControls) {
+		style(pane_status, {
+			display: 'none'
+		});
+	}
 
 	pane.appendChild(div);
 	pane.appendChild(pane_status);
 	pane.appendChild(pane_title);
+	if (compactEmbeddedControls) {
+		style(pane_title, {
+			display: 'none'
+		});
+	}
 
 	var label_status = document.createElement('span');
 	label_status.textContent = 'hello!';
@@ -757,7 +770,7 @@ function Timeliner(target, options) {
 		// };
 		// TODO: remove ugly hardcodes
 		width -= 4;
-		height -= 44;
+		height -= compactEmbeddedControls ? 4 : 40;
 
 		Settings.width = width - Settings.LEFT_PANE_WIDTH;
 		Settings.height = height;

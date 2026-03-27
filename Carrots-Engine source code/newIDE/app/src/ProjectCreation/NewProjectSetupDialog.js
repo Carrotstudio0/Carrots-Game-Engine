@@ -57,6 +57,7 @@ import { ExampleStoreContext } from '../AssetStore/ExampleStore/ExampleStoreCont
 import { BundleStoreContext } from '../AssetStore/Bundles/BundleStoreContext';
 import { type CreateProjectResult } from '../Utils/UseCreateProject';
 import { isNativeMobileApp } from '../Utils/Platform';
+import { type ScriptingMode } from '../Utils/ScriptingMode';
 
 const electron = optionalRequire('electron');
 const remote = optionalRequire('@electron/remote');
@@ -86,6 +87,7 @@ export type NewProjectSetup = {|
   storageProvider: StorageProvider,
   saveAsLocation: ?SaveAsLocation,
   projectName?: string,
+  scriptingMode?: ScriptingMode,
   height?: number,
   width?: number,
   orientation?: 'landscape' | 'portrait' | 'default',
@@ -231,6 +233,9 @@ const NewProjectSetupDialog = ({
   );
   const [optimizeForPixelArt, setOptimizeForPixelArt] = React.useState<boolean>(
     false
+  );
+  const [scriptingMode, setScriptingMode] = React.useState<ScriptingMode>(
+    'event-sheet'
   );
   const newProjectsDefaultFolder = app
     ? findEmptyPathInWorkspaceFolder(app, values.newProjectsDefaultFolder || '')
@@ -461,6 +466,7 @@ const NewProjectSetupDialog = ({
         projectName,
         storageProvider: storageProviderForCreation,
         saveAsLocation: projectLocation,
+        scriptingMode,
         height: selectedHeight,
         width: selectedWidth,
         orientation: selectedOrientation,
@@ -475,6 +481,7 @@ const NewProjectSetupDialog = ({
             projectName,
             storageProvider: storageProviderForCreation,
             saveAsLocation: projectLocation,
+            scriptingMode,
             creationSource: 'default',
           },
           i18n,
@@ -487,6 +494,7 @@ const NewProjectSetupDialog = ({
             projectName,
             storageProvider: storageProviderForCreation,
             saveAsLocation,
+            scriptingMode,
             creationSource: 'default',
           },
           i18n
@@ -504,6 +512,7 @@ const NewProjectSetupDialog = ({
       selectedHeight,
       selectedWidth,
       selectedOrientation,
+      scriptingMode,
       optimizeForPixelArt,
       selectedExampleShortHeader,
       selectedPrivateGameTemplateListingData,
@@ -750,6 +759,24 @@ const NewProjectSetupDialog = ({
                   maxLength={CLOUD_PROJECT_NAME_MAX_LENGTH}
                   fullWidth
                 />
+                <SelectField
+                  fullWidth
+                  disabled={isLoading}
+                  floatingLabelText={<Trans>Scripting workflow</Trans>}
+                  value={scriptingMode}
+                  onChange={(e, i, newValue: ScriptingMode) => {
+                    setScriptingMode(newValue);
+                  }}
+                >
+                  <SelectOption
+                    value="event-sheet"
+                    label={t`Event Sheet (visual logic)`}
+                  />
+                  <SelectOption
+                    value="typescript"
+                    label={t`TypeScript + Event Sheet (hybrid)`}
+                  />
+                </SelectField>
                 <SelectField
                   fullWidth
                   disabled={isLoading}

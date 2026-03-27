@@ -20,13 +20,13 @@ Rect.prototype.set = function(x, y, w, h, color, outline) {
 };
 
 Rect.prototype.paint = function(ctx) {
-	ctx.fillStyle = Theme.b;  // // 'yellow';
-	ctx.strokeStyle = Theme.c;
+	ctx.fillStyle = this.color || Theme.b;
+	ctx.strokeStyle = this.outline || 'transparent';
 
 	this.shape(ctx);
 
-	ctx.stroke();
 	ctx.fill();
+	if (this.outline) ctx.stroke();
 };
 
 Rect.prototype.shape = function(ctx) {
@@ -76,11 +76,9 @@ function ScrollCanvas(dispatcher, data) {
 		ctx.clearRect(0, 0, width, height);
 		ctx.translate(MARGINS, 5);
 
-		// outline scroller
-		ctx.beginPath();
-		ctx.strokeStyle = Theme.b;
-		ctx.rect(0, 0, w, h);
-		ctx.stroke();
+		// Background track
+		ctx.fillStyle = 'rgba(91, 116, 152, 0.22)';
+		ctx.fillRect(0, 0, w, h);
 
 		var totalTimePixels = totalTime * pixels_per_second;
 		var k = w / totalTimePixels;
@@ -92,7 +90,14 @@ function ScrollCanvas(dispatcher, data) {
 
 		scroller.left = scrollTime / totalTime * w;
 
-		scrollRect.set(scroller.left, 0, scroller.grip_length, h);
+		scrollRect.set(
+			scroller.left,
+			0,
+			scroller.grip_length,
+			h,
+			'rgba(168, 195, 230, 0.34)',
+			null
+		);
 		scrollRect.paint(ctx);
 
 		var r = currentTime / totalTime * w;

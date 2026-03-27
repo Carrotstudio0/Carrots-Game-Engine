@@ -506,6 +506,7 @@ const MosaicEditorsDisplay: React.ComponentType<{
                 onOpenEventBasedObjectVariantEditor={
                   props.onOpenEventBasedObjectVariantEditor
                 }
+                onOpenTypeScriptScripts={props.onOpenTypeScriptScripts}
                 onExportAssets={props.onExportAssets}
                 onImportAssets={props.onImportAssets}
                 onDeleteObjects={(objectWithContext, cb) =>

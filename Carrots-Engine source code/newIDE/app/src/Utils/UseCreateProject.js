@@ -37,6 +37,7 @@ import {
 } from './GDevelopServices/Asset';
 import { getDefaultRegisterGameProperties } from './UseGameAndBuildsManager';
 import { TutorialContext } from '../Tutorial/TutorialContext';
+import { setProjectScriptingMode } from './ScriptingMode';
 
 export type CreateProjectResult = {|
   createdProject: gdProject | null,
@@ -148,6 +149,9 @@ const useCreateProject = ({
     }
     if (newProjectSetup.projectName) {
       project.setName(newProjectSetup.projectName || 'New game');
+    }
+    if (newProjectSetup.scriptingMode) {
+      setProjectScriptingMode(project, newProjectSetup.scriptingMode);
     }
   };
 

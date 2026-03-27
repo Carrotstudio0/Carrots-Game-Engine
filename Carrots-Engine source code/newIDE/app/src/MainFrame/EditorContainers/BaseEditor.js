@@ -24,11 +24,21 @@ import { type ObjectWithContext } from '../../ObjectsList/EnumerateObjects';
 import { type CreateProjectResult } from '../../Utils/UseCreateProject';
 import { type OpenAskAiOptions } from '../../AiGeneration/Utils';
 
+export type TypeScriptScriptTarget = {|
+  contextKind: 'scene' | 'object' | 'behavior',
+  sceneName?: string,
+  objectName?: string,
+  behaviorName?: string,
+|};
+
 export type EditorContainerExtraProps = {|
   // Events function extension editor
   initiallyFocusedFunctionName?: ?string,
   initiallyFocusedBehaviorName?: ?string,
   initiallyFocusedObjectName?: ?string,
+
+  // TypeScript scripts editor
+  preferredTypeScriptScriptTarget?: ?TypeScriptScriptTarget,
 
   // Homepage
   storageProviders?: Array<StorageProvider>,
@@ -98,10 +108,14 @@ export type RenderEditorContainerProps = {|
         | 'scene-or-events-otherwise'
         | 'scene'
         | 'events'
-        | 'none',
+      | 'none',
     |}
   ) => void,
   onOpenEvents: (sceneName: string) => void,
+  onOpenTypeScriptScripts: (
+    sceneName?: string,
+    preferredScriptTarget?: ?TypeScriptScriptTarget
+  ) => void,
   openInstructionOrExpression: (
     extension: gdPlatformExtension,
     type: string

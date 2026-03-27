@@ -9,6 +9,7 @@ import ProjectResourcesIcon from '../UI/CustomSvgIcons/ProjectResources';
 import SceneIcon from '../UI/CustomSvgIcons/Scene';
 import EventsIcon from '../UI/CustomSvgIcons/Events';
 import VideoIcon from '../UI/CustomSvgIcons/Video';
+import FileWithLinesIcon from '../UI/CustomSvgIcons/FileWithLines';
 import ExternalEventsIcon from '../UI/CustomSvgIcons/ExternalEvents';
 import ExternalLayoutIcon from '../UI/CustomSvgIcons/ExternalLayout';
 import ExtensionIcon from '../UI/CustomSvgIcons/Extension';
@@ -60,12 +61,14 @@ import { type OpenAskAiOptions } from '../AiGeneration/Utils';
 import { renderAskAiEditorContainer } from '../AiGeneration/AskAiEditorContainer';
 import { renderResourcesEditorContainer } from './EditorContainers/ResourcesEditorContainer';
 import { renderCinematicTimeline3DEditorContainer } from './EditorContainers/CinematicTimeline3DEditorContainer';
+import { renderTypeScriptScriptsEditorContainer } from './EditorContainers/TypeScriptScriptsEditorContainer';
 import {
   type RenderEditorContainerPropsWithRef,
   type SceneEventsOutsideEditorChanges,
   type InstancesOutsideEditorChanges,
   type ObjectsOutsideEditorChanges,
   type ObjectGroupsOutsideEditorChanges,
+  type TypeScriptScriptTarget,
 } from './EditorContainers/BaseEditor';
 import { type Exporter } from '../ExportAndShare/ShareDialog';
 import ResourcesLoader from '../ResourcesLoader/index';
@@ -255,6 +258,7 @@ const editorKindToRenderer: {
   'custom object': renderCustomObjectEditorContainer,
   'start page': renderHomePageContainer,
   resources: renderResourcesEditorContainer,
+  'typescript scripts': renderTypeScriptScriptsEditorContainer,
   'cinematic timeline 3d': renderCinematicTimeline3DEditorContainer,
   'ask-ai': renderAskAiEditorContainer,
 };
@@ -711,6 +715,10 @@ const MainFrame = (props: Props): React.MixedElement => {
       const label =
         kind === 'resources'
           ? i18n._(t`Resources`)
+          : kind === 'typescript scripts'
+          ? name
+            ? `${name} ${i18n._(t`(Script)`)}`
+            : i18n._(t`Script`)
           : kind === 'cinematic timeline 3d'
           ? i18n._(t`Cinematic Timeline 3D`)
           : kind === 'ask-ai'
@@ -738,6 +746,7 @@ const MainFrame = (props: Props): React.MixedElement => {
         'external layout',
         'events functions extension',
         'custom object',
+        'typescript scripts',
       ].includes(kind)
         ? `${kind} ${name}`
         : kind;
@@ -762,6 +771,8 @@ const MainFrame = (props: Props): React.MixedElement => {
           <DebuggerIcon />
         ) : kind === 'resources' ? (
           <ProjectResourcesIcon />
+        ) : kind === 'typescript scripts' ? (
+          <FileWithLinesIcon />
         ) : kind === 'cinematic timeline 3d' ? (
           <VideoIcon />
         ) : kind === 'layout' ? (
@@ -2802,6 +2813,65 @@ const MainFrame = (props: Props): React.MixedElement => {
           getEditorOpeningOptions({ kind: 'resources', name: '' })
         ),
       }));
+    },
+    [getEditorOpeningOptions, setState]
+  );
+
+  const openTypeScriptScripts = React.useCallback(
+    (
+      sceneName?: string,
+      preferredScriptTarget?: ?TypeScriptScriptTarget
+    ) => {
+      setState(state => {
+        const targetKey = `typescript scripts ${sceneName || ''}`;
+        const editorOpeningOptions = {
+          ...getEditorOpeningOptions({
+            kind: 'typescript scripts',
+            name: sceneName || '',
+          }),
+          extraEditorProps: preferredScriptTarget
+            ? {
+                preferredTypeScriptScriptTarget: preferredScriptTarget,
+              }
+            : undefined,
+        };
+        const openedEditorTabs = openEditorTab(
+          state.editorTabs,
+          // $FlowFixMe[incompatible-type]
+          editorOpeningOptions
+        );
+        const editorTabs = preferredScriptTarget
+          ? {
+              ...openedEditorTabs,
+              panes: Object.keys(openedEditorTabs.panes).reduce(
+                (updatedPanes, paneIdentifier) => {
+                  const pane = openedEditorTabs.panes[paneIdentifier];
+                  updatedPanes[paneIdentifier] = {
+                    ...pane,
+                    editors: pane.editors.map(editor =>
+                      editor.key === targetKey
+                        ? {
+                            ...editor,
+                            extraEditorProps: {
+                              ...(editor.extraEditorProps || {}),
+                              preferredTypeScriptScriptTarget:
+                                preferredScriptTarget,
+                            },
+                          }
+                        : editor
+                    ),
+                  };
+                  return updatedPanes;
+                },
+                {}
+              ),
+            }
+          : openedEditorTabs;
+        return {
+          ...state,
+          editorTabs,
+        };
+      });
     },
     [getEditorOpeningOptions, setState]
   );
@@ -4984,6 +5054,7 @@ const MainFrame = (props: Props): React.MixedElement => {
     openExternalLayout: openExternalLayout,
     openEventsFunctionsExtension: openEventsFunctionsExtension,
     openLayout: openLayout,
+    openTypeScriptScripts: openTypeScriptScripts,
     openTemplateFromTutorial: openTemplateFromTutorial,
     openTemplateFromCourseChapter: openTemplateFromCourseChapter,
     previewDebuggerServer: previewDebuggerServer,
@@ -5130,6 +5201,7 @@ const MainFrame = (props: Props): React.MixedElement => {
           onRenameEventsFunctionsExtension={renameEventsFunctionsExtension}
           onRenameExternalEvents={renameExternalEvents}
           onOpenResources={openResources}
+          onOpenTypeScriptScripts={openTypeScriptScripts}
           onReloadEventsFunctionsExtensions={onReloadEventsFunctionsExtensions}
           onWillInstallExtension={onWillInstallExtension}
           onExtensionInstalled={onExtensionInstalled}

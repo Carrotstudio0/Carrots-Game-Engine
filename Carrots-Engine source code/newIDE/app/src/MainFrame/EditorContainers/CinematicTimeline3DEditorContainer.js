@@ -81,6 +81,9 @@ export class CinematicTimeline3DEditorContainer extends React.Component<RenderEd
         project={project}
         previewDebuggerServer={this.props.previewDebuggerServer}
         isActive={this.props.isActive}
+        projectFilePath={
+          this.props.fileMetadata ? this.props.fileMetadata.fileIdentifier : null
+        }
       />
     );
   }

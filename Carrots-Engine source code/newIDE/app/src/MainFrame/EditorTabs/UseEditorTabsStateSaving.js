@@ -36,7 +36,12 @@ const projectHasItem = ({
   kind: EditorKind,
   name: string,
 |}) => {
-  if (['debugger', 'start page', 'resources'].includes(kind)) return true;
+  if (
+    ['debugger', 'start page', 'resources', 'typescript scripts'].includes(
+      kind
+    )
+  )
+    return true;
   switch (kind) {
     case 'events functions extension':
       return project.hasEventsFunctionsExtensionNamed(name);

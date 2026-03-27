@@ -223,13 +223,13 @@ const styles = {
   },
   cinematicTimelineOverlay: {
     position: 'absolute',
-    left: 8,
-    right: 8,
-    bottom: 8,
-    height: '44%',
-    minHeight: 340,
-    maxHeight: 560,
-    zIndex: 4,
+    left: 10,
+    right: 10,
+    bottom: 10,
+    height: '40%',
+    minHeight: 300,
+    maxHeight: 520,
+    zIndex: 14,
     pointerEvents: 'none',
   },
   cinematicTimelineOverlayContent: {
@@ -250,6 +250,7 @@ type Props = {|
   onRestartInGameEditor: (reason: string) => void,
   showRestartInGameEditorAfterErrorButton: boolean,
   project: gdProject,
+  projectFilePath?: ?string,
   projectScopedContainersAccessor: ProjectScopedContainersAccessor,
   layout: gdLayout | null,
   eventsFunctionsExtension: gdEventsFunctionsExtension | null,
@@ -266,6 +267,15 @@ type Props = {|
   onOpenMoreSettings?: ?() => void,
   onOpenProjectManager: () => void,
   onOpenEvents: (sceneName: string) => void,
+  onOpenTypeScriptScripts: (
+    sceneName: string,
+    preferredScriptTarget?: ?{|
+      contextKind: 'scene' | 'object' | 'behavior',
+      sceneName?: string,
+      objectName?: string,
+      behaviorName?: string,
+    |}
+  ) => void,
   onObjectEdited: (objectWithContext: ObjectWithContext) => void,
   onObjectGroupEdited: (objectGroupWithContext: GroupWithContext) => void,
   onEventsBasedObjectChildrenEdited: (
@@ -369,6 +379,9 @@ export default class SceneEditor extends React.Component<Props, State> {
   resourceExternallyChangedCallbackId: ?string;
   unregisterDebuggerCallback: (() => void) | null = null;
   editorViewPosition2D: EditorViewPosition2D = { viewX: null, viewY: null };
+  _pendingUpdatedInstances: Map<string, gdInitialInstance> = new Map();
+  _pendingUpdatedInstancesNoUuidCount: number = 0;
+  _flushUpdatedInstancesAnimationFrame: number | null = null;
 
   constructor(props: Props) {
     super(props);
@@ -508,6 +521,11 @@ export default class SceneEditor extends React.Component<Props, State> {
       this.unregisterDebuggerCallback();
       this.unregisterDebuggerCallback = null;
     }
+    if (this._flushUpdatedInstancesAnimationFrame !== null) {
+      window.cancelAnimationFrame(this._flushUpdatedInstancesAnimationFrame);
+      this._flushUpdatedInstancesAnimationFrame = null;
+    }
+    this._pendingUpdatedInstances.clear();
   }
 
   onEditorReloaded() {
@@ -763,7 +781,9 @@ export default class SceneEditor extends React.Component<Props, State> {
           isCinematicTimelineShown={this.state.isCinematicTimelineShown}
           onOpenScenesManager={this.openScenesManager}
           onOpenSceneEvents={this.openCurrentSceneEvents}
+          onOpenSceneScript={this.openCurrentSceneScriptWorkspace}
           sceneEventsEnabled={!!this.props.layout}
+          sceneScriptEnabled={!!this.props.layout}
           onOpenExtensionsManager={this.openExtensionsManager}
           toggleProperties={this.toggleProperties}
           isPropertiesShown={editorDisplay.isEditorVisible('properties')}
@@ -817,7 +837,9 @@ export default class SceneEditor extends React.Component<Props, State> {
           isCinematicTimelineShown={this.state.isCinematicTimelineShown}
           toggleProperties={this.toggleProperties}
           onOpenSceneEvents={this.openCurrentSceneEvents}
+          onOpenSceneScript={this.openCurrentSceneScriptWorkspace}
           sceneEventsEnabled={!!this.props.layout}
+          sceneScriptEnabled={!!this.props.layout}
           deleteSelection={this.deleteSelection}
           toggleInstancesList={this.toggleInstancesList}
           toggleLayersList={this.toggleLayersList}
@@ -1019,6 +1041,16 @@ export default class SceneEditor extends React.Component<Props, State> {
     }
 
     this.props.onOpenEvents(layout.getName());
+  };
+
+  openCurrentSceneScriptWorkspace = () => {
+    const { layout } = this.props;
+    if (!layout) {
+      this.props.onOpenProjectManager();
+      return;
+    }
+
+    this.props.onOpenTypeScriptScripts(layout.getName());
   };
 
   openExtensionsManager = () => {
@@ -1772,20 +1804,48 @@ export default class SceneEditor extends React.Component<Props, State> {
     //TODO: Save for redo with debounce (and cancel on unmount)
   };
 
-  _sendUpdatedInstances = (instances: Array<gdInitialInstance>) => {
-    const { previewDebuggerServer } = this.props;
-    if (!previewDebuggerServer) return;
+  _flushUpdatedInstancesToPreview = () => {
+    this._flushUpdatedInstancesAnimationFrame = null;
 
+    const { previewDebuggerServer } = this.props;
+    if (!previewDebuggerServer) {
+      this._pendingUpdatedInstances.clear();
+      return;
+    }
+
+    const instances = Array.from(this._pendingUpdatedInstances.values());
+    this._pendingUpdatedInstances.clear();
+    if (!instances.length) {
+      return;
+    }
+
+    const serializedInstances = instances.map(instance =>
+      serializeToJSObject(instance)
+    );
     previewDebuggerServer
       .getExistingEmbeddedGameFrameDebuggerIds()
       .forEach(debuggerId => {
         previewDebuggerServer.sendMessage(debuggerId, {
           command: 'updateInstances',
           payload: {
-            instances: instances.map(instance => serializeToJSObject(instance)),
+            instances: serializedInstances,
           },
         });
       });
+  };
+
+  _sendUpdatedInstances = (instances: Array<gdInitialInstance>) => {
+    instances.forEach(instance => {
+      const persistentUuid = instance.getPersistentUuid();
+      const key =
+        persistentUuid || `no-persistent-uuid-${this._pendingUpdatedInstancesNoUuidCount++}`;
+      this._pendingUpdatedInstances.set(key, instance);
+    });
+
+    if (this._flushUpdatedInstancesAnimationFrame !== null) return;
+    this._flushUpdatedInstancesAnimationFrame = window.requestAnimationFrame(
+      this._flushUpdatedInstancesToPreview
+    );
   };
 
   _onObjectsModified = (objects: Array<gdObject>) => {
@@ -2589,6 +2649,11 @@ export default class SceneEditor extends React.Component<Props, State> {
         click: () => this.props.onOpenEvents(layout ? layout.getName() : ''),
       },
       {
+        label: i18n._(t`Open scene script`),
+        click: () =>
+          this.props.onOpenTypeScriptScripts(layout ? layout.getName() : ''),
+      },
+      {
         label: i18n._(t`Open scene properties`),
         click: () => this.openSceneProperties(true),
       },
@@ -3275,6 +3340,7 @@ export default class SceneEditor extends React.Component<Props, State> {
               project={project}
               previewDebuggerServer={this.props.previewDebuggerServer}
               isActive={isActive && this.state.isCinematicTimelineShown}
+              projectFilePath={this.props.projectFilePath}
               displayMode="overlay"
               onRequestClose={this.closeCinematicTimeline}
               activeObjectSnapshot={selectedInstanceCinematicSnapshot}
@@ -3452,6 +3518,7 @@ export default class SceneEditor extends React.Component<Props, State> {
                       this.props.onEventsBasedObjectChildrenEdited
                     }
                     onOpenEvents={this.props.onOpenEvents}
+                    onOpenTypeScriptScripts={this.props.onOpenTypeScriptScripts}
                     embeddedEditorOverlay={embeddedEditorOverlay}
                   />
                   <React.Fragment>

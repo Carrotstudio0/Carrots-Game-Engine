@@ -11,6 +11,31 @@ const electron = optionalRequire('electron');
 const serviceWorker =
   typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined;
 
+const unregisterAllServiceWorkers = async () => {
+  if (!serviceWorker || typeof serviceWorker.getRegistrations !== 'function') {
+    return;
+  }
+  const registrations = await serviceWorker.getRegistrations();
+  await Promise.all(
+    registrations.map(registration => registration.unregister())
+  );
+};
+
+const handleServiceWorkerError = (context: string, error: any) => {
+  if (isDev) {
+    console.warn(`[ServiceWorker] ${context} failed.`, error);
+    unregisterAllServiceWorkers().catch(unregisterError => {
+      console.warn(
+        '[ServiceWorker] Failed to cleanup existing registrations.',
+        unregisterError
+      );
+    });
+    return;
+  }
+
+  console.error(`[ServiceWorker] ${context} failed.`, error);
+};
+
 export function isServiceWorkerSupported(): boolean {
   return !!serviceWorker;
 }
@@ -62,15 +87,15 @@ export function registerServiceWorker() {
           };
         };
       })
-      .catch(error => {
-        console.error('Error during service worker registration:', error);
-      });
+      .catch(error => handleServiceWorkerError('registration', error));
 
-    serviceWorker.ready.then(registration => {
-      // Forces a check right now for a newer service worker script.
-      // If there is one, it will be installed (see the service worker script to verify how in development
-      // a new service worker script does a `self.skipWaiting()` and `self.clients.claim()`).
-      registration.update();
-    });
+    serviceWorker.ready
+      .then(registration => {
+        // Forces a check right now for a newer service worker script.
+        // If there is one, it will be installed (see the service worker script to verify how in development
+        // a new service worker script does a `self.skipWaiting()` and `self.clients.claim()`).
+        return registration.update();
+      })
+      .catch(error => handleServiceWorkerError('ready/update', error));
   });
 }

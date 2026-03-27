@@ -48,6 +48,7 @@ import { useResponsiveWindowSize } from '../UI/Responsive/ResponsiveWindowMeasur
 import QuickCustomizationPropertiesVisibilityDialog from '../QuickCustomization/QuickCustomizationPropertiesVisibilityDialog';
 import Text from '../UI/Text';
 import { ProjectScopedContainersAccessor } from '../InstructionOrExpression/EventsScope';
+import { refreshTypeScriptProjectBehaviorsExtension } from '../TypeScriptProjectScripts/TypeScriptProjectBehaviorsRegistry';
 
 const gd: libGDevelop = global.gd;
 
@@ -671,6 +672,7 @@ const BehaviorsEditor = (props: Props): React.Node => {
     isListLocked,
   } = props;
   const forceUpdate = useForceUpdate();
+  refreshTypeScriptProjectBehaviorsExtension(project);
 
   const [
     selectedQuickCustomizationPropertiesBehavior,

@@ -337,6 +337,7 @@ export class CustomObjectEditorContainer extends React.Component<RenderEditorCon
               eventsBasedObject.getName()
             )
           }
+          onOpenTypeScriptScripts={this.props.onOpenTypeScriptScripts}
           isActive={isActive}
           previewDebuggerServer={this.props.previewDebuggerServer}
           hotReloadPreviewButtonProps={this.props.hotReloadPreviewButtonProps}

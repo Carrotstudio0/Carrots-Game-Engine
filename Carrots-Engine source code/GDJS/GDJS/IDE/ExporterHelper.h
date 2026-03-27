@@ -594,6 +594,17 @@ class ExporterHelper {
       bool exportForPreview);
 
   /**
+   * \brief Export project-level TypeScript scripts and add them to includes.
+   *
+   * Scripts are read from project extension properties (GDevelopEditor /
+   * typeScriptProjectScripts), written as JavaScript files in outputDir and
+   * inserted in includesFiles based on includePosition ("first" or "last").
+   */
+  bool ExportTypeScriptProjectScripts(const gd::Project &project,
+                                      gd::String outputDir,
+                                      std::vector<gd::String> &includesFiles);
+
+  /**
    * \brief Add the project effects include files.
    */
   bool ExportEffectIncludes(gd::Project &project,

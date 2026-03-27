@@ -1,6 +1,7 @@
 // @flow
 import newNameGenerator from './NewNameGenerator';
 import Window from './Window';
+import { refreshTypeScriptProjectBehaviorsExtension } from '../TypeScriptProjectScripts/TypeScriptProjectBehaviorsRegistry';
 
 const gd: libGDevelop = global.gd;
 
@@ -18,6 +19,8 @@ export const addBehaviorToObject = (
   type: string,
   defaultName: string
 ): boolean => {
+  refreshTypeScriptProjectBehaviorsExtension(project);
+
   if (hasBehaviorWithType(object, type)) {
     const answer = Window.showConfirmDialog(
       "There is already a behavior of this type attached to the object. It's possible to add this behavior again, but it's unusual and may not always be supported properly. Are you sure you want to add this behavior again?"

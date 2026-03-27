@@ -29,6 +29,7 @@ import {
   type InstancesOutsideEditorChanges,
   type ObjectsOutsideEditorChanges,
   type ObjectGroupsOutsideEditorChanges,
+  type TypeScriptScriptTarget,
 } from './EditorContainers/BaseEditor';
 import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
 import { type HotReloadPreviewButtonProps } from '../HotReload/HotReloadPreviewButton';
@@ -165,6 +166,10 @@ export type EditorTabsPaneCommonProps = {|
         | 'events'
         | 'none',
     |}
+  ) => void,
+  openTypeScriptScripts: (
+    sceneName?: string,
+    preferredScriptTarget?: ?TypeScriptScriptTarget
   ) => void,
   openTemplateFromTutorial: (tutorialId: string) => Promise<void>,
   openTemplateFromCourseChapter: (
@@ -342,6 +347,7 @@ const EditorTabsPane: React.ComponentType<{
     openExternalLayout,
     openEventsFunctionsExtension,
     openLayout,
+    openTypeScriptScripts,
     openTemplateFromTutorial,
     openTemplateFromCourseChapter,
     previewDebuggerServer,
@@ -706,6 +712,12 @@ const EditorTabsPane: React.ComponentType<{
             enabled: !!currentProject,
           },
           {
+            label: 'Script',
+            click: () =>
+              triggerProjectCommand('OPEN_PROJECT_TYPESCRIPT_SCRIPTS'),
+            enabled: !!currentProject,
+          },
+          {
             label: 'Loading screen',
             click: () => triggerProjectCommand('OPEN_PROJECT_LOADING_SCREEN'),
             enabled: !!currentProject,
@@ -813,6 +825,10 @@ const EditorTabsPane: React.ComponentType<{
       }
       if (term.includes('resource')) {
         triggerProjectCommand('OPEN_PROJECT_RESOURCES');
+        return;
+      }
+      if (term.includes('typescript') || term.includes('script')) {
+        triggerProjectCommand('OPEN_PROJECT_TYPESCRIPT_SCRIPTS');
         return;
       }
       if (term.includes('dashboard')) {
@@ -1054,6 +1070,14 @@ const EditorTabsPane: React.ComponentType<{
                           focusWhenOpened: 'events',
                         });
                       },
+                      onOpenTypeScriptScripts: (
+                        sceneName?: string,
+                        preferredScriptTarget?: ?TypeScriptScriptTarget
+                      ) =>
+                        openTypeScriptScripts(
+                          sceneName,
+                          preferredScriptTarget
+                        ),
                       onOpenLayout: openLayout,
                       onOpenTemplateFromTutorial: openTemplateFromTutorial,
                       onOpenTemplateFromCourseChapter: openTemplateFromCourseChapter,
