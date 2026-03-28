@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../GDJS/Runtime/debugger-client/minimal-debugger-client.ts"],
-  "sourcesContent": ["namespace gdjs {\r\n  /**\r\n   * Does nothing apart from allowing to reporting errors.\r\n   * @category Debugging > Debugger Client\r\n   */\r\n  export class MinimalDebuggerClient extends gdjs.AbstractDebuggerClient {\r\n    constructor(runtimeGame: RuntimeGame) {\r\n      super(runtimeGame);\r\n    }\r\n\r\n    protected _sendMessage(message: string) {}\r\n  }\r\n\r\n  //Register the class to let the engine use it.\r\n  /** @category Debugging > Debugger Client */\r\n  // @ts-ignore\r\n  export const DebuggerClient = WindowMessageDebuggerClient;\r\n}\r\n"],
-  "mappings": "AAAA,GAAU,MAAV,UAAU,EAAV,CAKS,eAAoC,GAAK,sBAAuB,CACrE,YAAY,EAA0B,CACpC,MAAM,GAGE,aAAa,EAAiB,GALnC,EAAM,wBAWA,iBAAiB,8BAhBtB",
-  "names": []
-}

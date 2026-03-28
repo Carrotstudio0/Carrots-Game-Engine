@@ -37,4 +37,6 @@ Thumbs.db
 .codex-cmake-check/
 .codex-cmake-check-mingw/
 .codex-cmake-gdjs-check/
+/build-core-tests/
+/build-gdjs-runtime-check/
 .playwright-cli/

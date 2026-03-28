@@ -1,3 +1,0 @@
-"C:\Program Files\CMake\bin\cmake.exe" -E rm -f CMakeFiles\GDCore.dir/objects.a
-C:\mingw64\mingw64\bin\ar.exe qc CMakeFiles\GDCore.dir/objects.a @CMakeFiles\GDCore.dir\objects1.rsp
-C:\mingw64\mingw64\bin\c++.exe -O3 -DNDEBUG -shared -o "C:\Users\Tech Shop\Desktop\Carrots-Game-Engine\Carrots-Engine source code\Binaries\Output\Release_Windows\GDCore.dll" -Wl,--out-implib,"C:\Users\Tech Shop\Desktop\Carrots-Game-Engine\Carrots-Engine source code\Binaries\Output\Release_Windows\libGDCore.dll.a" -Wl,--major-image-version,0,--minor-image-version,0 -Wl,--whole-archive CMakeFiles\GDCore.dir/objects.a -Wl,--no-whole-archive @CMakeFiles\GDCore.dir\linkLibs.rsp
