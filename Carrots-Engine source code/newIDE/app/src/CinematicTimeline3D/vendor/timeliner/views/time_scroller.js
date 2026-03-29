@@ -57,38 +57,60 @@ function ScrollCanvas(dispatcher, data) {
 		k: 1
 	};
 
+	function getScrollBounds() {
+		var totalTime = Math.max(0, Number(data.get('ui:totalTime').value) || 0);
+		var scrollTime = Math.max(0, Number(data.get('ui:scrollTime').value) || 0);
+		var currentTime = Math.max(0, Number(data.get('ui:currentTime').value) || 0);
+		var pixels_per_second = Math.max(1, Number(data.get('ui:timeScale').value) || 1);
+		var w = Math.max(1, (width || 1) - 2 * MARGINS);
+		var visibleTime = Math.max(1, w / pixels_per_second);
+		var effectiveTotalTime = Math.max(totalTime, currentTime + visibleTime, scrollTime + visibleTime);
+		return {
+			totalTime,
+			effectiveTotalTime,
+			scrollTime,
+			currentTime,
+			pixels_per_second,
+			w,
+			visibleTime
+		};
+	}
+
 	var scrollRect = new Rect();
 
 	this.paint = function(ctx) {
-		var totalTime = data.get('ui:totalTime').value;
-		var scrollTime = data.get('ui:scrollTime').value;
-		var currentTime = data.get('ui:currentTime').value;
-
-		var pixels_per_second = data.get('ui:timeScale').value;
+		var bounds = getScrollBounds();
+		var totalTime = bounds.totalTime;
+		var effectiveTotalTime = bounds.effectiveTotalTime;
+		var scrollTime = bounds.scrollTime;
+		var currentTime = bounds.currentTime;
+		var pixels_per_second = bounds.pixels_per_second;
 
 		ctx.save();
 		var dpr = window.devicePixelRatio;
 		ctx.scale(dpr, dpr);
 
-		var w = width - 2 * MARGINS;
-		var h = 16; // TOP_SCROLL_TRACK;
+		var w = bounds.w;
+		var h = 14; // TOP_SCROLL_TRACK;
 
 		ctx.clearRect(0, 0, width, height);
-		ctx.translate(MARGINS, 5);
+		ctx.translate(MARGINS, 4);
 
 		// Background track
 		ctx.fillStyle = 'rgba(91, 116, 152, 0.22)';
 		ctx.fillRect(0, 0, w, h);
 
-		var totalTimePixels = totalTime * pixels_per_second;
+		var totalTimePixels = effectiveTotalTime * pixels_per_second;
 		var k = w / totalTimePixels;
-		scroller.k = k;
+		scroller.k = Math.min(1, k);
 
-		var grip_length = w * k;
+		var grip_length = Math.max(16, w * scroller.k);
+		grip_length = Math.min(w, grip_length);
 
 		scroller.grip_length = grip_length;
 
-		scroller.left = scrollTime / totalTime * w;
+		scroller.left = scrollTime / effectiveTotalTime * w;
+		scroller.left = Math.max(0, Math.min(scroller.left, Math.max(0, w - grip_length)));
 
 		scrollRect.set(
 			scroller.left,
@@ -100,7 +122,7 @@ function ScrollCanvas(dispatcher, data) {
 		);
 		scrollRect.paint(ctx);
 
-		var r = currentTime / totalTime * w;
+		var r = currentTime / effectiveTotalTime * w;
 
 		ctx.fillStyle =  Theme.c;
 		ctx.lineWidth = 2;
@@ -111,12 +133,16 @@ function ScrollCanvas(dispatcher, data) {
 		// ctx.arc(r, h2 / 2, h2 / 1.5, 0, Math.PI * 2);
 
 		// line
-		ctx.rect(r, 0, 2, h + 5);
+		ctx.rect(r, 0, 2, h + 4);
 		ctx.fill()
 
-		ctx.fillText(currentTime && currentTime.toFixed(2), r, h + 14);
+		ctx.fillText(currentTime && currentTime.toFixed(2), r, h + 11);
 		// ctx.fillText(currentTime && currentTime.toFixed(3), 10, 10);
-		ctx.fillText(totalTime, 300, 14);
+		ctx.fillText(
+			effectiveTotalTime.toFixed(2),
+			Math.max(w - 52, 0),
+			11
+		);
 
 		ctx.restore();
 	}
@@ -133,9 +159,9 @@ function ScrollCanvas(dispatcher, data) {
 			return;
 		}
 
-		var totalTime = data.get('ui:totalTime').value;
-		var pixels_per_second = data.get('ui:timeScale').value;
-		var w = width - 2 * MARGINS;
+		var bounds = getScrollBounds();
+		var totalTime = bounds.effectiveTotalTime;
+		var w = bounds.w;
 
 		var t = (e.offsetx - MARGINS) / w * totalTime;
 		// t = Math.max(0, t);
@@ -149,13 +175,11 @@ function ScrollCanvas(dispatcher, data) {
 
 	this.onMove = function move(e) {
 		if (draggingx != null) {
-			var totalTime = data.get('ui:totalTime').value;
-			var w = width - 2 * MARGINS;
-			var scrollTime = (draggingx + e.dx) / w * totalTime;
-
-			console.log(scrollTime, draggingx, e.dx, scroller.grip_length, w);
-
-			if (draggingx  + e.dx + scroller.grip_length > w) return;
+			var bounds = getScrollBounds();
+			var totalTime = bounds.effectiveTotalTime;
+			var w = bounds.w;
+			var nextLeft = Math.max(0, draggingx + e.dx);
+			var scrollTime = nextLeft / w * totalTime;
 
 			dispatcher.fire('update.scrollTime', scrollTime);
 

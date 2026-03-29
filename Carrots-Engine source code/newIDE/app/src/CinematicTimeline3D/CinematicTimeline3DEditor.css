@@ -1,49 +1,49 @@
 .ct3d-root {
-  --ct3d-toolbar-max-height: 34%;
-  --ct3d-timeline-min-height: 150px;
+  --ct3d-toolbar-max-height: 24%;
+  --ct3d-timeline-min-height: 118px;
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  color: #dbe4f0;
+  color: #d7e6da;
   border: 0;
   border-radius: 0;
-  background: radial-gradient(circle at 20% -30%, #273043 0%, #1a2230 42%, #111723 100%);
+  background: radial-gradient(circle at 18% -28%, #1f3328 0%, #13221a 48%, #0d1712 100%);
   animation: ct3d-fadeIn 180ms ease-out;
-  font-size: 11px;
+  font-size: 10px;
 }
 .ct3d-root.ct3d-root--overlay {
-  --ct3d-toolbar-max-height: 46%;
-  --ct3d-timeline-min-height: 128px;
+  --ct3d-toolbar-max-height: 30%;
+  --ct3d-timeline-min-height: 104px;
 }
 
 .ct3d-toolbar {
   flex: 0 0 auto;
   max-height: var(--ct3d-toolbar-max-height);
   overflow-y: auto;
-  padding: 6px;
+  padding: 5px;
   border-bottom: 0;
   background: linear-gradient(
     180deg,
-    rgba(23, 31, 44, 0.97) 0%,
-    rgba(15, 22, 33, 0.97) 100%
+    rgba(22, 36, 28, 0.98) 0%,
+    rgba(14, 24, 19, 0.98) 100%
   );
 }
 
 .ct3d-headerRow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 1px 1px 6px 1px;
+  gap: 6px;
+  min-height: 28px;
+  padding: 1px 1px 4px 1px;
 }
 
 .ct3d-titleText {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
-  color: #e8eef9;
+  color: #eef9f0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -51,8 +51,8 @@
 
 .ct3d-headerMeta {
   margin-left: auto;
-  color: #aeb9cd;
-  font-size: 12px;
+  color: #c7dbce;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -61,11 +61,11 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
 .ct3d-toolbarRow + .ct3d-toolbarRow {
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .ct3d-inlineField {
@@ -106,19 +106,19 @@
 .ct3d-input {
   width: 100%;
   min-width: 0;
-  height: 30px;
-  border: 1px solid #3f4f66;
+  height: 26px;
+  border: 1px solid #355140;
   border-radius: 6px;
-  background: #121a27;
-  color: #f3f8ff;
-  padding: 0 8px;
-  font-size: 11px;
+  background: #0f1a14;
+  color: #eff8f1;
+  padding: 0 7px;
+  font-size: 10px;
 }
 
 .ct3d-input:focus {
   outline: none;
-  border-color: #76a1d9;
-  box-shadow: 0 0 0 1px rgba(118, 161, 217, 0.28);
+  border-color: #57a878;
+  box-shadow: 0 0 0 1px rgba(87, 168, 120, 0.28);
 }
 
 .ct3d-btn {
@@ -126,22 +126,22 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  height: 30px;
-  border: 1px solid #455772;
-  border-radius: 8px;
-  background: #293547;
-  color: #e7eef9;
-  font-size: 11px;
+  height: 26px;
+  border: 1px solid #3f5848;
+  border-radius: 7px;
+  background: #1f2f25;
+  color: #e8f4ea;
+  font-size: 10px;
   font-weight: 600;
   white-space: nowrap;
-  padding: 0 11px;
+  padding: 0 9px;
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
 
 .ct3d-btn:hover {
-  background: #314158;
-  border-color: #5f7ca0;
+  background: #283a2f;
+  border-color: #5f7f6a;
 }
 
 .ct3d-btn:active {
@@ -149,38 +149,54 @@
 }
 
 .ct3d-btn-primary {
-  border-color: #338e63;
-  background: #2a7a54;
+  border-color: #3f9562;
+  background: #2b7e50;
 }
 
 .ct3d-btn-primary:hover {
-  border-color: #43a778;
-  background: #338f62;
-}
-
-.ct3d-btn-record {
-  border-color: #8d3b3b;
-  background: #452626;
-  color: #ffe0e0;
-}
-
-.ct3d-btn-record.is-active {
-  border-color: #d25555;
-  background: #9a3838;
-  color: #fff7f7;
-  box-shadow: 0 0 0 1px rgba(210, 85, 85, 0.3);
+  border-color: #52af76;
+  background: #339865;
 }
 
 .ct3d-btn-ghost {
-  border-color: #4d607c;
-  background: #1b2636;
-  color: #bed3ef;
+  border-color: #6f5536;
+  background: #2b2419;
+  color: #ffd29f;
 }
 
 .ct3d-btn-square {
+  width: 26px;
+  min-width: 26px;
+  padding: 0;
+}
+
+.ct3d-btn-icon {
   width: 30px;
   min-width: 30px;
   padding: 0;
+}
+
+.ct3d-icon-play {
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 10px solid #f2fff5;
+  margin-left: 2px;
+}
+
+.ct3d-icon-pause {
+  width: 10px;
+  height: 12px;
+  border-left: 3px solid #f2fff5;
+  border-right: 3px solid #f2fff5;
+}
+
+.ct3d-icon-stop {
+  width: 11px;
+  height: 11px;
+  background: #f2fff5;
+  border-radius: 1px;
 }
 
 .ct3d-checkRow {
@@ -384,7 +400,7 @@
   flex: 1 1 auto;
   min-height: 0;
   min-height: var(--ct3d-timeline-min-height);
-  background: linear-gradient(180deg, #0f1726 0%, #0d1522 100%);
+  background: linear-gradient(180deg, #101b15 0%, #0c1410 100%);
 }
 
 .ct3d-host {
@@ -396,14 +412,14 @@
 
 .ct3d-statusBar {
   border-top: 0;
-  background: #141c29;
-  color: #9eb0c4;
-  font-size: 10px;
-  min-height: 20px;
+  background: #131d17;
+  color: #9fb8a5;
+  font-size: 9px;
+  min-height: 18px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 4px 8px;
+  padding: 3px 7px;
 }
 
 .ct3d-root.ct3d-root--overlay .ct3d-toolbarRow {

@@ -46,6 +46,65 @@ module.exports = {
 
     extension
       .addAction(
+        'LoadFromProjectStorage',
+        _('Load cinematic from project storage'),
+        _(
+          'Load cinematic timeline data from the built-in project storage variable saved by the timeline editor.'
+        ),
+        _('Load cinematic timeline from project storage'),
+        _('Cinematic Timeline'),
+        'res/actions/animation24.png',
+        'res/actions/animation.png'
+      )
+      .addCodeOnlyParameter('currentScene', '')
+      .getCodeExtraInformation()
+      .setIncludeFile(
+        'Extensions/CinematicTimeline/cinematictimelinetools.js'
+      )
+      .setFunctionName('gdjs.evtTools.cinematicTimeline.loadFromProjectStorage');
+
+    extension
+      .addAction(
+        'LoadAndPlayFromProjectStorage',
+        _('Load and play cinematic from project storage'),
+        _(
+          'Load cinematic timeline data from project storage then start playback immediately.'
+        ),
+        _('Load and play cinematic timeline from project storage'),
+        _('Cinematic Timeline'),
+        'res/actions/sonplaying24.png',
+        'res/actions/sonplaying.png'
+      )
+      .addCodeOnlyParameter('currentScene', '')
+      .getCodeExtraInformation()
+      .setIncludeFile(
+        'Extensions/CinematicTimeline/cinematictimelinetools.js'
+      )
+      .setFunctionName(
+        'gdjs.evtTools.cinematicTimeline.loadAndPlayFromProjectStorage'
+      );
+
+    extension
+      .addAction(
+        'SaveLoadedToProjectStorage',
+        _('Save loaded cinematic to project storage'),
+        _(
+          'Save the currently loaded cinematic timeline into the built-in project storage variable.'
+        ),
+        _('Save loaded cinematic timeline to project storage'),
+        _('Cinematic Timeline'),
+        'res/actions/animation24.png',
+        'res/actions/animation.png'
+      )
+      .addCodeOnlyParameter('currentScene', '')
+      .getCodeExtraInformation()
+      .setIncludeFile(
+        'Extensions/CinematicTimeline/cinematictimelinetools.js'
+      )
+      .setFunctionName('gdjs.evtTools.cinematicTimeline.saveLoadedToProjectStorage');
+
+    extension
+      .addAction(
         'Play',
         _('Play cinematic'),
         _('Play the loaded cinematic timeline.'),

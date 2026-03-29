@@ -1,4 +1,5 @@
 // @flow
+/* eslint-disable no-unused-vars */
 import * as React from 'react';
 import { Timeliner } from './vendor/timeliner/timeliner';
 import { type PreviewDebuggerServer } from '../ExportAndShare/PreviewLauncher.flow';
@@ -28,12 +29,6 @@ type TransformValue = {|
   scale: Vec3,
 |};
 
-type IKValue = {|
-  target: Vec3,
-  pole: Vec3,
-  weight: number,
-|};
-
 type Keyframe<T> = {|
   frame: number,
   easing: CinematicTimelineEasing,
@@ -48,17 +43,7 @@ type TransformTrack = {|
   keyframes: Array<Keyframe<TransformValue>>,
 |};
 
-type IKTrack = {|
-  id: string,
-  type: 'ik',
-  name: string,
-  targetId: string,
-  chainRoot: string,
-  endEffector: string,
-  keyframes: Array<Keyframe<IKValue>>,
-|};
-
-type Track = TransformTrack | IKTrack;
+type Track = TransformTrack;
 
 type TrackSettings = {|
   muted?: boolean,
@@ -153,13 +138,6 @@ type TimelinerData = {|
     trackSettingsByLayer?: {
       [string]: {| muted?: boolean, solo?: boolean, locked?: boolean |},
     },
-    ikConfigByTarget?: {
-      [string]: {|
-        chainRoot?: string,
-        endEffector?: string,
-        name?: string,
-      |},
-    },
   |},
 |};
 
@@ -183,14 +161,14 @@ const PROJECT_STORAGE_VARIABLE = '__carrots_cinematic_timeliner_v1';
 const DEFAULT_FPS = 30;
 const DEFAULT_DURATION_SECONDS = 32;
 const DEFAULT_TIME_SCALE = 36;
+const MIN_TIME_SCALE = 6;
+const MAX_TIME_SCALE = 420;
 const MIN_FPS = 1;
 const MAX_FPS = 240;
 const MIN_DURATION_SECONDS = 1 / DEFAULT_FPS;
-const MAX_DURATION_SECONDS = 20000 / MIN_FPS;
-const TRACK_FRAME_LIMIT = 20000;
+const TRACK_FRAME_LIMIT = 1000000000;
+const MAX_DURATION_SECONDS = TRACK_FRAME_LIMIT / MIN_FPS;
 const EPSILON = 0.00001;
-const DEFAULT_IK_CHAIN_ROOT = 'Hips,Spine,Chest,UpperArm.R,ForeArm.R,Hand.R';
-const DEFAULT_IK_END_EFFECTOR = 'Hand.R';
 const DEFAULT_LOOP_RANGE = { enabled: false, inFrame: 0, outFrame: 120 };
 const DEFAULT_EVENT_ACTION = 'Trigger';
 const DEFAULT_EVENT_CONDITION = 'Always';
@@ -264,80 +242,16 @@ const transformPropertyDefinitions = [
   },
 ];
 
-const ikPropertyDefinitions = [
-  {
-    path: 'ik.target.x',
-    read: (value: IKValue): number => value.target.x,
-    write: (value: IKValue, nextValue: number): void => {
-      value.target.x = nextValue;
-    },
-  },
-  {
-    path: 'ik.target.y',
-    read: (value: IKValue): number => value.target.y,
-    write: (value: IKValue, nextValue: number): void => {
-      value.target.y = nextValue;
-    },
-  },
-  {
-    path: 'ik.target.z',
-    read: (value: IKValue): number => value.target.z,
-    write: (value: IKValue, nextValue: number): void => {
-      value.target.z = nextValue;
-    },
-  },
-  {
-    path: 'ik.pole.x',
-    read: (value: IKValue): number => value.pole.x,
-    write: (value: IKValue, nextValue: number): void => {
-      value.pole.x = nextValue;
-    },
-  },
-  {
-    path: 'ik.pole.y',
-    read: (value: IKValue): number => value.pole.y,
-    write: (value: IKValue, nextValue: number): void => {
-      value.pole.y = nextValue;
-    },
-  },
-  {
-    path: 'ik.pole.z',
-    read: (value: IKValue): number => value.pole.z,
-    write: (value: IKValue, nextValue: number): void => {
-      value.pole.z = nextValue;
-    },
-  },
-  {
-    path: 'ik.weight',
-    read: (value: IKValue): number => value.weight,
-    write: (value: IKValue, nextValue: number): void => {
-      value.weight = clampNumber(nextValue, 0, 1);
-    },
-  },
-];
-
 const createDefaultTransformValue = (): TransformValue => ({
   position: { x: 0, y: 0, z: 0 },
   rotation: { x: 0, y: 0, z: 0 },
   scale: { x: 1, y: 1, z: 1 },
 });
 
-const createDefaultIKValue = (): IKValue => ({
-  target: { x: 0, y: 0, z: 0 },
-  pole: { x: 0, y: 1, z: 0 },
-  weight: 1,
-});
-
 const cloneTransformValue = (value: TransformValue): TransformValue => ({
   position: { ...value.position },
   rotation: { ...value.rotation },
   scale: { ...value.scale },
-});
-
-const cloneIKValue = (value: IKValue): IKValue => ({
-  target: { ...value.target },
-  pole: { ...value.pole },
-  weight: value.weight,
 });
 
 const clampNumber = (value: number, min: number, max: number): number =>
@@ -354,6 +268,13 @@ const parseFiniteNumber = (
     typeof value === 'number' ? value : Number.parseFloat(value);
   return Number.isFinite(parsedValue) ? parsedValue : fallbackValue;
 };
+
+const clampTimeScale = (value: string | number): number =>
+  clampNumber(
+    parseFiniteNumber(value, DEFAULT_TIME_SCALE),
+    MIN_TIME_SCALE,
+    MAX_TIME_SCALE
+  );
 
 const normalizeTransformValue = (value: any): TransformValue => {
   const fallbackValue = createDefaultTransformValue();
@@ -402,38 +323,6 @@ const normalizeTransformValue = (value: any): TransformValue => {
         fallbackValue.scale.z
       ),
     },
-  };
-};
-
-const normalizeIKValue = (value: any): IKValue => {
-  const fallbackValue = createDefaultIKValue();
-  if (!value || typeof value !== 'object') return fallbackValue;
-  const asObject = value;
-  return {
-    target: {
-      x: parseFiniteNumber(
-        asObject.target && asObject.target.x,
-        fallbackValue.target.x
-      ),
-      y: parseFiniteNumber(
-        asObject.target && asObject.target.y,
-        fallbackValue.target.y
-      ),
-      z: parseFiniteNumber(
-        asObject.target && asObject.target.z,
-        fallbackValue.target.z
-      ),
-    },
-    pole: {
-      x: parseFiniteNumber(asObject.pole && asObject.pole.x, fallbackValue.pole.x),
-      y: parseFiniteNumber(asObject.pole && asObject.pole.y, fallbackValue.pole.y),
-      z: parseFiniteNumber(asObject.pole && asObject.pole.z, fallbackValue.pole.z),
-    },
-    weight: clampNumber(
-      parseFiniteNumber(asObject.weight, fallbackValue.weight),
-      0,
-      1
-    ),
   };
 };
 
@@ -500,7 +389,7 @@ const parseLayerName = (
   targetId: string,
   objectName: string,
   propertyPath: string,
-  trackType: 'transform' | 'ik',
+  trackType: 'transform',
 |} => {
   const match = /^\[(.+?)\]\s+(.+)$/.exec(layerName);
   if (!match) return null;
@@ -514,17 +403,6 @@ const parseLayerName = (
         objectName: descriptor.slice(0, descriptor.length - suffix.length),
         propertyPath: definition.path,
         trackType: 'transform',
-      };
-    }
-  }
-  for (const definition of ikPropertyDefinitions) {
-    const suffix = `.${definition.path}`;
-    if (descriptor.endsWith(suffix)) {
-      return {
-        targetId,
-        objectName: descriptor.slice(0, descriptor.length - suffix.length),
-        propertyPath: definition.path,
-        trackType: 'ik',
       };
     }
   }
@@ -699,7 +577,7 @@ const collectLayerGroups = (
   id: string,
   targetId: string,
   objectName: string,
-  trackType: 'transform' | 'ik',
+  trackType: 'transform',
   layerNames: Array<string>,
   keyframesCount: number,
   muted: boolean,
@@ -712,7 +590,7 @@ const collectLayerGroups = (
       id: string,
       targetId: string,
       objectName: string,
-      trackType: 'transform' | 'ik',
+      trackType: 'transform',
       layerNames: Array<string>,
       keyframesCount: number,
       muted: boolean,
@@ -778,10 +656,8 @@ const buildDataWithDefaults = (
     0,
     totalTimeSeconds
   );
-  const safeTimeScale = clampNumber(
-    parseFiniteNumber(data && data.ui && data.ui.timeScale, DEFAULT_TIME_SCALE),
-    24,
-    96
+  const safeTimeScale = clampTimeScale(
+    parseFiniteNumber(data && data.ui && data.ui.timeScale, DEFAULT_TIME_SCALE)
   );
   const metaObject = getMetaObject(data);
   const trackSettingsByLayer = getTrackSettingsByLayer(data);
@@ -817,10 +693,6 @@ const buildDataWithDefaults = (
       shots: normalizedShots,
       events: normalizedEvents,
       trackSettingsByLayer,
-      ikConfigByTarget:
-        metaObject.ikConfigByTarget && typeof metaObject.ikConfigByTarget === 'object'
-          ? metaObject.ikConfigByTarget
-          : {},
     },
   };
 };
@@ -867,7 +739,6 @@ const createEmptyTimelinerData = (sceneName: string): TimelinerData => ({
     shots: [],
     events: [],
     trackSettingsByLayer: {},
-    ikConfigByTarget: {},
   },
 });
 
@@ -934,10 +805,6 @@ const timelinerDataToRuntimeScene = (
     TRACK_FRAME_LIMIT
   );
 
-  const ikConfigByTarget =
-    (normalizedData.gdCinematicMeta &&
-      normalizedData.gdCinematicMeta.ikConfigByTarget) ||
-    {};
   const loopRange = normalizeLoopRange(
     normalizedData.gdCinematicMeta && normalizedData.gdCinematicMeta.loopRange,
     durationFrames
@@ -955,12 +822,6 @@ const timelinerDataToRuntimeScene = (
     {|
       objectName: string,
       transformChannelsByPropertyPath: { [string]: Array<TimelinerLayerValue> },
-      ikChannelsByPropertyPath: { [string]: Array<TimelinerLayerValue> },
-      ikConfig: {|
-        chainRoot?: string,
-        endEffector?: string,
-        name?: string,
-      |},
     |}
   >();
 
@@ -974,23 +835,13 @@ const timelinerDataToRuntimeScene = (
       targetChannel = {
         objectName,
         transformChannelsByPropertyPath: {},
-        ikChannelsByPropertyPath: {},
-        ikConfig:
-          ikConfigByTarget && typeof ikConfigByTarget[targetId] === 'object'
-            ? ikConfigByTarget[targetId]
-            : {},
       };
       targetChannels.set(targetId, targetChannel);
     }
-    if (trackType === 'ik') {
-      targetChannel.ikChannelsByPropertyPath[propertyPath] = sortByTime(
-        Array.isArray(layer.values) ? layer.values : []
-      );
-    } else {
-      targetChannel.transformChannelsByPropertyPath[propertyPath] = sortByTime(
-        Array.isArray(layer.values) ? layer.values : []
-      );
-    }
+    if (trackType !== 'transform') return;
+    targetChannel.transformChannelsByPropertyPath[propertyPath] = sortByTime(
+      Array.isArray(layer.values) ? layer.values : []
+    );
   });
 
   const tracks: Array<Track> = [];
@@ -1059,73 +910,6 @@ const timelinerDataToRuntimeScene = (
       }
     }
 
-    const ikTimesSet = new Set<number>();
-    ikPropertyDefinitions.forEach(({ path }) => {
-      const channel = targetChannel.ikChannelsByPropertyPath[path];
-      if (!channel || !channel.length) return;
-      channel.forEach(value => {
-        ikTimesSet.add(value.time);
-      });
-    });
-    const ikTimes = Array.from(ikTimesSet.values()).sort((a, b) => a - b);
-    if (!ikTimes.length) return;
-
-    const ikKeyframesByFrame = new Map<number, Keyframe<IKValue>>();
-    ikTimes.forEach(timeInSeconds => {
-      const ikValue = createDefaultIKValue();
-      ikPropertyDefinitions.forEach(definition => {
-        const channel =
-          targetChannel.ikChannelsByPropertyPath[definition.path] || [];
-        definition.write(
-          ikValue,
-          evaluateChannelAtTime(
-            channel,
-            timeInSeconds,
-            definition.read(createDefaultIKValue())
-          )
-        );
-      });
-
-      let easing: CinematicTimelineEasing = 'linear';
-      for (const definition of ikPropertyDefinitions) {
-        const channel =
-          targetChannel.ikChannelsByPropertyPath[definition.path] || [];
-        const channelEasing = findKeyframeEasingAtTime(channel, timeInSeconds);
-        if (channelEasing) {
-          easing = channelEasing;
-          break;
-        }
-      }
-
-      const frame = clampInteger(timeInSeconds * safeFps, 0, durationFrames);
-      ikKeyframesByFrame.set(frame, {
-        frame,
-        easing,
-        value: cloneIKValue(ikValue),
-      });
-    });
-
-    const ikKeyframes = Array.from(ikKeyframesByFrame.values()).sort(
-      (a, b) => a.frame - b.frame
-    );
-    if (!ikKeyframes.length) return;
-
-    trackIndex++;
-    tracks.push({
-      id: `ik-track-${trackIndex}`,
-      type: 'ik',
-      name:
-        (targetChannel.ikConfig && targetChannel.ikConfig.name) ||
-        `${targetChannel.objectName} IK`,
-      targetId,
-      chainRoot:
-        (targetChannel.ikConfig && targetChannel.ikConfig.chainRoot) ||
-        DEFAULT_IK_CHAIN_ROOT,
-      endEffector:
-        (targetChannel.ikConfig && targetChannel.ikConfig.endEffector) ||
-        DEFAULT_IK_END_EFFECTOR,
-      keyframes: ikKeyframes,
-    });
   });
 
   return {
@@ -1161,10 +945,9 @@ const runtimeSceneToTimelinerData = (
   const durationSeconds = frameToSeconds(durationFrames, safeFps);
 
   const layers: Array<TimelinerLayer> = [];
-  const ikConfigByTarget = {};
   const tracks = Array.isArray(scene && scene.tracks) ? scene.tracks : [];
   tracks.forEach((track, trackIndex) => {
-    if (!track || (track.type !== 'transform' && track.type !== 'ik')) return;
+    if (!track || track.type !== 'transform') return;
     const targetId =
       typeof track.targetId === 'string' && track.targetId
         ? track.targetId
@@ -1174,54 +957,6 @@ const runtimeSceneToTimelinerData = (
         ? track.name
         : targetId;
     const keyframes = Array.isArray(track.keyframes) ? track.keyframes : [];
-
-    if (track.type === 'ik') {
-      ikConfigByTarget[targetId] = {
-        chainRoot:
-          typeof track.chainRoot === 'string' && track.chainRoot
-            ? track.chainRoot
-            : DEFAULT_IK_CHAIN_ROOT,
-        endEffector:
-          typeof track.endEffector === 'string' && track.endEffector
-            ? track.endEffector
-            : DEFAULT_IK_END_EFFECTOR,
-        name:
-          typeof track.name === 'string' && track.name
-            ? track.name
-            : `${objectName} IK`,
-      };
-      ikPropertyDefinitions.forEach(definition => {
-        const values: Array<TimelinerLayerValue> = keyframes
-          .map(keyframe => {
-            const safeIKValue = normalizeIKValue(keyframe.value);
-            return {
-              time: frameToSeconds(
-                clampInteger(
-                  parseFiniteNumber(keyframe.frame, 0),
-                  0,
-                  durationFrames
-                ),
-                safeFps
-              ),
-              value: parseFiniteNumber(
-                definition.read(safeIKValue),
-                definition.read(createDefaultIKValue())
-              ),
-              tween: mapEasingToTween(keyframe.easing),
-              _color: randomColor(),
-            };
-          })
-          .sort((a, b) => a.time - b.time);
-
-        layers.push({
-          name: makeLayerName(targetId, objectName, definition.path),
-          values,
-          _value: values.length ? values[values.length - 1].value : 0,
-          _color: randomColor(),
-        });
-      });
-      return;
-    }
 
     transformPropertyDefinitions.forEach(definition => {
       const values: Array<TimelinerLayerValue> = keyframes
@@ -1281,7 +1016,6 @@ const runtimeSceneToTimelinerData = (
         shots: normalizedShots,
         events: normalizedEvents,
         trackSettingsByLayer: {},
-        ikConfigByTarget,
       },
     },
     fps: safeFps,
@@ -1329,7 +1063,7 @@ const saveTimelinerDataToProject = (
     typeof normalizedData.gdCinematicMeta === 'object'
       ? normalizedData.gdCinematicMeta
       : {};
-  const payload = {
+  const normalizedTimelinerData = {
     ...normalizedData,
     title: sceneName,
     gdCinematicMeta: {
@@ -1337,6 +1071,18 @@ const saveTimelinerDataToProject = (
       fps,
       sceneName,
     },
+  };
+  const payload = {
+    format: TIMELINE_FILE_FORMAT,
+    sceneName,
+    fps,
+    savedAt: new Date().toISOString(),
+    timelinerData: normalizedTimelinerData,
+    runtimeScene: timelinerDataToRuntimeScene(
+      normalizedTimelinerData,
+      fps,
+      sceneName
+    ),
   };
   variable.setString(JSON.stringify(payload));
 };
@@ -1352,6 +1098,53 @@ const loadTimelinerDataFromProject = (
 
   try {
     const parsedValue = JSON.parse(rawString);
+    const wrappedPayload =
+      parsedValue &&
+      typeof parsedValue === 'object' &&
+      parsedValue.format === TIMELINE_FILE_FORMAT
+        ? parsedValue
+        : null;
+    const wrappedTimelinerData =
+      wrappedPayload && isTimelinerData(wrappedPayload.timelinerData)
+        ? wrappedPayload.timelinerData
+        : null;
+    const wrappedRuntimeScene =
+      wrappedPayload && isRuntimeCinematicScene(wrappedPayload.runtimeScene)
+        ? wrappedPayload.runtimeScene
+        : null;
+
+    if (wrappedTimelinerData) {
+      const wrappedFps = clampInteger(
+        parseFiniteNumber(
+          wrappedPayload && wrappedPayload.fps,
+          parseFiniteNumber(
+            wrappedTimelinerData.gdCinematicMeta &&
+              wrappedTimelinerData.gdCinematicMeta.fps,
+            DEFAULT_FPS
+          )
+        ),
+        MIN_FPS,
+        MAX_FPS
+      );
+      const parsedData = buildDataWithDefaults(wrappedTimelinerData, wrappedFps);
+      return {
+        data: parsedData,
+        fps: wrappedFps,
+        sceneName:
+          (wrappedPayload &&
+            typeof wrappedPayload.sceneName === 'string' &&
+            wrappedPayload.sceneName) ||
+          (parsedData.gdCinematicMeta &&
+            parsedData.gdCinematicMeta.sceneName) ||
+          parsedData.title ||
+          defaultSceneName,
+      };
+    }
+
+    if (wrappedRuntimeScene) {
+      return runtimeSceneToTimelinerData(wrappedRuntimeScene, defaultSceneName);
+    }
+
     if (isTimelinerData(parsedValue)) {
       const parsedData = buildDataWithDefaults(
         parsedValue,
@@ -1494,26 +1287,6 @@ const getSnapshotLayerEntries = (
     value: definition.read(snapshot.transform),
   }));
 
-const getSnapshotIKLayerEntries = (
-  snapshot: ActiveObjectSnapshot
-): Array<{| layerName: string, value: number |}> => {
-  const baseIKValue = createDefaultIKValue();
-  baseIKValue.target = { ...snapshot.transform.position };
-  baseIKValue.pole = {
-    x: snapshot.transform.position.x,
-    y: snapshot.transform.position.y + 100,
-    z: snapshot.transform.position.z,
-  };
-  return ikPropertyDefinitions.map(definition => ({
-    layerName: makeLayerName(
-      snapshot.targetId,
-      snapshot.objectName,
-      definition.path
-    ),
-    value: definition.read(baseIKValue),
-  }));
-};
-
 const shouldIgnoreKeyboardShortcut = (target: any): boolean => {
   if (!target) return false;
   const tagName =
@@ -1548,8 +1321,6 @@ const CinematicTimeline3DEditor = ({
   const autoKeyRef = React.useRef<boolean>(true);
   const fpsRef = React.useRef<number>(DEFAULT_FPS);
   const sceneNameRef = React.useRef<string>(`${project.getName()} Cinematic`);
-  const ikChainRootRef = React.useRef<string>(DEFAULT_IK_CHAIN_ROOT);
-  const ikEndEffectorRef = React.useRef<string>(DEFAULT_IK_END_EFFECTOR);
   const loopRangeRef = React.useRef<CinematicTimelineLoopRange>({
     ...DEFAULT_LOOP_RANGE,
   });
@@ -1570,12 +1341,6 @@ const CinematicTimeline3DEditor = ({
   const [currentFrame, setCurrentFrame] = React.useState<number>(0);
   const [autoSync, setAutoSync] = React.useState<boolean>(true);
   const [autoKey, setAutoKey] = React.useState<boolean>(true);
-  const [ikChainRoot, setIkChainRoot] = React.useState<string>(
-    DEFAULT_IK_CHAIN_ROOT
-  );
-  const [ikEndEffector, setIkEndEffector] = React.useState<string>(
-    DEFAULT_IK_END_EFFECTOR
-  );
   const [loopRange, setLoopRange] = React.useState<CinematicTimelineLoopRange>({
     ...DEFAULT_LOOP_RANGE,
   });
@@ -1594,7 +1359,6 @@ const CinematicTimeline3DEditor = ({
     DEFAULT_EVENT_CONDITION
   );
   const [eventPayloadDraft, setEventPayloadDraft] = React.useState<string>('');
-  const [showAdvanced, setShowAdvanced] = React.useState<boolean>(false);
   const [dataRevision, setDataRevision] = React.useState<number>(0);
   const [statusText, setStatusText] = React.useState<string>('Timeliner ready.');
 
@@ -1633,18 +1397,6 @@ const CinematicTimeline3DEditor = ({
       autoKeyRef.current = autoKey;
     },
     [autoKey]
-  );
-  React.useEffect(
-    () => {
-      ikChainRootRef.current = ikChainRoot;
-    },
-    [ikChainRoot]
-  );
-  React.useEffect(
-    () => {
-      ikEndEffectorRef.current = ikEndEffector;
-    },
-    [ikEndEffector]
   );
   React.useEffect(
     () => {
@@ -1939,35 +1691,11 @@ const CinematicTimeline3DEditor = ({
       const initialData = loaded
         ? loaded.data
         : createEmptyTimelinerData(initialSceneName);
-      const initialIkConfigByTarget =
-        (initialData.gdCinematicMeta &&
-          initialData.gdCinematicMeta.ikConfigByTarget) ||
-        {};
-      const firstIkTargetConfig =
-        Object.keys(initialIkConfigByTarget).length > 0
-          ? initialIkConfigByTarget[Object.keys(initialIkConfigByTarget)[0]]
-          : null;
 
       setSceneName(initialSceneName);
       sceneNameRef.current = initialSceneName;
       setFps(initialFps);
       fpsRef.current = initialFps;
-      const startingChainRoot =
-        firstIkTargetConfig &&
-        typeof firstIkTargetConfig.chainRoot === 'string' &&
-        firstIkTargetConfig.chainRoot
-          ? firstIkTargetConfig.chainRoot
-          : DEFAULT_IK_CHAIN_ROOT;
-      const startingEndEffector =
-        firstIkTargetConfig &&
-        typeof firstIkTargetConfig.endEffector === 'string' &&
-        firstIkTargetConfig.endEffector
-          ? firstIkTargetConfig.endEffector
-          : DEFAULT_IK_END_EFFECTOR;
-      setIkChainRoot(startingChainRoot);
-      ikChainRootRef.current = startingChainRoot;
-      setIkEndEffector(startingEndEffector);
-      ikEndEffectorRef.current = startingEndEffector;
 
       const timeliner = new Timeliner(
         {},
@@ -2495,67 +2223,6 @@ const CinematicTimeline3DEditor = ({
     setStatusText(`Jumped to event "${eventMarker.name}".`);
   }, []);
 
-  const applyIKConfigForTarget = React.useCallback(
-    (targetId: string, objectName: string) => {
-      const currentData = latestDataRef.current;
-      const existingMeta =
-        currentData.gdCinematicMeta && typeof currentData.gdCinematicMeta === 'object'
-          ? currentData.gdCinematicMeta
-          : {};
-      const existingIkConfigByTarget =
-        existingMeta.ikConfigByTarget &&
-        typeof existingMeta.ikConfigByTarget === 'object'
-          ? existingMeta.ikConfigByTarget
-          : {};
-      const nextIkConfigByTarget = {
-        ...existingIkConfigByTarget,
-        [targetId]: {
-          chainRoot: ikChainRootRef.current || DEFAULT_IK_CHAIN_ROOT,
-          endEffector: ikEndEffectorRef.current || DEFAULT_IK_END_EFFECTOR,
-          name: `${objectName} IK`,
-        },
-      };
-      latestDataRef.current = {
-        ...currentData,
-        gdCinematicMeta: {
-          ...existingMeta,
-          ikConfigByTarget: nextIkConfigByTarget,
-        },
-      };
-      saveTimelinerDataToProject(
-        project,
-        latestDataRef.current,
-        fpsRef.current,
-        sceneNameRef.current
-      );
-    },
-    [project]
-  );
-
-  const onAddSelectedIKLayers = React.useCallback(() => {
-    const timeliner = timelinerRef.current;
-    if (!timeliner) return;
-    const snapshot = activeObjectSnapshot;
-    if (!snapshot) {
-      setStatusText('Select an object in the 3D editor first.');
-      return;
-    }
-    if (isTargetLocked(latestDataRef.current, snapshot.targetId)) {
-      setStatusText(`"${snapshot.objectName}" track is locked.`);
-      return;
-    }
-
-    applyIKConfigForTarget(snapshot.targetId, snapshot.objectName);
-    const ikEntries = getSnapshotIKLayerEntries(snapshot);
-    ikEntries.forEach(entry => {
-      timeliner.ensureLayer(entry.layerName);
-    });
-    ikEntries.forEach(entry => {
-      timeliner.setLayerValueAtCurrentTime(entry.layerName, entry.value);
-    });
-    setStatusText(`Added IK layers for "${snapshot.objectName}".`);
-  }, [activeObjectSnapshot, applyIKConfigForTarget]);
-
   const onCaptureSelectedTransform = React.useCallback(() => {
     captureSelectedTransform(activeObjectSnapshot || null, 'manual');
   }, [activeObjectSnapshot, captureSelectedTransform]);
@@ -2841,35 +2508,12 @@ const CinematicTimeline3DEditor = ({
     [project]
   );
 
-  const onChangeIKChainRoot = React.useCallback(
-    (event: SyntheticInputEvent<HTMLInputElement>) => {
-      const nextChainRoot = event.currentTarget.value || DEFAULT_IK_CHAIN_ROOT;
-      setIkChainRoot(nextChainRoot);
-      ikChainRootRef.current = nextChainRoot;
-    },
-    []
-  );
-
-  const onChangeIKEndEffector = React.useCallback(
-    (event: SyntheticInputEvent<HTMLInputElement>) => {
-      const nextEndEffector =
-        event.currentTarget.value || DEFAULT_IK_END_EFFECTOR;
-      setIkEndEffector(nextEndEffector);
-      ikEndEffectorRef.current = nextEndEffector;
-    },
-    []
-  );
-
   const onToggleAutoSync = React.useCallback(() => {
     setAutoSync(previousValue => !previousValue);
   }, []);
 
   const onToggleAutoKey = React.useCallback(() => {
     setAutoKey(previousValue => !previousValue);
-  }, []);
-
-  const onToggleAdvanced = React.useCallback(() => {
-    setShowAdvanced(previousValue => !previousValue);
   }, []);
 
   const onKeyDownAddKeyframe = React.useCallback(
@@ -2924,28 +2568,6 @@ const CinematicTimeline3DEditor = ({
 
   const selectedTrackGroup =
     trackGroups.find(group => group.id === selectedTrackGroupId) || null;
-  const selectedLabel = activeObjectSnapshot
-    ? `${activeObjectSnapshot.objectName} (${shortenTargetId(
-        activeObjectSnapshot.targetId
-      )})`
-    : selectedTrackGroup
-      ? `${selectedTrackGroup.objectName} (track)`
-      : 'None';
-  const keyframeTargetId = activeObjectSnapshot
-    ? activeObjectSnapshot.targetId
-    : selectedTrackGroup
-      ? selectedTrackGroup.targetId
-      : null;
-  const hasKeyframeAtCurrentFrame = !!keyframeTargetId
-    ? hasKeyframeForTargetAtFrame(
-        latestDataRef.current,
-        keyframeTargetId,
-        currentFrame,
-        fps
-      )
-    : false;
-  const loopInFrame = loopRange.inFrame;
-  const loopOutFrame = loopRange.outFrame;
 
   const rootClassName =
     displayMode === 'overlay' ? 'ct3d-root ct3d-root--overlay' : 'ct3d-root';
@@ -2975,7 +2597,7 @@ const CinematicTimeline3DEditor = ({
               {trackGroups.length ? null : <option value="">No tracked object</option>}
               {trackGroups.map(group => (
                 <option key={group.id} value={group.id}>
-                  {group.objectName} [{group.trackType}]
+                  {group.objectName}
                 </option>
               ))}
             </select>
@@ -2988,358 +2610,30 @@ const CinematicTimeline3DEditor = ({
             Add Keyframe (K)
           </button>
           <button
-            className={`ct3d-btn ct3d-btn-record ${autoKey ? 'is-active' : ''}`}
-            onClick={onToggleAutoKey}
+            className="ct3d-btn ct3d-btn-primary ct3d-btn-icon"
+            onClick={onPlayPreview}
+            title="Run"
+            aria-label="Run"
           >
-            {autoKey ? 'Recording' : 'Record'}
+            <span className="ct3d-icon-play" />
           </button>
-          <button className="ct3d-btn ct3d-btn-primary" onClick={onPlayPreview}>
-            Play
+          <button
+            className="ct3d-btn ct3d-btn-icon"
+            onClick={onPausePreview}
+            title="Pause"
+            aria-label="Pause"
+          >
+            <span className="ct3d-icon-pause" />
           </button>
-          <button className="ct3d-btn" onClick={onPausePreview}>
-            Pause
-          </button>
-          <button className="ct3d-btn" onClick={onStopPreview}>
-            Stop
-          </button>
-          <button className="ct3d-btn ct3d-btn-ghost" onClick={onSaveToProjectFile}>
-            Save
-          </button>
-          <button className="ct3d-btn ct3d-btn-ghost" onClick={onLoadFromProjectFile}>
-            Load
-          </button>
-
-          <label className="ct3d-checkRow ct3d-checkRow-inline">
-            <input
-              type="checkbox"
-              checked={autoSync}
-              onChange={onToggleAutoSync}
-            />
-            Live Sync
-          </label>
-
-          <button className="ct3d-btn ct3d-btn-ghost" onClick={onToggleAdvanced}>
-            {showAdvanced ? 'Hide Advanced' : 'Advanced'}
+          <button
+            className="ct3d-btn ct3d-btn-icon"
+            onClick={onStopPreview}
+            title="Stop"
+            aria-label="Stop"
+          >
+            <span className="ct3d-icon-stop" />
           </button>
         </div>
-
-        <div className="ct3d-toolbarRow ct3d-toolbarRow-meta">
-          <span className="ct3d-selectedText">Selected: {selectedLabel}</span>
-          <span className={`ct3d-chip ${hasKeyframeAtCurrentFrame ? 'is-good' : ''}`}>
-            {hasKeyframeAtCurrentFrame ? 'Keyframe Here' : 'No Keyframe'}
-          </span>
-          <span className="ct3d-chip ct3d-chip-frame">Frame {currentFrame}</span>
-          <span className={`ct3d-hintInline ${autoKey ? 'is-recording' : ''}`}>
-            {autoKey
-              ? 'Record ON: move selected object to auto-create keyframes.'
-              : 'Press K to add keyframe at current frame (selected track fallback).'}
-          </span>
-          <span className="ct3d-fileHint">
-            {projectTimelineFilePath
-              ? `File: ${projectTimelineFilePath.split(/[/\\]/).slice(-2).join('/')}`
-              : 'File: project path unavailable'}
-          </span>
-        </div>
-
-        {showAdvanced ? (
-          <div className="ct3d-advancedPanel">
-            <div className="ct3d-advancedBlock">
-              <div className="ct3d-advancedTitle">Project File</div>
-              <label className="ct3d-inlineField ct3d-field-scene">
-                <span className="ct3d-fieldLabel">Scene Name</span>
-                <input
-                  className="ct3d-input"
-                  value={sceneName}
-                  onChange={onChangeSceneName}
-                />
-              </label>
-              <label className="ct3d-inlineField ct3d-field-fps">
-                <span className="ct3d-fieldLabel">FPS</span>
-                <input
-                  className="ct3d-input"
-                  type="number"
-                  min={MIN_FPS}
-                  max={MAX_FPS}
-                  step={1}
-                  value={fps}
-                  onChange={onChangeFps}
-                />
-              </label>
-              <label className="ct3d-inlineField ct3d-field-duration">
-                <span className="ct3d-fieldLabel">Duration (sec)</span>
-                <input
-                  className="ct3d-input"
-                  type="number"
-                  min={MIN_DURATION_SECONDS}
-                  max={MAX_DURATION_SECONDS}
-                  step={0.1}
-                  value={durationSeconds}
-                  onChange={onChangeDuration}
-                />
-              </label>
-              <button className="ct3d-btn" onClick={onSaveToProjectFile}>
-                Save To Project File
-              </button>
-              <button className="ct3d-btn" onClick={onLoadFromProjectFile}>
-                Load From Project File
-              </button>
-              <button className="ct3d-btn" onClick={onExportRuntimeJson}>
-                Export JSON
-              </button>
-              <label className="ct3d-btn ct3d-importButton">
-                Import JSON
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={onImportJsonFile}
-                  className="ct3d-hiddenInput"
-                />
-              </label>
-            </div>
-
-            <div className="ct3d-advancedBlock">
-              <div className="ct3d-advancedTitle">Track Manager</div>
-              <label className="ct3d-inlineField ct3d-field-trackSelect">
-                <span className="ct3d-fieldLabel">Track</span>
-                <select
-                  className="ct3d-input"
-                  value={selectedTrackGroupId}
-                  onChange={event => setSelectedTrackGroupId(event.currentTarget.value)}
-                >
-                  {trackGroups.length ? null : (
-                    <option value="">No tracks</option>
-                  )}
-                  {trackGroups.map(group => (
-                    <option key={group.id} value={group.id}>
-                      {group.objectName} [{group.trackType}] ({group.keyframesCount})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button className="ct3d-btn" onClick={onJumpToSelectedTrack}>
-                Jump
-              </button>
-              <button
-                className={`ct3d-btn ${selectedTrackGroup && selectedTrackGroup.muted ? 'ct3d-btn-record is-active' : ''}`}
-                onClick={() =>
-                  selectedTrackGroup &&
-                  setTrackGroupFlag('muted', !selectedTrackGroup.muted)
-                }
-              >
-                {selectedTrackGroup && selectedTrackGroup.muted ? 'Muted' : 'Mute'}
-              </button>
-              <button
-                className={`ct3d-btn ${selectedTrackGroup && selectedTrackGroup.solo ? 'ct3d-btn-primary' : ''}`}
-                onClick={() =>
-                  selectedTrackGroup &&
-                  setTrackGroupFlag('solo', !selectedTrackGroup.solo)
-                }
-              >
-                {selectedTrackGroup && selectedTrackGroup.solo ? 'Solo ON' : 'Solo'}
-              </button>
-              <button
-                className={`ct3d-btn ${selectedTrackGroup && selectedTrackGroup.locked ? 'ct3d-btn-record is-active' : ''}`}
-                onClick={() =>
-                  selectedTrackGroup &&
-                  setTrackGroupFlag('locked', !selectedTrackGroup.locked)
-                }
-              >
-                {selectedTrackGroup && selectedTrackGroup.locked ? 'Locked' : 'Lock'}
-              </button>
-              <button className="ct3d-btn" onClick={onDeleteKeyframeAtCurrentFrame}>
-                Delete Key
-              </button>
-              <button className="ct3d-btn" onClick={onDuplicateKeyframeAtCurrentFrame}>
-                Duplicate Key
-              </button>
-              <button className="ct3d-btn" onClick={() => onNudgeCurrentFrame(-1)}>
-                Frame -
-              </button>
-              <button className="ct3d-btn" onClick={() => onNudgeCurrentFrame(1)}>
-                Frame +
-              </button>
-              <button className="ct3d-btn" onClick={onRemoveSelectedTrackGroup}>
-                Remove Track
-              </button>
-            </div>
-
-            <div className="ct3d-advancedBlock">
-              <div className="ct3d-advancedTitle">Loop, Shots, IK</div>
-              <label className="ct3d-checkRow ct3d-checkRow-inline">
-                <input
-                  type="checkbox"
-                  checked={loopRange.enabled}
-                  onChange={event =>
-                    onUpdateLoopRange({ enabled: event.currentTarget.checked })
-                  }
-                />
-                Loop Range
-              </label>
-              <label className="ct3d-inlineField ct3d-field-small">
-                <span className="ct3d-fieldLabel">In</span>
-                <input
-                  className="ct3d-input"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={loopInFrame}
-                  onChange={event =>
-                    onUpdateLoopRange({
-                      inFrame: clampInteger(
-                        parseFiniteNumber(event.currentTarget.value, loopInFrame),
-                        0,
-                        TRACK_FRAME_LIMIT
-                      ),
-                    })
-                  }
-                />
-              </label>
-              <label className="ct3d-inlineField ct3d-field-small">
-                <span className="ct3d-fieldLabel">Out</span>
-                <input
-                  className="ct3d-input"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={loopOutFrame}
-                  onChange={event =>
-                    onUpdateLoopRange({
-                      outFrame: clampInteger(
-                        parseFiniteNumber(event.currentTarget.value, loopOutFrame),
-                        0,
-                        TRACK_FRAME_LIMIT
-                      ),
-                    })
-                  }
-                />
-              </label>
-              <button className="ct3d-btn" onClick={onAddShotFromLoopRange}>
-                Add Shot
-              </button>
-              <button className="ct3d-btn" onClick={onAddSelectedIKLayers}>
-                Add IK Layers
-              </button>
-              <label className="ct3d-inlineField ct3d-field-chain">
-                <span className="ct3d-fieldLabel">IK Chain</span>
-                <input
-                  className="ct3d-input"
-                  value={ikChainRoot}
-                  onChange={onChangeIKChainRoot}
-                />
-              </label>
-              <label className="ct3d-inlineField ct3d-field-effector">
-                <span className="ct3d-fieldLabel">IK Effector</span>
-                <input
-                  className="ct3d-input"
-                  value={ikEndEffector}
-                  onChange={onChangeIKEndEffector}
-                />
-              </label>
-              <button className="ct3d-btn" onClick={onSendCurrentFrame}>
-                Send Frame
-              </button>
-            </div>
-
-            <div className="ct3d-advancedBlock ct3d-advancedBlock-list">
-              <div className="ct3d-advancedTitle">Shots</div>
-              <div className="ct3d-miniList">
-                {shots.length ? null : (
-                  <div className="ct3d-listEmpty">No shots</div>
-                )}
-                {shots.map(shot => (
-                  <div key={shot.id} className="ct3d-listRow">
-                    <span className="ct3d-listLabel">
-                      {shot.name} [{shot.startFrame} - {shot.endFrame}]
-                    </span>
-                    <button className="ct3d-btn ct3d-btn-mini" onClick={() => onJumpToShot(shot)}>
-                      Jump
-                    </button>
-                    <button className="ct3d-btn ct3d-btn-mini" onClick={() => onPlayShot(shot)}>
-                      Play
-                    </button>
-                    <button className="ct3d-btn ct3d-btn-mini" onClick={() => onRemoveShot(shot.id)}>
-                      Del
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="ct3d-advancedBlock ct3d-advancedBlock-list">
-              <div className="ct3d-advancedTitle">Action Events</div>
-              <label className="ct3d-inlineField ct3d-field-smallGrow">
-                <span className="ct3d-fieldLabel">Name</span>
-                <input
-                  className="ct3d-input"
-                  value={eventNameDraft}
-                  onChange={event => setEventNameDraft(event.currentTarget.value)}
-                />
-              </label>
-              <label className="ct3d-inlineField ct3d-field-small">
-                <span className="ct3d-fieldLabel">Action</span>
-                <select
-                  className="ct3d-input"
-                  value={eventActionDraft}
-                  onChange={event => setEventActionDraft(event.currentTarget.value)}
-                >
-                  <option value="Trigger">Trigger</option>
-                  <option value="PlaySound">PlaySound</option>
-                  <option value="Spawn">Spawn</option>
-                  <option value="Cut">Cut</option>
-                  <option value="Message">Message</option>
-                </select>
-              </label>
-              <label className="ct3d-inlineField ct3d-field-small">
-                <span className="ct3d-fieldLabel">Condition</span>
-                <select
-                  className="ct3d-input"
-                  value={eventConditionDraft}
-                  onChange={event => setEventConditionDraft(event.currentTarget.value)}
-                >
-                  <option value="Always">Always</option>
-                  <option value="OnShotStart">OnShotStart</option>
-                  <option value="OnShotEnd">OnShotEnd</option>
-                  <option value="Manual">Manual</option>
-                </select>
-              </label>
-              <label className="ct3d-inlineField ct3d-field-smallGrow">
-                <span className="ct3d-fieldLabel">Payload</span>
-                <input
-                  className="ct3d-input"
-                  value={eventPayloadDraft}
-                  onChange={event => setEventPayloadDraft(event.currentTarget.value)}
-                />
-              </label>
-              <button className="ct3d-btn" onClick={onAddEventMarker}>
-                Add Event @ Frame {currentFrame}
-              </button>
-              <div className="ct3d-miniList">
-                {events.length ? null : (
-                  <div className="ct3d-listEmpty">No events</div>
-                )}
-                {events.map(eventMarker => (
-                  <div key={eventMarker.id} className="ct3d-listRow">
-                    <span className="ct3d-listLabel">
-                      F{eventMarker.frame} {eventMarker.name} [{eventMarker.action}]
-                    </span>
-                    <button
-                      className="ct3d-btn ct3d-btn-mini"
-                      onClick={() => onJumpToEventMarker(eventMarker)}
-                    >
-                      Jump
-                    </button>
-                    <button
-                      className="ct3d-btn ct3d-btn-mini"
-                      onClick={() => onRemoveEventMarker(eventMarker.id)}
-                    >
-                      Del
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : null}
       </div>
 
       <div className="ct3d-timelineDock">

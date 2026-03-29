@@ -83,6 +83,31 @@ function Timeliner(target, options) {
 		compactMode: compactEmbeddedControls
 	});
 
+	var MIN_TIME_SCALE = 6;
+	var MAX_TIME_SCALE = 420;
+
+	function clampTimeScale(value) {
+		return Math.max(MIN_TIME_SCALE, Math.min(MAX_TIME_SCALE, Number(value) || Settings.time_scale));
+	}
+
+	function ensureVisibleTimeRange(candidateSeconds) {
+		var totalTimeStore = data.get('ui:totalTime');
+		var totalTime = Math.max(0, Number(totalTimeStore.value) || 0);
+		var currentTime = Math.max(0, Number(data.get('ui:currentTime').value) || 0);
+		var scrollTime = Math.max(0, Number(data.get('ui:scrollTime').value) || 0);
+		var timeScale = Math.max(1, Number(data.get('ui:timeScale').value) || Settings.time_scale);
+		var viewportSeconds = Math.max(1, Settings.width / timeScale);
+		var desiredTotalTime = Math.max(
+			totalTime,
+			currentTime + 0.5,
+			scrollTime + viewportSeconds + 0.5,
+			Math.max(0, Number(candidateSeconds) || 0) + viewportSeconds + 0.5
+		);
+		if (desiredTotalTime > totalTime + 0.0001) {
+			totalTimeStore.value = desiredTotalTime;
+		}
+	}
+
 	setTimeout(function() {
 		// hack!
 		undo_manager.save(new UndoState(data, 'Loaded'), true);
@@ -237,6 +262,7 @@ function Timeliner(target, options) {
 	dispatcher.on('update.scrollTime', function(v) {
 		v = Math.max(0, v);
 		data.get('ui:scrollTime').value = v;
+		ensureVisibleTimeRange(v);
 		repaintAll();
 	});
 
@@ -244,6 +270,7 @@ function Timeliner(target, options) {
 	function setCurrentTime(value) {
 		value = Math.max(0, value);
 		currentTimeStore.value = value;
+		ensureVisibleTimeRange(value);
 
 		if (start_play) start_play = performance.now() - value * 1000;
 		repaintAll();
@@ -257,8 +284,8 @@ function Timeliner(target, options) {
 	});
 
 	dispatcher.on('update.scale', function(v) {
-		console.log('range', v);
-		data.get('ui:timeScale').value = v;
+		data.get('ui:timeScale').value = clampTimeScale(v);
+		ensureVisibleTimeRange(data.get('ui:scrollTime').value);
 
 		timeline.repaint();
 	});
@@ -848,12 +875,27 @@ function Timeliner(target, options) {
 	};
 	this.setDuration = function(seconds) {
 		var totalTimeStore = data.get('ui:totalTime');
-		totalTimeStore.value = Math.max(0, Number(seconds) || 0);
+		totalTimeStore.value = Math.max(
+			Math.max(0, Number(data.get('ui:currentTime').value) || 0),
+			Math.max(0, Number(seconds) || 0)
+		);
 		repaintAll();
 		emitDataChanged('duration.change');
 	};
 	this.getDuration = function() {
 		return data.get('ui:totalTime').value;
+	};
+	this.setScrollTime = function(seconds) {
+		dispatcher.fire('update.scrollTime', seconds);
+	};
+	this.getScrollTime = function() {
+		return Math.max(0, Number(data.get('ui:scrollTime').value) || 0);
+	};
+	this.setTimeScale = function(scale) {
+		dispatcher.fire('update.scale', scale);
+	};
+	this.getTimeScale = function() {
+		return clampTimeScale(data.get('ui:timeScale').value);
 	};
 	this.play = function() {
 		startPlaying();

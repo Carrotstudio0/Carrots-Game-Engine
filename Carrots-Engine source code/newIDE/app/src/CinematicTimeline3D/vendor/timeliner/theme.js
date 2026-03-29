@@ -1,9 +1,9 @@
 /* eslint-disable */
 const Theme = {
-	a: '#0f1623',
-	b: '#2d3b4f',
-	c: '#bdd4f3',
-	d: '#f4f8ff',
+	a: '#121b16',
+	b: '#1f3a2b',
+	c: '#ff9f2f',
+	d: '#ddf8df',
 };
 
 export { Theme }

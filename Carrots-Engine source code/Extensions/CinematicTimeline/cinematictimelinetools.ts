@@ -139,6 +139,8 @@ namespace gdjs {
       const MAX_PLAYBACK_SPEED = 8;
       const DEFAULT_EVENT_ACTION = 'Trigger';
       const DEFAULT_EVENT_CONDITION = 'Always';
+      const PROJECT_STORAGE_VARIABLE = '__carrots_cinematic_timeliner_v1';
+      const TIMELINE_FILE_FORMAT = 'carrots-cinematic-timeliner-v1';
 
       const clampNumber = (value: number, min: number, max: number): number =>
         Math.max(min, Math.min(max, value));
@@ -960,21 +962,114 @@ namespace gdjs {
             logger.warn('Cinematic Timeline: invalid cinematic JSON format.');
             return;
           }
-
-          state.scene = scene;
-          state.isPlaying = false;
-          state.loopPlayback = scene.loopRange.enabled;
-          const playbackRange = getDefaultPlaybackRangeForScene(scene);
-          state.playbackRange = playbackRange;
-          state.currentFrame = playbackRange.inFrame;
-          state.frameCursor = playbackRange.inFrame;
-          state.activeShotId = '';
-          state.configuredIKChains.clear();
-          clearTriggeredEvents(state);
-          applyFrame(runtimeScene, state, playbackRange.inFrame);
+          applyLoadedSceneToState(runtimeScene, state, scene);
         } catch (error) {
           logger.warn('Cinematic Timeline: unable to parse cinematic JSON.');
         }
+      };
+
+      const extractRuntimeScenePayload = (
+        rawValue: any
+      ): CinematicTimelineScene | null => {
+        if (!rawValue || typeof rawValue !== 'object') return normalizeScene(rawValue);
+
+        if (
+          rawValue.format === TIMELINE_FILE_FORMAT &&
+          rawValue.runtimeScene &&
+          typeof rawValue.runtimeScene === 'object'
+        ) {
+          return normalizeScene(rawValue.runtimeScene);
+        }
+
+        if (rawValue.runtimeScene && typeof rawValue.runtimeScene === 'object') {
+          return normalizeScene(rawValue.runtimeScene);
+        }
+
+        return normalizeScene(rawValue);
+      };
+
+      const applyLoadedSceneToState = (
+        runtimeScene: gdjs.RuntimeScene,
+        state: CinematicTimelineState,
+        scene: CinematicTimelineScene
+      ): void => {
+        state.scene = scene;
+        state.isPlaying = false;
+        state.loopPlayback = scene.loopRange.enabled;
+        const playbackRange = getDefaultPlaybackRangeForScene(scene);
+        state.playbackRange = playbackRange;
+        state.currentFrame = playbackRange.inFrame;
+        state.frameCursor = playbackRange.inFrame;
+        state.activeShotId = '';
+        state.configuredIKChains.clear();
+        clearTriggeredEvents(state);
+        applyFrame(runtimeScene, state, playbackRange.inFrame);
+      };
+
+      export const loadFromProjectStorage = (
+        runtimeScene: gdjs.RuntimeScene
+      ): void => {
+        const state = getState(runtimeScene);
+        const rawText = runtimeScene
+          .getGame()
+          .getVariables()
+          .get(PROJECT_STORAGE_VARIABLE)
+          .getAsString();
+        if (!rawText || !String(rawText).trim()) {
+          logger.warn(
+            `Cinematic Timeline: project storage "${PROJECT_STORAGE_VARIABLE}" is empty.`
+          );
+          return;
+        }
+
+        try {
+          const parsedValue = JSON.parse(String(rawText));
+          const scene = extractRuntimeScenePayload(parsedValue);
+          if (!scene) {
+            logger.warn(
+              'Cinematic Timeline: project storage contains an invalid timeline payload.'
+            );
+            return;
+          }
+          applyLoadedSceneToState(runtimeScene, state, scene);
+        } catch (error) {
+          logger.warn(
+            'Cinematic Timeline: unable to parse timeline from project storage.'
+          );
+        }
+      };
+
+      export const loadAndPlayFromProjectStorage = (
+        runtimeScene: gdjs.RuntimeScene
+      ): void => {
+        loadFromProjectStorage(runtimeScene);
+        if (hasLoadedScene(runtimeScene)) play(runtimeScene);
+      };
+
+      export const saveLoadedToProjectStorage = (
+        runtimeScene: gdjs.RuntimeScene
+      ): void => {
+        const state = getState(runtimeScene);
+        if (!state.scene) {
+          logger.warn(
+            'Cinematic Timeline: save requested but no timeline is currently loaded.'
+          );
+          return;
+        }
+
+        const payload = {
+          format: TIMELINE_FILE_FORMAT,
+          sceneName: state.scene.name || '',
+          fps: state.scene.fps,
+          savedAt: new Date().toISOString(),
+          runtimeScene: state.scene,
+        };
+
+        runtimeScene
+          .getGame()
+          .getVariables()
+          .get(PROJECT_STORAGE_VARIABLE)
+          .setString(JSON.stringify(payload));
       };
 
       export const play = (runtimeScene: gdjs.RuntimeScene): void => {
