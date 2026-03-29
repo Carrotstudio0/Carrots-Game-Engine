@@ -58,6 +58,8 @@ import VisibilityIcon from '../UI/CustomSvgIcons/Visibility';
 import VisibilityOffIcon from '../UI/CustomSvgIcons/VisibilityOff';
 import PropertiesEditorByVisibility from '../PropertiesEditor/PropertiesEditorByVisibility';
 import { Tabs } from '../UI/Tabs';
+import ShaderGraphEditorDialog from './ShaderGraphEditor/ShaderGraphEditorDialog';
+import { SHADER_GRAPH_EFFECT_TYPE } from './ShaderGraphEditor/ShaderGraphModel';
 
 const gd: libGDevelop = global.gd;
 
@@ -156,6 +158,7 @@ const Effect = React.forwardRef((
     copyEffect,
     pasteEffectsBefore,
     chooseEffectType,
+    openShaderGraphEditor,
     allEffectMetadata,
     onEffectsUpdated,
     onEffectsRenamed,
@@ -176,6 +179,7 @@ const Effect = React.forwardRef((
     copyEffect: (effect: gdEffect) => void,
     pasteEffectsBefore: (effect: gdEffect) => Promise<void>,
     chooseEffectType: (effect: gdEffect, newEffectType: string) => void,
+    openShaderGraphEditor: (effect: gdEffect) => void,
     allEffectMetadata: Array<EnumeratedEffectMetadata>,
     nameErrors: { [number]: React.Node },
     setNameErrors: (nameErrors: { [number]: React.Node }) => void,
@@ -362,6 +366,15 @@ const Effect = React.forwardRef((
                     <MarkdownText source={effectMetadata.description} />
                   </BackgroundText>
                 </Line>
+                {effectType === SHADER_GRAPH_EFFECT_TYPE && (
+                  <Line noMargin>
+                    <RaisedButton
+                      primary
+                      label={<Trans>Open Shader Graph</Trans>}
+                      onClick={() => openShaderGraphEditor(effect)}
+                    />
+                  </Line>
+                )}
                 <PropertiesEditorByVisibility
                   project={project}
                   schema={effectMetadata.parametersSchema}
@@ -445,8 +458,8 @@ type UseManageEffectsState = {|
   all2DEffectMetadata: Array<EnumeratedEffectMetadata>,
   all3DEffectMetadata: Array<EnumeratedEffectMetadata>,
   draggedEffect: {| current: ?gdEffect |},
-  addEffect: boolean => void,
-  addEffectWithType: string => void,
+  addEffect: boolean => ?gdEffect,
+  addEffectWithType: string => ?gdEffect,
   chooseEffectType: (effect: gdEffect, newEffectType: string) => void,
   copyAllEffects: () => void,
   copyEffect: (effect: gdEffect) => void,
@@ -541,7 +554,7 @@ export const useManageEffects = ({
   );
 
   const _addEffectWithType = React.useCallback(
-    (effectType: string) => {
+    (effectType: string): gdEffect => {
       const newName = newNameGenerator('Effect', name =>
         effectsContainer.hasEffectNamed(name)
       );
@@ -555,6 +568,7 @@ export const useManageEffects = ({
       onUpdate();
       onEffectsUpdated();
       setJustAddedEffectName(newName);
+      return effect;
     },
     [chooseEffectType, effectsContainer, onUpdate, onEffectsUpdated]
   );
@@ -566,8 +580,8 @@ export const useManageEffects = ({
   );
 
   const addEffect = React.useCallback(
-    (is3D: boolean) => {
-      addEffectWithType(is3D ? 'Scene3D::DirectionalLight' : 'Outline');
+    (is3D: boolean): ?gdEffect => {
+      return addEffectWithType(is3D ? 'Scene3D::DirectionalLight' : 'Outline');
     },
     [addEffectWithType]
   );
@@ -895,6 +909,23 @@ export default function EffectsList(props: Props): React.Node {
   const [nameErrors, setNameErrors] = React.useState<{ [number]: React.Node }>(
     {}
   );
+  const [editedShaderGraphEffect, setEditedShaderGraphEffect] = React.useState<?gdEffect>(
+    null
+  );
+
+  const openShaderGraphEditor = React.useCallback((effect: gdEffect) => {
+    setEditedShaderGraphEffect(effect);
+  }, []);
+
+  const addShaderGraphEffect = React.useCallback(
+    () => {
+      const effect = addEffectWithType(SHADER_GRAPH_EFFECT_TYPE);
+      if (effect) {
+        setEditedShaderGraphEffect(effect);
+      }
+    },
+    [addEffectWithType]
+  );
 
   const shouldDisplayEffectForInterfaceMode = React.useCallback(
     (effectMetadata: ?EnumeratedEffectMetadata): boolean => {
@@ -969,6 +1000,14 @@ export default function EffectsList(props: Props): React.Node {
     [all3DEffectMetadata, shouldDisplayEffectForInterfaceMode]
   );
 
+  const builtInShaderMetadata = React.useMemo(
+    () =>
+      filtered3DEffectMetadata.filter(
+        effectMetadata => effectMetadata.type !== SHADER_GRAPH_EFFECT_TYPE
+      ),
+    [filtered3DEffectMetadata]
+  );
+
   const getDefaultEffectTypeForInterface = React.useCallback(
     (): ?string => {
       if (effectInterfaceMode === 'lighting') {
@@ -986,9 +1025,9 @@ export default function EffectsList(props: Props): React.Node {
 
       if (effectInterfaceMode === 'shaders') {
         const shaderType =
-          filtered3DEffectMetadata.find(
+          builtInShaderMetadata.find(
             effectMetadata => effectMetadata.type === 'Scene3D::Bloom'
-          ) || filtered3DEffectMetadata[0];
+          ) || builtInShaderMetadata[0];
         return shaderType ? shaderType.type : null;
       }
 
@@ -1004,7 +1043,12 @@ export default function EffectsList(props: Props): React.Node {
         ? filtered3DEffectMetadata[0].type
         : null;
     },
-    [effectInterfaceMode, filtered2DEffectMetadata, filtered3DEffectMetadata]
+    [
+      builtInShaderMetadata,
+      effectInterfaceMode,
+      filtered2DEffectMetadata,
+      filtered3DEffectMetadata,
+    ]
   );
 
   const addCurrentInterfaceEffect = React.useCallback(
@@ -1210,6 +1254,9 @@ export default function EffectsList(props: Props): React.Node {
                                         copyEffect={copyEffect}
                                         pasteEffectsBefore={pasteEffectsBefore}
                                         chooseEffectType={chooseEffectType}
+                                        openShaderGraphEditor={
+                                          openShaderGraphEditor
+                                        }
                                         allEffectMetadata={
                                           filtered3DEffectMetadata
                                         }
@@ -1313,6 +1360,9 @@ export default function EffectsList(props: Props): React.Node {
                                         copyEffect={copyEffect}
                                         pasteEffectsBefore={pasteEffectsBefore}
                                         chooseEffectType={chooseEffectType}
+                                        openShaderGraphEditor={
+                                          openShaderGraphEditor
+                                        }
                                         allEffectMetadata={
                                           filtered2DEffectMetadata
                                         }
@@ -1376,21 +1426,49 @@ export default function EffectsList(props: Props): React.Node {
                         )}
                       </React.Fragment>
                     ) : (
-                      <RaisedButton
-                        primary
-                        label={
-                          effectInterfaceMode === 'lighting' ? (
-                            <Trans>Add a lighting effect</Trans>
-                          ) : effectInterfaceMode === 'shaders' ? (
-                            <Trans>Add a shader</Trans>
-                          ) : (
-                            <Trans>Add an effect</Trans>
-                          )
-                        }
-                        onClick={addCurrentInterfaceEffect}
-                        icon={<Add />}
-                        disabled={!getDefaultEffectTypeForInterface()}
-                      />
+                      <React.Fragment>
+                        {effectInterfaceMode === 'shaders' && (
+                          <RaisedButton
+                            primary
+                            label={<Trans>New shader graph</Trans>}
+                            onClick={addShaderGraphEffect}
+                            icon={<Add />}
+                          />
+                        )}
+                        {effectInterfaceMode === 'shaders' ? (
+                          <ElementWithMenu
+                            element={
+                              <span>
+                                <RaisedButton
+                                  label={<Trans>Add a built-in shader</Trans>}
+                                  icon={<Add />}
+                                  disabled={builtInShaderMetadata.length === 0}
+                                />
+                              </span>
+                            }
+                            buildMenuTemplate={(i18n: I18nType) =>
+                              builtInShaderMetadata.map(effectMetadata => ({
+                                label: effectMetadata.fullName,
+                                click: () => addEffectWithType(effectMetadata.type),
+                              }))
+                            }
+                          />
+                        ) : (
+                          <RaisedButton
+                            primary
+                            label={
+                              effectInterfaceMode === 'lighting' ? (
+                                <Trans>Add a lighting effect</Trans>
+                              ) : (
+                                <Trans>Add an effect</Trans>
+                              )
+                            }
+                            onClick={addCurrentInterfaceEffect}
+                            icon={<Add />}
+                            disabled={!getDefaultEffectTypeForInterface()}
+                          />
+                        )}
+                      </React.Fragment>
                     )}
                   </LineStackLayout>
                 </Line>
@@ -1457,7 +1535,7 @@ export default function EffectsList(props: Props): React.Node {
                     effectInterfaceMode === 'lighting' ? (
                       <Trans>Add your first lighting effect</Trans>
                     ) : effectInterfaceMode === 'shaders' ? (
-                      <Trans>Add your first shader</Trans>
+                      <Trans>Create your first shader graph</Trans>
                     ) : (
                       <Trans>Add your first effect</Trans>
                     )
@@ -1469,7 +1547,8 @@ export default function EffectsList(props: Props): React.Node {
                       </Trans>
                     ) : effectInterfaceMode === 'shaders' ? (
                       <Trans>
-                        Shaders create advanced post-processing visuals.
+                        Build a custom 3D post-processing shader with a
+                        node-based graph.
                       </Trans>
                     ) : (
                       <Trans>
@@ -1481,7 +1560,7 @@ export default function EffectsList(props: Props): React.Node {
                     effectInterfaceMode === 'lighting' ? (
                       <Trans>Add a lighting effect</Trans>
                     ) : effectInterfaceMode === 'shaders' ? (
-                      <Trans>Add a shader</Trans>
+                      <Trans>Create shader graph</Trans>
                     ) : (
                       <Trans>Add an effect</Trans>
                     )
@@ -1491,17 +1570,42 @@ export default function EffectsList(props: Props): React.Node {
                       ? '/objects/effects'
                       : '/interface/scene-editor/layer-effects'
                   }
-                  onAction={addCurrentInterfaceEffect}
-                  secondaryActionIcon={<PasteIcon />}
-                  secondaryActionLabel={
-                    isClipboardContainingEffects ? <Trans>Paste</Trans> : null
+                  onAction={
+                    effectInterfaceMode === 'shaders'
+                      ? addShaderGraphEffect
+                      : addCurrentInterfaceEffect
                   }
-                  onSecondaryAction={() => {
-                    pasteEffectsAtTheEnd();
+                  secondaryActionIcon={
+                    effectInterfaceMode === 'shaders' ? <Add /> : <PasteIcon />
+                  }
+                  secondaryActionLabel={
+                    effectInterfaceMode === 'shaders' ? (
+                      <Trans>Add built-in shader</Trans>
+                    ) : isClipboardContainingEffects ? (
+                      <Trans>Paste</Trans>
+                    ) : null
+                  }
+                    onSecondaryAction={() => {
+                      if (effectInterfaceMode === 'shaders') {
+                        addCurrentInterfaceEffect();
+                    } else {
+                      pasteEffectsAtTheEnd();
+                    }
                   }}
                 />
               )}
             </Column>
+          )}
+          {editedShaderGraphEffect && (
+            <ShaderGraphEditorDialog
+              effect={editedShaderGraphEffect}
+              onClose={() => setEditedShaderGraphEffect(null)}
+              onApply={() => {
+                setEditedShaderGraphEffect(null);
+                forceUpdate();
+                onEffectsUpdated();
+              }}
+            />
           )}
         </Column>
       )}

@@ -5864,6 +5864,53 @@ module.exports = {
     }
     {
       const effect = extension
+        .addEffect('ShaderGraph')
+        .setFullName(_('Shader Graph'))
+        .setDescription(
+          _(
+            'Create a custom 3D post-processing shader using a node-based graph editor.'
+          )
+        )
+        .markAsNotWorkingForObjects()
+        .markAsOnlyWorkingFor3D()
+        .addIncludeFile('Extensions/3D/ShaderGraphEffect.js');
+      const properties = effect.getProperties();
+      properties
+        .getOrCreate('enabled')
+        .setValue('true')
+        .setLabel(_('Enabled'))
+        .setType('boolean');
+      properties
+        .getOrCreate('strength')
+        .setValue('1')
+        .setLabel(_('Blend strength'))
+        .setType('number')
+        .setDescription(
+          _('How much of the generated shader result is blended into the scene.')
+        );
+      properties
+        .getOrCreate('shaderGraphVersion')
+        .setValue('1')
+        .setLabel(_('Shader Graph Version'))
+        .setType('string')
+        .setHidden(true);
+      properties
+        .getOrCreate('shaderGraphDefinition')
+        .setValue('')
+        .setLabel(_('Shader Graph Definition'))
+        .setType('string')
+        .setHidden(true);
+      properties
+        .getOrCreate('fragmentShader')
+        .setValue(
+          'precision highp float;\n\nuniform sampler2D tDiffuse;\nuniform vec2 uResolution;\nuniform float uTime;\nuniform float uMixStrength;\nvarying vec2 vUv;\n\nvoid main() {\n  vec4 sceneColor = texture2D(tDiffuse, vUv);\n  gl_FragColor = sceneColor;\n}'
+        )
+        .setLabel(_('Fragment Shader'))
+        .setType('string')
+        .setHidden(true);
+    }
+    {
+      const effect = extension
         .addEffect('ScreenSpaceReflections')
         .setFullName(_('Screen-space reflections'))
         .setDescription(
