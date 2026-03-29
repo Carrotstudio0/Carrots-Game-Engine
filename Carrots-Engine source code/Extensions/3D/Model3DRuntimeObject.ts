@@ -8,6 +8,7 @@ namespace gdjs {
     | 'Standard'
     | 'Glossy'
     | 'Metallic';
+  type Model3DMaterialProjectionMode = 'UV' | 'Triplanar';
 
   type Model3DObjectNetworkSyncDataType = {
     mt: number;
@@ -37,6 +38,13 @@ namespace gdjs {
       rotationZ: number;
       keepAspectRatio: boolean;
       materialType: Model3DMaterialTypeString;
+      materialTextureResourceName?: string;
+      materialGraphEnabled?: boolean;
+      materialGraphBlend?: number;
+      materialGraphDefinition?: string;
+      materialGraphFragmentShader?: string;
+      materialProjectionMode?: Model3DMaterialProjectionMode;
+      materialGraphVersion?: string;
       originLocation:
         | 'ModelOrigin'
         | 'ObjectCenter'
@@ -80,6 +88,11 @@ namespace gdjs {
       .map((boneName) => boneName.trim())
       .filter((boneName) => !!boneName);
 
+  const normalizeMaterialProjectionMode = (
+    mode?: string
+  ): Model3DMaterialProjectionMode =>
+    mode && mode.toLowerCase() === 'triplanar' ? 'Triplanar' : 'UV';
+
   /**
    * A 3D object which displays a 3D model.
    * @category Objects > 3D Model
@@ -96,6 +109,13 @@ namespace gdjs {
     _modelResourceName: string;
     _materialType: gdjs.Model3DRuntimeObject.MaterialType =
       gdjs.Model3DRuntimeObject.MaterialType.Standard;
+    _materialTextureResourceName: string = '';
+    _materialGraphEnabled: boolean = false;
+    _materialGraphBlend: float = 1;
+    _materialGraphDefinition: string = '';
+    _materialGraphFragmentShader: string = '';
+    _materialProjectionMode: Model3DMaterialProjectionMode = 'UV';
+    _materialGraphVersion: string = '1';
 
     /**
      * The local point of the model that will be at the object position.
@@ -151,6 +171,21 @@ namespace gdjs {
       this._materialType = this._convertMaterialType(
         objectData.content.materialType
       );
+      this._materialTextureResourceName =
+        objectData.content.materialTextureResourceName || '';
+      this._materialGraphEnabled = !!objectData.content.materialGraphEnabled;
+      this._materialGraphBlend =
+        objectData.content.materialGraphBlend !== undefined
+          ? objectData.content.materialGraphBlend
+          : 1;
+      this._materialGraphDefinition =
+        objectData.content.materialGraphDefinition || '';
+      this._materialGraphFragmentShader =
+        objectData.content.materialGraphFragmentShader || '';
+      this._materialProjectionMode = normalizeMaterialProjectionMode(
+        objectData.content.materialProjectionMode
+      );
+      this._materialGraphVersion = objectData.content.materialGraphVersion || '1';
       this._crossfadeDuration = objectData.content.crossfadeDuration || 0;
 
       this.setIsCastingShadow(objectData.content.isCastingShadow);
@@ -199,6 +234,21 @@ namespace gdjs {
           newObjectData.content.materialType
         );
       }
+      this._materialTextureResourceName =
+        newObjectData.content.materialTextureResourceName || '';
+      this._materialGraphEnabled = !!newObjectData.content.materialGraphEnabled;
+      this._materialGraphBlend =
+        newObjectData.content.materialGraphBlend !== undefined
+          ? newObjectData.content.materialGraphBlend
+          : 1;
+      this._materialGraphDefinition =
+        newObjectData.content.materialGraphDefinition || '';
+      this._materialGraphFragmentShader =
+        newObjectData.content.materialGraphFragmentShader || '';
+      this._materialProjectionMode = normalizeMaterialProjectionMode(
+        newObjectData.content.materialProjectionMode
+      );
+      this._materialGraphVersion = newObjectData.content.materialGraphVersion || '1';
       if (
         oldObjectData.content.modelResourceName !==
         newObjectData.content.modelResourceName
@@ -215,6 +265,16 @@ namespace gdjs {
           newObjectData.content.keepAspectRatio ||
         oldObjectData.content.materialType !==
           newObjectData.content.materialType ||
+        oldObjectData.content.materialTextureResourceName !==
+          newObjectData.content.materialTextureResourceName ||
+        oldObjectData.content.materialGraphEnabled !==
+          newObjectData.content.materialGraphEnabled ||
+        oldObjectData.content.materialGraphBlend !==
+          newObjectData.content.materialGraphBlend ||
+        oldObjectData.content.materialGraphFragmentShader !==
+          newObjectData.content.materialGraphFragmentShader ||
+        oldObjectData.content.materialProjectionMode !==
+          newObjectData.content.materialProjectionMode ||
         oldObjectData.content.centerLocation !==
           newObjectData.content.centerLocation
       ) {

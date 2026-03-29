@@ -16,7 +16,7 @@ import AlertMessage from '../../UI/AlertMessage';
 import IconButton from '../../UI/IconButton';
 import RaisedButton from '../../UI/RaisedButton';
 import FlatButton from '../../UI/FlatButton';
-import { mapFor } from '../../Utils/MapFor';
+import { mapFor, mapVector } from '../../Utils/MapFor';
 import ScrollView, { type ScrollViewInterface } from '../../UI/ScrollView';
 import { EmptyPlaceholder } from '../../UI/EmptyPlaceholder';
 import Add from '../../UI/CustomSvgIcons/Add';
@@ -26,7 +26,16 @@ import { DragHandleIcon } from '../../UI/DragHandle';
 import DropIndicator from '../../UI/SortableVirtualizedItemList/DropIndicator';
 import GDevelopThemeContext from '../../UI/Theme/GDevelopThemeContext';
 import PixiResourcesLoader from '../../ObjectsRendering/PixiResourcesLoader';
+import ResourcesLoader from '../../ResourcesLoader';
 import useAlertDialog from '../../UI/Alert/useAlertDialog';
+import ShaderGraphEditorDialog from '../../EffectsList/ShaderGraphEditor/ShaderGraphEditorDialog';
+import {
+  SHADER_GRAPH_DEFINITION_PARAMETER,
+  SHADER_GRAPH_ENABLED_PARAMETER,
+  SHADER_GRAPH_FRAGMENT_SHADER_PARAMETER,
+  SHADER_GRAPH_STRENGTH_PARAMETER,
+  SHADER_GRAPH_VERSION_PARAMETER,
+} from '../../EffectsList/ShaderGraphEditor/ShaderGraphModel';
 import { type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils';
 import * as THREE from 'three';
@@ -41,6 +50,37 @@ const DragSourceAndDropTarget = makeDragSourceAndDropTarget(
 );
 
 const styles = {
+  organizerPanel: {
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+    border: '1px solid rgba(72, 179, 126, 0.24)',
+    background:
+      'radial-gradient(circle at 14% 12%, rgba(35, 132, 84, 0.16), rgba(14, 24, 30, 0.96) 48%), linear-gradient(145deg, rgba(12, 18, 26, 0.95), rgba(14, 23, 19, 0.94))',
+  },
+  organizerSearchInput: {
+    width: '100%',
+    borderRadius: 8,
+    border: '1px solid rgba(120, 210, 167, 0.35)',
+    background: 'rgba(8, 13, 20, 0.84)',
+    color: '#e9f4ff',
+    padding: '8px 10px',
+    outline: 'none',
+    boxSizing: 'border-box',
+  },
+  quickNavRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  sectionCard: {
+    borderRadius: 10,
+    border: '1px solid rgba(93, 184, 139, 0.18)',
+    padding: 10,
+    marginBottom: 10,
+    background: 'rgba(11, 17, 26, 0.36)',
+  },
   rowContainer: {
     display: 'flex',
     flexDirection: 'column',
@@ -51,9 +91,68 @@ const styles = {
     flex: 1,
     alignItems: 'center',
   },
+  materialPanel: {
+    borderRadius: 12,
+    padding: 12,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  materialSlotHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  materialSlotBadge: {
+    borderRadius: 999,
+    padding: '4px 10px',
+    fontWeight: 700,
+    fontSize: 12,
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase',
+  },
+  materialDropZone: {
+    minWidth: 220,
+    borderRadius: 12,
+    padding: 10,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    transition: 'border-color 180ms ease, background-color 180ms ease',
+  },
+  materialDropHint: {
+    fontSize: 12,
+    textAlign: 'center',
+    opacity: 0.9,
+  },
+  materialSlotSubtitle: {
+    fontSize: 12,
+    opacity: 0.85,
+  },
+  materialSphere: {
+    width: 96,
+    height: 96,
+    borderRadius: '50%',
+    backgroundPosition: 'center, center, center, center',
+    backgroundRepeat: 'no-repeat, no-repeat, no-repeat, no-repeat',
+    backgroundSize: 'cover, 100% 100%, 100% 100%, 100% 100%',
+    boxShadow:
+      '0 16px 30px rgba(0,0,0,0.36), inset 0 1px 2px rgba(255,255,255,0.55)',
+  },
 };
 
 const epsilon = 1 / (1 << 16);
+
+const normalizeResourceFilePath = (filePath: string): string =>
+  filePath
+    .trim()
+    .replace(/^file:\/\//i, '')
+    .replace(/^\/([a-z]:)/i, '$1')
+    .replace(/\\/g, '/')
+    .toLowerCase();
 
 const removeTrailingZeroes = (value: string) => {
   for (let index = value.length - 1; index > 0; index--) {
@@ -156,12 +255,383 @@ const Model3DEditor = ({
     {}
   );
 
+  const getPropertyByName = React.useCallback(
+    (propertyName: string) => {
+      try {
+        return properties.get(propertyName);
+      } catch (error) {
+        return null;
+      }
+    },
+    [properties]
+  );
+  const getPropertyValue = React.useCallback(
+    (propertyName: string, fallbackValue: string = ''): string => {
+      const property = getPropertyByName(propertyName);
+      return property ? property.getValue() : fallbackValue;
+    },
+    [getPropertyByName]
+  );
+  const hasMaterialBlueprintSupport = React.useMemo(
+    () => !!getPropertyByName('materialGraphEnabled'),
+    [getPropertyByName]
+  );
+  const hasMaterialTextureSupport = React.useMemo(
+    () => !!getPropertyByName('materialTextureResourceName'),
+    [getPropertyByName]
+  );
+
   const onChangeProperty = React.useCallback(
     (property: string, value: string) => {
       objectConfiguration.updateProperty(property, value);
       forceUpdate();
     },
     [objectConfiguration, forceUpdate]
+  );
+  const [isMaterialSlotDragOver, setIsMaterialSlotDragOver] =
+    React.useState<boolean>(false);
+  const materialTextureResourceName = getPropertyValue(
+    'materialTextureResourceName',
+    ''
+  );
+  const materialTexturePreviewUrl = React.useMemo(
+    () => {
+      if (!materialTextureResourceName) {
+        return '';
+      }
+      return ResourcesLoader.getResourceFullUrl(
+        project,
+        materialTextureResourceName,
+        {}
+      );
+    },
+    [project, materialTextureResourceName]
+  );
+  const applyMaterialTextureResource = React.useCallback(
+    (resourceName: string) => {
+      onChangeProperty('materialTextureResourceName', resourceName);
+      if (onObjectUpdated) onObjectUpdated();
+    },
+    [onChangeProperty, onObjectUpdated]
+  );
+  const findImageResourceByName = React.useCallback(
+    (resourceName: string): ?string => {
+      if (!resourceName) {
+        return null;
+      }
+
+      const resourcesManager = project.getResourcesManager();
+      if (!resourcesManager.hasResource(resourceName)) {
+        return null;
+      }
+
+      const resource = resourcesManager.getResource(resourceName);
+      return resource && resource.getKind() === 'image' ? resourceName : null;
+    },
+    [project]
+  );
+  const findImageResourceByFilePath = React.useCallback(
+    (filePath: string): ?string => {
+      if (!filePath) {
+        return null;
+      }
+
+      const normalizedDroppedPath = normalizeResourceFilePath(filePath);
+      if (!normalizedDroppedPath) {
+        return null;
+      }
+      const droppedBaseName = normalizedDroppedPath.split('/').pop() || '';
+      const resourcesManager = project.getResourcesManager();
+      const allResourceNames = mapVector(
+        resourcesManager.getAllResourceNames(),
+        resourceName => resourceName
+      );
+
+      for (const resourceName of allResourceNames) {
+        if (!resourcesManager.hasResource(resourceName)) {
+          continue;
+        }
+        const resource = resourcesManager.getResource(resourceName);
+        if (!resource || resource.getKind() !== 'image') {
+          continue;
+        }
+
+        const normalizedResourcePath = normalizeResourceFilePath(
+          resource.getFile() || ''
+        );
+        if (!normalizedResourcePath) {
+          continue;
+        }
+
+        if (
+          normalizedResourcePath === normalizedDroppedPath ||
+          (droppedBaseName &&
+            normalizedResourcePath.endsWith('/' + droppedBaseName))
+        ) {
+          return resourceName;
+        }
+      }
+
+      return null;
+    },
+    [project]
+  );
+  const findImageResourceFromDroppedValue = React.useCallback(
+    (rawCandidate: string): ?string => {
+      if (!rawCandidate) {
+        return null;
+      }
+
+      const candidate = rawCandidate.trim().replace(/^"|"$/g, '');
+      if (!candidate) {
+        return null;
+      }
+
+      const directResource = findImageResourceByName(candidate);
+      if (directResource) {
+        return directResource;
+      }
+
+      const decodedCandidate = (() => {
+        try {
+          return decodeURIComponent(candidate);
+        } catch (error) {
+          return candidate;
+        }
+      })();
+      const decodedResource = findImageResourceByName(decodedCandidate);
+      if (decodedResource) {
+        return decodedResource;
+      }
+
+      const candidateByPath =
+        findImageResourceByFilePath(decodedCandidate) ||
+        findImageResourceByFilePath(candidate);
+      if (candidateByPath) {
+        return candidateByPath;
+      }
+
+      const parsedJson = (() => {
+        try {
+          return JSON.parse(candidate);
+        } catch (error) {
+          return null;
+        }
+      })();
+      if (parsedJson && typeof parsedJson === 'object') {
+        const resourceNameFromJson =
+          typeof parsedJson.resourceName === 'string'
+            ? parsedJson.resourceName
+            : typeof parsedJson.name === 'string'
+            ? parsedJson.name
+            : '';
+        if (resourceNameFromJson) {
+          const jsonResource = findImageResourceByName(resourceNameFromJson);
+          if (jsonResource) {
+            return jsonResource;
+          }
+        }
+
+        const resourcePathFromJson =
+          typeof parsedJson.file === 'string'
+            ? parsedJson.file
+            : typeof parsedJson.path === 'string'
+            ? parsedJson.path
+            : '';
+        if (resourcePathFromJson) {
+          const jsonPathResource =
+            findImageResourceByFilePath(resourcePathFromJson);
+          if (jsonPathResource) {
+            return jsonPathResource;
+          }
+        }
+      }
+
+      if (candidate.includes('\n') || candidate.includes('\r')) {
+        const lines = candidate
+          .split(/\r?\n/g)
+          .map(line => line.trim())
+          .filter(Boolean);
+        for (const line of lines) {
+          const lineResource =
+            findImageResourceByName(line) || findImageResourceByFilePath(line);
+          if (lineResource) {
+            return lineResource;
+          }
+        }
+      }
+
+      return null;
+    },
+    [findImageResourceByFilePath, findImageResourceByName]
+  );
+  const extractMaterialTextureFromDrop = React.useCallback(
+    (event: any): ?string => {
+      const dataTransfer = event && event.dataTransfer;
+      if (!dataTransfer) {
+        return null;
+      }
+
+      const transferKeys = [
+        'application/x-gdevelop-resource-name',
+        'application/x-gdevelop-resource',
+        'text/resource-name',
+        'text/plain',
+        'text/uri-list',
+      ];
+      for (const key of transferKeys) {
+        let data = '';
+        try {
+          data = dataTransfer.getData(key) || '';
+        } catch (error) {
+          data = '';
+        }
+        const resourceFromData = findImageResourceFromDroppedValue(data);
+        if (resourceFromData) {
+          return resourceFromData;
+        }
+      }
+
+      if (dataTransfer.files && dataTransfer.files.length > 0) {
+        for (const file of dataTransfer.files) {
+          const filePath = file.path || file.name || '';
+          const resourceFromFile = findImageResourceByFilePath(filePath);
+          if (resourceFromFile) {
+            return resourceFromFile;
+          }
+        }
+      }
+
+      return null;
+    },
+    [findImageResourceByFilePath, findImageResourceFromDroppedValue]
+  );
+  const onMaterialSlotDrop = React.useCallback(
+    (event: any) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsMaterialSlotDragOver(false);
+      if (!hasMaterialTextureSupport) {
+        return;
+      }
+
+      const droppedResourceName = extractMaterialTextureFromDrop(event);
+      if (droppedResourceName) {
+        applyMaterialTextureResource(droppedResourceName);
+        return;
+      }
+
+      showAlert({
+        title: t`No compatible texture found`,
+        message: t`Drop an existing image resource from Assets (or a file already imported as an image resource).`,
+      });
+    },
+    [
+      applyMaterialTextureResource,
+      extractMaterialTextureFromDrop,
+      hasMaterialTextureSupport,
+      showAlert,
+    ]
+  );
+  const onMaterialSlotDragOver = React.useCallback(
+    (event: any) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'copy';
+      }
+      if (!isMaterialSlotDragOver) {
+        setIsMaterialSlotDragOver(true);
+      }
+    },
+    [isMaterialSlotDragOver]
+  );
+  const onMaterialSlotDragLeave = React.useCallback((event: any) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsMaterialSlotDragOver(false);
+  }, []);
+  const materialTypePresets = React.useMemo(
+    () => [
+      { value: 'Matte', label: 'Matte' },
+      { value: 'Standard', label: 'Standard' },
+      { value: 'Glossy', label: 'Glossy' },
+      { value: 'Metallic', label: 'Metallic' },
+    ],
+    []
+  );
+  const applyMaterialTypePreset = React.useCallback(
+    (materialType: string) => {
+      onChangeProperty('materialType', materialType);
+      if (onObjectUpdated) onObjectUpdated();
+    },
+    [onChangeProperty, onObjectUpdated]
+  );
+  const [isMaterialBlueprintEditorOpen, setIsMaterialBlueprintEditorOpen] =
+    React.useState<boolean>(false);
+  const materialSystemSectionRef = React.useRef<?HTMLDivElement>(null);
+  const materialBlueprintSectionRef = React.useRef<?HTMLDivElement>(null);
+  const scrollToSection = React.useCallback(
+    (sectionRef: { current: any }) => {
+      if (!sectionRef.current || !scrollView.current) {
+        return;
+      }
+      scrollView.current.scrollTo(sectionRef.current);
+    },
+    []
+  );
+
+  const materialGraphEffectAdapter = React.useMemo(
+    () => ({
+      getName: () => 'Material Blueprint',
+      getEffectType: () => 'Scene3D::ShaderGraph',
+      hasStringParameter: (parameterName: string): boolean =>
+        parameterName === SHADER_GRAPH_DEFINITION_PARAMETER ||
+        parameterName === SHADER_GRAPH_FRAGMENT_SHADER_PARAMETER ||
+        parameterName === SHADER_GRAPH_VERSION_PARAMETER,
+      hasDoubleParameter: (parameterName: string): boolean =>
+        parameterName === SHADER_GRAPH_STRENGTH_PARAMETER,
+      hasBooleanParameter: (parameterName: string): boolean =>
+        parameterName === SHADER_GRAPH_ENABLED_PARAMETER,
+      getStringParameter: (parameterName: string): string => {
+        if (parameterName === SHADER_GRAPH_DEFINITION_PARAMETER) {
+          return getPropertyValue('materialGraphDefinition', '');
+        }
+        if (parameterName === SHADER_GRAPH_FRAGMENT_SHADER_PARAMETER) {
+          return getPropertyValue('materialGraphFragmentShader', '');
+        }
+        if (parameterName === SHADER_GRAPH_VERSION_PARAMETER) {
+          return getPropertyValue('materialGraphVersion', '1') || '1';
+        }
+        return '';
+      },
+      getDoubleParameter: (parameterName: string): number => {
+        if (parameterName === SHADER_GRAPH_STRENGTH_PARAMETER) {
+          return parseFloat(getPropertyValue('materialGraphBlend', '1')) || 1;
+        }
+        return 0;
+      },
+      setStringParameter: (parameterName: string, value: string): void => {
+        if (parameterName === SHADER_GRAPH_DEFINITION_PARAMETER) {
+          onChangeProperty('materialGraphDefinition', value);
+        } else if (parameterName === SHADER_GRAPH_FRAGMENT_SHADER_PARAMETER) {
+          onChangeProperty('materialGraphFragmentShader', value);
+        } else if (parameterName === SHADER_GRAPH_VERSION_PARAMETER) {
+          onChangeProperty('materialGraphVersion', value);
+        }
+      },
+      setDoubleParameter: (parameterName: string, value: number): void => {
+        if (parameterName === SHADER_GRAPH_STRENGTH_PARAMETER) {
+          onChangeProperty('materialGraphBlend', value.toString(10));
+        }
+      },
+      setBooleanParameter: (parameterName: string, value: boolean): void => {
+        if (parameterName === SHADER_GRAPH_ENABLED_PARAMETER) {
+          onChangeProperty('materialGraphEnabled', value ? 'true' : 'false');
+        }
+      },
+    }),
+    [getPropertyValue, onChangeProperty]
   );
 
   // $FlowFixMe[value-as-type]
@@ -494,12 +964,62 @@ const Model3DEditor = ({
         );
       })
     : [];
+  const currentMaterialType = properties.get('materialType').getValue();
+  const materialSphereTextureLayer = materialTexturePreviewUrl
+    ? `url("${materialTexturePreviewUrl}")`
+    : 'linear-gradient(150deg, #232a33 0%, #11151c 100%)';
+  const themePrimaryColor =
+    (gdevelopTheme &&
+      gdevelopTheme.palette &&
+      gdevelopTheme.palette.primary) ||
+    '#16a45f';
+  const themeSecondaryColor =
+    (gdevelopTheme &&
+      gdevelopTheme.palette &&
+      gdevelopTheme.palette.secondary) ||
+    '#f39c12';
+  const themeBorderColor =
+    (gdevelopTheme && gdevelopTheme.border && gdevelopTheme.border.color) ||
+    themeSecondaryColor;
 
   return (
     <>
       <ScrollView ref={scrollView}>
         <ColumnStackLayout noMargin>
           {renderObjectNameField && renderObjectNameField()}
+          <div style={styles.organizerPanel}>
+            <Text size="block-title" noMargin>
+              <Trans>Material Quick Access</Trans>
+            </Text>
+            <Text size="body2" noMargin>
+              <Trans>
+                Use these shortcuts to jump directly to Material sections in this
+                object editor.
+              </Trans>
+            </Text>
+            <div style={styles.quickNavRow}>
+              <FlatButton
+                label={<Trans>Material System</Trans>}
+                onClick={() => scrollToSection(materialSystemSectionRef)}
+              />
+              <FlatButton
+                label={<Trans>Material Blueprint</Trans>}
+                onClick={() => scrollToSection(materialBlueprintSectionRef)}
+                disabled={!hasMaterialBlueprintSupport}
+              />
+              {hasMaterialBlueprintSupport ? (
+                <RaisedButton
+                  label={<Trans>Open Blueprint Editor</Trans>}
+                  primary
+                  onClick={() => {
+                    onChangeProperty('materialGraphEnabled', 'true');
+                    setIsMaterialBlueprintEditorOpen(true);
+                    if (onObjectUpdated) onObjectUpdated();
+                  }}
+                />
+              ) : null}
+            </div>
+          </div>
           <ResourceSelectorWithThumbnail
             project={project}
             resourceKind="model3D"
@@ -695,6 +1215,217 @@ const Model3DEditor = ({
             objectConfiguration={objectConfiguration}
             propertyName="isReceivingShadow"
           />
+          <div ref={materialSystemSectionRef}>
+            <Text size="block-title">
+              <Trans>Material System</Trans>
+            </Text>
+          </div>
+          {hasMaterialTextureSupport ? (
+            <React.Fragment>
+              <AlertMessage kind="info">
+                <Trans>
+                  Material slots now support direct drag and drop from Assets.
+                  Drop a texture on the slot and it is applied instantly in
+                  runtime.
+                </Trans>
+              </AlertMessage>
+              <div
+                style={{
+                  ...styles.materialPanel,
+                  border: `1px solid ${
+                    isMaterialSlotDragOver
+                      ? themeSecondaryColor
+                      : themeBorderColor
+                  }`,
+                  background: `linear-gradient(145deg, ${themePrimaryColor}18 0%, ${themeSecondaryColor}18 100%)`,
+                  boxShadow: isMaterialSlotDragOver
+                    ? `0 0 0 1px ${themeSecondaryColor} inset`
+                    : undefined,
+                }}
+              >
+                <div style={styles.materialSlotHeader}>
+                  <div>
+                    <Text noMargin>
+                      <Trans>Surface Material Override</Trans>
+                    </Text>
+                    <Text noMargin style={styles.materialSlotSubtitle}>
+                      {materialTextureResourceName ? (
+                        materialTextureResourceName
+                      ) : (
+                        <Trans>Empty material slot</Trans>
+                      )}
+                    </Text>
+                  </div>
+                  <div
+                    style={{
+                      ...styles.materialSlotBadge,
+                      background: themeSecondaryColor + '28',
+                      color: themeSecondaryColor,
+                    }}
+                  >
+                    <Trans>Slot 0</Trans>
+                  </div>
+                </div>
+                <ResponsiveLineStackLayout
+                  noResponsiveLandscape
+                  noColumnMargin
+                  alignItems="stretch"
+                >
+                  <div
+                    style={{
+                      ...styles.materialDropZone,
+                      border: `1px dashed ${
+                        isMaterialSlotDragOver
+                          ? themeSecondaryColor
+                          : themePrimaryColor
+                      }`,
+                      background: isMaterialSlotDragOver
+                        ? themeSecondaryColor + '18'
+                        : themePrimaryColor + '10',
+                    }}
+                    onDragEnter={onMaterialSlotDragOver}
+                    onDragOver={onMaterialSlotDragOver}
+                    onDragLeave={onMaterialSlotDragLeave}
+                    onDrop={onMaterialSlotDrop}
+                  >
+                    <div
+                      style={{
+                        ...styles.materialSphere,
+                        backgroundImage: `${materialSphereTextureLayer}, radial-gradient(circle at 28% 25%, rgba(255,255,255,0.78), rgba(255,255,255,0.12) 36%, rgba(255,255,255,0) 55%), radial-gradient(circle at 74% 80%, rgba(0,0,0,0.6), rgba(0,0,0,0.05) 48%, rgba(0,0,0,0) 64%), linear-gradient(145deg, #f39c12 0%, #16a45f 100%)`,
+                      }}
+                    />
+                    <Text noMargin style={styles.materialDropHint}>
+                      <Trans>Drag a texture from Assets and drop it here.</Trans>
+                    </Text>
+                  </div>
+                  <Column noMargin expand>
+                    <ResourceSelectorWithThumbnail
+                      project={project}
+                      resourceKind="image"
+                      floatingLabelText={
+                        getPropertyByName('materialTextureResourceName')
+                          ? getPropertyByName(
+                              'materialTextureResourceName'
+                            ).getLabel()
+                          : t`Material texture asset`
+                      }
+                      resourceManagementProps={resourceManagementProps}
+                      projectScopedContainersAccessor={
+                        projectScopedContainersAccessor
+                      }
+                      resourceName={materialTextureResourceName}
+                      onChange={newValue => {
+                        applyMaterialTextureResource(newValue);
+                      }}
+                      id={`model3d-object-materialTextureResourceName`}
+                    />
+                    <ResponsiveLineStackLayout
+                      noResponsiveLandscape
+                      justifyContent="space-between"
+                      noColumnMargin
+                    >
+                      <FlatButton
+                        label={<Trans>Clear</Trans>}
+                        onClick={() => {
+                          applyMaterialTextureResource('');
+                        }}
+                        disabled={!materialTextureResourceName}
+                      />
+                    </ResponsiveLineStackLayout>
+                  </Column>
+                </ResponsiveLineStackLayout>
+                <ResponsiveLineStackLayout
+                  noResponsiveLandscape
+                  noColumnMargin
+                  alignItems="center"
+                >
+                  {materialTypePresets.map(preset => (
+                    <FlatButton
+                      key={preset.value}
+                      label={preset.label}
+                      onClick={() => applyMaterialTypePreset(preset.value)}
+                      primary={currentMaterialType === preset.value}
+                    />
+                  ))}
+                </ResponsiveLineStackLayout>
+              </div>
+            </React.Fragment>
+          ) : (
+            <AlertMessage kind="warning">
+              <Trans>
+                Material texture asset support requires rebuilding libGD and
+                reloading editor resources.
+              </Trans>
+            </AlertMessage>
+          )}
+          <div ref={materialBlueprintSectionRef}>
+            <Text size="block-title">
+              <Trans>Material Blueprint</Trans>
+            </Text>
+          </div>
+          {hasMaterialBlueprintSupport ? (
+            <React.Fragment>
+              <PropertyCheckbox
+                objectConfiguration={objectConfiguration}
+                propertyName="materialGraphEnabled"
+              />
+              {getPropertyValue('materialGraphEnabled', 'false') === 'true' && (
+                <React.Fragment>
+                  <SelectField
+                    value={getPropertyValue('materialProjectionMode', 'UV')}
+                    floatingLabelText={<Trans>Projection mode</Trans>}
+                    helperMarkdownText={t`Use UV for normal maps, or triplanar projection for seamless world-space projection.`}
+                    onChange={(event, index, newValue) => {
+                      onChangeProperty('materialProjectionMode', newValue);
+                      if (onObjectUpdated) onObjectUpdated();
+                    }}
+                    fullWidth
+                  >
+                    <SelectOption label={t`UV`} value="UV" key="UV" />
+                    <SelectOption
+                      label={t`Triplanar projection`}
+                      value="Triplanar"
+                      key="Triplanar"
+                    />
+                  </SelectField>
+                  <Column noMargin expand>
+                    <PropertyField
+                      objectConfiguration={objectConfiguration}
+                      propertyName="materialGraphBlend"
+                      onChange={() => {
+                        if (onObjectUpdated) onObjectUpdated();
+                      }}
+                    />
+                  </Column>
+                  <ResponsiveLineStackLayout
+                    noResponsiveLandscape
+                    justifyContent="space-between"
+                    noColumnMargin
+                  >
+                    <FlatButton
+                      label={<Trans>Disable Blueprint</Trans>}
+                      onClick={() => {
+                        onChangeProperty('materialGraphEnabled', 'false');
+                        if (onObjectUpdated) onObjectUpdated();
+                      }}
+                    />
+                    <RaisedButton
+                      primary
+                      label={<Trans>Open Material Blueprint</Trans>}
+                      onClick={() => setIsMaterialBlueprintEditorOpen(true)}
+                    />
+                  </ResponsiveLineStackLayout>
+                </React.Fragment>
+              )}
+            </React.Fragment>
+          ) : (
+            <AlertMessage kind="warning">
+              <Trans>
+                Material Blueprint needs the updated 3D runtime. Rebuild libGD
+                and reload editor resources to enable it.
+              </Trans>
+            </AlertMessage>
+          )}
           <Text size="block-title">Animations</Text>
           <Column noMargin expand>
             <PropertyField
@@ -855,6 +1586,18 @@ const Model3DEditor = ({
           />
         </ResponsiveLineStackLayout>
       </Column>
+      {isMaterialBlueprintEditorOpen && (
+        <ShaderGraphEditorDialog
+          // $FlowFixMe[incompatible-type]
+          effect={materialGraphEffectAdapter}
+          previewMode="material"
+          onApply={() => {
+            forceUpdate();
+            if (onObjectUpdated) onObjectUpdated();
+          }}
+          onClose={() => setIsMaterialBlueprintEditorOpen(false)}
+        />
+      )}
     </>
   );
 };

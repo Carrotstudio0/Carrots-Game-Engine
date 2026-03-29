@@ -156,12 +156,23 @@ public:
 
   const gd::String& GetModelResourceName() const { return modelResourceName; };
   const gd::String& GetMaterialType() const { return materialType; };
+  const gd::String& GetMaterialTextureResourceName() const {
+    return materialTextureResourceName;
+  };
+  const gd::String& GetMaterialGraphDefinition() const { return materialGraphDefinition; };
+  const gd::String& GetMaterialGraphFragmentShader() const {
+    return materialGraphFragmentShader;
+  };
+  const gd::String& GetMaterialProjectionMode() const { return materialProjectionMode; };
+  const gd::String& GetMaterialGraphVersion() const { return materialGraphVersion; };
   const gd::String& GetOriginLocation() const { return originLocation; };
   const gd::String& GetCenterLocation() const { return centerLocation; };
 
   bool shouldKeepAspectRatio() const { return keepAspectRatio; };
   bool shouldCastShadow() const { return isCastingShadow; };
   bool shouldReceiveShadow() const { return isReceivingShadow; };
+  bool isMaterialGraphEnabled() const { return materialGraphEnabled; };
+  double GetMaterialGraphBlend() const { return materialGraphBlend; };
   ///@}
 
 protected:
@@ -180,12 +191,19 @@ private:
 
   gd::String modelResourceName;
   gd::String materialType;
+  gd::String materialTextureResourceName;
+  gd::String materialGraphDefinition;
+  gd::String materialGraphFragmentShader;
+  gd::String materialProjectionMode;
+  gd::String materialGraphVersion;
   gd::String originLocation;
   gd::String centerLocation;
 
   bool keepAspectRatio;
   bool isCastingShadow;
   bool isReceivingShadow;
+  bool materialGraphEnabled;
+  double materialGraphBlend;
 
   std::vector<Model3DAnimation> animations;
   static Model3DAnimation badAnimation; //< Bad animation when an out of bound

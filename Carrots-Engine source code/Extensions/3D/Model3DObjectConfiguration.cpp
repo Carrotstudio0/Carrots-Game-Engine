@@ -22,8 +22,13 @@ using namespace std;
 Model3DObjectConfiguration::Model3DObjectConfiguration()
     : width(100), height(100), depth(100), rotationX(90), rotationY(0),
       rotationZ(90), modelResourceName(""), materialType("Standard"),
+      materialTextureResourceName(""), materialGraphDefinition(""),
+      materialGraphFragmentShader(""), materialProjectionMode("UV"),
+      materialGraphVersion("1"),
       originLocation("ModelOrigin"), centerLocation("ModelOrigin"),
-      keepAspectRatio(true), crossfadeDuration(0.1f), isCastingShadow(true), isReceivingShadow(true) {}
+      keepAspectRatio(true), crossfadeDuration(0.1f), isCastingShadow(true),
+      isReceivingShadow(true), materialGraphEnabled(false),
+      materialGraphBlend(1.0f) {}
 
 bool Model3DObjectConfiguration::UpdateProperty(const gd::String &propertyName,
                                                 const gd::String &newValue) {
@@ -73,6 +78,38 @@ bool Model3DObjectConfiguration::UpdateProperty(const gd::String &propertyName,
       materialType = "KeepOriginal";
     else
       return false;
+    return true;
+  }
+  if (propertyName == "materialTextureResourceName") {
+    materialTextureResourceName = newValue;
+    return true;
+  }
+  if (propertyName == "materialGraphEnabled") {
+    materialGraphEnabled = newValue == "1" || newValue == "true";
+    return true;
+  }
+  if (propertyName == "materialGraphBlend") {
+    materialGraphBlend = newValue.To<double>();
+    return true;
+  }
+  if (propertyName == "materialGraphDefinition") {
+    materialGraphDefinition = newValue;
+    return true;
+  }
+  if (propertyName == "materialGraphFragmentShader") {
+    materialGraphFragmentShader = newValue;
+    return true;
+  }
+  if (propertyName == "materialProjectionMode") {
+    auto normalizedValue = newValue.LowerCase();
+    if (normalizedValue == "triplanar")
+      materialProjectionMode = "Triplanar";
+    else
+      materialProjectionMode = "UV";
+    return true;
+  }
+  if (propertyName == "materialGraphVersion") {
+    materialGraphVersion = newValue;
     return true;
   }
   if (propertyName == "originLocation") {
@@ -201,6 +238,59 @@ Model3DObjectConfiguration::GetProperties() const {
       .SetLabel(_("Material"))
       .SetGroup(_("Lighting"));
 
+  objectProperties["materialTextureResourceName"]
+      .SetValue(materialTextureResourceName)
+      .SetType("resource")
+      .AddExtraInfo("image")
+      .SetLabel(_("Material texture asset"))
+      .SetDescription(
+          _("Drop/select an image resource to override the model base texture."))
+      .SetGroup(_("Material blueprint"));
+
+  objectProperties["materialGraphEnabled"]
+      .SetValue(materialGraphEnabled ? "true" : "false")
+      .SetType("boolean")
+      .SetLabel(_("Use material blueprint"))
+      .SetDescription(
+          _("Enable a node-based material shader blueprint on this model."))
+      .SetGroup(_("Material blueprint"));
+
+  objectProperties["materialProjectionMode"]
+      .SetValue(materialProjectionMode.empty() ? "UV" : materialProjectionMode)
+      .SetType("choice")
+      .AddChoice("UV", _("UV"))
+      .AddChoice("Triplanar", _("Triplanar projection"))
+      .SetLabel(_("Projection mode"))
+      .SetGroup(_("Material blueprint"));
+
+  objectProperties["materialGraphBlend"]
+      .SetValue(gd::String::From(materialGraphBlend))
+      .SetType("number")
+      .SetLabel(_("Blend strength"))
+      .SetDescription(_("0 keeps original material, 1 applies the blueprint fully."))
+      .SetGroup(_("Material blueprint"));
+
+  objectProperties["materialGraphDefinition"]
+      .SetValue(materialGraphDefinition)
+      .SetType("textarea")
+      .SetLabel(_("Blueprint graph (serialized)"))
+      .SetGroup(_("Material blueprint"))
+      .SetAdvanced(true);
+
+  objectProperties["materialGraphFragmentShader"]
+      .SetValue(materialGraphFragmentShader)
+      .SetType("textarea")
+      .SetLabel(_("Generated fragment shader"))
+      .SetGroup(_("Material blueprint"))
+      .SetAdvanced(true);
+
+  objectProperties["materialGraphVersion"]
+      .SetValue(materialGraphVersion.empty() ? "1" : materialGraphVersion)
+      .SetType("string")
+      .SetLabel(_("Blueprint version"))
+      .SetGroup(_("Material blueprint"))
+      .SetAdvanced(true);
+
   objectProperties["originLocation"]
       .SetValue(originLocation.empty() ? "TopLeft" : originLocation)
       .SetType("choice")
@@ -272,7 +362,18 @@ void Model3DObjectConfiguration::DoUnserializeFrom(
   rotationY = content.GetDoubleAttribute("rotationY");
   rotationZ = content.GetDoubleAttribute("rotationZ");
   modelResourceName = content.GetStringAttribute("modelResourceName");
-  materialType = content.GetStringAttribute("materialType");
+  materialType = content.GetStringAttribute("materialType", "Standard");
+  materialTextureResourceName =
+      content.GetStringAttribute("materialTextureResourceName", "");
+  materialGraphEnabled = content.GetBoolAttribute("materialGraphEnabled", false);
+  materialGraphBlend = content.GetDoubleAttribute("materialGraphBlend", 1.0);
+  materialGraphDefinition =
+      content.GetStringAttribute("materialGraphDefinition", "");
+  materialGraphFragmentShader =
+      content.GetStringAttribute("materialGraphFragmentShader", "");
+  materialProjectionMode =
+      content.GetStringAttribute("materialProjectionMode", "UV");
+  materialGraphVersion = content.GetStringAttribute("materialGraphVersion", "1");
   originLocation = content.GetStringAttribute("originLocation");
   centerLocation = content.GetStringAttribute("centerLocation");
   keepAspectRatio = content.GetBoolAttribute("keepAspectRatio");
@@ -304,6 +405,15 @@ void Model3DObjectConfiguration::DoSerializeTo(
   content.SetAttribute("rotationZ", rotationZ);
   content.SetAttribute("modelResourceName", modelResourceName);
   content.SetAttribute("materialType", materialType);
+  content.SetAttribute(
+      "materialTextureResourceName", materialTextureResourceName);
+  content.SetAttribute("materialGraphEnabled", materialGraphEnabled);
+  content.SetAttribute("materialGraphBlend", materialGraphBlend);
+  content.SetAttribute("materialGraphDefinition", materialGraphDefinition);
+  content.SetAttribute(
+      "materialGraphFragmentShader", materialGraphFragmentShader);
+  content.SetAttribute("materialProjectionMode", materialProjectionMode);
+  content.SetAttribute("materialGraphVersion", materialGraphVersion);
   content.SetAttribute("originLocation", originLocation);
   content.SetAttribute("centerLocation", centerLocation);
   content.SetAttribute("keepAspectRatio", keepAspectRatio);
@@ -324,6 +434,7 @@ void Model3DObjectConfiguration::DoSerializeTo(
 void Model3DObjectConfiguration::ExposeResources(
     gd::ArbitraryResourceWorker &worker) {
   worker.ExposeModel3D(modelResourceName);
+  worker.ExposeImage(materialTextureResourceName);
 }
 
 const gd::String &

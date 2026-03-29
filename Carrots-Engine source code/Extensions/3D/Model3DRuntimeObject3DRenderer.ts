@@ -105,6 +105,136 @@ namespace gdjs {
   const traverseToSetBasicMaterialFromMeshes = (node: THREE.Object3D) =>
     node.traverse(setBasicMaterialTo);
 
+  const applyMaterialTextureToMaterial = (
+    material: THREE.Material,
+    texture: THREE.Texture
+  ) => {
+    const typedMaterial = material as THREE.Material & {
+      map?: THREE.Texture | null;
+      needsUpdate: boolean;
+    };
+    if (!('map' in typedMaterial)) {
+      return;
+    }
+    typedMaterial.map = texture;
+    typedMaterial.needsUpdate = true;
+  };
+
+  const applyMaterialTextureToMesh = (
+    node: THREE.Object3D,
+    texture: THREE.Texture
+  ) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.material) {
+      return;
+    }
+
+    if (Array.isArray(mesh.material)) {
+      for (let index = 0; index < mesh.material.length; index++) {
+        const clonedMaterial = mesh.material[index].clone();
+        applyMaterialTextureToMaterial(clonedMaterial, texture);
+        mesh.material[index] = clonedMaterial;
+      }
+      return;
+    }
+
+    const clonedMaterial = mesh.material.clone();
+    applyMaterialTextureToMaterial(clonedMaterial, texture);
+    mesh.material = clonedMaterial;
+  };
+
+  const traverseToApplyMaterialTextureFromMeshes = (
+    node: THREE.Object3D,
+    texture: THREE.Texture
+  ) => node.traverse(child => applyMaterialTextureToMesh(child, texture));
+
+  type MaterialGraphShaderParts = {
+    helperBlock: string;
+    expression: string;
+  };
+
+  const materialGraphConfigUserDataKey = '__gdMaterialGraphConfig';
+  const materialGraphUniformsUserDataKey = '__gdMaterialGraphUniforms';
+  let materialGraphFallbackTexture: THREE.DataTexture | null = null;
+
+  const getMaterialGraphFallbackTexture = (): THREE.Texture => {
+    if (materialGraphFallbackTexture) {
+      return materialGraphFallbackTexture;
+    }
+    const pixel = new Uint8Array([255, 255, 255, 255]);
+    materialGraphFallbackTexture = new THREE.DataTexture(pixel, 1, 1);
+    materialGraphFallbackTexture.needsUpdate = true;
+    return materialGraphFallbackTexture;
+  };
+
+  const extractMaterialGraphShaderParts = (
+    fragmentShader: string
+  ): MaterialGraphShaderParts | null => {
+    if (!fragmentShader) {
+      return null;
+    }
+
+    const mainIndex = fragmentShader.indexOf('void main()');
+    if (mainIndex === -1) {
+      return null;
+    }
+
+    const varyingLine = 'varying vec2 vUv;';
+    const varyingIndex = fragmentShader.indexOf(varyingLine);
+    if (varyingIndex === -1) {
+      return null;
+    }
+
+    const helperBlock = fragmentShader
+      .slice(varyingIndex + varyingLine.length, mainIndex)
+      .trim();
+    const expressionMatch = fragmentShader.match(
+      /vec4\s+shaderGraphColor\s*=\s*([\s\S]*?);[\r\n]/
+    );
+    if (!expressionMatch || !expressionMatch[1]) {
+      return null;
+    }
+
+    return {
+      helperBlock,
+      expression: expressionMatch[1].trim(),
+    };
+  };
+
+  const buildMaterialGraphExpression = (expression: string): string =>
+    expression
+      .replace(/\btDiffuse\b/g, 'gdMaterialGraphTexture')
+      .replace(/\buTime\b/g, 'gdMaterialGraphTime')
+      .replace(/\buResolution\b/g, 'gdMaterialGraphResolution')
+      .replace(/\bvUv\b/g, 'shaderGraphUv')
+      .replace(/\bsceneColor\b/g, 'baseColor');
+
+  const materialGraphProjectionShaderChunk = `
+vec2 gdResolveMaterialGraphUv(
+  vec3 worldPosition,
+  vec3 worldNormal,
+  float projectionMode
+) {
+  if (projectionMode < 0.5) {
+#ifdef USE_UV
+    return vUv;
+#else
+    return fract(worldPosition.xz * 0.35);
+#endif
+  }
+  vec3 normalWeights = abs(normalize(worldNormal));
+  normalWeights /= max(
+    normalWeights.x + normalWeights.y + normalWeights.z,
+    0.0001
+  );
+  vec2 xUv = worldPosition.yz;
+  vec2 yUv = worldPosition.xz;
+  vec2 zUv = worldPosition.xy;
+  vec2 blendedUv = xUv * normalWeights.x + yUv * normalWeights.y + zUv * normalWeights.z;
+  return fract(blendedUv * 0.25);
+}
+`;
+
   type Model3DIKTargetMode = 'bone' | 'position';
 
   type Model3DIKChainDefinition = {
@@ -217,6 +347,9 @@ namespace gdjs {
           remove3DRendererObject: (object: THREE.Object3D) => void;
         }
       | null = null;
+    private _materialGraphTime = 0;
+    private _materialTextureAssetName: string = '';
+    private _materialTextureAsset: THREE.Texture | null = null;
 
     /**
      * The model origin evaluated according to the object configuration.
@@ -263,6 +396,8 @@ namespace gdjs {
 
     updateAnimation(timeDelta: float) {
       this._animationMixer.update(timeDelta);
+      this._materialGraphTime += Math.max(0, timeDelta);
+      this._updateMaterialGraphUniforms();
       this._updateIKGizmoInteraction();
       this._updateIK();
       this._updateIKGizmoVisuals();
@@ -484,29 +619,315 @@ namespace gdjs {
       }
     }
 
+    private _resolveMaterialAssetTexture(): THREE.Texture | null {
+      const textureAssetName =
+        this._model3DRuntimeObject._materialTextureResourceName || '';
+      if (!textureAssetName) {
+        this._materialTextureAssetName = '';
+        this._materialTextureAsset = null;
+        return null;
+      }
+      if (
+        this._materialTextureAssetName === textureAssetName &&
+        this._materialTextureAsset
+      ) {
+        return this._materialTextureAsset;
+      }
+
+      this._materialTextureAssetName = textureAssetName;
+      this._materialTextureAsset = null;
+
+      const imageManager = this._model3DRuntimeObject
+        .getInstanceContainer()
+        .getGame()
+        .getImageManager() as gdjs.PixiImageManager;
+      if (!imageManager || typeof imageManager.getThreeTexture !== 'function') {
+        return null;
+      }
+
+      try {
+        this._materialTextureAsset =
+          imageManager.getThreeTexture(textureAssetName) || null;
+      } catch (error) {
+        this._materialTextureAsset = null;
+      }
+      return this._materialTextureAsset;
+    }
+
+    private _patchMaterialWithGraph(
+      sourceMaterial: THREE.Material,
+      parsedShader: MaterialGraphShaderParts,
+      projectionMode: string,
+      blendStrength: number
+    ): THREE.Material {
+      const patchedMaterial = sourceMaterial.clone();
+      const typedPatchedMaterial = patchedMaterial as THREE.Material & {
+        isShaderMaterial?: boolean;
+        map?: THREE.Texture | null;
+        userData: { [key: string]: any };
+        onBeforeCompile?: (
+          shader: {
+            uniforms: { [key: string]: any };
+            vertexShader: string;
+            fragmentShader: string;
+          }
+        ) => void;
+        customProgramCacheKey?: () => string;
+        needsUpdate: boolean;
+      };
+
+      if (typedPatchedMaterial.isShaderMaterial) {
+        return patchedMaterial;
+      }
+
+      const baseTexture =
+        typedPatchedMaterial.map || getMaterialGraphFallbackTexture();
+      const shaderConfig = {
+        helperBlock: parsedShader.helperBlock || '',
+        expression: parsedShader.expression || 'sceneColor',
+        projectionMode: projectionMode === 'Triplanar' ? 'Triplanar' : 'UV',
+        blendStrength: clampNumber(blendStrength, 0, 1),
+        baseTexture,
+        cacheKey: `${parsedShader.helperBlock}|${parsedShader.expression}|${projectionMode}`,
+      };
+      typedPatchedMaterial.userData[materialGraphConfigUserDataKey] =
+        shaderConfig;
+
+      const previousOnBeforeCompile = typedPatchedMaterial.onBeforeCompile;
+      typedPatchedMaterial.onBeforeCompile = shader => {
+        if (previousOnBeforeCompile) {
+          previousOnBeforeCompile(shader);
+        }
+
+        shader.uniforms.gdMaterialGraphTexture = {
+          value: shaderConfig.baseTexture,
+        };
+        shader.uniforms.gdMaterialGraphTime = { value: this._materialGraphTime };
+        shader.uniforms.gdMaterialGraphBlend = {
+          value: shaderConfig.blendStrength,
+        };
+        shader.uniforms.gdMaterialGraphProjection = {
+          value: shaderConfig.projectionMode === 'Triplanar' ? 1 : 0,
+        };
+        shader.uniforms.gdMaterialGraphResolution = {
+          value: new THREE.Vector2(1, 1),
+        };
+
+        if (!shader.vertexShader.includes('gdMaterialGraphWorldPosition')) {
+          shader.vertexShader = `varying vec3 gdMaterialGraphWorldPosition;\n${shader.vertexShader}`;
+          if (shader.vertexShader.includes('#include <worldpos_vertex>')) {
+            shader.vertexShader = shader.vertexShader.replace(
+              '#include <worldpos_vertex>',
+              `#include <worldpos_vertex>
+  gdMaterialGraphWorldPosition = worldPosition.xyz;`
+            );
+          } else {
+            shader.vertexShader = shader.vertexShader.replace(
+              '#include <project_vertex>',
+              `gdMaterialGraphWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
+#include <project_vertex>`
+            );
+          }
+        }
+
+        if (!shader.fragmentShader.includes('gdApplyMaterialGraph(')) {
+          const graphExpression = buildMaterialGraphExpression(
+            shaderConfig.expression
+          );
+          shader.fragmentShader = `varying vec3 gdMaterialGraphWorldPosition;
+uniform sampler2D gdMaterialGraphTexture;
+uniform float gdMaterialGraphTime;
+uniform float gdMaterialGraphBlend;
+uniform float gdMaterialGraphProjection;
+uniform vec2 gdMaterialGraphResolution;
+${shaderConfig.helperBlock}
+${materialGraphProjectionShaderChunk}
+vec4 gdApplyMaterialGraph(vec2 shaderGraphUv, vec4 baseColor) {
+  float uTime = gdMaterialGraphTime;
+  vec2 uResolution = gdMaterialGraphResolution;
+  vec4 sceneColor = baseColor;
+  vec4 shaderGraphColor = ${graphExpression};
+  return mix(sceneColor, shaderGraphColor, clamp(gdMaterialGraphBlend, 0.0, 1.0));
+}
+${shader.fragmentShader}`;
+
+          const materialGraphInjection = `#if defined(USE_NORMAL)
+  #ifndef FLAT_SHADED
+  vec3 gdMaterialGraphNormal = normalize(vNormal);
+  #else
+  vec3 gdMaterialGraphNormal = vec3(0.0, 0.0, 1.0);
+  #endif
+#else
+  vec3 gdMaterialGraphNormal = vec3(0.0, 0.0, 1.0);
+#endif
+  diffuseColor = gdApplyMaterialGraph(
+    gdResolveMaterialGraphUv(
+      gdMaterialGraphWorldPosition,
+      gdMaterialGraphNormal,
+      gdMaterialGraphProjection
+    ),
+    diffuseColor
+  );`;
+
+          if (shader.fragmentShader.includes('#include <map_fragment>')) {
+            shader.fragmentShader = shader.fragmentShader.replace(
+              '#include <map_fragment>',
+              `#include <map_fragment>\n${materialGraphInjection}`
+            );
+          } else if (shader.fragmentShader.includes('#include <color_fragment>')) {
+            shader.fragmentShader = shader.fragmentShader.replace(
+              '#include <color_fragment>',
+              `#include <color_fragment>\n${materialGraphInjection}`
+            );
+          }
+        }
+
+        typedPatchedMaterial.userData[materialGraphUniformsUserDataKey] =
+          shader.uniforms;
+      };
+
+      const previousProgramCacheKey =
+        typeof typedPatchedMaterial.customProgramCacheKey === 'function'
+          ? typedPatchedMaterial.customProgramCacheKey.bind(typedPatchedMaterial)
+          : null;
+      typedPatchedMaterial.customProgramCacheKey = () =>
+        `${previousProgramCacheKey ? previousProgramCacheKey() : ''}|gdMaterialGraph:${
+          shaderConfig.cacheKey
+        }`;
+      typedPatchedMaterial.needsUpdate = true;
+      return patchedMaterial;
+    }
+
+    private _applyMaterialGraphToMeshes(threeObject: THREE.Object3D): void {
+      if (!this._model3DRuntimeObject._materialGraphEnabled) {
+        return;
+      }
+      const parsedShader = extractMaterialGraphShaderParts(
+        this._model3DRuntimeObject._materialGraphFragmentShader
+      );
+      if (!parsedShader) {
+        return;
+      }
+
+      const blendStrength = clampNumber(
+        this._model3DRuntimeObject._materialGraphBlend,
+        0,
+        1
+      );
+      const projectionMode = this._model3DRuntimeObject._materialProjectionMode;
+      threeObject.traverse(child => {
+        const mesh = child as THREE.Mesh;
+        if (!mesh.material) {
+          return;
+        }
+
+        if (Array.isArray(mesh.material)) {
+          mesh.material = mesh.material.map(material =>
+            this._patchMaterialWithGraph(
+              material,
+              parsedShader,
+              projectionMode,
+              blendStrength
+            )
+          );
+        } else {
+          mesh.material = this._patchMaterialWithGraph(
+            mesh.material,
+            parsedShader,
+            projectionMode,
+            blendStrength
+          );
+        }
+      });
+    }
+
+    private _updateMaterialGraphUniforms(): void {
+      if (!this._model3DRuntimeObject._materialGraphEnabled) {
+        return;
+      }
+      const blendStrength = clampNumber(
+        this._model3DRuntimeObject._materialGraphBlend,
+        0,
+        1
+      );
+      const projectionValue =
+        this._model3DRuntimeObject._materialProjectionMode === 'Triplanar'
+          ? 1
+          : 0;
+
+      this._threeObject.traverse(child => {
+        const mesh = child as THREE.Mesh;
+        if (!mesh.material) {
+          return;
+        }
+        const materials = Array.isArray(mesh.material)
+          ? mesh.material
+          : [mesh.material];
+        for (const material of materials) {
+          const typedMaterial = material as THREE.Material & {
+            userData?: { [key: string]: any };
+          };
+          if (!typedMaterial.userData) {
+            continue;
+          }
+          const uniforms =
+            typedMaterial.userData[materialGraphUniformsUserDataKey];
+          const shaderConfig =
+            typedMaterial.userData[materialGraphConfigUserDataKey];
+          if (!uniforms || !shaderConfig) {
+            continue;
+          }
+          if (uniforms.gdMaterialGraphTime) {
+            uniforms.gdMaterialGraphTime.value = this._materialGraphTime;
+          }
+          if (uniforms.gdMaterialGraphBlend) {
+            uniforms.gdMaterialGraphBlend.value = blendStrength;
+          }
+          if (uniforms.gdMaterialGraphProjection) {
+            uniforms.gdMaterialGraphProjection.value = projectionValue;
+          }
+          if (uniforms.gdMaterialGraphTexture && shaderConfig.baseTexture) {
+            uniforms.gdMaterialGraphTexture.value = shaderConfig.baseTexture;
+          }
+          if (
+            uniforms.gdMaterialGraphResolution &&
+            uniforms.gdMaterialGraphResolution.value &&
+            typeof uniforms.gdMaterialGraphResolution.value.set === 'function'
+          ) {
+            uniforms.gdMaterialGraphResolution.value.set(1, 1);
+          }
+        }
+      });
+    }
+
     /**
      * Replace materials to better work with lights (or no light).
      */
     private _replaceMaterials(threeObject: THREE.Object3D) {
       if (
-        this._model3DRuntimeObject._materialType ===
+        this._model3DRuntimeObject._materialType !==
         gdjs.Model3DRuntimeObject.MaterialType.KeepOriginal
       ) {
-        return;
+        if (
+          this._model3DRuntimeObject._materialType ===
+          gdjs.Model3DRuntimeObject.MaterialType.Basic
+        ) {
+          traverseToSetBasicMaterialFromMeshes(threeObject);
+        } else {
+          const profile = getModel3DMaterialProfile(
+            this._model3DRuntimeObject._materialType
+          );
+          traverseToApplyMaterialProfileFromMeshes(threeObject, profile);
+        }
       }
 
-      if (
-        this._model3DRuntimeObject._materialType ===
-        gdjs.Model3DRuntimeObject.MaterialType.Basic
-      ) {
-        traverseToSetBasicMaterialFromMeshes(threeObject);
-        return;
+      const materialTexture = this._resolveMaterialAssetTexture();
+      if (materialTexture) {
+        traverseToApplyMaterialTextureFromMeshes(threeObject, materialTexture);
       }
 
-      const profile = getModel3DMaterialProfile(
-        this._model3DRuntimeObject._materialType
-      );
-      traverseToApplyMaterialProfileFromMeshes(threeObject, profile);
+      this._applyMaterialGraphToMeshes(threeObject);
+      this._updateMaterialGraphUniforms();
     }
 
     configureIKChain(
