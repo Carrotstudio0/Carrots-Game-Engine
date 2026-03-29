@@ -25,12 +25,18 @@ import useDismissableTutorialMessage from '../Hints/useDismissableTutorialMessag
 import useAlertDialog from '../UI/Alert/useAlertDialog';
 import ErrorBoundary from '../UI/ErrorBoundary';
 import { ProjectScopedContainersAccessor } from '../InstructionOrExpression/EventsScope';
+import ObjectStateMachineEditor from './ObjectStateMachineEditor';
+import {
+  getObjectAnimationNames,
+  STATE_MACHINE_BEHAVIOR_TYPE,
+} from './AnimationStateMachineUtils';
 
 const gd: libGDevelop = global.gd;
 
 export type ObjectEditorTab =
   | 'properties'
   | 'behaviors'
+  | 'state-machine'
   | 'variables'
   | 'effects';
 
@@ -157,6 +163,16 @@ const InnerDialog = (props: InnerDialogProps) => {
 
   const EditorComponent: ?React.ComponentType<EditorProps> =
     props.editorComponent;
+  const shouldShowStateMachineTab =
+    getObjectAnimationNames(object).length > 0 ||
+    object
+      .getAllBehaviorNames()
+      .toJSArray()
+      .some(
+        behaviorName =>
+          object.getBehavior(behaviorName).getTypeName() ===
+          STATE_MACHINE_BEHAVIOR_TYPE
+      );
 
   const onApply = async () => {
     props.onApply(hasResourceChanged, hasAnyEffectBeenAdded);
@@ -268,7 +284,7 @@ const InnerDialog = (props: InnerDialogProps) => {
           // $FlowFixMe[incompatible-type]
           options={[
             {
-              label: <Trans>Properties</Trans>,
+              label: <Trans>Properties & Material</Trans>,
               value: 'properties',
             },
             {
@@ -276,6 +292,13 @@ const InnerDialog = (props: InnerDialogProps) => {
               value: 'behaviors',
               id: 'behaviors-tab',
             },
+            shouldShowStateMachineTab
+              ? {
+                  label: <Trans>State Machine</Trans>,
+                  value: 'state-machine',
+                  id: 'state-machine-tab',
+                }
+              : null,
             {
               label: <Trans>Variables</Trans>,
               value: 'variables',
@@ -360,6 +383,20 @@ const InnerDialog = (props: InnerDialogProps) => {
           openBehaviorEvents={askConfirmationAndOpenBehaviorEvents}
           onWillInstallExtension={onWillInstallExtension}
           onExtensionInstalled={onExtensionInstalled}
+          isListLocked={isBehaviorListLocked}
+        />
+      )}
+      {currentTab === 'state-machine' && (
+        <ObjectStateMachineEditor
+          object={object}
+          project={project}
+          resourceManagementProps={_resourceManagementProps}
+          projectScopedContainersAccessor={projectScopedContainersAccessor}
+          onUpdateBehaviorsSharedData={onUpdateBehaviorsSharedData}
+          onStateMachineUpdated={() => {
+            forceUpdate(); /*Force update to ensure dialog is properly positioned*/
+            notifyOfChange();
+          }}
           isListLocked={isBehaviorListLocked}
         />
       )}

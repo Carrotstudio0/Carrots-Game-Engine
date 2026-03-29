@@ -53,6 +53,7 @@ import { refreshTypeScriptProjectBehaviorsExtension } from '../TypeScriptProject
 const gd: libGDevelop = global.gd;
 
 const BEHAVIORS_CLIPBOARD_KIND = 'Behaviors';
+const STATE_MACHINE_BEHAVIOR_TYPE = 'AnimationStateMachine::StateMachine';
 
 export const useBehaviorOverridingAlertDialog = (): ((
   existingBehaviorNames: Array<string>
@@ -308,6 +309,8 @@ type UseManageBehaviorsState = {|
   copyBehavior: (behaviorName: string) => void,
   copyAllBehaviors: () => void,
   pasteBehaviors: () => Promise<void>,
+  addBehaviorByType: (type: string, defaultName: string) => void,
+  focusBehaviorByName: (behaviorName: string) => void,
   openNewBehaviorDialog: () => void,
   resetJustAddedBehaviorName: () => void,
 
@@ -618,6 +621,9 @@ export const useManageObjectBehaviors = ({
   const resetJustAddedBehaviorName = React.useCallback(() => {
     setJustAddedBehaviorName(null);
   }, []);
+  const focusBehaviorByName = React.useCallback((behaviorName: string) => {
+    setJustAddedBehaviorName(behaviorName);
+  }, []);
 
   return {
     changeBehaviorName,
@@ -625,6 +631,8 @@ export const useManageObjectBehaviors = ({
     copyBehavior,
     copyAllBehaviors,
     pasteBehaviors,
+    addBehaviorByType: addBehavior,
+    focusBehaviorByName,
     newBehaviorDialog,
     openNewBehaviorDialog,
     justAddedBehaviorName,
@@ -723,7 +731,29 @@ const BehaviorsEditor = (props: Props): React.Node => {
     .getAllBehaviorNames()
     .toJSArray()
     .map(behaviorName => object.getBehavior(behaviorName))
-    .filter(behavior => !behavior.isDefaultBehavior());
+    .filter(
+      behavior =>
+        !behavior.isDefaultBehavior() &&
+        behavior.getTypeName() !== STATE_MACHINE_BEHAVIOR_TYPE
+    );
+  const hasHiddenStateMachineBehavior = object
+    .getAllBehaviorNames()
+    .toJSArray()
+    .some(
+      behaviorName =>
+        object.getBehavior(behaviorName).getTypeName() ===
+        STATE_MACHINE_BEHAVIOR_TYPE
+    );
+  const canOnlyUseStateMachine =
+    hasHiddenStateMachineBehavior && allVisibleBehaviors.length === 0;
+  const emptyPlaceholderDescription = canOnlyUseStateMachine ? (
+    <Trans>
+      Standard behaviors are configured here. Animation State Machine now has
+      its own dedicated tab in the object editor.
+    </Trans>
+  ) : (
+    <Trans>Behaviors add features to objects in a matter of clicks.</Trans>
+  );
 
   const openExtension = React.useCallback(
     (behaviorType: string) => {
@@ -775,11 +805,7 @@ const BehaviorsEditor = (props: Props): React.Node => {
           <Column noMargin expand justifyContent="center">
             <EmptyPlaceholder
               title={<Trans>Add your first behavior</Trans>}
-              description={
-                <Trans>
-                  Behaviors add features to objects in a matter of clicks.
-                </Trans>
-              }
+              description={emptyPlaceholderDescription}
               helpPagePath="/behaviors"
               tutorialId="intro-behaviors-and-functions"
               actionButtonId="add-behavior-button"

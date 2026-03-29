@@ -208,6 +208,13 @@ const jsExtensions = [
     objectsRenderingServiceModules: {},
   },
   {
+    name: 'AnimationStateMachine',
+    // $FlowFixMe[incompatible-type] - this path is ignored for Flow.
+    // $FlowFixMe[cannot-resolve-module]
+    extensionModule: require('GDJS-for-web-app-only/Runtime/Extensions/AnimationStateMachine/JsExtension.js'),
+    objectsRenderingServiceModules: {},
+  },
+  {
     name: 'Screenshot',
     // $FlowFixMe[incompatible-type] - this path is ignored for Flow.
     // $FlowFixMe[cannot-resolve-module]
