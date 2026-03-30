@@ -1,37 +1,59 @@
 ﻿# TypeScript Scripting API Reference
 
-## 1) Script Context Kinds
-
-Each script is associated with one context:
-- `project`
-- `scene`
-- `object`
-- `behavior`
-
-Context metadata fields:
-- `contextKind`
-- `sceneName`
-- `objectName`
-- `behaviorName`
-
-Runtime helper in editor typings:
+## 1) Context and Injected Globals
 
 ```ts
-declare const scriptContext: {
-  kind: 'project' | 'scene' | 'object' | 'behavior';
-  sceneName: string;
-  objectName: string;
-  behaviorName: string;
-};
+declare const sceneObjects: { [name: string]: gdjs.RuntimeObject[] };
+declare const scene: gdjs.RuntimeScene & { [name: string]: gdjs.RuntimeObject[] };
+declare const evtTools: typeof gdjs.evtTools;
 ```
 
-## 2) Global Runtime Helpers
-
-### 2.1 `tsModules`
+## 2) `tsModules` (Primary Bridge API)
 
 ```ts
 declare const tsModules: {
+  // External module interop
   setExternal(moduleName: string, moduleValue: any): void;
+  setExternalAlias(moduleName: string, globalPath: string): void;
+  hasExternal(moduleName: string): boolean;
+  getExternal(moduleName: string): any;
+  requireExternal(moduleName: string): any;
+  importExternal(moduleName: string): Promise<any>;
+  resolveGlobal(globalPath: string): any;
+  bindDefaultExternals(): void;
+
+  // Script module access
+  listModuleIds(): string[];
+  require(moduleName: string): any;
+  callExport(moduleId: string, exportName?: string, ...args: any[]): any;
+
+  // Shared state
+  hasSharedState(key: string): boolean;
+  setSharedState(key: string, value: any): void;
+  getSharedState(key: string, defaultValue?: any): any;
+  deleteSharedState(key: string): boolean;
+  patchSharedState(key: string, patchValue: any): any;
+  clearSharedState(): void;
+  listSharedStateKeys(): string[];
+
+  // Event bus
+  on(
+    eventName: string,
+    listener: (payload?: any, metadata?: any) => any
+  ): () => void;
+  once(
+    eventName: string,
+    listener: (payload?: any, metadata?: any) => any
+  ): () => void;
+  off(
+    eventName: string,
+    listener?: (payload?: any, metadata?: any) => any
+  ): number;
+  emit(eventName: string, payload?: any): number;
+  clearEventListeners(eventName?: string): number;
+  listEventNames(): string[];
+
+  // Utilities
   evalJavaScript(code: string): any;
   registerTest(testName: string, testFunction: () => void): void;
   runTests(): {
@@ -44,7 +66,7 @@ declare const tsModules: {
 };
 ```
 
-### 2.2 Global helpers
+## 3) Global Helper Aliases
 
 ```ts
 declare function registerProjectBehavior(
@@ -52,15 +74,73 @@ declare function registerProjectBehavior(
   behaviorConstructor: typeof gdjs.RuntimeBehavior
 ): void;
 
+declare function requireModule(moduleName: string): any;
+
+declare function callScriptExport(
+  moduleId: string,
+  exportName?: string,
+  ...args: any[]
+): any;
+
+declare function setScriptSharedState(key: string, value: any): void;
+declare function getScriptSharedState(key: string, defaultValue?: any): any;
+
+declare function emitScriptEvent(eventName: string, payload?: any): number;
+declare function onScriptEvent(
+  eventName: string,
+  listener: (payload?: any, metadata?: any) => any
+): () => void;
+declare function offScriptEvent(
+  eventName: string,
+  listener?: (payload?: any, metadata?: any) => any
+): number;
+
+declare function requireExternalModule(moduleName: string): any;
+declare function importExternalModule(moduleName: string): Promise<any>;
+
 declare function liveRepl(code: string): any;
 ```
 
-### 2.3 `gdjs.ts` namespace
+## 4) `gdjs.ts` Namespace
 
 ```ts
 declare namespace gdjs {
   namespace ts {
+    // Full bridge object (same API as tsModules)
+    const bridge: typeof tsModules;
+
+    // Wrappers
     function setExternalModule(moduleName: string, moduleValue: any): void;
+    function setExternalModuleAlias(moduleName: string, globalPath: string): void;
+    function requireExternalModule(moduleName: string): any;
+    function importExternalModule(moduleName: string): Promise<any>;
+    function resolveGlobal(globalPath: string): any;
+    function bindDefaultExternalModules(): void;
+    function requireModule(moduleName: string): any;
+
+    // Script export call
+    function callScriptExport(
+      moduleId: string,
+      exportName?: string,
+      ...args: any[]
+    ): any;
+
+    // Shared state
+    function setSharedState(key: string, value: any): void;
+    function getSharedState(key: string, defaultValue?: any): any;
+
+    // Event bus
+    function emit(eventName: string, payload?: any): number;
+    function on(
+      eventName: string,
+      listener: (payload?: any, metadata?: any) => any
+    ): () => void;
+    function off(
+      eventName: string,
+      listener?: (payload?: any, metadata?: any) => any
+    ): number;
+
+    // Other helpers
     function registerProjectBehavior(
       behaviorType: string,
       behaviorConstructor: typeof gdjs.RuntimeBehavior
@@ -78,36 +158,152 @@ declare namespace gdjs {
 }
 ```
 
-## 3) Project-Typed Globals Injected in Editor
+Note:
+- `gdjs.ts.bridge.once(...)`, `gdjs.ts.bridge.clearEventListeners(...)`, and other bridge-only methods are available through `bridge`.
+
+## 5) Event JavaScript Environment (inside Events)
+
+Typical available variables:
 
 ```ts
-declare const sceneObjects: __GDevelopProjectObjectLists;
-declare const scene: gdjs.RuntimeScene & __GDevelopProjectObjectLists;
+declare const runtimeScene: gdjs.RuntimeScene;
+declare const objects: gdjs.RuntimeObject[];
+declare const eventsFunctionContext: any;
 declare const evtTools: typeof gdjs.evtTools;
 ```
 
-Generated object typing:
-- One property per known project object name, mapped to `gdjs.RuntimeObject[]`.
+Bridge helpers are available in event JavaScript as global functions too (`callScriptExport`, `setScriptSharedState`, etc.).
 
-Generated behavior typing:
-- One property per known behavior name.
-- Type inferred from runtime behavior registration mapping when available.
+## 6) `gdjs.runtimeCapabilities` (Expanded Runtime Control API)
 
-RuntimeObject behavior typing override:
+### 6.1 Engine discovery and dynamic invocation
 
 ```ts
-interface RuntimeObject {
-  getBehavior<Name extends keyof __GDevelopProjectBehaviorByName>(
-    name: Name
-  ): __GDevelopProjectBehaviorByName[Name];
+declare namespace gdjs {
+  namespace runtimeCapabilities {
+    function getRuntimeCapabilitiesSummary(): any;
+    function getEngineAccess(source?: any): any;
+    function readEnginePath(path: string, source?: any): any;
+    function invokeEnginePath(path: string, source?: any, ...args: any[]): any;
+  }
 }
 ```
 
-## 4) Lifecycle Hook APIs
+### 6.2 Input snapshot + input injection
 
-## 4.1 Scene scripts
+```ts
+declare namespace gdjs {
+  namespace runtimeCapabilities {
+    function getInputSnapshot(source?: any): any;
+    function listPressedKeys(source?: any): number[];
+    function listActiveTouches(source?: any): any[];
+    function listConnectedGamepads(): any[];
 
-Primary hook names:
+    function setKeyPressed(source: any, keyCode: number, location?: number): boolean;
+    function setKeyReleased(source: any, keyCode: number, location?: number): boolean;
+
+    function setMousePosition(
+      source: any,
+      x: number,
+      y: number,
+      movementX?: number,
+      movementY?: number
+    ): boolean;
+    function setMouseButtonPressed(source: any, buttonCode: number): boolean;
+    function setMouseButtonReleased(source: any, buttonCode: number): boolean;
+    function setMouseWheelDelta(
+      source: any,
+      deltaY: number,
+      deltaX?: number,
+      deltaZ?: number
+    ): boolean;
+
+    function setTouchStarted(
+      source: any,
+      rawIdentifier: number,
+      x: number,
+      y: number
+    ): boolean;
+    function setTouchMoved(
+      source: any,
+      rawIdentifier: number,
+      x: number,
+      y: number
+    ): boolean;
+    function setTouchEnded(source: any, rawIdentifier: number): boolean;
+    function setTouchSimulationForMouse(source: any, enable: boolean): boolean;
+  }
+}
+```
+
+### 6.3 Behavior/extension runtime capability APIs
+
+```ts
+declare namespace gdjs {
+  namespace runtimeCapabilities {
+    function listObjectBehaviors(object: gdjs.RuntimeObject): any[];
+    function resolveBehavior(object: gdjs.RuntimeObject, behaviorNameOrType: string): any;
+    function listBehaviorMethods(
+      object: gdjs.RuntimeObject,
+      behaviorNameOrType: string
+    ): string[];
+    function invokeBehaviorMethod(
+      object: gdjs.RuntimeObject,
+      behaviorNameOrType: string,
+      methodName: string,
+      ...args: any[]
+    ): any;
+
+    function registerBehaviorCapability(capability: any): void;
+    function unregisterBehaviorCapability(behaviorType: string, methodName?: string): void;
+    function listRegisteredBehaviorCapabilityTypes(): string[];
+
+    function registerExtensionCapability(capability: any): void;
+    function registerExtensionNamespace(extensionName: string, extensionNamespace: any): void;
+    function autoRegisterKnownExtensionNamespaces(): void;
+    function unregisterExtensionCapability(extensionName: string, methodName?: string): void;
+    function listRegisteredExtensionCapabilityNames(): string[];
+    function listExtensionMethods(extensionName: string): string[];
+    function invokeExtensionMethod(
+      extensionName: string,
+      methodName: string,
+      ...args: any[]
+    ): any;
+
+    function bindManualExtensionToObject(object: gdjs.RuntimeObject, binding: any): void;
+    function unbindManualExtensionFromObject(
+      object: gdjs.RuntimeObject,
+      extensionName: string
+    ): boolean;
+    function listManualObjectExtensions(object: gdjs.RuntimeObject): string[];
+    function setManualObjectExtensionConfig(
+      object: gdjs.RuntimeObject,
+      extensionName: string,
+      configPatch: { [key: string]: unknown }
+    ): boolean;
+    function getManualObjectExtensionConfig(
+      object: gdjs.RuntimeObject,
+      extensionName: string
+    ): { [key: string]: unknown } | null;
+    function invokeManualObjectExtensionMethod(
+      object: gdjs.RuntimeObject,
+      extensionName: string,
+      methodName: string,
+      ...args: any[]
+    ): any;
+    function invokeObjectExtensionMethod(
+      object: gdjs.RuntimeObject,
+      extensionName: string,
+      methodName: string,
+      ...args: any[]
+    ): any;
+  }
+}
+```
+
+## 7) Lifecycle Hooks
+
+### 7.1 Scene scripts
 
 ```ts
 export function onSceneLoaded(runtimeScene: gdjs.RuntimeScene): void;
@@ -117,15 +313,7 @@ export function onSceneUnloading(runtimeScene: gdjs.RuntimeScene): void;
 export function onSceneUnloaded(runtimeScene: gdjs.RuntimeScene): void;
 ```
 
-Legacy aliases accepted:
-- `onSceneStart`, `onReady`, `on<SceneName>SceneStart`
-- `onSceneUpdate`, `_process`
-- `onSceneLateUpdate`, `_lateProcess`
-- `onSceneDispose`, `onDispose`
-
-## 4.2 Object scripts
-
-Primary hook names:
+### 7.2 Object scripts
 
 ```ts
 export function onObjectCreated(
@@ -149,15 +337,7 @@ export function onObjectDestroyed(
 ): void;
 ```
 
-Legacy aliases accepted:
-- `onCreated`
-- `onObjectUpdate`, `updateObject`, `update<ObjectName>Object`
-- `onObjectLateUpdate`
-- `onDestroy`
-
-## 4.3 Behavior scripts
-
-Primary hook names:
+### 7.3 Behavior scripts
 
 ```ts
 export function onBehaviorCreated(
@@ -197,42 +377,25 @@ export function onBehaviorDestroy(
 ): void;
 ```
 
-Legacy aliases accepted:
-- `onCreated`
-- `onActivate`
-- `onBehaviorDeactivate`, `onDeActivate`, `onDeactivate`
-- `onBehaviorPreEvents`, `onBehaviorUpdate`, `update<ObjectName><BehaviorName>Behavior`
-- `onBehaviorPostEvents`, `onBehaviorLateUpdate`
-- `onDestroy`
-
-## 5) Include Order API
+## 8) Include Order API
 
 Each script supports:
 - `includePosition: 'first' | 'last'`
 
-Meaning:
-- `first`: loaded before regular game includes.
-- `last`: loaded after the first group.
+Use `first` for foundational/shared bootstrap modules.
 
-Use `first` for foundational modules and shared setup.
+## 9) Behavior Registration Contract
 
-## 6) Behavior Registration Contract
-
-Use type prefix:
+Use prefix:
 - `TypeScriptBehaviors::`
 
-Example type ID:
-- `TypeScriptBehaviors::EnemyDashBehavior`
+Example:
 
-If the prefix is missing, the behavior will not be picked up by the project behavior registry scanner.
+```ts
+registerProjectBehavior('TypeScriptBehaviors::EnemyDashBehavior', EnemyDashBehavior);
+```
 
-## 7) Error Handling Guarantees
-
-- Lifecycle calls are wrapped in safe-call guards; runtime exceptions are logged, then execution continues.
-- Missing modules produce explicit module resolution errors.
-- Typo auto-fix is conservative and does not apply unsafe replacements.
-
-## 8) Internal File Generation (Export)
+## 10) Runtime Export Files
 
 Generated module runtime files:
 - `project-ts-modules-runtime.js`

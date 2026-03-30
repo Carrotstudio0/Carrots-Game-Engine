@@ -1,6 +1,6 @@
 ﻿# Script Docs Package
 
-This folder contains the complete TypeScript scripting documentation for the new Script workflow.
+This folder contains the complete TypeScript scripting documentation for the Script workflow, including the new Script <-> Events bridge APIs.
 
 ## Documents
 
@@ -11,10 +11,10 @@ This folder contains the complete TypeScript scripting documentation for the new
    - Full architecture and workflow guide.
 
 3. `02-TypeScript-Scripting-API-Reference.md`
-   - Full API reference for script lifecycle hooks, globals, and runtime helpers.
+   - Full API reference for lifecycle hooks, bridge APIs, shared state, event bus, runtime capabilities, and event integration.
 
 4. `03-TypeScript-Scripting-Examples.md`
-   - Practical examples for scene/object/behavior scripts, behavior registration, imports, tests, and autofix notes.
+   - Practical examples for scene/object/behavior scripts, script-event bridge usage, input/runtime control, and module interop.
 
 5. `04-Game-Development-TypeScript-Syntax-and-Patterns.md`
    - A production-focused TypeScript syntax handbook for game developers.
@@ -23,19 +23,20 @@ This folder contains the complete TypeScript scripting documentation for the new
    - A complete catalog of systems that can be built with Script workflow.
 
 7. `06-Script-vs-Events-Freedom-Limits-and-Production-Decision.md`
-   - Strategic comparison: why Script matters, where it wins, where Events still help.
+   - Strategic comparison for hybrid production decisions.
 
 ## Recommended Reading Order
 
 1. System Guide
 2. API Reference
-3. Syntax and Patterns
-4. Systems Catalog
-5. Script vs Events Decision Guide
-6. Examples
+3. Examples
+4. Syntax and Patterns
+5. Systems Catalog
+6. Script vs Events Decision Guide
 
 ## Notes
 
 - Script files are physically stored under `source/scripts` in project folders.
-- Old inline `JsCode` event workflow is deprecated/disabled in favor of Script workspace.
+- JavaScript code inside Events is available and can directly call TypeScript script exports.
+- `tsModules` + `gdjs.ts.bridge` provide a direct bridge between Scripts and Events.
 - Runtime wiring is lifecycle-driven and auto-connected at export/preview.

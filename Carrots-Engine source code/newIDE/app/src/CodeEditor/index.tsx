@@ -99,10 +99,28 @@ const monacoEditorOptions = {
 let monacoCompletionsInitialized = false;
 let monacoThemesInitialized = false;
 
+type ExtraLibLanguage = 'javascript' | 'typescript';
+type ExtraLibRegistryEntry = {
+  content: string,
+  refs: number,
+  disposer: { dispose: () => void } | null,
+};
+const sharedExtraLibRegistry: {
+  javascript: Map<string, ExtraLibRegistryEntry>,
+  typescript: Map<string, ExtraLibRegistryEntry>,
+} = {
+  javascript: new Map(),
+  typescript: new Map(),
+};
+
 export class CodeEditor extends React.Component<Props, State> {
   _editor: any | null = null;
   _monaco: any | null = null;
   _extraLibDisposers: Array<{ dispose: () => void }> = [];
+  _ownedSharedExtraLibs: Array<{
+    language: ExtraLibLanguage,
+    filePath: string,
+  }> = [];
   _markersChangeDisposer: { dispose: () => void } | null = null;
   _modelContentChangeDisposer: { dispose: () => void } | null = null;
   _cursorPositionChangeDisposer: { dispose: () => void } | null = null;
@@ -362,10 +380,91 @@ export class CodeEditor extends React.Component<Props, State> {
   };
 
   _disposeExtraLibs = () => {
+    this._ownedSharedExtraLibs.forEach(({ language, filePath }) => {
+      const registry = sharedExtraLibRegistry[language];
+      const entry = registry.get(filePath);
+      if (!entry) return;
+
+      entry.refs -= 1;
+      if (entry.refs <= 0) {
+        if (entry.disposer && typeof entry.disposer.dispose === 'function') {
+          entry.disposer.dispose();
+        }
+        registry.delete(filePath);
+      }
+    });
+    this._ownedSharedExtraLibs = [];
+
+    // Backward compatibility for any libraries that were added before
+    // shared registry management.
     this._extraLibDisposers.forEach(disposer => {
       if (disposer && typeof disposer.dispose === 'function') disposer.dispose();
     });
     this._extraLibDisposers = [];
+  };
+
+  _isDuplicateExtraLibError = (error: any): boolean => {
+    const message = error && error.message ? String(error.message) : '';
+    return (
+      !!message &&
+      (message.indexOf('already a extra lib') !== -1 ||
+        message.indexOf('already an extra lib') !== -1)
+    );
+  };
+
+  _registerSharedExtraLib = (
+    language: ExtraLibLanguage,
+    content: string,
+    filePath: string
+  ) => {
+    if (!this._monaco) return;
+    const defaults =
+      language === 'javascript'
+        ? this._monaco.languages.typescript.javascriptDefaults
+        : this._monaco.languages.typescript.typescriptDefaults;
+    if (!defaults || typeof defaults.addExtraLib !== 'function') return;
+
+    const registry = sharedExtraLibRegistry[language];
+    const existingEntry = registry.get(filePath);
+    if (existingEntry) {
+      if (existingEntry.content !== content) {
+        if (
+          existingEntry.disposer &&
+          typeof existingEntry.disposer.dispose === 'function'
+        ) {
+          existingEntry.disposer.dispose();
+        }
+        let replacementDisposer = null;
+        try {
+          replacementDisposer = defaults.addExtraLib(content, filePath);
+        } catch (error) {
+          if (!this._isDuplicateExtraLibError(error)) throw error;
+        }
+        existingEntry.content = content;
+        existingEntry.disposer =
+          replacementDisposer &&
+          typeof replacementDisposer.dispose === 'function'
+            ? replacementDisposer
+            : null;
+      }
+      existingEntry.refs += 1;
+      this._ownedSharedExtraLibs.push({ language, filePath });
+      return;
+    }
+
+    let disposer = null;
+    try {
+      disposer = defaults.addExtraLib(content, filePath);
+    } catch (error) {
+      if (!this._isDuplicateExtraLibError(error)) throw error;
+    }
+    registry.set(filePath, {
+      content,
+      refs: 1,
+      disposer:
+        disposer && typeof disposer.dispose === 'function' ? disposer : null,
+    });
+    this._ownedSharedExtraLibs.push({ language, filePath });
   };
 
   _buildExtraLibsSignature = (extraLibs?: Array<ExtraLib>): string => {
@@ -391,18 +490,8 @@ export class CodeEditor extends React.Component<Props, State> {
     if (!extraLibs || !extraLibs.length) return;
 
     extraLibs.forEach(({ content, filePath }) => {
-      this._extraLibDisposers.push(
-        this._monaco.languages.typescript.javascriptDefaults.addExtraLib(
-          content,
-          filePath
-        )
-      );
-      this._extraLibDisposers.push(
-        this._monaco.languages.typescript.typescriptDefaults.addExtraLib(
-          content,
-          filePath
-        )
-      );
+      this._registerSharedExtraLib('javascript', content, filePath);
+      this._registerSharedExtraLib('typescript', content, filePath);
     });
   };
 
