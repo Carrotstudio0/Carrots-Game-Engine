@@ -5,7 +5,7 @@ const path = require('path');
  * @see https://www.electron.build/configuration/configuration
  */
 const config = {
-  appId: 'com.gdevelop-app.ide',
+  appId: 'com.carrots-engine.ide',
   directories: {
     app: 'app',
     buildResources: 'build',
@@ -61,7 +61,7 @@ const config = {
     publisherDisplayName: 'Carrots Engine',
     displayName: 'Carrots Engine',
     publisher: 'CN=B13CB8D3-97AA-422C-A394-0EE51B9ACAD3',
-    identityName: 'GDevelopgameengine.GDevelop',
+    identityName: 'CarrotsEngine.CarrotsEngine',
     backgroundColor: '#F28C28',
     languages: [
       'EN-US',

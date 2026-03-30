@@ -67,7 +67,7 @@ export default ({
     onAutoSaveProject,
     onGetAutoSave,
     getOpenErrorMessage: (error: Error): MessageDescriptor => {
-      return t`Check that the file exists, that this file is a proper game created with GDevelop and that you have the authorization to open it.`;
+      return t`Check that the file exists, that this file is a valid project created with Carrots Engine, and that you have authorization to open it.`;
     },
     getWriteErrorMessage,
     canFileMetadataBeSafelySavedAs,

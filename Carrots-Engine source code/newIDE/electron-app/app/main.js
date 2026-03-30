@@ -51,7 +51,7 @@ const { setupWatcher, disableWatcher } = require('./LocalFilesystemWatcher');
 // Initialize `@electron/remote` module
 require('@electron/remote/main').initialize();
 
-log.info('GDevelop Electron app starting...');
+log.info('Carrots Engine Electron app starting...');
 
 // Logs made with electron-logs can be found
 // on Linux: ~/.config/<app name>/log.log
@@ -132,7 +132,7 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'gdide' }]);
 // Notifications on Microsoft Windows platforms show the app user model id.
 // If not set, defaults to `electron.app.{app.name}`.
 if (process.platform === 'win32') {
-  app.setAppUserModelId('gdevelop.ide');
+  app.setAppUserModelId('carrots.ide');
 }
 
 // Single instance lock - prevents multiple Electron processes
@@ -182,7 +182,7 @@ app.on('window-all-closed', function() {
   app.quit();
 });
 
-// Function to create a new GDevelop window
+// Function to create a new Carrots Engine window
 function createNewWindow(windowArgs = args) {
   const isIntegrated = windowArgs.mode === 'integrated';
 
@@ -219,9 +219,9 @@ function createNewWindow(windowArgs = args) {
   if (windowCounter > 0) {
     // Create a unique partition for this window so it has independent auth state
     // Each partition gets its own storage (IndexedDB, localStorage, cookies, etc.)
-    options.webPreferences.partition = `persist:gdevelop-window-${windowCounter}`;
+    options.webPreferences.partition = `persist:carrots-window-${windowCounter}`;
     log.info(
-      `Creating window #${windowCounter} with partition: persist:gdevelop-window-${windowCounter}`
+      `Creating window #${windowCounter} with partition: persist:carrots-window-${windowCounter}`
     );
   } else {
     log.info(

@@ -242,9 +242,9 @@ export default function DownloadFileSaveAsDialog({
       actions={[
         <FlatButton
           key="download"
-          label={<Trans>Download GDevelop desktop version</Trans>}
+          label={<Trans>Download Carrots Engine desktop version</Trans>}
           primary={false}
-          onClick={() => Window.openExternalURL('http://gdevelop.io')}
+          onClick={() => Window.openExternalURL('https://carrots.odoo.com/')}
         />,
         <FlatButton
           key="close"
@@ -261,7 +261,7 @@ export default function DownloadFileSaveAsDialog({
         <Text>
           <Trans>
             You can download the file of your game to continue working on it
-            using the full GDevelop version:
+            using the full Carrots Engine desktop version:
           </Trans>
         </Text>
         <Line noMargin expand justifyContent="center">
@@ -271,7 +271,7 @@ export default function DownloadFileSaveAsDialog({
                 <RaisedButton
                   primary
                   onClick={() =>
-                    openBlobDownloadUrl(blobDownloadUrl, 'gdevelop-game.zip')
+                    openBlobDownloadUrl(blobDownloadUrl, 'carrots-game.zip')
                   }
                   label={
                     <Trans>Download the compressed game and resources</Trans>

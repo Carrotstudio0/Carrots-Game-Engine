@@ -26,8 +26,6 @@ import LocalEventsFunctionsExtensionOpener from './EventsFunctionsExtensionsLoad
 import ProjectStorageProviders from './ProjectsStorage/ProjectStorageProviders';
 import LocalFileStorageProvider from './ProjectsStorage/LocalFileStorageProvider';
 import { LocalGDJSDevelopmentWatcher } from './GameEngineFinder/LocalGDJSDevelopmentWatcher';
-import CloudStorageProvider from './ProjectsStorage/CloudStorageProvider';
-import UrlStorageProvider from './ProjectsStorage/UrlStorageProvider';
 import LocalResourceMover from './ProjectsStorage/ResourceMover/LocalResourceMover';
 import LocalResourceFetcher from './ProjectsStorage/ResourceFetcher/LocalResourceFetcher';
 import LocalLoginProvider from './LoginProvider/LocalLoginProvider';
@@ -57,11 +55,7 @@ export const create = (authentication: Authentication): React.Node => {
       {({ i18n }) => (
         <ProjectStorageProviders
           appArguments={appArguments}
-          storageProviders={[
-            LocalFileStorageProvider,
-            UrlStorageProvider,
-            CloudStorageProvider,
-          ]}
+          storageProviders={[LocalFileStorageProvider]}
           defaultStorageProvider={LocalFileStorageProvider}
         >
           {({

@@ -358,7 +358,7 @@ namespace gdjs {
   };
 
   const editorCameraFov = 45;
-  const cameraRotationSpeedPerPixel = 0.24;
+  const cameraRotationSpeedPerPixel = 0.28;
   const cameraMaxInputDeltaPerFrame = 260;
   const orbitCameraMinElevation = -45;
   const orbitCameraMaxElevation = 175;
@@ -367,9 +367,14 @@ namespace gdjs {
   const freeCameraMoveSpeedMultiplierMin = 0.05;
   const freeCameraMoveSpeedMultiplierMax = 64;
   const freeCameraSpeedWheelStepDivisor = 512;
-  const cameraLookInputResponsiveness = 40;
-  const cameraDistanceResponsiveness = 20;
+  const freeCameraBaseMoveSpeedPerFrameAt60Fps = 14;
+  const freeCameraFastMoveSpeedPerFrameAt60Fps = 96;
+  const freeCameraMoveAccelerationResponsiveness = 22;
+  const freeCameraMoveDecelerationResponsiveness = 34;
+  const cameraLookInputResponsiveness = 55;
+  const cameraDistanceResponsiveness = 24;
   const cameraFloatEpsilon = 0.0001;
+  const pointerLockReleaseGracePeriodMs = 100;
 
   const normalizeCameraAngleDegrees = (angle: float): float => {
     if (!Number.isFinite(angle)) {
@@ -722,7 +727,6 @@ namespace gdjs {
     inputManager.isMouseButtonPressed(1) &&
     !isControlOrCmdPressed(inputManager) &&
     !isAltPressed(inputManager) &&
-    !isShiftPressed(inputManager) &&
     freeCameraSwitchKeys.some((key) => inputManager.isKeyPressed(key));
 
   const snap = (value: float, size: float, offset: float) =>
@@ -1059,6 +1063,8 @@ namespace gdjs {
     private _previousCursorY: float = 0;
     private _pressedRightButtonTime: number = 0;
     private _pressedMiddleButtonTime: number = 0;
+    private _lastPointerLockMousePressTime: number = 0;
+    private _shouldReleasePressedKeysOnFocusRecovery: boolean = false;
 
     private _lastClickOnObjectUnderCursor: {
       object: gdjs.RuntimeObject | null;
@@ -3871,10 +3877,24 @@ namespace gdjs {
 
     private _handleContextMenu() {
       const inputManager = this._runtimeGame.getInputManager();
+      const renderer = this._runtimeGame.getRenderer();
       const isClick =
         Date.now() - this._pressedRightButtonTime <=
         pressAndReleaseForClickDuration;
-      if (inputManager.isMouseButtonReleased(1) && isClick) {
+      const cursorStayedStill = this._hasCursorStayedStillWhilePressed({
+        toleranceRadius: 8,
+      });
+      const wasUsingCameraNavigationKeys = freeCameraSwitchKeys.some(
+        (key) =>
+          inputManager.isKeyPressed(key) || inputManager.wasKeyJustPressed(key)
+      );
+      if (
+        inputManager.isMouseButtonReleased(1) &&
+        isClick &&
+        cursorStayedStill &&
+        !wasUsingCameraNavigationKeys &&
+        !renderer.isPointerLocked()
+      ) {
         this._sendOpenContextMenu(
           inputManager.getCursorX(),
           inputManager.getCursorY()
@@ -4637,25 +4657,30 @@ namespace gdjs {
     private _handlePointerLock() {
       const inputManager = this._runtimeGame.getInputManager();
       const renderer = this._runtimeGame.getRenderer();
+      const now = Date.now();
       const isRightButtonPressed = inputManager.isMouseButtonPressed(1);
       const isMiddleButtonPressed = inputManager.isMouseButtonPressed(2);
+      if (isRightButtonPressed || isMiddleButtonPressed) {
+        this._lastPointerLockMousePressTime = now;
+      }
 
       // Request pointer lock when right or middle button is pressed,
       // but only after the delay to ensure it's not a click.
       if (
         (isRightButtonPressed &&
-          Date.now() - this._pressedRightButtonTime >
-            pressAndReleaseForClickDuration) ||
+          now - this._pressedRightButtonTime > pressAndReleaseForClickDuration) ||
         (isMiddleButtonPressed &&
-          Date.now() - this._pressedMiddleButtonTime >
-            pressAndReleaseForClickDuration)
+          now - this._pressedMiddleButtonTime > pressAndReleaseForClickDuration)
       ) {
         renderer.requestPointerLock('in-game-editor');
       }
 
       // Exit pointer lock as soon as we can.
       if (!isRightButtonPressed && !isMiddleButtonPressed) {
-        if (renderer.isPointerLocked()) {
+        const isInsideReleaseGracePeriod =
+          now - this._lastPointerLockMousePressTime <
+          pointerLockReleaseGracePeriodMs;
+        if (renderer.isPointerLocked() && !isInsideReleaseGracePeriod) {
           renderer.exitPointerLock('in-game-editor');
         }
       }
@@ -4703,10 +4728,28 @@ namespace gdjs {
 
       const inputManager = this._runtimeGame.getInputManager();
       this._skipCameraMovementThisFrame = false;
+      const renderer = this._runtimeGame.getRenderer();
+      const isInCameraInteractionMode =
+        renderer.isPointerLocked() ||
+        inputManager.isMouseButtonPressed(1) ||
+        inputManager.isMouseButtonPressed(2);
 
       // Ensure we don't keep keys considered as pressed if the editor is blurred.
       if (!hasWindowFocus && this._windowHadFocus) {
+        if (isInCameraInteractionMode) {
+          this._shouldReleasePressedKeysOnFocusRecovery = true;
+        } else {
+          inputManager.releaseAllPressedKeys();
+        }
+      }
+      if (
+        hasWindowFocus &&
+        !this._windowHadFocus &&
+        this._shouldReleasePressedKeysOnFocusRecovery &&
+        !isInCameraInteractionMode
+      ) {
         inputManager.releaseAllPressedKeys();
+        this._shouldReleasePressedKeysOnFocusRecovery = false;
       }
       this._windowHadFocus = hasWindowFocus;
 
@@ -7974,6 +8017,8 @@ namespace gdjs {
     private _smoothedRotationInputX = 0;
     private _smoothedRotationInputY = 0;
     private _moveSpeedMultiplier = 1;
+    private _movementIntentVector: THREE.Vector3 = new THREE.Vector3();
+    private _smoothedMovementVector: THREE.Vector3 = new THREE.Vector3();
 
     private _lastCursorX: float = 0;
     private _lastCursorY: float = 0;
@@ -7999,6 +8044,7 @@ namespace gdjs {
       if (!isEnabled) {
         this._smoothedRotationInputX = 0;
         this._smoothedRotationInputY = 0;
+        this._smoothedMovementVector.set(0, 0, 0);
       }
       this._editorCamera.onHasCameraChanged();
     }
@@ -8020,6 +8066,8 @@ namespace gdjs {
       const frameRateCompensationFactor =
         getFrameRateCompensationFactor(deltaTimeInSeconds);
       const isRightButtonPressed = inputManager.isMouseButtonPressed(1);
+      const isFreelookActive =
+        isRightButtonPressed || renderer.isPointerLocked();
       if (this._isEnabled) {
         this._sanitizeAngles();
         const { right, up, forward } = this.getCameraVectors();
@@ -8053,15 +8101,16 @@ namespace gdjs {
           deltaTimeInSeconds
         );
 
-        // Mouse wheel: zoom forward/backward.
+        // Mouse wheel:
+        // - Default behavior: zoom forward/backward, even during right-click freelook.
+        // - Alt + wheel: adjust fly speed multiplier.
         const wheelDeltaY = inputManager.getMouseWheelDelta();
         if (wheelDeltaY !== 0) {
           if (
-            isRightButtonPressed &&
-            !isAltPressed(inputManager) &&
+            isFreelookActive &&
+            isAltPressed(inputManager) &&
             !isControlOrCmdPressed(inputManager)
           ) {
-            // Match common editor behavior: wheel adjusts fly speed while freelooking.
             this._moveSpeedMultiplier = gdjs.evtTools.common.clamp(
               this._moveSpeedMultiplier *
                 Math.pow(2, -wheelDeltaY / freeCameraSpeedWheelStepDivisor),
@@ -8121,50 +8170,85 @@ namespace gdjs {
         // Movement with the keyboard while right mouse is held:
         // arrow keys (camera plane) + WASD ("FPS move" + Q/E for up/down).
         const moveSpeedPerFrameAt60Fps =
-          (isShiftPressed(inputManager) ? 48 : 6) * this._moveSpeedMultiplier;
+          (isShiftPressed(inputManager)
+            ? freeCameraFastMoveSpeedPerFrameAt60Fps
+            : freeCameraBaseMoveSpeedPerFrameAt60Fps) *
+          this._moveSpeedMultiplier;
         const moveSpeed =
           moveSpeedPerFrameAt60Fps * frameRateCompensationFactor;
 
+        const movementIntent = this._movementIntentVector;
+        movementIntent.set(0, 0, 0);
         if (
-          isRightButtonPressed &&
+          isFreelookActive &&
           !isControlOrCmdPressed(inputManager) &&
           !isAltPressed(inputManager)
         ) {
           if (inputManager.isKeyPressed(LEFT_KEY)) {
-            moveCameraByVector(right, -moveSpeed);
+            movementIntent.addScaledVector(right, -1);
           }
           if (inputManager.isKeyPressed(RIGHT_KEY)) {
-            moveCameraByVector(right, moveSpeed);
+            movementIntent.addScaledVector(right, 1);
           }
           if (inputManager.isKeyPressed(UP_KEY)) {
-            moveCameraByVector(up, moveSpeed);
+            movementIntent.addScaledVector(up, 1);
           }
           if (inputManager.isKeyPressed(DOWN_KEY)) {
-            moveCameraByVector(up, -moveSpeed);
+            movementIntent.addScaledVector(up, -1);
           }
           // Forward/back
           if (inputManager.isKeyPressed(W_KEY)) {
-            moveCameraByVector(forward, moveSpeed);
+            movementIntent.addScaledVector(forward, 1);
           }
           if (inputManager.isKeyPressed(S_KEY)) {
-            moveCameraByVector(forward, -moveSpeed);
+            movementIntent.addScaledVector(forward, -1);
           }
 
           // Left/right (strafe)
           if (inputManager.isKeyPressed(A_KEY)) {
-            moveCameraByVector(right, -moveSpeed);
+            movementIntent.addScaledVector(right, -1);
           }
           if (inputManager.isKeyPressed(D_KEY)) {
-            moveCameraByVector(right, moveSpeed);
+            movementIntent.addScaledVector(right, 1);
           }
 
           // Up/down
           if (inputManager.isKeyPressed(Q_KEY)) {
-            moveCameraByVector(up, -moveSpeed);
+            movementIntent.addScaledVector(up, -1);
           }
           if (inputManager.isKeyPressed(E_KEY)) {
-            moveCameraByVector(up, moveSpeed);
+            movementIntent.addScaledVector(up, 1);
           }
+
+        }
+
+        if (movementIntent.lengthSq() > 0) {
+          movementIntent.normalize().multiplyScalar(moveSpeed);
+        }
+        const movementResponsiveness =
+          movementIntent.lengthSq() > 0
+            ? freeCameraMoveAccelerationResponsiveness
+            : freeCameraMoveDecelerationResponsiveness;
+        this._smoothedMovementVector.x = smoothToward(
+          this._smoothedMovementVector.x,
+          movementIntent.x,
+          movementResponsiveness,
+          deltaTimeInSeconds
+        );
+        this._smoothedMovementVector.y = smoothToward(
+          this._smoothedMovementVector.y,
+          movementIntent.y,
+          movementResponsiveness,
+          deltaTimeInSeconds
+        );
+        this._smoothedMovementVector.z = smoothToward(
+          this._smoothedMovementVector.z,
+          movementIntent.z,
+          movementResponsiveness,
+          deltaTimeInSeconds
+        );
+        if (this._smoothedMovementVector.lengthSq() > cameraFloatEpsilon) {
+          moveCameraByVector(this._smoothedMovementVector, 1);
         }
 
         // Movement with keyboard: zoom in/out.
@@ -8188,10 +8272,12 @@ namespace gdjs {
         }
 
         // Right click: rotate the camera.
+        const canRotateFromMouseDrag =
+          renderer.isPointerLocked() || this._wasMouseRightButtonPressed;
         if (
-          isRightButtonPressed &&
-          // The camera should not move the 1st frame
-          this._wasMouseRightButtonPressed &&
+          isFreelookActive &&
+          // The camera should not move the 1st frame when not pointer locked.
+          canRotateFromMouseDrag &&
           (xDelta !== 0 || yDelta !== 0)
         ) {
           this.rotationAngle +=

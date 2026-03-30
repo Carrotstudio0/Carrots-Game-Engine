@@ -7,7 +7,7 @@ var fs = optionalRequire('fs-extra');
 const findEmptyPath = (basePath: string) => {
   if (!path) return basePath;
 
-  const folderName = generateName('My project', name => {
+  const folderName = generateName('carrots', name => {
     try {
       fs.accessSync(path.join(basePath, name));
     } catch (ex) {
@@ -30,7 +30,7 @@ export const findDefaultFolder = (electronApp: any): string => {
     // A user may not have the Documents folder defined on Windows.
     documentsPath = electronApp.getPath('home');
   }
-  return path.join(documentsPath, 'GDevelop projects');
+  return path.join(documentsPath, 'carrot_project');
 };
 
 /**

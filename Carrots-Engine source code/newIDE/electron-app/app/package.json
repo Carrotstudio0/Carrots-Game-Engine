@@ -3,9 +3,9 @@
   "productName": "Carrots Engine",
   "description": "Carrots Engine IDE - the open-source, cross-platform game engine designed for everyone",
   "version": "1.0.0",
-  "author": "GDevelop Team <hello@gdevelop.io>",
+  "author": "Carrots Engine Team <hello@carrots.odoo.com>",
   "license": "MIT",
-  "homepage": "https://gdevelop.io",
+  "homepage": "https://carrots.odoo.com/",
   "main": "main.js",
   "dependencies": {
     "@electron/remote": "2.1.2",
