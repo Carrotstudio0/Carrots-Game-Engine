@@ -432,7 +432,7 @@ namespace gdjs {
                 ? Math.max(0.0001, effectData.doubleParameters.thickness)
                 : 4;
             this._qualityMode =
-              effectData.stringParameters.qualityMode || 'medium';
+              effectData.stringParameters.qualityMode || 'high';
             this.shaderPass.enabled = true;
             this._raySteps = 14;
             this._excludeMaskRenderTarget = null;
@@ -1103,7 +1103,7 @@ namespace gdjs {
           }
           updateStringParameter(parameterName: string, value: string): void {
             if (parameterName === 'qualityMode') {
-              this._qualityMode = value || 'medium';
+              this._qualityMode = value || 'high';
             }
           }
           updateColorParameter(parameterName: string, value: number): void {}
@@ -1132,7 +1132,7 @@ namespace gdjs {
             this._maxDistance = Math.max(0, syncData.md);
             this._thickness = Math.max(0.0001, syncData.t);
             this._effectEnabled = syncData.e;
-            this._qualityMode = syncData.q || 'medium';
+            this._qualityMode = syncData.q || 'high';
 
             this.shaderPass.uniforms.intensity.value = this._intensity;
             this.shaderPass.uniforms.maxDistance.value = this._maxDistance;

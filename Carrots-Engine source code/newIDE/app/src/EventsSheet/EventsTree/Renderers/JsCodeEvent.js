@@ -19,21 +19,9 @@ import { Trans } from '@lingui/macro';
 import ChevronArrowTop from '../../../UI/CustomSvgIcons/ChevronArrowTop';
 import ChevronArrowBottom from '../../../UI/CustomSvgIcons/ChevronArrowBottom';
 import {
-  type CodeLanguage,
-  type TypeScriptDiagnostic,
-  buildTypeScriptStoredCode,
   extractTranspiledJavaScriptCode,
-  extractTypeScriptSource,
   isTypeScriptStoredCode,
-  preloadTypeScriptCompiler,
-  transpileTypeScriptCode,
 } from '../../../CodeEditor/TypeScriptEventCode';
-import {
-  type RuntimeBehaviorTypesByType,
-  getRuntimeBehaviorTypesByType,
-  preloadRuntimeBehaviorTypesByType,
-} from '../../../CodeEditor/RuntimeBehaviorTypes';
-import { getProjectScriptingMode } from '../../../Utils/ScriptingMode';
 const gd: libGDevelop = global.gd;
 
 const fontFamily = '"Lucida Console", Monaco, monospace';
@@ -74,46 +62,12 @@ const styles = {
   expandIcon: {
     color: '#d4d4d4',
   },
-  languageToolbar: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    paddingLeft: 5,
-    paddingRight: 5,
-    paddingBottom: 4,
-    backgroundColor: '#1e1e1e',
-  },
-  languageStatus: {
-    marginLeft: 4,
-    fontSize: '0.8em',
-    color: '#a0a0a0',
-    overflowX: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  typeScriptStatusError: {
-    color: '#ffb3b3',
-  },
-  legacyNotice: {
-    fontFamily,
-    fontSize: '0.75em',
-    color: '#9fb0c6',
-    paddingLeft: 5,
-    paddingRight: 5,
-    paddingTop: 4,
-  },
 };
 
 type State = {|
   editingObject: boolean,
   editingPreviousValue: ?string,
   anchorEl: ?any,
-  codeLanguageOverride: ?CodeLanguage,
-  transpileError: ?string,
-  isCompilingTypeScript: boolean,
-  typeScriptDraftCode: ?string,
-  typeScriptDiagnostics: Array<TypeScriptDiagnostic>,
-  runtimeBehaviorTypesByType: RuntimeBehaviorTypesByType,
 |};
 
 export default class JsCodeEvent extends React.Component<
@@ -126,45 +80,10 @@ export default class JsCodeEvent extends React.Component<
     editingObject: false,
     editingPreviousValue: null,
     anchorEl: null,
-    codeLanguageOverride: null,
-    transpileError: null,
-    isCompilingTypeScript: false,
-    typeScriptDraftCode: null,
-    typeScriptDiagnostics: [],
-    runtimeBehaviorTypesByType: {},
   };
 
   _input: ?any;
   _inlineCodeBeforeChanges: ?string;
-  _typeScriptTranspileRequestId = 0;
-
-  componentDidMount() {
-    if (this._getCodeLanguage() === 'typescript') {
-      preloadTypeScriptCompiler();
-    }
-    preloadRuntimeBehaviorTypesByType();
-    getRuntimeBehaviorTypesByType().then(runtimeBehaviorTypesByType => {
-      this.setState({ runtimeBehaviorTypesByType });
-    });
-  }
-
-  componentDidUpdate(prevProps: EventRendererProps) {
-    if (prevProps.event !== this.props.event) {
-      this.setState({
-        codeLanguageOverride: null,
-        transpileError: null,
-        typeScriptDraftCode: null,
-        typeScriptDiagnostics: [],
-      });
-    }
-  }
-
-  _getDefaultCodeLanguage = (): CodeLanguage =>
-    getProjectScriptingMode(this.props.project) === 'typescript'
-      ? 'typescript'
-      : 'javascript';
-
-  _getJsCodeEvent = (): any => gd.asJsCodeEvent(this.props.event);
 
   _supportsNativeTypeScriptStorage = (jsCodeEvent: any): boolean =>
     typeof jsCodeEvent.getCodeLanguage === 'function' &&
@@ -172,330 +91,48 @@ export default class JsCodeEvent extends React.Component<
     typeof jsCodeEvent.getTranspiledCode === 'function' &&
     typeof jsCodeEvent.setTranspiledCode === 'function';
 
-  _getStoredCode = (): string =>
-    gd.asJsCodeEvent(this.props.event).getInlineCode();
+  _getJavaScriptInlineCode = (): string => {
+    const jsCodeEvent = gd.asJsCodeEvent(this.props.event);
+    const inlineCode = jsCodeEvent.getInlineCode();
 
-  _getCodeLanguage = (): CodeLanguage => {
-    const { codeLanguageOverride } = this.state;
-    if (codeLanguageOverride) return codeLanguageOverride;
-
-    const jsCodeEvent = this._getJsCodeEvent();
-    if (this._supportsNativeTypeScriptStorage(jsCodeEvent)) {
-      if (jsCodeEvent.getCodeLanguage() === 'typescript') return 'typescript';
+    if (
+      this._supportsNativeTypeScriptStorage(jsCodeEvent) &&
+      jsCodeEvent.getCodeLanguage() === 'typescript'
+    ) {
+      const transpiledCode = jsCodeEvent.getTranspiledCode();
+      return transpiledCode || inlineCode;
     }
 
-    const storedCode = this._getStoredCode();
-    if (isTypeScriptStoredCode(storedCode)) return 'typescript';
-    if (!storedCode.trim() && this._getDefaultCodeLanguage() === 'typescript') {
-      return 'typescript';
+    if (isTypeScriptStoredCode(inlineCode)) {
+      return extractTranspiledJavaScriptCode(inlineCode);
     }
-    return 'javascript';
-  };
 
-  _getCodeEditorValue = (): string => {
-    const jsCodeEvent = this._getJsCodeEvent();
-    const storedCode = jsCodeEvent.getInlineCode();
-    if (this._getCodeLanguage() === 'typescript') {
-      if (this._supportsNativeTypeScriptStorage(jsCodeEvent)) {
-        return storedCode;
-      }
-      const extractedSource = extractTypeScriptSource(storedCode);
-      return extractedSource !== null
-        ? extractedSource
-        : this.state.typeScriptDraftCode || '';
-    }
-    return storedCode;
+    return inlineCode;
   };
 
   onFocus = () => {
-    const jsCodeEvent = gd.asJsCodeEvent(this.props.event);
-    this._inlineCodeBeforeChanges = jsCodeEvent.getInlineCode();
+    this._inlineCodeBeforeChanges = this._getJavaScriptInlineCode();
   };
 
   onBlur = () => {
-    const jsCodeEvent = gd.asJsCodeEvent(this.props.event);
-    const inlineCodeAfterChanges = jsCodeEvent.getInlineCode();
+    const inlineCodeAfterChanges = this._getJavaScriptInlineCode();
     if (this._inlineCodeBeforeChanges !== inlineCodeAfterChanges)
       this.props.onEndEditingEvent();
   };
 
-  _transpileAndStoreTypeScript = async (typeScriptSource: string) => {
-    const jsCodeEvent = this._getJsCodeEvent();
-    const transpileRequestId = ++this._typeScriptTranspileRequestId;
-    this.setState({
-      isCompilingTypeScript: true,
-      typeScriptDraftCode: typeScriptSource,
-    });
-
-    const {
-      transpiledJavaScriptCode,
-      errorMessage,
-      diagnostics,
-    } = await transpileTypeScriptCode(typeScriptSource, {
-      moduleKind: 'none',
-      inlineSourceMap: true,
-      fileName: `events-sheet-js-code-event-${this.props.event.ptr || 'unknown'}.ts`,
-    });
-
-    if (transpileRequestId !== this._typeScriptTranspileRequestId) {
-      return;
-    }
-
-    if (this._supportsNativeTypeScriptStorage(jsCodeEvent)) {
-      jsCodeEvent.setCodeLanguage('typescript');
-      jsCodeEvent.setInlineCode(typeScriptSource);
-      jsCodeEvent.setTranspiledCode(transpiledJavaScriptCode);
-    } else {
-      jsCodeEvent.setInlineCode(
-        buildTypeScriptStoredCode({
-          typeScriptSource,
-          transpiledJavaScriptCode,
-        })
-      );
-    }
-
-    this.setState({
-      transpileError: errorMessage,
-      isCompilingTypeScript: false,
-      typeScriptDraftCode: null,
-      typeScriptDiagnostics: diagnostics,
-    });
-  };
-
-  _switchCodeLanguage = (nextCodeLanguage: CodeLanguage) => {
-    const jsCodeEvent = this._getJsCodeEvent();
-    const currentCodeLanguage = this._getCodeLanguage();
-    if (currentCodeLanguage === nextCodeLanguage) return;
-
-    const currentEditorValue = this._getCodeEditorValue();
-    if (nextCodeLanguage === 'typescript') {
-      preloadTypeScriptCompiler();
-      this.setState({
-        codeLanguageOverride: 'typescript',
-      });
-      this._transpileAndStoreTypeScript(currentEditorValue);
-      return;
-    }
-
-    this._typeScriptTranspileRequestId += 1;
-    if (this._supportsNativeTypeScriptStorage(jsCodeEvent)) {
-      const codeToKeep =
-        jsCodeEvent.getCodeLanguage() === 'typescript' &&
-        jsCodeEvent.getTranspiledCode()
-          ? jsCodeEvent.getTranspiledCode()
-          : jsCodeEvent.getInlineCode();
-      jsCodeEvent.setCodeLanguage('javascript');
-      jsCodeEvent.setTranspiledCode('');
-      jsCodeEvent.setInlineCode(codeToKeep);
-    } else {
-      const storedCode = jsCodeEvent.getInlineCode();
-      jsCodeEvent.setInlineCode(extractTranspiledJavaScriptCode(storedCode));
-    }
-    this.setState({
-      codeLanguageOverride: 'javascript',
-      transpileError: null,
-      isCompilingTypeScript: false,
-      typeScriptDraftCode: null,
-      typeScriptDiagnostics: [],
-    });
-  };
-
   onChange = (newValue: string) => {
     const jsCodeEvent = gd.asJsCodeEvent(this.props.event);
-    if (this._getCodeLanguage() === 'typescript') {
-      this._transpileAndStoreTypeScript(newValue);
-      return;
+
+    if (this._supportsNativeTypeScriptStorage(jsCodeEvent)) {
+      if (jsCodeEvent.getCodeLanguage() !== 'javascript') {
+        jsCodeEvent.setCodeLanguage('javascript');
+      }
+      if (jsCodeEvent.getTranspiledCode()) {
+        jsCodeEvent.setTranspiledCode('');
+      }
     }
 
     jsCodeEvent.setInlineCode(newValue);
-  };
-
-  _getTypeScriptStatus = (): React.Node => {
-    const {
-      isCompilingTypeScript,
-      transpileError,
-      typeScriptDiagnostics,
-    } = this.state;
-    if (isCompilingTypeScript) {
-      return <Trans>Compiling TypeScript...</Trans>;
-    }
-    if (transpileError) {
-      return (
-        <span style={styles.typeScriptStatusError}>
-          <Trans>TypeScript compile errors:</Trans>{' '}
-          {typeScriptDiagnostics.length || 1} - {transpileError}
-        </span>
-      );
-    }
-    return <Trans>TypeScript ready</Trans>;
-  };
-
-  _quoteTypeProperty = (name: string): string =>
-    /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
-
-  _resolveRuntimeBehaviorType = (behaviorType: string): string =>
-    this.state.runtimeBehaviorTypesByType[behaviorType] ||
-    'gdjs.RuntimeBehavior';
-
-  _collectSceneObjectsAndBehaviorsFromContainer = (
-    objectsContainer: ?any
-  ): {|
-    objectNames: Array<string>,
-    behaviorTypesByName: { [string]: Set<string> },
-  |} => {
-    if (
-      !objectsContainer ||
-      typeof objectsContainer.getObjectsCount !== 'function' ||
-      typeof objectsContainer.getObjectAt !== 'function'
-    ) {
-      return {
-        objectNames: [],
-        behaviorTypesByName: {},
-      };
-    }
-
-    const objectNames = [];
-    const behaviorTypesByName = {};
-    const objectsCount = objectsContainer.getObjectsCount();
-    for (let i = 0; i < objectsCount; i++) {
-      const object = objectsContainer.getObjectAt(i);
-      if (object && typeof object.getName === 'function') {
-        objectNames.push(object.getName());
-      }
-
-      if (!object || typeof object.getAllBehaviorNames !== 'function') {
-        continue;
-      }
-
-      const behaviorNamesVector = object.getAllBehaviorNames();
-      if (
-        !behaviorNamesVector ||
-        typeof behaviorNamesVector.size !== 'function' ||
-        typeof behaviorNamesVector.at !== 'function'
-      ) {
-        continue;
-      }
-
-      for (let j = 0; j < behaviorNamesVector.size(); j++) {
-        const behaviorName = behaviorNamesVector.at(j);
-        if (!behaviorName) continue;
-
-        let behaviorType = '';
-        try {
-          const behavior =
-            typeof object.getBehavior === 'function'
-              ? object.getBehavior(behaviorName)
-              : null;
-          behaviorType =
-            behavior && typeof behavior.getTypeName === 'function'
-              ? behavior.getTypeName()
-              : '';
-        } catch (error) {
-          behaviorType = '';
-        }
-
-        const runtimeBehaviorType = this._resolveRuntimeBehaviorType(
-          behaviorType
-        );
-        if (!behaviorTypesByName[behaviorName]) {
-          behaviorTypesByName[behaviorName] = new Set();
-        }
-        behaviorTypesByName[behaviorName].add(runtimeBehaviorType);
-      }
-    }
-
-    return {
-      objectNames,
-      behaviorTypesByName,
-    };
-  };
-
-  _getSceneObjectsTypeDefinitions = (): Array<{| content: string, filePath: string |}> => {
-    const objectNames = [];
-    const behaviorTypesByName = {};
-    const appendFromContainer = (objectsContainer: ?any) => {
-      const {
-        objectNames: containerObjectNames,
-        behaviorTypesByName: containerBehaviorTypesByName,
-      } = this._collectSceneObjectsAndBehaviorsFromContainer(objectsContainer);
-      objectNames.push(...containerObjectNames);
-      Object.keys(containerBehaviorTypesByName).forEach(behaviorName => {
-        if (!behaviorTypesByName[behaviorName]) {
-          behaviorTypesByName[behaviorName] = new Set();
-        }
-        containerBehaviorTypesByName[behaviorName].forEach(typeName => {
-          behaviorTypesByName[behaviorName].add(typeName);
-        });
-      });
-    };
-
-    appendFromContainer(this.props.globalObjectsContainer);
-    appendFromContainer(this.props.objectsContainer);
-
-    const uniqueNames = Array.from(new Set(objectNames)).filter(name => !!name);
-    const uniqueBehaviorNames = Object.keys(behaviorTypesByName).filter(
-      behaviorName => !!behaviorName
-    );
-    if (!uniqueNames.length && !uniqueBehaviorNames.length) return [];
-
-    const objectFields = uniqueNames
-      .map(name => `  ${this._quoteTypeProperty(name)}: gdjs.RuntimeObject[];`)
-      .join('\n');
-    const behaviorFields = uniqueBehaviorNames
-      .map(behaviorName => {
-        const typeNames = Array.from(behaviorTypesByName[behaviorName]);
-        const typeExpression = typeNames.length
-          ? typeNames.join(' | ')
-          : 'gdjs.RuntimeBehavior';
-        return `  ${this._quoteTypeProperty(
-          behaviorName
-        )}: ${typeExpression};`;
-      })
-      .join('\n');
-    const eventPtr = this.props.event && this.props.event.ptr ? this.props.event.ptr : 'unknown';
-
-    return [
-      {
-        filePath: `gdevelop://scene-objects-${eventPtr}.d.ts`,
-        content: `
-type __GDevelopSceneObjectLists = {
-${objectFields}
-};
-
-type __GDevelopSceneBehaviorByName = {
-${behaviorFields}
-};
-
-declare const sceneObjects: __GDevelopSceneObjectLists;
-declare const scene: gdjs.RuntimeScene & __GDevelopSceneObjectLists;
-declare const evtTools: typeof gdjs.evtTools;
-
-declare namespace gdjs {
-  interface RuntimeObject {
-    getBehavior<Name extends keyof __GDevelopSceneBehaviorByName>(name: Name): __GDevelopSceneBehaviorByName[Name];
-  }
-}
-`,
-      },
-    ];
-  };
-
-  _getRuntimeBehaviorTemplate = (): string => `class MyBehavior extends gdjs.RuntimeBehavior {
-  doStepPreEvents(runtimeScene: gdjs.RuntimeScene): void {
-    const owner = this.owner;
-    // TODO: Write your behavior logic.
-  }
-
-  onDeActivate(): void {}
-  onActivate(): void {}
-}
-`;
-
-  _insertRuntimeBehaviorTemplate = () => {
-    if (this._getCodeLanguage() !== 'typescript') return;
-    const currentCode = this._getCodeEditorValue();
-    if (currentCode.trim()) return;
-    this.onChange(this._getRuntimeBehaviorTemplate());
   };
 
   editObject = (domEvent: any) => {
@@ -576,10 +213,6 @@ declare namespace gdjs {
   render(): any {
     const jsCodeEvent = gd.asJsCodeEvent(this.props.event);
     const parameterObjects = jsCodeEvent.getParameterObjects();
-    const codeLanguage = this._getCodeLanguage();
-    const codeEditorValue = this._getCodeEditorValue();
-    const sceneObjectsTypeDefinitions =
-      codeLanguage === 'typescript' ? this._getSceneObjectsTypeDefinitions() : [];
 
     const textStyle = this.props.disabled ? styles.comment : undefined;
 
@@ -602,15 +235,9 @@ declare namespace gdjs {
         ) : (
           <>
             {' '}
-            {codeLanguage === 'typescript' ? (
-              <Trans>
-                {'/* Click here to choose objects to pass to TypeScript */'}
-              </Trans>
-            ) : (
-              <Trans>
-                {'/* Click here to choose objects to pass to JavaScript */'}
-              </Trans>
-            )}
+            <Trans>
+              {'/* Click here to choose objects to pass to JavaScript */'}
+            </Trans>
           </>
         )}
       </span>
@@ -630,43 +257,6 @@ declare namespace gdjs {
         {eventsFunctionContext}
         <span style={textStyle}>{') {'}</span>
       </p>
-    );
-
-    const languageToolbar = (
-      <div style={styles.languageToolbar}>
-        <Button
-          size="small"
-          variant={codeLanguage === 'javascript' ? 'contained' : 'text'}
-          color="primary"
-          onClick={() => this._switchCodeLanguage('javascript')}
-          disabled={this.props.disabled}
-        >
-          <Trans>JavaScript</Trans>
-        </Button>
-        <Button
-          size="small"
-          variant={codeLanguage === 'typescript' ? 'contained' : 'text'}
-          color="primary"
-          onClick={() => this._switchCodeLanguage('typescript')}
-          disabled={this.props.disabled}
-        >
-          <Trans>TypeScript</Trans>
-        </Button>
-        {codeLanguage === 'typescript' && (
-          <Button
-            size="small"
-            variant="text"
-            color="primary"
-            onClick={this._insertRuntimeBehaviorTemplate}
-            disabled={this.props.disabled}
-          >
-            <Trans>Insert Behavior Template</Trans>
-          </Button>
-        )}
-        {codeLanguage === 'typescript' && (
-          <span style={styles.languageStatus}>{this._getTypeScriptStatus()}</span>
-        )}
-      </div>
     );
     const functionEnd = (
       <p style={styles.wrappingText}>
@@ -714,24 +304,10 @@ declare namespace gdjs {
             ref={measureRef}
             id={`${this.props.idPrefix}-js-code`}
           >
-            <p style={styles.legacyNotice}>
-              <Trans>
-                Legacy script event. Use the Script tab in the scene toolbar for
-                full project scripting.
-              </Trans>
-            </p>
             {functionStart}
-            {languageToolbar}
             <CodeEditor
-              value={codeEditorValue}
+              value={this._getJavaScriptInlineCode()}
               onChange={this.onChange}
-              language={codeLanguage}
-              extraLibs={sceneObjectsTypeDefinitions}
-              markers={
-                codeLanguage === 'typescript'
-                  ? this.state.typeScriptDiagnostics
-                  : []
-              }
               width={contentRect.bounds.width - 5}
               height={this._getCodeEditorHeight()}
               onEditorMounted={() => {

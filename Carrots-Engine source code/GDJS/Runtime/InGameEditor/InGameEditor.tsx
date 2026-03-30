@@ -358,6 +358,104 @@ namespace gdjs {
   };
 
   const editorCameraFov = 45;
+  const cameraRotationSpeedPerPixel = 0.24;
+  const cameraMaxInputDeltaPerFrame = 260;
+  const orbitCameraMinElevation = -45;
+  const orbitCameraMaxElevation = 175;
+  const freeCameraMinElevation = 5;
+  const freeCameraMaxElevation = 175;
+  const freeCameraMoveSpeedMultiplierMin = 0.05;
+  const freeCameraMoveSpeedMultiplierMax = 64;
+  const freeCameraSpeedWheelStepDivisor = 512;
+  const cameraLookInputResponsiveness = 40;
+  const cameraDistanceResponsiveness = 20;
+  const cameraFloatEpsilon = 0.0001;
+
+  const normalizeCameraAngleDegrees = (angle: float): float => {
+    if (!Number.isFinite(angle)) {
+      return 0;
+    }
+    let normalizedAngle = angle % 360;
+    if (normalizedAngle <= -180) {
+      normalizedAngle += 360;
+    } else if (normalizedAngle > 180) {
+      normalizedAngle -= 360;
+    }
+    return normalizedAngle;
+  };
+
+  const clampCameraElevationDegrees = (
+    elevationAngle: float,
+    minElevation: float,
+    maxElevation: float
+  ): float => {
+    if (!Number.isFinite(elevationAngle)) {
+      return (minElevation + maxElevation) / 2;
+    }
+    return gdjs.evtTools.common.clamp(elevationAngle, minElevation, maxElevation);
+  };
+
+  const sanitizeCameraInputDelta = (delta: float): float => {
+    if (!Number.isFinite(delta)) {
+      return 0;
+    }
+    return gdjs.evtTools.common.clamp(
+      delta,
+      -cameraMaxInputDeltaPerFrame,
+      cameraMaxInputDeltaPerFrame
+    );
+  };
+
+  const getFrameDeltaTimeInSeconds = (runtimeGame: gdjs.RuntimeGame): float => {
+    const currentScene = runtimeGame.getSceneStack().getCurrentScene();
+    if (
+      currentScene &&
+      typeof currentScene.getElapsedTime === 'function'
+    ) {
+      const elapsedTimeInSeconds = currentScene.getElapsedTime() / 1000;
+      if (
+        Number.isFinite(elapsedTimeInSeconds) &&
+        elapsedTimeInSeconds > 0
+      ) {
+        return elapsedTimeInSeconds;
+      }
+    }
+
+    // In editor mode, the scene can be paused and report 0 elapsed time.
+    return 1 / 60;
+  };
+
+  const getFrameRateCompensationFactor = (deltaTimeInSeconds: float): float => {
+    if (!Number.isFinite(deltaTimeInSeconds) || deltaTimeInSeconds <= 0) {
+      return 1;
+    }
+    return deltaTimeInSeconds * 60;
+  };
+
+  const getResponsivenessBlend = (
+    responsiveness: float,
+    deltaTimeInSeconds: float
+  ): float => {
+    if (
+      !Number.isFinite(responsiveness) ||
+      responsiveness <= 0 ||
+      !Number.isFinite(deltaTimeInSeconds) ||
+      deltaTimeInSeconds <= 0
+    ) {
+      return 1;
+    }
+    return 1 - Math.exp(-responsiveness * deltaTimeInSeconds);
+  };
+
+  const smoothToward = (
+    currentValue: float,
+    targetValue: float,
+    responsiveness: float,
+    deltaTimeInSeconds: float
+  ): float =>
+    currentValue +
+    (targetValue - currentValue) *
+      getResponsivenessBlend(responsiveness, deltaTimeInSeconds);
 
   /** @category In-Game Editor */
   export type InGameEditorSettings = {
@@ -4588,7 +4686,7 @@ namespace gdjs {
         if (this._timeSinceLastInteraction > 1000) {
           this._runtimeGame.setMaximumFps(10);
         } else {
-          this._runtimeGame.setMaximumFps(60);
+          this._runtimeGame.setMaximumFps(120);
         }
       }
     }
@@ -7195,8 +7293,7 @@ namespace gdjs {
     }
 
     setOrbitDistance(distance: number): void {
-      this.orbitCameraControl.distance = distance;
-      this.onHasCameraChanged();
+      this.orbitCameraControl.setDistance(distance);
     }
 
     step(): void {
@@ -7498,7 +7595,10 @@ namespace gdjs {
     rotationAngle: float = 0;
     elevationAngle: float = 90;
     distance: float = 800;
+    private _targetDistance: float = 800;
     private _isEnabled: boolean = true;
+    private _smoothedRotationInputX = 0;
+    private _smoothedRotationInputY = 0;
 
     private _lastCursorX: float = 0;
     private _lastCursorY: float = 0;
@@ -7512,6 +7612,8 @@ namespace gdjs {
 
     constructor(editorCamera: EditorCamera) {
       this._editorCamera = editorCamera;
+      this._sanitizeAngles();
+      this._synchronizeDistanceTargetWithDistance();
     }
 
     isEnabled(): boolean {
@@ -7520,25 +7622,60 @@ namespace gdjs {
 
     setEnabled(isEnabled: boolean): void {
       this._isEnabled = isEnabled;
+      if (!isEnabled) {
+        this._smoothedRotationInputX = 0;
+        this._smoothedRotationInputY = 0;
+      }
       this._editorCamera.onHasCameraChanged();
+    }
+
+    private _sanitizeAngles(): void {
+      this.rotationAngle = normalizeCameraAngleDegrees(this.rotationAngle);
+      this.elevationAngle = clampCameraElevationDegrees(
+        this.elevationAngle,
+        orbitCameraMinElevation,
+        orbitCameraMaxElevation
+      );
+    }
+
+    private _synchronizeDistanceTargetWithDistance(): void {
+      this.distance = Math.max(10, this.distance);
+      this._targetDistance = this.distance;
     }
 
     step(): void {
       const runtimeGame = this._editorCamera.editor.getRuntimeGame();
       const inputManager = runtimeGame.getInputManager();
       const renderer = runtimeGame.getRenderer();
+      const deltaTimeInSeconds = getFrameDeltaTimeInSeconds(runtimeGame);
       const isLeftButtonPressed = inputManager.isMouseButtonPressed(0);
       const isRightButtonPressed = inputManager.isMouseButtonPressed(1);
       const isMiddleButtonPressed = inputManager.isMouseButtonPressed(2);
 
       if (this._isEnabled) {
         // Use movement deltas when pointer is locked, otherwise use cursor position delta.
-        const xDelta = renderer.isPointerLocked()
+        const xDelta = sanitizeCameraInputDelta(
+          renderer.isPointerLocked()
           ? inputManager.getMouseMovementX()
-          : inputManager.getCursorX() - this._lastCursorX;
-        const yDelta = renderer.isPointerLocked()
+          : inputManager.getCursorX() - this._lastCursorX
+        );
+        const yDelta = sanitizeCameraInputDelta(
+          renderer.isPointerLocked()
           ? inputManager.getMouseMovementY()
-          : inputManager.getCursorY() - this._lastCursorY;
+          : inputManager.getCursorY() - this._lastCursorY
+        );
+        this._smoothedRotationInputX = smoothToward(
+          this._smoothedRotationInputX,
+          xDelta,
+          cameraLookInputResponsiveness,
+          deltaTimeInSeconds
+        );
+        this._smoothedRotationInputY = smoothToward(
+          this._smoothedRotationInputY,
+          yDelta,
+          cameraLookInputResponsiveness,
+          deltaTimeInSeconds
+        );
         const isAlt = isAltPressed(inputManager);
 
         if (
@@ -7553,9 +7690,13 @@ namespace gdjs {
               (isMiddleButtonPressed && this._wasMouseMiddleButtonPressed)) &&
             (xDelta !== 0 || yDelta !== 0))
         ) {
-          const rotationSpeed = 0.2;
-          this.rotationAngle += xDelta * rotationSpeed;
-          this.elevationAngle += yDelta * rotationSpeed;
+          this.rotationAngle +=
+            this._smoothedRotationInputX *
+            cameraRotationSpeedPerPixel;
+          this.elevationAngle +=
+            this._smoothedRotationInputY *
+            cameraRotationSpeedPerPixel;
+          this._sanitizeAngles();
           this._editorCamera.onHasCameraChanged();
         } else if (
           // Alt + middle click: pan target in camera plane.
@@ -7591,9 +7732,9 @@ namespace gdjs {
           this._wasMouseRightButtonPressed &&
           yDelta !== 0
         ) {
-          this.distance = Math.max(
+          this._targetDistance = Math.max(
             10,
-            this.distance * Math.pow(2, yDelta / 200)
+            this._targetDistance * Math.pow(2, yDelta / 200)
           );
           this._editorCamera.onHasCameraChanged();
         }
@@ -7601,9 +7742,9 @@ namespace gdjs {
         // Mouse wheel: zoom.
         const wheelDeltaY = inputManager.getMouseWheelDelta();
         if (wheelDeltaY !== 0) {
-          this.distance = Math.max(
+          this._targetDistance = Math.max(
             10,
-            this.distance * Math.pow(2, -wheelDeltaY / 512)
+            this._targetDistance * Math.pow(2, -wheelDeltaY / 512)
           );
           this._editorCamera.onHasCameraChanged();
         }
@@ -7641,20 +7782,34 @@ namespace gdjs {
             const dx3 = centroid3.x - this._gestureLastCentroidX;
             const dy3 = centroid3.y - this._gestureLastCentroidY;
             if (dx3 !== 0) {
-              const tiltSpeed = 0.2;
-              this.rotationAngle += dx3 * tiltSpeed;
+              this.rotationAngle +=
+                sanitizeCameraInputDelta(dx3) *
+                cameraRotationSpeedPerPixel;
+              this._sanitizeAngles();
               this._editorCamera.onHasCameraChanged();
             }
             if (dy3 !== 0) {
-              const tiltSpeed = 0.2;
-              this.elevationAngle += dy3 * tiltSpeed;
-              if (this.elevationAngle < -45) this.elevationAngle = -45;
-              if (this.elevationAngle > 175) this.elevationAngle = 175;
+              this.elevationAngle +=
+                sanitizeCameraInputDelta(dy3) *
+                cameraRotationSpeedPerPixel;
+              this._sanitizeAngles();
               this._editorCamera.onHasCameraChanged();
             }
             this._gestureLastCentroidX = centroid3.x;
             this._gestureLastCentroidY = centroid3.y;
           }
+        }
+
+        this._targetDistance = Math.max(10, this._targetDistance);
+        const previousDistance = this.distance;
+        this.distance = smoothToward(
+          this.distance,
+          this._targetDistance,
+          cameraDistanceResponsiveness,
+          deltaTimeInSeconds
+        );
+        if (Math.abs(this.distance - previousDistance) > cameraFloatEpsilon) {
+          this._editorCamera.onHasCameraChanged();
         }
       } else {
         // Reset gesture tracking when camera control is disabled.
@@ -7741,9 +7896,14 @@ namespace gdjs {
 
       // Distance so that orbit camera stays exactly at the specified position
       this.distance = distance;
+      this._synchronizeDistanceTargetWithDistance();
+      this._sanitizeAngles();
     }
 
     updateCamera(currentScene: RuntimeScene, layer: RuntimeLayer): void {
+      this._sanitizeAngles();
+      this.distance = Math.max(10, this.distance);
+      this._targetDistance = Math.max(10, this._targetDistance);
       const layerName = layer.getName();
       layer.setCameraX(this.getCameraX());
       layer.setCameraY(this.getCameraY());
@@ -7755,13 +7915,23 @@ namespace gdjs {
 
     zoomBy(zoomFactor: float): void {
       // The distance is proportional to the inverse of the zoom.
-      this.distance /= zoomFactor;
+      if (!Number.isFinite(zoomFactor) || zoomFactor === 0) {
+        return;
+      }
+      this._targetDistance = Math.max(10, this._targetDistance / zoomFactor);
+      this._editorCamera.onHasCameraChanged();
+    }
+
+    setDistance(distance: float): void {
+      this.distance = Math.max(10, distance);
+      this._targetDistance = this.distance;
       this._editorCamera.onHasCameraChanged();
     }
 
     resetRotationToTopDown(): void {
       this.rotationAngle = 0;
       this.elevationAngle = 90;
+      this._sanitizeAngles();
       this._editorCamera.onHasCameraChanged();
     }
 
@@ -7787,6 +7957,8 @@ namespace gdjs {
       this.rotationAngle = cameraState.rotationAngle;
       this.elevationAngle = cameraState.elevationAngle;
       this.distance = cameraState.distance;
+      this._sanitizeAngles();
+      this._synchronizeDistanceTargetWithDistance();
       this._editorCamera.onHasCameraChanged();
     }
   }
@@ -7799,6 +7971,9 @@ namespace gdjs {
     private _isEnabled: boolean = true;
     private _euler: THREE.Euler = new THREE.Euler(0, 0, 0, 'ZYX');
     private _rotationMatrix: THREE.Matrix4 = new THREE.Matrix4();
+    private _smoothedRotationInputX = 0;
+    private _smoothedRotationInputY = 0;
+    private _moveSpeedMultiplier = 1;
 
     private _lastCursorX: float = 0;
     private _lastCursorY: float = 0;
@@ -7812,6 +7987,7 @@ namespace gdjs {
 
     constructor(editorCamera: EditorCamera) {
       this._editorCamera = editorCamera;
+      this._sanitizeAngles();
     }
 
     isEnabled(): boolean {
@@ -7820,15 +7996,32 @@ namespace gdjs {
 
     setEnabled(isEnabled: boolean): void {
       this._isEnabled = isEnabled;
+      if (!isEnabled) {
+        this._smoothedRotationInputX = 0;
+        this._smoothedRotationInputY = 0;
+      }
       this._editorCamera.onHasCameraChanged();
+    }
+
+    private _sanitizeAngles(): void {
+      this.rotationAngle = normalizeCameraAngleDegrees(this.rotationAngle);
+      this.elevationAngle = clampCameraElevationDegrees(
+        this.elevationAngle,
+        freeCameraMinElevation,
+        freeCameraMaxElevation
+      );
     }
 
     step(): void {
       const runtimeGame = this._editorCamera.editor.getRuntimeGame();
       const inputManager = runtimeGame.getInputManager();
       const renderer = runtimeGame.getRenderer();
+      const deltaTimeInSeconds = getFrameDeltaTimeInSeconds(runtimeGame);
+      const frameRateCompensationFactor =
+        getFrameRateCompensationFactor(deltaTimeInSeconds);
       const isRightButtonPressed = inputManager.isMouseButtonPressed(1);
       if (this._isEnabled) {
+        this._sanitizeAngles();
         const { right, up, forward } = this.getCameraVectors();
 
         const moveCameraByVector = (vector: THREE.Vector3, scale: number) => {
@@ -7837,11 +8030,47 @@ namespace gdjs {
           this.position.z += vector.z * scale;
           this._editorCamera.onHasCameraChanged();
         };
+        const xDelta = sanitizeCameraInputDelta(
+          renderer.isPointerLocked()
+            ? inputManager.getMouseMovementX()
+            : inputManager.getCursorX() - this._lastCursorX
+        );
+        const yDelta = sanitizeCameraInputDelta(
+          renderer.isPointerLocked()
+            ? inputManager.getMouseMovementY()
+            : inputManager.getCursorY() - this._lastCursorY
+        );
+        this._smoothedRotationInputX = smoothToward(
+          this._smoothedRotationInputX,
+          xDelta,
+          cameraLookInputResponsiveness,
+          deltaTimeInSeconds
+        );
+        this._smoothedRotationInputY = smoothToward(
+          this._smoothedRotationInputY,
+          yDelta,
+          cameraLookInputResponsiveness,
+          deltaTimeInSeconds
+        );
 
         // Mouse wheel: zoom forward/backward.
         const wheelDeltaY = inputManager.getMouseWheelDelta();
         if (wheelDeltaY !== 0) {
-          moveCameraByVector(forward, wheelDeltaY);
+          if (
+            isRightButtonPressed &&
+            !isAltPressed(inputManager) &&
+            !isControlOrCmdPressed(inputManager)
+          ) {
+            // Match common editor behavior: wheel adjusts fly speed while freelooking.
+            this._moveSpeedMultiplier = gdjs.evtTools.common.clamp(
+              this._moveSpeedMultiplier *
+                Math.pow(2, -wheelDeltaY / freeCameraSpeedWheelStepDivisor),
+              freeCameraMoveSpeedMultiplierMin,
+              freeCameraMoveSpeedMultiplierMax
+            );
+          } else {
+            moveCameraByVector(forward, wheelDeltaY);
+          }
         }
 
         // Touch gestures
@@ -7864,8 +8093,12 @@ namespace gdjs {
           if (touchCount === 2) {
             // Pan: move on the camera plane by centroid delta
             const centroid = getTouchesCentroid(inputManager);
-            const dx = (centroid.x - this._gestureLastCentroidX) * 5;
-            const dy = (centroid.y - this._gestureLastCentroidY) * 5;
+            const dx = sanitizeCameraInputDelta(
+              (centroid.x - this._gestureLastCentroidX) * 5
+            );
+            const dy = sanitizeCameraInputDelta(
+              (centroid.y - this._gestureLastCentroidY) * 5
+            );
             if (dx !== 0 || dy !== 0) {
               moveCameraByVector(up, dy);
               moveCameraByVector(right, -dx);
@@ -7875,7 +8108,9 @@ namespace gdjs {
 
             // Pinch: zoom forward/backward based on distance delta
             const dist = getTouchesDistance(inputManager);
-            const pinchDelta = (dist - this._gestureLastDistance) * 10;
+            const pinchDelta = sanitizeCameraInputDelta(
+              (dist - this._gestureLastDistance) * 10
+            );
             if (pinchDelta !== 0) {
               moveCameraByVector(forward, pinchDelta);
               this._gestureLastDistance = dist;
@@ -7885,7 +8120,10 @@ namespace gdjs {
 
         // Movement with the keyboard while right mouse is held:
         // arrow keys (camera plane) + WASD ("FPS move" + Q/E for up/down).
-        const moveSpeed = isShiftPressed(inputManager) ? 48 : 6;
+        const moveSpeedPerFrameAt60Fps =
+          (isShiftPressed(inputManager) ? 48 : 6) * this._moveSpeedMultiplier;
+        const moveSpeed =
+          moveSpeedPerFrameAt60Fps * frameRateCompensationFactor;
 
         if (
           isRightButtonPressed &&
@@ -7945,13 +8183,6 @@ namespace gdjs {
             inputManager.isMouseButtonPressed(0)) ||
           (isShiftPressed(inputManager) && inputManager.isMouseButtonPressed(2))
         ) {
-          // Use movement deltas when pointer is locked, otherwise use cursor position delta
-          const xDelta = renderer.isPointerLocked()
-            ? inputManager.getMouseMovementX()
-            : inputManager.getCursorX() - this._lastCursorX;
-          const yDelta = renderer.isPointerLocked()
-            ? inputManager.getMouseMovementY()
-            : inputManager.getCursorY() - this._lastCursorY;
           moveCameraByVector(up, yDelta);
           moveCameraByVector(right, -xDelta);
         }
@@ -7960,19 +8191,16 @@ namespace gdjs {
         if (
           isRightButtonPressed &&
           // The camera should not move the 1st frame
-          this._wasMouseRightButtonPressed
+          this._wasMouseRightButtonPressed &&
+          (xDelta !== 0 || yDelta !== 0)
         ) {
-          // Use movement deltas when pointer is locked, otherwise use cursor position delta
-          const xDelta = renderer.isPointerLocked()
-            ? inputManager.getMouseMovementX()
-            : inputManager.getCursorX() - this._lastCursorX;
-          const yDelta = renderer.isPointerLocked()
-            ? inputManager.getMouseMovementY()
-            : inputManager.getCursorY() - this._lastCursorY;
-
-          const rotationSpeed = 0.2;
-          this.rotationAngle += xDelta * rotationSpeed;
-          this.elevationAngle += yDelta * rotationSpeed;
+          this.rotationAngle +=
+            this._smoothedRotationInputX *
+            cameraRotationSpeedPerPixel;
+          this.elevationAngle +=
+            this._smoothedRotationInputY *
+            cameraRotationSpeedPerPixel;
+          this._sanitizeAngles();
           this._editorCamera.onHasCameraChanged();
         }
       } else {
@@ -7998,6 +8226,7 @@ namespace gdjs {
     }
 
     updateCamera(currentScene: RuntimeScene, layer: RuntimeLayer): void {
+      this._sanitizeAngles();
       const layerName = layer.getName();
       layer.setCameraX(this.position.x);
       layer.setCameraY(this.position.y);
@@ -8008,6 +8237,7 @@ namespace gdjs {
     }
 
     private getCameraVectors() {
+      this._sanitizeAngles();
       this._euler.x = gdjs.toRad(90 - this.elevationAngle);
       this._euler.z = gdjs.toRad(this.rotationAngle);
       this._rotationMatrix.makeRotationFromEuler(this._euler);
@@ -8055,6 +8285,9 @@ namespace gdjs {
     }
 
     zoomBy(zoomInFactor: float): void {
+      if (!Number.isFinite(zoomInFactor) || zoomInFactor === 0) {
+        return;
+      }
       this.moveForward(zoomInFactor > 1 ? 200 : -200);
       this._editorCamera.onHasCameraChanged();
     }
@@ -8062,6 +8295,7 @@ namespace gdjs {
     resetRotationToTopDown(): void {
       this.rotationAngle = 0;
       this.elevationAngle = 90;
+      this._sanitizeAngles();
       this._editorCamera.onHasCameraChanged();
     }
 
@@ -8086,6 +8320,7 @@ namespace gdjs {
       this.position.z = cameraState.positionZ;
       this.rotationAngle = cameraState.rotationAngle;
       this.elevationAngle = cameraState.elevationAngle;
+      this._sanitizeAngles();
       this._editorCamera.onHasCameraChanged();
     }
   }

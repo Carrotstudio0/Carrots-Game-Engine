@@ -1797,6 +1797,32 @@ declare const scene: gdjs.RuntimeScene & __GDevelopProjectObjectLists;
 declare const evtTools: typeof gdjs.evtTools;
 declare const tsModules: {
   setExternal(moduleName: string, moduleValue: any): void;
+  setExternalAlias(moduleName: string, globalPath: string): void;
+  hasExternal(moduleName: string): boolean;
+  getExternal(moduleName: string): any;
+  requireExternal(moduleName: string): any;
+  importExternal(moduleName: string): Promise<any>;
+  resolveGlobal(globalPath: string): any;
+  bindDefaultExternals(): void;
+  listModuleIds(): string[];
+  callExport(moduleId: string, exportName?: string, ...args: any[]): any;
+  hasSharedState(key: string): boolean;
+  setSharedState(key: string, value: any): void;
+  getSharedState(key: string, defaultValue?: any): any;
+  deleteSharedState(key: string): boolean;
+  patchSharedState(key: string, patchValue: any): any;
+  clearSharedState(): void;
+  listSharedStateKeys(): string[];
+  on(eventName: string, listener: (payload?: any, metadata?: any) => any): () => void;
+  once(eventName: string, listener: (payload?: any, metadata?: any) => any): () => void;
+  off(
+    eventName: string,
+    listener?: (payload?: any, metadata?: any) => any
+  ): number;
+  emit(eventName: string, payload?: any): number;
+  clearEventListeners(eventName?: string): number;
+  listEventNames(): string[];
+  require(moduleName: string): any;
   evalJavaScript(code: string): any;
   registerTest(testName: string, testFunction: () => void): void;
   runTests(): {
@@ -1811,6 +1837,25 @@ declare function registerProjectBehavior(
   behaviorType: string,
   behaviorConstructor: typeof gdjs.RuntimeBehavior
 ): void;
+declare function requireModule(moduleName: string): any;
+declare function callScriptExport(
+  moduleId: string,
+  exportName?: string,
+  ...args: any[]
+): any;
+declare function setScriptSharedState(key: string, value: any): void;
+declare function getScriptSharedState(key: string, defaultValue?: any): any;
+declare function emitScriptEvent(eventName: string, payload?: any): number;
+declare function onScriptEvent(
+  eventName: string,
+  listener: (payload?: any, metadata?: any) => any
+): () => void;
+declare function offScriptEvent(
+  eventName: string,
+  listener?: (payload?: any, metadata?: any) => any
+): number;
+declare function requireExternalModule(moduleName: string): any;
+declare function importExternalModule(moduleName: string): Promise<any>;
 declare function liveRepl(code: string): any;
 
 type SceneScriptLifecycleHooks = {
@@ -1872,10 +1917,148 @@ declare namespace gdjs {
     owner: RuntimeObject;
   }
 
+  namespace runtimeCapabilities {
+    function getRuntimeCapabilitiesSummary(): any;
+    function listObjectBehaviors(object: RuntimeObject): any[];
+    function resolveBehavior(object: RuntimeObject, behaviorNameOrType: string): any;
+    function listBehaviorMethods(
+      object: RuntimeObject,
+      behaviorNameOrType: string
+    ): string[];
+    function invokeBehaviorMethod(
+      object: RuntimeObject,
+      behaviorNameOrType: string,
+      methodName: string,
+      ...args: any[]
+    ): any;
+    function registerBehaviorCapability(capability: any): void;
+    function unregisterBehaviorCapability(
+      behaviorType: string,
+      methodName?: string
+    ): void;
+    function listRegisteredBehaviorCapabilityTypes(): string[];
+    function registerExtensionCapability(capability: any): void;
+    function registerExtensionNamespace(
+      extensionName: string,
+      extensionNamespace: any
+    ): void;
+    function autoRegisterKnownExtensionNamespaces(): void;
+    function unregisterExtensionCapability(
+      extensionName: string,
+      methodName?: string
+    ): void;
+    function listRegisteredExtensionCapabilityNames(): string[];
+    function listExtensionMethods(extensionName: string): string[];
+    function invokeExtensionMethod(
+      extensionName: string,
+      methodName: string,
+      ...args: any[]
+    ): any;
+    function bindManualExtensionToObject(
+      object: RuntimeObject,
+      binding: any
+    ): void;
+    function unbindManualExtensionFromObject(
+      object: RuntimeObject,
+      extensionName: string
+    ): boolean;
+    function listManualObjectExtensions(object: RuntimeObject): string[];
+    function setManualObjectExtensionConfig(
+      object: RuntimeObject,
+      extensionName: string,
+      configPatch: { [key: string]: unknown }
+    ): boolean;
+    function getManualObjectExtensionConfig(
+      object: RuntimeObject,
+      extensionName: string
+    ): { [key: string]: unknown } | null;
+    function invokeManualObjectExtensionMethod(
+      object: RuntimeObject,
+      extensionName: string,
+      methodName: string,
+      ...args: any[]
+    ): any;
+    function invokeObjectExtensionMethod(
+      object: RuntimeObject,
+      extensionName: string,
+      methodName: string,
+      ...args: any[]
+    ): any;
+    function getEngineAccess(source?: any): any;
+    function readEnginePath(path: string, source?: any): any;
+    function invokeEnginePath(path: string, source?: any, ...args: any[]): any;
+    function getInputSnapshot(source?: any): any;
+    function listPressedKeys(source?: any): number[];
+    function listActiveTouches(source?: any): any[];
+    function listConnectedGamepads(): any[];
+    function setKeyPressed(
+      source: any,
+      keyCode: number,
+      location?: number
+    ): boolean;
+    function setKeyReleased(
+      source: any,
+      keyCode: number,
+      location?: number
+    ): boolean;
+    function setMousePosition(
+      source: any,
+      x: number,
+      y: number,
+      movementX?: number,
+      movementY?: number
+    ): boolean;
+    function setMouseButtonPressed(source: any, buttonCode: number): boolean;
+    function setMouseButtonReleased(source: any, buttonCode: number): boolean;
+    function setMouseWheelDelta(
+      source: any,
+      deltaY: number,
+      deltaX?: number,
+      deltaZ?: number
+    ): boolean;
+    function setTouchStarted(
+      source: any,
+      rawIdentifier: number,
+      x: number,
+      y: number
+    ): boolean;
+    function setTouchMoved(
+      source: any,
+      rawIdentifier: number,
+      x: number,
+      y: number
+    ): boolean;
+    function setTouchEnded(source: any, rawIdentifier: number): boolean;
+    function setTouchSimulationForMouse(source: any, enable: boolean): boolean;
+  }
+
   const evtTools: any;
 
   namespace ts {
+    const bridge: typeof tsModules;
     function setExternalModule(moduleName: string, moduleValue: any): void;
+    function setExternalModuleAlias(moduleName: string, globalPath: string): void;
+    function requireExternalModule(moduleName: string): any;
+    function importExternalModule(moduleName: string): Promise<any>;
+    function resolveGlobal(globalPath: string): any;
+    function bindDefaultExternalModules(): void;
+    function requireModule(moduleName: string): any;
+    function callScriptExport(
+      moduleId: string,
+      exportName?: string,
+      ...args: any[]
+    ): any;
+    function setSharedState(key: string, value: any): void;
+    function getSharedState(key: string, defaultValue?: any): any;
+    function emit(eventName: string, payload?: any): number;
+    function on(
+      eventName: string,
+      listener: (payload?: any, metadata?: any) => any
+    ): () => void;
+    function off(
+      eventName: string,
+      listener?: (payload?: any, metadata?: any) => any
+    ): number;
     function registerProjectBehavior(
       behaviorType: string,
       behaviorConstructor: typeof gdjs.RuntimeBehavior

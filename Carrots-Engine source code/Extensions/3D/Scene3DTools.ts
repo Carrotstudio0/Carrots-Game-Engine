@@ -795,10 +795,351 @@ namespace gdjs {
       ): void => {
         firstPersonCameraRigsByScene.delete(runtimeScene);
       };
+
+      export interface ThirdPersonCameraRigConfiguration {
+        focusHeight: float;
+        distance: float;
+        minDistance: float;
+        maxDistance: float;
+        minPitch: float;
+        maxPitch: float;
+        positionResponsiveness: float;
+        rotationResponsiveness: float;
+        distanceResponsiveness: float;
+      }
+
+      type ThirdPersonCameraRigState = {
+        focus: CameraVector3;
+        yaw: float;
+        pitch: float;
+        distance: float;
+        lastInputYaw: float | null;
+        lastInputPitch: float | null;
+      };
+
+      type ThirdPersonCameraRig = {
+        configuration: ThirdPersonCameraRigConfiguration;
+        state: ThirdPersonCameraRigState;
+      };
+
+      const getDefaultThirdPersonCameraRigConfiguration =
+        (): ThirdPersonCameraRigConfiguration => ({
+          focusHeight: 32,
+          distance: 320,
+          minDistance: 40,
+          maxDistance: 2000,
+          minPitch: -75,
+          maxPitch: 80,
+          positionResponsiveness: 14,
+          rotationResponsiveness: 18,
+          distanceResponsiveness: 12,
+        });
+
+      const sanitizeThirdPersonCameraRigConfiguration = (
+        configuration: ThirdPersonCameraRigConfiguration
+      ): ThirdPersonCameraRigConfiguration => {
+        const sanitizedConfiguration = { ...configuration };
+        sanitizedConfiguration.focusHeight = Number.isFinite(
+          sanitizedConfiguration.focusHeight
+        )
+          ? sanitizedConfiguration.focusHeight
+          : 0;
+        sanitizedConfiguration.distance = Math.max(
+          0,
+          Number.isFinite(sanitizedConfiguration.distance)
+            ? sanitizedConfiguration.distance
+            : 0
+        );
+        sanitizedConfiguration.minDistance = Math.max(
+          0,
+          Number.isFinite(sanitizedConfiguration.minDistance)
+            ? sanitizedConfiguration.minDistance
+            : 0
+        );
+        sanitizedConfiguration.maxDistance = Math.max(
+          sanitizedConfiguration.minDistance,
+          Number.isFinite(sanitizedConfiguration.maxDistance)
+            ? sanitizedConfiguration.maxDistance
+            : sanitizedConfiguration.minDistance
+        );
+        sanitizedConfiguration.minPitch = clampNumber(
+          sanitizedConfiguration.minPitch,
+          -89,
+          89
+        );
+        sanitizedConfiguration.maxPitch = clampNumber(
+          sanitizedConfiguration.maxPitch,
+          -89,
+          89
+        );
+        if (sanitizedConfiguration.minPitch > sanitizedConfiguration.maxPitch) {
+          const currentMinPitch = sanitizedConfiguration.minPitch;
+          sanitizedConfiguration.minPitch = sanitizedConfiguration.maxPitch;
+          sanitizedConfiguration.maxPitch = currentMinPitch;
+        }
+        sanitizedConfiguration.positionResponsiveness = Math.max(
+          0,
+          Number.isFinite(sanitizedConfiguration.positionResponsiveness)
+            ? sanitizedConfiguration.positionResponsiveness
+            : 0
+        );
+        sanitizedConfiguration.rotationResponsiveness = Math.max(
+          0,
+          Number.isFinite(sanitizedConfiguration.rotationResponsiveness)
+            ? sanitizedConfiguration.rotationResponsiveness
+            : 0
+        );
+        sanitizedConfiguration.distanceResponsiveness = Math.max(
+          0,
+          Number.isFinite(sanitizedConfiguration.distanceResponsiveness)
+            ? sanitizedConfiguration.distanceResponsiveness
+            : 0
+        );
+        return sanitizedConfiguration;
+      };
+
+      const thirdPersonCameraRigsByScene = new WeakMap<
+        RuntimeScene,
+        Map<string, ThirdPersonCameraRig>
+      >();
+
+      const getOrCreateThirdPersonCameraRig = (
+        runtimeScene: RuntimeScene,
+        layerName: string = '',
+        cameraIndex: integer = 0
+      ): ThirdPersonCameraRig => {
+        let rigsByKey = thirdPersonCameraRigsByScene.get(runtimeScene);
+        if (!rigsByKey) {
+          rigsByKey = new Map<string, ThirdPersonCameraRig>();
+          thirdPersonCameraRigsByScene.set(runtimeScene, rigsByKey);
+        }
+
+        const key = getCameraRigKey(layerName, cameraIndex);
+        const existingRig = rigsByKey.get(key);
+        if (existingRig) {
+          return existingRig;
+        }
+
+        const layer = runtimeScene.getLayer(layerName);
+        const configuration = getDefaultThirdPersonCameraRigConfiguration();
+        const initialPitch = clampNumber(
+          getCameraRotationX(runtimeScene, layerName, cameraIndex),
+          configuration.minPitch,
+          configuration.maxPitch
+        );
+        const initialYaw = getCameraRotationY(runtimeScene, layerName, cameraIndex);
+        const initialDistance = clampNumber(
+          configuration.distance,
+          configuration.minDistance,
+          configuration.maxDistance
+        );
+        const yawRad = gdjs.toRad(initialYaw);
+        const pitchRad = gdjs.toRad(initialPitch);
+        const horizontalDistance = Math.cos(pitchRad) * initialDistance;
+        const cameraX = layer.getCameraX(cameraIndex);
+        const cameraY = layer.getCameraY(cameraIndex);
+        const cameraZ = getCameraZ(runtimeScene, layerName, cameraIndex);
+
+        const newRig: ThirdPersonCameraRig = {
+          configuration,
+          state: {
+            focus: {
+              x: cameraX + Math.cos(yawRad) * horizontalDistance,
+              y: cameraY + Math.sin(yawRad) * horizontalDistance,
+              z: cameraZ - Math.sin(pitchRad) * initialDistance,
+            },
+            yaw: initialYaw,
+            pitch: initialPitch,
+            distance: initialDistance,
+            lastInputYaw: null,
+            lastInputPitch: null,
+          },
+        };
+        rigsByKey.set(key, newRig);
+        return newRig;
+      };
+
+      export const updateThirdPersonCameraRigFromObject = (
+        runtimeScene: RuntimeScene,
+        object: gdjs.RuntimeObject | null,
+        distance: float,
+        yaw: float,
+        pitch: float,
+        lookDeltaYaw: float,
+        lookDeltaPitch: float,
+        focusHeight: float,
+        layerName: string,
+        cameraIndex: integer,
+        minPitch: float = -75,
+        maxPitch: float = 80,
+        positionResponsiveness: float = 14,
+        rotationResponsiveness: float = 18,
+        distanceResponsiveness: float = 12
+      ): void => {
+        if (!object) {
+          return;
+        }
+
+        const objectWith3DAccessors = object as gdjs.RuntimeObject & {
+          getZ?: () => float;
+        };
+        const rig = getOrCreateThirdPersonCameraRig(
+          runtimeScene,
+          layerName,
+          cameraIndex
+        );
+        rig.configuration = sanitizeThirdPersonCameraRigConfiguration({
+          ...rig.configuration,
+          focusHeight: Number.isFinite(focusHeight)
+            ? focusHeight
+            : rig.configuration.focusHeight,
+          distance: Number.isFinite(distance)
+            ? distance
+            : rig.configuration.distance,
+          minPitch: Number.isFinite(minPitch)
+            ? minPitch
+            : rig.configuration.minPitch,
+          maxPitch: Number.isFinite(maxPitch)
+            ? maxPitch
+            : rig.configuration.maxPitch,
+          positionResponsiveness: Number.isFinite(positionResponsiveness)
+            ? positionResponsiveness
+            : rig.configuration.positionResponsiveness,
+          rotationResponsiveness: Number.isFinite(rotationResponsiveness)
+            ? rotationResponsiveness
+            : rig.configuration.rotationResponsiveness,
+          distanceResponsiveness: Number.isFinite(distanceResponsiveness)
+            ? distanceResponsiveness
+            : rig.configuration.distanceResponsiveness,
+        });
+
+        const deltaTime = Math.max(0, runtimeScene.getElapsedTime() / 1000);
+        const positionBlend = exponentialBlend(
+          rig.configuration.positionResponsiveness,
+          deltaTime
+        );
+        const rotationBlend = exponentialBlend(
+          rig.configuration.rotationResponsiveness,
+          deltaTime
+        );
+        const distanceBlend = exponentialBlend(
+          rig.configuration.distanceResponsiveness,
+          deltaTime
+        );
+
+        const targetFocusX = object.getCenterXInScene();
+        const targetFocusY = object.getCenterYInScene();
+        const targetFocusZ =
+          (typeof objectWith3DAccessors.getZ === 'function'
+            ? objectWith3DAccessors.getZ()
+            : 0) + rig.configuration.focusHeight;
+        rig.state.focus.x = lerp(rig.state.focus.x, targetFocusX, positionBlend);
+        rig.state.focus.y = lerp(rig.state.focus.y, targetFocusY, positionBlend);
+        rig.state.focus.z = lerp(rig.state.focus.z, targetFocusZ, positionBlend);
+
+        const safeLookDeltaYaw = Number.isFinite(lookDeltaYaw)
+          ? (lookDeltaYaw as float)
+          : 0;
+        const safeLookDeltaPitch = Number.isFinite(lookDeltaPitch)
+          ? (lookDeltaPitch as float)
+          : 0;
+        if (Number.isFinite(yaw)) {
+          const safeYaw = yaw as float;
+          const lastInputYaw = rig.state.lastInputYaw;
+          if (
+            lastInputYaw === null ||
+            Math.abs(gdjs.evtTools.common.angleDifference(safeYaw, lastInputYaw)) >
+              0.0001
+          ) {
+            rig.state.yaw = safeYaw;
+          }
+          rig.state.lastInputYaw = safeYaw;
+        }
+        if (Number.isFinite(pitch)) {
+          const safePitch = clampNumber(
+            pitch as float,
+            rig.configuration.minPitch,
+            rig.configuration.maxPitch
+          );
+          const lastInputPitch = rig.state.lastInputPitch;
+          if (
+            lastInputPitch === null ||
+            Math.abs(safePitch - lastInputPitch) > 0.0001
+          ) {
+            rig.state.pitch = safePitch;
+          }
+          rig.state.lastInputPitch = safePitch;
+        }
+        const desiredYaw = rig.state.yaw + safeLookDeltaYaw;
+        const desiredPitch = clampNumber(
+          rig.state.pitch + safeLookDeltaPitch,
+          rig.configuration.minPitch,
+          rig.configuration.maxPitch
+        );
+        const desiredDistance = clampNumber(
+          Number.isFinite(distance) ? (distance as float) : rig.state.distance,
+          rig.configuration.minDistance,
+          rig.configuration.maxDistance
+        );
+
+        rig.state.yaw = lerpAngle(rig.state.yaw, desiredYaw, rotationBlend);
+        rig.state.pitch = clampNumber(
+          lerpAngle(rig.state.pitch, desiredPitch, rotationBlend),
+          rig.configuration.minPitch,
+          rig.configuration.maxPitch
+        );
+        rig.state.distance = clampNumber(
+          lerp(rig.state.distance, desiredDistance, distanceBlend),
+          rig.configuration.minDistance,
+          rig.configuration.maxDistance
+        );
+
+        const yawRad = gdjs.toRad(rig.state.yaw);
+        const pitchRad = gdjs.toRad(rig.state.pitch);
+        const horizontalDistance = Math.cos(pitchRad) * rig.state.distance;
+        const cameraX = rig.state.focus.x - Math.cos(yawRad) * horizontalDistance;
+        const cameraY = rig.state.focus.y - Math.sin(yawRad) * horizontalDistance;
+        const cameraZ = rig.state.focus.z + Math.sin(pitchRad) * rig.state.distance;
+
+        const layer = runtimeScene.getLayer(layerName);
+        layer.setCameraX(cameraX, cameraIndex);
+        layer.setCameraY(cameraY, cameraIndex);
+        setCameraZ(runtimeScene, cameraZ, layerName, cameraIndex);
+        turnCameraTowardPosition(
+          runtimeScene,
+          rig.state.focus.x,
+          rig.state.focus.y,
+          rig.state.focus.z,
+          layerName,
+          cameraIndex,
+          false
+        );
+      };
+
+      export const removeThirdPersonCameraRig = (
+        runtimeScene: RuntimeScene,
+        layerName: string = '',
+        cameraIndex: integer = 0
+      ): void => {
+        const rigsByKey = thirdPersonCameraRigsByScene.get(runtimeScene);
+        if (!rigsByKey) return;
+
+        rigsByKey.delete(getCameraRigKey(layerName, cameraIndex));
+        if (rigsByKey.size === 0) {
+          thirdPersonCameraRigsByScene.delete(runtimeScene);
+        }
+      };
+
+      export const clearThirdPersonCameraRigs = (
+        runtimeScene: RuntimeScene
+      ): void => {
+        thirdPersonCameraRigsByScene.delete(runtimeScene);
+      };
     }
 
     gdjs.registerRuntimeSceneUnloadedCallback((runtimeScene) => {
       gdjs.scene3d.camera.clearFirstPersonCameraRigs(runtimeScene);
+      gdjs.scene3d.camera.clearThirdPersonCameraRigs(runtimeScene);
     });
   }
 }

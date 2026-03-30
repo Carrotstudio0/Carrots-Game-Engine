@@ -87,7 +87,12 @@ const getEventKindLabel = (eventType: string): string => {
     return 'Loop';
   }
   if (eventType === 'BuiltinCommonInstructions::Link') return 'Link';
-  if (eventType === 'BuiltinCommonInstructions::JsCode') return 'Removed';
+  if (
+    eventType === 'BuiltinCommonInstructions::JsCode' ||
+    eventType === 'BuiltinCommonInstructions::JsCodeInsert'
+  ) {
+    return 'JavaScript';
+  }
   return 'Other';
 };
 
@@ -319,7 +324,19 @@ const EventInspectorPanel = ({
       ? 'Missing target'
       : 'Not set';
   const isJsCodeEvent =
-    selectedEventType === 'BuiltinCommonInstructions::JsCode';
+    selectedEventType === 'BuiltinCommonInstructions::JsCode' ||
+    selectedEventType === 'BuiltinCommonInstructions::JsCodeInsert';
+  const jsCodeEvent =
+    isJsCodeEvent && selectedEvent ? gd.asJsCodeEvent(selectedEvent) : null;
+  const jsCodeLinesCount = jsCodeEvent
+    ? jsCodeEvent
+        .getInlineCode()
+        .split(/\r?\n/)
+        .filter(line => line.trim().length > 0).length
+    : 0;
+  const jsCodeParameterObjects = jsCodeEvent
+    ? jsCodeEvent.getParameterObjects()
+    : '';
   const repeatExpression =
     selectedEventType === 'BuiltinCommonInstructions::Repeat' && selectedEvent
       ? gd
@@ -791,14 +808,26 @@ const EventInspectorPanel = ({
       {isJsCodeEvent && selectedEvent && (
         <div className="events-inspector-section">
           <Text size="sub-title" noMargin>
-            <Trans>Removed Script Event</Trans>
+            <Trans>JavaScript Event</Trans>
           </Text>
-          <Text size="body-small" color="secondary" noMargin>
-            <Trans>
-              The old script event system in Events is disabled. Use the Script
-              tab in the scene toolbar.
-            </Trans>
-          </Text>
+          <div className="events-inspector-overview-grid">
+            <div className="events-inspector-overview-row">
+              <Text size="body-small" color="secondary" noMargin>
+                <Trans>Code lines</Trans>
+              </Text>
+              <Text size="body2" noMargin>
+                {jsCodeLinesCount}
+              </Text>
+            </div>
+            <div className="events-inspector-overview-row">
+              <Text size="body-small" color="secondary" noMargin>
+                <Trans>Parameter objects</Trans>
+              </Text>
+              <Text size="body2" noMargin allowSelection>
+                {jsCodeParameterObjects || '-'}
+              </Text>
+            </div>
+          </div>
         </div>
       )}
 

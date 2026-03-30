@@ -149,6 +149,57 @@ void GD_CORE_API BuiltinExtensionsImplementer::ImplementsMouseExtension(
   // End of compatibility code
 
   extension
+      .AddAction("RequestPointerLock",
+                 _("Lock the mouse pointer"),
+                 _("Ask the browser to lock the mouse pointer on the game. "
+                   "While locked, the cursor is hidden and mouse movement can "
+                   "be read every frame using MouseMovementX/Y expressions."),
+                 _("Lock the mouse pointer"),
+                 "",
+                 "res/actions/mouse24.png",
+                 "res/actions/mouse.png")
+      .AddCodeOnlyParameter("currentScene", "")
+      .AddParameter(
+          "string",
+          _("Reason (optional, used to avoid conflicts between systems)"),
+          "",
+          true)
+      .SetDefaultValue("\"mouse-lock\"")
+      .MarkAsAdvanced();
+
+  extension
+      .AddAction(
+          "ExitPointerLock",
+          _("Unlock the mouse pointer"),
+          _("Release the mouse pointer lock for the given reason. "
+            "If no system still requires locking, the pointer becomes visible "
+            "again."),
+          _("Unlock the mouse pointer"),
+          "",
+          "res/actions/mouse24.png",
+          "res/actions/mouse.png")
+      .AddCodeOnlyParameter("currentScene", "")
+      .AddParameter(
+          "string",
+          _("Reason used when requesting lock"),
+          "",
+          true)
+      .SetDefaultValue("\"mouse-lock\"")
+      .MarkAsAdvanced();
+
+  extension
+      .AddCondition("IsPointerLocked",
+                    _("Mouse pointer is locked"),
+                    _("Check if the mouse pointer is currently locked to the "
+                      "game canvas."),
+                    _("The mouse pointer is locked"),
+                    "",
+                    "res/actions/mouse24.png",
+                    "res/actions/mouse.png")
+      .AddCodeOnlyParameter("currentScene", "")
+      .MarkAsAdvanced();
+
+  extension
       .AddAction("SetCursorPosition",
                  _("Position the cursor of the mouse"),
                  _("Position the cursor at the given coordinates."),
@@ -484,6 +535,22 @@ void GD_CORE_API BuiltinExtensionsImplementer::ImplementsMouseExtension(
       .AddExpression("MouseWheelDelta",
                      _("Mouse wheel: Displacement"),
                      _("Mouse wheel displacement"),
+                     _("Mouse and touch"),
+                     "res/actions/mouse.png")
+      .AddCodeOnlyParameter("currentScene", "");
+
+  extension
+      .AddExpression("MouseMovementX",
+                     _("Mouse movement X"),
+                     _("Mouse movement on X axis during the current frame."),
+                     _("Mouse and touch"),
+                     "res/actions/mouse.png")
+      .AddCodeOnlyParameter("currentScene", "");
+
+  extension
+      .AddExpression("MouseMovementY",
+                     _("Mouse movement Y"),
+                     _("Mouse movement on Y axis during the current frame."),
                      _("Mouse and touch"),
                      "res/actions/mouse.png")
       .AddCodeOnlyParameter("currentScene", "");

@@ -176,7 +176,7 @@ namespace gdjs {
             this._effectiveSamples = this._samples;
             this._effectiveBlurScale = 1.0;
             this._qualityMode =
-              effectData.stringParameters.qualityMode || 'medium';
+              effectData.stringParameters.qualityMode || 'high';
 
             this.shaderPass.uniforms.focusDistance.value = this._focusDistance;
             this.shaderPass.uniforms.focusRange.value = this._focusRange;
@@ -334,7 +334,7 @@ namespace gdjs {
           }
           updateStringParameter(parameterName: string, value: string): void {
             if (parameterName === 'qualityMode') {
-              this._qualityMode = value || 'medium';
+              this._qualityMode = value || 'high';
             }
           }
           updateColorParameter(parameterName: string, value: number): void {}
@@ -365,7 +365,7 @@ namespace gdjs {
             this._maxBlur = syncData.mb;
             this._samples = Math.max(2, Math.min(8, Math.round(syncData.s)));
             this._effectEnabled = syncData.e;
-            this._qualityMode = syncData.q || 'medium';
+            this._qualityMode = syncData.q || 'high';
 
             this.shaderPass.uniforms.focusDistance.value = this._focusDistance;
             this.shaderPass.uniforms.focusRange.value = this._focusRange;

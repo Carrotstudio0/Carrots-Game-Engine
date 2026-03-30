@@ -161,6 +161,12 @@ namespace gdjs {
     joltTuning: PhysicsCharacter3DJoltTuning;
   }
 
+  interface PhysicsCharacter3DCollisionChecker
+    extends gdjs.Physics3DRuntimeBehavior.CollisionChecker {
+    clearContacts(): void;
+    updateContacts(): void;
+  }
+
   /**
    * @category Behaviors > Physics 3D
    */
@@ -179,7 +185,7 @@ namespace gdjs {
      * before stepping the world.
      */
     _sharedData: gdjs.Physics3DSharedData;
-    collisionChecker: gdjs.PhysicsCharacter3DRuntimeBehavior.CharacterCollisionChecker;
+    collisionChecker: PhysicsCharacter3DCollisionChecker;
     private _destroyedDuringFrameLogic: boolean = false;
 
     // TODO Should there be angle were the character can climb but will slip?
@@ -294,7 +300,7 @@ namespace gdjs {
         behaviorData.Physics3D
       );
       this.collisionChecker =
-        new gdjs.PhysicsCharacter3DRuntimeBehavior.CharacterCollisionChecker(
+        gdjs.PhysicsCharacter3DRuntimeBehavior.createCharacterCollisionChecker(
           this
         );
       this.charactersManager =
@@ -2941,47 +2947,6 @@ namespace gdjs {
     }
   }
 
-  gdjs.registerBehavior(
-    'Physics3D::PhysicsCharacter3D',
-    gdjs.PhysicsCharacter3DRuntimeBehavior
-  );
-
-  gdjs.runtimeCapabilities.registerBehaviorCapability({
-    behaviorType: 'Physics3D::PhysicsCharacter3D',
-    methods: {
-      setPhysicsProfile: (behavior, profile) =>
-        (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).setPhysicsProfile(
-          profile
-        ),
-      getPhysicsProfile: (behavior) =>
-        (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).getPhysicsProfile(),
-      setMovementInputState: (behavior, inputState, resetOtherInputs) =>
-        (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).setMovementInputState(
-          inputState,
-          resetOtherInputs
-        ),
-      getMovementInputState: (behavior) =>
-        (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).getMovementInputState(),
-      applyMovementInputAxes: (behavior, forwardAxis, rightAxis, options) =>
-        (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).applyMovementInputAxes(
-          forwardAxis,
-          rightAxis,
-          options
-        ),
-      applyMovementInputFromKeyboard: (
-        behavior,
-        instanceContainer,
-        inputBindings,
-        options
-      ) =>
-        (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).applyMovementInputFromKeyboard(
-          instanceContainer,
-          inputBindings,
-          options
-        ),
-    },
-  });
-
   /** @category Behaviors > Physics 3D */
   export namespace PhysicsCharacter3DRuntimeBehavior {
     /**
@@ -3456,5 +3421,56 @@ namespace gdjs {
         );
       }
     }
+
+    export const createCharacterCollisionChecker = (
+      characterBehavior: gdjs.PhysicsCharacter3DRuntimeBehavior
+    ): PhysicsCharacter3DCollisionChecker =>
+      new CharacterCollisionChecker(characterBehavior);
+  }
+
+  gdjs.registerBehavior(
+    'Physics3D::PhysicsCharacter3D',
+    gdjs.PhysicsCharacter3DRuntimeBehavior
+  );
+
+  if (
+    gdjs.runtimeCapabilities &&
+    typeof gdjs.runtimeCapabilities.registerBehaviorCapability === 'function'
+  ) {
+    gdjs.runtimeCapabilities.registerBehaviorCapability({
+      behaviorType: 'Physics3D::PhysicsCharacter3D',
+      methods: {
+        setPhysicsProfile: (behavior, profile) =>
+          (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).setPhysicsProfile(
+            profile
+          ),
+        getPhysicsProfile: (behavior) =>
+          (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).getPhysicsProfile(),
+        setMovementInputState: (behavior, inputState, resetOtherInputs) =>
+          (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).setMovementInputState(
+            inputState,
+            resetOtherInputs
+          ),
+        getMovementInputState: (behavior) =>
+          (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).getMovementInputState(),
+        applyMovementInputAxes: (behavior, forwardAxis, rightAxis, options) =>
+          (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).applyMovementInputAxes(
+            forwardAxis,
+            rightAxis,
+            options
+          ),
+        applyMovementInputFromKeyboard: (
+          behavior,
+          instanceContainer,
+          inputBindings,
+          options
+        ) =>
+          (behavior as gdjs.PhysicsCharacter3DRuntimeBehavior).applyMovementInputFromKeyboard(
+            instanceContainer,
+            inputBindings,
+            options
+          ),
+      },
+    });
   }
 }

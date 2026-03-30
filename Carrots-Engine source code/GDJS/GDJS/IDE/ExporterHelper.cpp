@@ -1533,6 +1533,7 @@ bool ExporterHelper::ExportTypeScriptProjectScripts(
   var moduleSources = Object.create(null);
   var cache = Object.create(null);
   var externals = Object.create(null);
+  var externalAliases = Object.create(null);
 
   var normalizePath = function(path) {
     var parts = path.split('/');
@@ -1555,6 +1556,78 @@ bool ExporterHelper::ExportTypeScriptProjectScripts(
 
   var hasSource = function(moduleId) {
     return Object.prototype.hasOwnProperty.call(moduleSources, moduleId);
+  };
+
+  var getGlobalValueByPath = function(path) {
+    if (!path || typeof path !== 'string') return undefined;
+    if (
+      path === 'globalThis' ||
+      path === 'window' ||
+      path === 'self' ||
+      path === 'global'
+    ) {
+      return globalObject;
+    }
+    var normalizedPath = path.replace(/\[(\d+)\]/g, '.$1');
+    var parts = normalizedPath.split('.');
+    var currentValue = globalObject;
+    for (var i = 0; i < parts.length; i++) {
+      var part = parts[i];
+      if (!part) continue;
+      if (currentValue === null || typeof currentValue === 'undefined') {
+        return undefined;
+      }
+      currentValue = currentValue[part];
+      if (typeof currentValue === 'undefined') {
+        return undefined;
+      }
+    }
+    return currentValue;
+  };
+
+  var tryResolveExternalFromGlobal = function(moduleName) {
+    if (!moduleName) return undefined;
+    var directGlobalValue = getGlobalValueByPath(moduleName);
+    if (typeof directGlobalValue !== 'undefined') {
+      return directGlobalValue;
+    }
+    if (Object.prototype.hasOwnProperty.call(externalAliases, moduleName)) {
+      var aliasedGlobalPath = externalAliases[moduleName];
+      return getGlobalValueByPath(aliasedGlobalPath);
+    }
+    return undefined;
+  };
+
+  var tryResolveExternalFromNodeRequire = function(moduleName) {
+    var nodeRequire = null;
+    if (typeof require === 'function') {
+      nodeRequire = require;
+    } else if (globalObject && typeof globalObject.require === 'function') {
+      nodeRequire = globalObject.require;
+    }
+    if (!nodeRequire) return undefined;
+    try {
+      return nodeRequire(moduleName);
+    } catch (error) {
+      return undefined;
+    }
+  };
+
+  var resolveExternalModule = function(moduleName) {
+    if (Object.prototype.hasOwnProperty.call(externals, moduleName)) {
+      return externals[moduleName];
+    }
+    var globalExternalValue = tryResolveExternalFromGlobal(moduleName);
+    if (typeof globalExternalValue !== 'undefined') {
+      externals[moduleName] = globalExternalValue;
+      return globalExternalValue;
+    }
+    var nodeExternalValue = tryResolveExternalFromNodeRequire(moduleName);
+    if (typeof nodeExternalValue !== 'undefined') {
+      externals[moduleName] = nodeExternalValue;
+      return nodeExternalValue;
+    }
+    return undefined;
   };
 
   var resolveModuleId = function(request, fromModuleId) {
@@ -1606,8 +1679,9 @@ bool ExporterHelper::ExportTypeScriptProjectScripts(
   };
 
   var requireModule = function(request, fromModuleId) {
-    if (Object.prototype.hasOwnProperty.call(externals, request)) {
-      return externals[request];
+    var externalModule = resolveExternalModule(request);
+    if (typeof externalModule !== 'undefined') {
+      return externalModule;
     }
 
     var resolvedModuleId = resolveModuleId(request, fromModuleId);
@@ -1631,13 +1705,274 @@ bool ExporterHelper::ExportTypeScriptProjectScripts(
   };
 
   var projectTests = [];
+  var sharedState = Object.create(null);
+  var scriptEventListeners = Object.create(null);
+
+  var getListenersForEvent = function(eventName, createIfMissing) {
+    if (!eventName || typeof eventName !== 'string') return [];
+    if (!Object.prototype.hasOwnProperty.call(scriptEventListeners, eventName)) {
+      if (!createIfMissing) return [];
+      scriptEventListeners[eventName] = [];
+    }
+    return scriptEventListeners[eventName];
+  };
+
+  var cloneArray = function(values) {
+    if (!values || !values.length) return [];
+    return values.slice();
+  };
 
   var modulesApi = {
     defineSource: function(moduleId, moduleSource) {
       moduleSources[moduleId] = moduleSource;
     },
     setExternal: function(moduleName, moduleValue) {
+      if (!moduleName || typeof moduleName !== 'string') return;
+      if (typeof moduleValue === 'undefined') {
+        delete externals[moduleName];
+        return;
+      }
       externals[moduleName] = moduleValue;
+    },
+    setExternalAlias: function(moduleName, globalPath) {
+      if (!moduleName || typeof moduleName !== 'string') return;
+      if (!globalPath || typeof globalPath !== 'string') return;
+      externalAliases[moduleName] = globalPath;
+      var resolvedValue = tryResolveExternalFromGlobal(moduleName);
+      if (typeof resolvedValue !== 'undefined') {
+        externals[moduleName] = resolvedValue;
+      }
+    },
+    hasExternal: function(moduleName) {
+      if (!moduleName || typeof moduleName !== 'string') return false;
+      if (Object.prototype.hasOwnProperty.call(externals, moduleName)) return true;
+      return typeof resolveExternalModule(moduleName) !== 'undefined';
+    },
+    getExternal: function(moduleName) {
+      if (!moduleName || typeof moduleName !== 'string') return undefined;
+      return resolveExternalModule(moduleName);
+    },
+    requireExternal: function(moduleName) {
+      if (!moduleName || typeof moduleName !== 'string') return undefined;
+      return resolveExternalModule(moduleName);
+    },
+    importExternal: function(moduleName) {
+      if (!moduleName || typeof moduleName !== 'string') {
+        return Promise.reject(
+          new Error(
+            '[TypeScript Modules] External module name must be a non-empty string.'
+          )
+        );
+      }
+      var resolvedExternal = resolveExternalModule(moduleName);
+      if (typeof resolvedExternal !== 'undefined') {
+        return Promise.resolve(resolvedExternal);
+      }
+      try {
+        var dynamicImportFactory = new Function(
+          'moduleName',
+          'return import(moduleName);'
+        );
+        return dynamicImportFactory(moduleName).then(function(importedModule) {
+          var moduleValue =
+            importedModule &&
+            typeof importedModule === 'object' &&
+            Object.prototype.hasOwnProperty.call(importedModule, 'default')
+              ? importedModule.default
+              : importedModule;
+          externals[moduleName] = moduleValue;
+          return moduleValue;
+        });
+      } catch (error) {
+        return Promise.reject(
+          new Error(
+            '[TypeScript Modules] Unable to import external module "' +
+              moduleName +
+              '".'
+          )
+        );
+      }
+    },
+    resolveGlobal: function(globalPath) {
+      return getGlobalValueByPath(globalPath);
+    },
+    bindDefaultExternals: function() {
+      modulesApi.setExternal('globalThis', globalObject);
+      modulesApi.setExternal('tsModules', modulesApi);
+      if (typeof globalObject.gdjs !== 'undefined') {
+        modulesApi.setExternal('gdjs', globalObject.gdjs);
+      }
+
+      modulesApi.setExternalAlias('three', 'THREE');
+      modulesApi.setExternalAlias('THREE', 'THREE');
+      modulesApi.setExternalAlias('pixi.js', 'PIXI');
+      modulesApi.setExternalAlias('pixi', 'PIXI');
+      modulesApi.setExternalAlias('PIXI', 'PIXI');
+      modulesApi.setExternalAlias('howler', 'Howler');
+      modulesApi.setExternalAlias('Howler', 'Howler');
+      modulesApi.setExternalAlias('Howl', 'Howl');
+      modulesApi.setExternalAlias('tone', 'Tone');
+      modulesApi.setExternalAlias('Tone', 'Tone');
+      modulesApi.setExternalAlias('babylonjs', 'BABYLON');
+      modulesApi.setExternalAlias('BABYLON', 'BABYLON');
+    },
+    listModuleIds: function() {
+      return Object.keys(moduleSources).sort();
+    },
+    callExport: function(moduleId, exportName) {
+      if (!moduleId || typeof moduleId !== 'string') {
+        throw new Error('[TypeScript Modules] moduleId must be a non-empty string.');
+      }
+      var moduleExports = modulesApi.require(moduleId);
+      var extraArgs = Array.prototype.slice.call(arguments, 2);
+      if (typeof exportName === 'undefined' || exportName === null || exportName === '') {
+        if (typeof moduleExports !== 'function') {
+          throw new Error(
+            '[TypeScript Modules] Module "' +
+              moduleId +
+              '" does not export a default callable function.'
+          );
+        }
+        return moduleExports.apply(moduleExports, extraArgs);
+      }
+      if (!moduleExports || typeof moduleExports[exportName] !== 'function') {
+        throw new Error(
+          '[TypeScript Modules] Module "' +
+            moduleId +
+            '" has no callable export "' +
+            exportName +
+            '".'
+        );
+      }
+      return moduleExports[exportName].apply(moduleExports, extraArgs);
+    },
+    hasSharedState: function(key) {
+      return (
+        !!key &&
+        typeof key === 'string' &&
+        Object.prototype.hasOwnProperty.call(sharedState, key)
+      );
+    },
+    setSharedState: function(key, value) {
+      if (!key || typeof key !== 'string') return;
+      sharedState[key] = value;
+    },
+    getSharedState: function(key, defaultValue) {
+      if (!key || typeof key !== 'string') return defaultValue;
+      if (!Object.prototype.hasOwnProperty.call(sharedState, key)) {
+        return defaultValue;
+      }
+      return sharedState[key];
+    },
+    deleteSharedState: function(key) {
+      if (!key || typeof key !== 'string') return false;
+      if (!Object.prototype.hasOwnProperty.call(sharedState, key)) return false;
+      delete sharedState[key];
+      return true;
+    },
+    patchSharedState: function(key, patchValue) {
+      if (!key || typeof key !== 'string') return undefined;
+      var currentValue = modulesApi.getSharedState(key, {});
+      if (
+        !currentValue ||
+        typeof currentValue !== 'object' ||
+        Array.isArray(currentValue)
+      ) {
+        currentValue = {};
+      }
+      var nextValue = Object.assign({}, currentValue, patchValue || {});
+      modulesApi.setSharedState(key, nextValue);
+      return nextValue;
+    },
+    clearSharedState: function() {
+      var keys = Object.keys(sharedState);
+      for (var i = 0; i < keys.length; i++) {
+        delete sharedState[keys[i]];
+      }
+    },
+    listSharedStateKeys: function() {
+      return Object.keys(sharedState).sort();
+    },
+    on: function(eventName, listener) {
+      if (!eventName || typeof eventName !== 'string') return function() {};
+      if (typeof listener !== 'function') return function() {};
+      var listeners = getListenersForEvent(eventName, true);
+      listeners.push(listener);
+      return function unsubscribe() {
+        modulesApi.off(eventName, listener);
+      };
+    },
+    once: function(eventName, listener) {
+      if (!eventName || typeof eventName !== 'string') return function() {};
+      if (typeof listener !== 'function') return function() {};
+      var onceWrapper = function(payload, metadata) {
+        modulesApi.off(eventName, onceWrapper);
+        return listener(payload, metadata);
+      };
+      onceWrapper.__originalListener = listener;
+      return modulesApi.on(eventName, onceWrapper);
+    },
+    off: function(eventName, listener) {
+      if (!eventName || typeof eventName !== 'string') return 0;
+      var listeners = getListenersForEvent(eventName, false);
+      if (!listeners.length) return 0;
+      if (typeof listener !== 'function') {
+        var removedCount = listeners.length;
+        listeners.length = 0;
+        return removedCount;
+      }
+      var removed = 0;
+      for (var i = listeners.length - 1; i >= 0; i--) {
+        var currentListener = listeners[i];
+        if (
+          currentListener === listener ||
+          currentListener.__originalListener === listener
+        ) {
+          listeners.splice(i, 1);
+          removed++;
+        }
+      }
+      return removed;
+    },
+    emit: function(eventName, payload) {
+      if (!eventName || typeof eventName !== 'string') return 0;
+      var listeners = cloneArray(getListenersForEvent(eventName, false));
+      if (!listeners.length) return 0;
+      var metadata = {
+        eventName: eventName,
+        timestamp: Date.now(),
+        listenersCount: listeners.length,
+      };
+      for (var i = 0; i < listeners.length; i++) {
+        try {
+          listeners[i](payload, metadata);
+        } catch (error) {
+          console.error(
+            '[TypeScript Modules] Listener error for event "' + eventName + '".',
+            error
+          );
+        }
+      }
+      return listeners.length;
+    },
+    clearEventListeners: function(eventName) {
+      if (!eventName || typeof eventName !== 'string') {
+        var allEvents = Object.keys(scriptEventListeners);
+        for (var i = 0; i < allEvents.length; i++) {
+          scriptEventListeners[allEvents[i]].length = 0;
+        }
+        return allEvents.length;
+      }
+      if (!Object.prototype.hasOwnProperty.call(scriptEventListeners, eventName)) {
+        return 0;
+      }
+      var listeners = scriptEventListeners[eventName];
+      var removedCount = listeners.length;
+      listeners.length = 0;
+      return removedCount;
+    },
+    listEventNames: function() {
+      return Object.keys(scriptEventListeners).sort();
     },
     evalJavaScript: function(code) {
       return new Function(code)();
@@ -1678,6 +2013,50 @@ bool ExporterHelper::ExportTypeScriptProjectScripts(
       globalObject.gdjs.ts.setExternalModule = function(moduleName, moduleValue) {
         modulesApi.setExternal(moduleName, moduleValue);
       };
+      globalObject.gdjs.ts.bridge = modulesApi;
+      globalObject.gdjs.ts.setExternalModuleAlias = function(
+        moduleName,
+        globalPath
+      ) {
+        modulesApi.setExternalAlias(moduleName, globalPath);
+      };
+      globalObject.gdjs.ts.requireExternalModule = function(moduleName) {
+        return modulesApi.requireExternal(moduleName);
+      };
+      globalObject.gdjs.ts.importExternalModule = function(moduleName) {
+        return modulesApi.importExternal(moduleName);
+      };
+      globalObject.gdjs.ts.resolveGlobal = function(globalPath) {
+        return modulesApi.resolveGlobal(globalPath);
+      };
+      globalObject.gdjs.ts.bindDefaultExternalModules = function() {
+        modulesApi.bindDefaultExternals();
+      };
+      globalObject.gdjs.ts.requireModule = function(moduleName) {
+        return modulesApi.require(moduleName);
+      };
+      globalObject.gdjs.ts.callScriptExport = function(moduleId, exportName) {
+        var extraArgs = Array.prototype.slice.call(arguments, 2);
+        return modulesApi.callExport.apply(
+          modulesApi,
+          [moduleId, exportName].concat(extraArgs)
+        );
+      };
+      globalObject.gdjs.ts.setSharedState = function(key, value) {
+        return modulesApi.setSharedState(key, value);
+      };
+      globalObject.gdjs.ts.getSharedState = function(key, defaultValue) {
+        return modulesApi.getSharedState(key, defaultValue);
+      };
+      globalObject.gdjs.ts.emit = function(eventName, payload) {
+        return modulesApi.emit(eventName, payload);
+      };
+      globalObject.gdjs.ts.on = function(eventName, listener) {
+        return modulesApi.on(eventName, listener);
+      };
+      globalObject.gdjs.ts.off = function(eventName, listener) {
+        return modulesApi.off(eventName, listener);
+      };
       globalObject.gdjs.ts.registerProjectBehavior = function(
         behaviorType,
         behaviorConstructor
@@ -1699,6 +2078,37 @@ bool ExporterHelper::ExportTypeScriptProjectScripts(
       globalObject.registerProjectBehavior = function(behaviorType, behaviorConstructor) {
         globalObject.gdjs.registerBehavior(behaviorType, behaviorConstructor);
       };
+      globalObject.requireModule = function(moduleName) {
+        return modulesApi.require(moduleName);
+      };
+      globalObject.callScriptExport = function(moduleId, exportName) {
+        var extraArgs = Array.prototype.slice.call(arguments, 2);
+        return modulesApi.callExport.apply(
+          modulesApi,
+          [moduleId, exportName].concat(extraArgs)
+        );
+      };
+      globalObject.setScriptSharedState = function(key, value) {
+        return modulesApi.setSharedState(key, value);
+      };
+      globalObject.getScriptSharedState = function(key, defaultValue) {
+        return modulesApi.getSharedState(key, defaultValue);
+      };
+      globalObject.emitScriptEvent = function(eventName, payload) {
+        return modulesApi.emit(eventName, payload);
+      };
+      globalObject.onScriptEvent = function(eventName, listener) {
+        return modulesApi.on(eventName, listener);
+      };
+      globalObject.offScriptEvent = function(eventName, listener) {
+        return modulesApi.off(eventName, listener);
+      };
+      globalObject.requireExternalModule = function(moduleName) {
+        return modulesApi.requireExternal(moduleName);
+      };
+      globalObject.importExternalModule = function(moduleName) {
+        return modulesApi.importExternal(moduleName);
+      };
       globalObject.liveRepl = function(code) {
         return modulesApi.evalJavaScript(code);
       };
@@ -1707,6 +2117,7 @@ bool ExporterHelper::ExportTypeScriptProjectScripts(
       return requireModule(moduleId, '');
     },
   };
+  modulesApi.bindDefaultExternals();
   globalObject.__gdevelopTsModules = modulesApi;
   globalObject.tsModules = modulesApi;
 })(typeof globalThis !== 'undefined' ? globalThis : window);

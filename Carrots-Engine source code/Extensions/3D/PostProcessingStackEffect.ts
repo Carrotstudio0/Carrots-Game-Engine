@@ -38,10 +38,10 @@ namespace gdjs {
                 ? true
                 : !!effectData.booleanParameters.enabled;
             this._qualityMode =
-              effectData.stringParameters.qualityMode || 'medium';
+              effectData.stringParameters.qualityMode || 'high';
             this._adaptiveQualityEnabled =
               effectData.booleanParameters.adaptiveQuality === undefined
-                ? true
+                ? false
                 : !!effectData.booleanParameters.adaptiveQuality;
             this._targetFps = clampPostProcessingTargetFps(
               effectData.doubleParameters.targetFps
@@ -148,7 +148,7 @@ namespace gdjs {
 
           updateStringParameter(parameterName: string, value: string): void {
             if (parameterName === 'qualityMode') {
-              this._qualityMode = value || 'medium';
+              this._qualityMode = value || 'high';
             }
           }
 
@@ -178,10 +178,10 @@ namespace gdjs {
           updateFromNetworkSyncData(
             syncData: PostProcessingStackNetworkSyncData
           ): void {
-            this._qualityMode = syncData.q || 'medium';
+            this._qualityMode = syncData.q || 'high';
             this._stackEnabled = !!syncData.e;
             this._adaptiveQualityEnabled =
-              syncData.aq === undefined ? true : !!syncData.aq;
+              syncData.aq === undefined ? false : !!syncData.aq;
             this._targetFps = clampPostProcessingTargetFps(syncData.tf || 60);
           }
         })();

@@ -10,6 +10,7 @@ import ForEachChildVariableEvent from './Renderers/ForEachChildVariableEvent';
 import RepeatEvent from './Renderers/RepeatEvent';
 import WhileEvent from './Renderers/WhileEvent';
 import LinkEvent from './Renderers/LinkEvent';
+import JsCodeEvent from './Renderers/JsCodeEvent';
 import { type EventRendererProps } from './Renderers/EventRenderer';
 
 const EventsRenderingService = {
@@ -24,6 +25,8 @@ const EventsRenderingService = {
     'BuiltinCommonInstructions::Repeat': RepeatEvent,
     'BuiltinCommonInstructions::While': WhileEvent,
     'BuiltinCommonInstructions::Link': LinkEvent,
+    'BuiltinCommonInstructions::JsCode': JsCodeEvent,
+    'BuiltinCommonInstructions::JsCodeInsert': JsCodeEvent,
   },
   // $FlowFixMe[missing-this-annot]
   getEventComponent: function(

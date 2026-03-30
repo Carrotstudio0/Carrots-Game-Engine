@@ -329,7 +329,9 @@ export class CodeEditor extends React.Component<Props, State> {
         target: monaco.languages.typescript.ScriptTarget.ES6,
         allowNonTsExtensions: true,
         allowJs: true,
-        checkJs: true,
+        // JavaScript in Events is dynamic by design (runtime-injected symbols),
+        // so full JS type-checking creates many false positives.
+        checkJs: false,
       });
       monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
         target: monaco.languages.typescript.ScriptTarget.ES6,
@@ -338,8 +340,8 @@ export class CodeEditor extends React.Component<Props, State> {
         checkJs: false,
       });
       monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-        noSemanticValidation: false,
-        noSuggestionDiagnostics: false,
+        noSemanticValidation: true,
+        noSuggestionDiagnostics: true,
         noSyntaxValidation: false,
       });
       monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({

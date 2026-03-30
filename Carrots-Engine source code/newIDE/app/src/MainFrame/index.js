@@ -265,6 +265,31 @@ const editorKindToRenderer: {
 
 const defaultSnackbarAutoHideDuration = 3000;
 
+const migrateLegacyJavaScriptEventTypesInProjectContent = (
+  content: any
+): boolean => {
+  let hasMigrated = false;
+
+  const visit = (value: any) => {
+    if (!value || typeof value !== 'object') return;
+
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    if (value.type === 'BuiltinCommonInstructions::JsCodeInsert') {
+      value.type = 'BuiltinCommonInstructions::JsCode';
+      hasMigrated = true;
+    }
+
+    Object.keys(value).forEach(key => visit(value[key]));
+  };
+
+  visit(content);
+  return hasMigrated;
+};
+
 const findStorageProviderFor = (
   i18n: I18n,
   storageProviders: Array<StorageProvider>,
@@ -1393,6 +1418,11 @@ const MainFrame = (props: Props): React.MixedElement => {
         if (!verifyProjectContent(i18n, content)) {
           // The content is not recognized and the user was warned. Abort the opening.
           return;
+        }
+        if (migrateLegacyJavaScriptEventTypesInProjectContent(content)) {
+          console.info(
+            'Migrated legacy JavaScript events from JsCodeInsert to JsCode while opening project.'
+          );
         }
 
         const serializedProject = gd.Serializer.fromJSObject(content);

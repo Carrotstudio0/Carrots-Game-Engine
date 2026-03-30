@@ -57,6 +57,69 @@ namespace gdjs {
       registeredExtensionCapabilityNames: string[];
     }
 
+    export interface InputButtonSnapshot {
+      index: number;
+      pressed: boolean;
+      touched: boolean;
+      value: number;
+    }
+
+    export interface InputGamepadSnapshot {
+      index: number;
+      id: string;
+      connected: boolean;
+      mapping: string;
+      timestamp: number;
+      axes: number[];
+      buttons: InputButtonSnapshot[];
+    }
+
+    export interface InputTouchSnapshot {
+      id: number;
+      x: number;
+      y: number;
+      justEnded: boolean;
+      isMouseTouch: boolean;
+    }
+
+    export interface InputSnapshot {
+      keyboard: {
+        lastPressedKey: number;
+        pressedKeys: number[];
+        justPressedKeys: number[];
+        releasedKeys: number[];
+      };
+      mouse: {
+        x: number;
+        y: number;
+        cursorX: number;
+        cursorY: number;
+        movementX: number;
+        movementY: number;
+        insideCanvas: boolean;
+        wheelDeltaX: number;
+        wheelDeltaY: number;
+        wheelDeltaZ: number;
+        pressedButtons: number[];
+        releasedButtons: number[];
+      };
+      touch: {
+        simulateMouse: boolean;
+        startedTouches: number[];
+        touches: InputTouchSnapshot[];
+      };
+      gamepads: InputGamepadSnapshot[];
+    }
+
+    export interface RuntimeEngineAccess {
+      gdjs: typeof gdjs;
+      runtimeGame: gdjs.RuntimeGame | null;
+      renderer: unknown;
+      inputManager: gdjs.InputManager | null;
+      sceneStack: unknown;
+      currentScene: gdjs.RuntimeScene | null;
+    }
+
     const _behaviorCapabilities = new Hashtable<
       Hashtable<(behavior: gdjs.RuntimeBehavior, ...args: any[]) => unknown>
     >();
@@ -179,6 +242,160 @@ namespace gdjs {
         return undefined;
       }
       return namespace[methodName](...args);
+    };
+
+    const _resolveRuntimeGame = (
+      source?:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null
+    ): gdjs.RuntimeGame | null => {
+      if (!source) {
+        return null;
+      }
+      const sourceAny = source as any;
+      if (
+        typeof sourceAny.getInputManager === 'function' &&
+        typeof sourceAny.getRenderer === 'function'
+      ) {
+        return sourceAny as gdjs.RuntimeGame;
+      }
+      if (typeof sourceAny.getGame === 'function') {
+        const runtimeGame = sourceAny.getGame();
+        if (
+          runtimeGame &&
+          typeof runtimeGame.getInputManager === 'function' &&
+          typeof runtimeGame.getRenderer === 'function'
+        ) {
+          return runtimeGame as gdjs.RuntimeGame;
+        }
+      }
+      return null;
+    };
+
+    const _getCurrentSceneFromRuntimeGame = (
+      runtimeGame: gdjs.RuntimeGame | null
+    ): gdjs.RuntimeScene | null => {
+      if (!runtimeGame) {
+        return null;
+      }
+      try {
+        const sceneStack = runtimeGame.getSceneStack();
+        if (!sceneStack || typeof sceneStack.getCurrentScene !== 'function') {
+          return null;
+        }
+        return sceneStack.getCurrentScene();
+      } catch (error) {
+        return null;
+      }
+    };
+
+    const _listTruthyNumericKeys = (
+      valuesByKey: { [key: string]: unknown } | null | undefined
+    ): number[] => {
+      const keys: number[] = [];
+      if (!valuesByKey) {
+        return keys;
+      }
+      for (const key in valuesByKey) {
+        if (!Object.prototype.hasOwnProperty.call(valuesByKey, key)) {
+          continue;
+        }
+        if (!valuesByKey[key]) {
+          continue;
+        }
+        const parsedKey = parseInt(key, 10);
+        if (!Number.isNaN(parsedKey)) {
+          keys.push(parsedKey);
+        }
+      }
+      keys.sort((a, b) => a - b);
+      return keys;
+    };
+
+    const _getGamepadsSnapshot = (): InputGamepadSnapshot[] => {
+      const globalNavigator: any =
+        typeof navigator !== 'undefined' ? navigator : null;
+      if (!globalNavigator) {
+        return [];
+      }
+
+      let rawGamepads: any = null;
+      try {
+        if (typeof globalNavigator.getGamepads === 'function') {
+          rawGamepads = globalNavigator.getGamepads();
+        } else if (typeof globalNavigator.webkitGetGamepads === 'function') {
+          rawGamepads = globalNavigator.webkitGetGamepads();
+        } else if (globalNavigator.webkitGamepads) {
+          rawGamepads = globalNavigator.webkitGamepads;
+        } else if (globalNavigator.mozGamepads) {
+          rawGamepads = globalNavigator.mozGamepads;
+        }
+      } catch (error) {
+        rawGamepads = null;
+      }
+      if (!rawGamepads) {
+        return [];
+      }
+
+      const gamepads: InputGamepadSnapshot[] = [];
+      for (let index = 0; index < rawGamepads.length; index++) {
+        const gamepad = rawGamepads[index];
+        if (!gamepad) {
+          continue;
+        }
+        const buttons: InputButtonSnapshot[] = [];
+        const rawButtons = gamepad.buttons || [];
+        for (let buttonIndex = 0; buttonIndex < rawButtons.length; buttonIndex++) {
+          const button = rawButtons[buttonIndex];
+          buttons.push({
+            index: buttonIndex,
+            pressed: !!(button && button.pressed),
+            touched: !!(button && button.touched),
+            value:
+              button && typeof button.value === 'number' ? button.value : 0,
+          });
+        }
+        gamepads.push({
+          index: typeof gamepad.index === 'number' ? gamepad.index : index,
+          id: typeof gamepad.id === 'string' ? gamepad.id : '',
+          connected:
+            typeof gamepad.connected === 'boolean' ? gamepad.connected : true,
+          mapping: typeof gamepad.mapping === 'string' ? gamepad.mapping : '',
+          timestamp:
+            typeof gamepad.timestamp === 'number' ? gamepad.timestamp : 0,
+          axes: Array.isArray(gamepad.axes)
+            ? gamepad.axes.map((axisValue: unknown) =>
+                typeof axisValue === 'number' ? axisValue : 0
+              )
+            : [],
+          buttons,
+        });
+      }
+      return gamepads;
+    };
+
+    const _resolvePath = (
+      root: { [key: string]: unknown },
+      path: string
+    ): { owner: unknown; value: unknown } => {
+      if (!path || typeof path !== 'string') {
+        return { owner: null, value: root };
+      }
+      const normalizedPath = path.replace(/\[(\d+)\]/g, '.$1');
+      const parts = normalizedPath.split('.').filter((part) => !!part);
+      let currentValue: unknown = root;
+      let owner: unknown = null;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (currentValue === null || typeof currentValue === 'undefined') {
+          return { owner: null, value: undefined };
+        }
+        owner = currentValue;
+        currentValue = (currentValue as any)[part];
+      }
+      return { owner, value: currentValue };
     };
 
     const _getObjectId = (object: gdjs.RuntimeObject): string =>
@@ -592,6 +809,347 @@ namespace gdjs {
         object,
         ...args
       );
+    };
+
+    export const getEngineAccess = function (
+      source?:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null
+    ): RuntimeEngineAccess {
+      const runtimeGame = _resolveRuntimeGame(source);
+      const inputManager = runtimeGame ? runtimeGame.getInputManager() : null;
+      const renderer = runtimeGame ? runtimeGame.getRenderer() : null;
+      const sceneStack = runtimeGame ? runtimeGame.getSceneStack() : null;
+      const currentScene = _getCurrentSceneFromRuntimeGame(runtimeGame);
+      return {
+        gdjs,
+        runtimeGame,
+        renderer,
+        inputManager,
+        sceneStack,
+        currentScene,
+      };
+    };
+
+    export const readEnginePath = function (
+      path: string,
+      source?:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null
+    ): unknown {
+      const engineAccess = getEngineAccess(source);
+      const root = engineAccess as unknown as { [key: string]: unknown };
+      return _resolvePath(root, path).value;
+    };
+
+    export const invokeEnginePath = function (
+      path: string,
+      source?:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null,
+      ...args: any[]
+    ): unknown {
+      const engineAccess = getEngineAccess(source);
+      const root = engineAccess as unknown as { [key: string]: unknown };
+      const resolvedPath = _resolvePath(root, path);
+      if (typeof resolvedPath.value !== 'function') {
+        return undefined;
+      }
+      return (resolvedPath.value as Function).apply(resolvedPath.owner, args);
+    };
+
+    export const getInputSnapshot = function (
+      source?:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null
+    ): InputSnapshot {
+      const runtimeGame = _resolveRuntimeGame(source);
+      const inputManager = runtimeGame ? runtimeGame.getInputManager() : null;
+      if (!inputManager) {
+        return {
+          keyboard: {
+            lastPressedKey: 0,
+            pressedKeys: [],
+            justPressedKeys: [],
+            releasedKeys: [],
+          },
+          mouse: {
+            x: 0,
+            y: 0,
+            cursorX: 0,
+            cursorY: 0,
+            movementX: 0,
+            movementY: 0,
+            insideCanvas: false,
+            wheelDeltaX: 0,
+            wheelDeltaY: 0,
+            wheelDeltaZ: 0,
+            pressedButtons: [],
+            releasedButtons: [],
+          },
+          touch: {
+            simulateMouse: true,
+            startedTouches: [],
+            touches: [],
+          },
+          gamepads: _getGamepadsSnapshot(),
+        };
+      }
+
+      const inputManagerAny = inputManager as any;
+      const touchIds = inputManager.getAllTouchIdentifiers();
+      const touchSnapshots: InputTouchSnapshot[] = touchIds.map((id) => ({
+        id,
+        x: inputManager.getTouchX(id),
+        y: inputManager.getTouchY(id),
+        justEnded: inputManager.hasTouchEnded(id),
+        isMouseTouch: id === gdjs.InputManager.MOUSE_TOUCH_ID,
+      }));
+
+      return {
+        keyboard: {
+          lastPressedKey: inputManager.getLastPressedKey(),
+          pressedKeys: _listTruthyNumericKeys(inputManagerAny._pressedKeys?.items),
+          justPressedKeys: inputManager.exceptionallyGetAllJustPressedKeys(),
+          releasedKeys: _listTruthyNumericKeys(
+            inputManagerAny._releasedKeys?.items
+          ),
+        },
+        mouse: {
+          x: inputManager.getMouseX(),
+          y: inputManager.getMouseY(),
+          cursorX: inputManager.getCursorX(),
+          cursorY: inputManager.getCursorY(),
+          movementX: inputManager.getMouseMovementX(),
+          movementY: inputManager.getMouseMovementY(),
+          insideCanvas: inputManager.isMouseInsideCanvas(),
+          wheelDeltaX: inputManager.getMouseWheelDeltaX(),
+          wheelDeltaY: inputManager.getMouseWheelDelta(),
+          wheelDeltaZ: inputManager.getMouseWheelDeltaZ(),
+          pressedButtons: _listTruthyNumericKeys(
+            inputManagerAny._pressedMouseButtons
+          ),
+          releasedButtons: _listTruthyNumericKeys(
+            inputManagerAny._releasedMouseButtons
+          ),
+        },
+        touch: {
+          simulateMouse: inputManager.isSimulatingMouseWithTouch(),
+          startedTouches: [...inputManager.getStartedTouchIdentifiers()],
+          touches: touchSnapshots,
+        },
+        gamepads: _getGamepadsSnapshot(),
+      };
+    };
+
+    export const listPressedKeys = function (
+      source?:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null
+    ): number[] {
+      return getInputSnapshot(source).keyboard.pressedKeys;
+    };
+
+    export const listActiveTouches = function (
+      source?:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null
+    ): InputTouchSnapshot[] {
+      return getInputSnapshot(source).touch.touches;
+    };
+
+    export const listConnectedGamepads = function (): InputGamepadSnapshot[] {
+      return _getGamepadsSnapshot().filter((gamepad) => gamepad.connected);
+    };
+
+    export const setKeyPressed = function (
+      source:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null,
+      keyCode: number,
+      location?: number
+    ): boolean {
+      const runtimeGame = _resolveRuntimeGame(source);
+      if (!runtimeGame) {
+        return false;
+      }
+      runtimeGame.getInputManager().onKeyPressed(keyCode, location);
+      return true;
+    };
+
+    export const setKeyReleased = function (
+      source:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null,
+      keyCode: number,
+      location?: number
+    ): boolean {
+      const runtimeGame = _resolveRuntimeGame(source);
+      if (!runtimeGame) {
+        return false;
+      }
+      runtimeGame.getInputManager().onKeyReleased(keyCode, location);
+      return true;
+    };
+
+    export const setMousePosition = function (
+      source:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null,
+      x: number,
+      y: number,
+      movementX?: number,
+      movementY?: number
+    ): boolean {
+      const runtimeGame = _resolveRuntimeGame(source);
+      if (!runtimeGame) {
+        return false;
+      }
+      runtimeGame.getInputManager().onMouseMove(x, y, {
+        movementX: movementX || 0,
+        movementY: movementY || 0,
+      });
+      return true;
+    };
+
+    export const setMouseButtonPressed = function (
+      source:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null,
+      buttonCode: number
+    ): boolean {
+      const runtimeGame = _resolveRuntimeGame(source);
+      if (!runtimeGame) {
+        return false;
+      }
+      runtimeGame.getInputManager().onMouseButtonPressed(buttonCode);
+      return true;
+    };
+
+    export const setMouseButtonReleased = function (
+      source:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null,
+      buttonCode: number
+    ): boolean {
+      const runtimeGame = _resolveRuntimeGame(source);
+      if (!runtimeGame) {
+        return false;
+      }
+      runtimeGame.getInputManager().onMouseButtonReleased(buttonCode);
+      return true;
+    };
+
+    export const setMouseWheelDelta = function (
+      source:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null,
+      deltaY: number,
+      deltaX?: number,
+      deltaZ?: number
+    ): boolean {
+      const runtimeGame = _resolveRuntimeGame(source);
+      if (!runtimeGame) {
+        return false;
+      }
+      runtimeGame.getInputManager().onMouseWheel(
+        deltaY,
+        deltaX || 0,
+        deltaZ || 0
+      );
+      return true;
+    };
+
+    export const setTouchStarted = function (
+      source:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null,
+      rawIdentifier: number,
+      x: number,
+      y: number
+    ): boolean {
+      const runtimeGame = _resolveRuntimeGame(source);
+      if (!runtimeGame) {
+        return false;
+      }
+      runtimeGame.getInputManager().onTouchStart(rawIdentifier, x, y);
+      return true;
+    };
+
+    export const setTouchMoved = function (
+      source:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null,
+      rawIdentifier: number,
+      x: number,
+      y: number
+    ): boolean {
+      const runtimeGame = _resolveRuntimeGame(source);
+      if (!runtimeGame) {
+        return false;
+      }
+      runtimeGame.getInputManager().onTouchMove(rawIdentifier, x, y);
+      return true;
+    };
+
+    export const setTouchEnded = function (
+      source:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null,
+      rawIdentifier: number
+    ): boolean {
+      const runtimeGame = _resolveRuntimeGame(source);
+      if (!runtimeGame) {
+        return false;
+      }
+      runtimeGame.getInputManager().onTouchEnd(rawIdentifier);
+      return true;
+    };
+
+    export const setTouchSimulationForMouse = function (
+      source:
+        | gdjs.RuntimeGame
+        | gdjs.RuntimeInstanceContainer
+        | gdjs.RuntimeScene
+        | null,
+      enable: boolean
+    ): boolean {
+      const runtimeGame = _resolveRuntimeGame(source);
+      if (!runtimeGame) {
+        return false;
+      }
+      runtimeGame.getInputManager().touchSimulateMouse(enable);
+      return true;
     };
 
     gdjs.registerObjectDeletedFromSceneCallback(

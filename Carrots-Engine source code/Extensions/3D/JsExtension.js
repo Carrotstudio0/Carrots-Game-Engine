@@ -4407,6 +4407,88 @@ module.exports = {
       .setGetter('gdjs.scene3d.camera.getFov')
       .setIncludeFile('Extensions/3D/Scene3DTools.js');
 
+    extension
+      .addAction(
+        'UpdateThirdPersonCameraRigFromObject',
+        _('Update third-person camera rig'),
+        _(
+          'Orbit the camera around an object and smoothly look at it. Useful for third-person controls.'
+        ),
+        _('Update third-person camera around _PARAM1_'),
+        _('Layers and cameras'),
+        'res/conditions/3d_box.svg',
+        'res/conditions/3d_box.svg'
+      )
+      .addCodeOnlyParameter('currentScene', '')
+      .addParameter('objectPtr', _('Object to follow'), '')
+      .addParameter('number', _('Distance'))
+      .addParameter('number', _('Yaw (degrees)'))
+      .addParameter('number', _('Pitch (degrees)'))
+      .addParameter('expression', _('Look delta yaw (degrees, optional)'), '', true)
+      .setDefaultValue('0')
+      .addParameter(
+        'expression',
+        _('Look delta pitch (degrees, optional)'),
+        '',
+        true
+      )
+      .setDefaultValue('0')
+      .addParameter('expression', _('Focus height offset (optional)'), '', true)
+      .setDefaultValue('32')
+      .addParameter('layer', _('Layer'), '', true)
+      .setDefaultValue('""')
+      .addParameter('expression', _('Camera number (default : 0)'), '', true)
+      .setDefaultValue('0')
+      .addParameter('expression', _('Min pitch (optional)'), '', true)
+      .setDefaultValue('-75')
+      .addParameter('expression', _('Max pitch (optional)'), '', true)
+      .setDefaultValue('80')
+      .addParameter(
+        'expression',
+        _('Position responsiveness (optional)'),
+        '',
+        true
+      )
+      .setDefaultValue('14')
+      .addParameter(
+        'expression',
+        _('Rotation responsiveness (optional)'),
+        '',
+        true
+      )
+      .setDefaultValue('18')
+      .addParameter(
+        'expression',
+        _('Distance responsiveness (optional)'),
+        '',
+        true
+      )
+      .setDefaultValue('12')
+      .markAsAdvanced()
+      .setFunctionName('gdjs.scene3d.camera.updateThirdPersonCameraRigFromObject')
+      .setIncludeFile('Extensions/3D/Scene3DTools.js');
+
+    extension
+      .addAction(
+        'RemoveThirdPersonCameraRig',
+        _('Reset third-person camera rig'),
+        _(
+          'Reset the cached third-person camera rig for this camera. Useful when switching targets or camera modes.'
+        ),
+        _('Reset third-person camera rig for layer _PARAM1_'),
+        _('Layers and cameras'),
+        'res/conditions/3d_box.svg',
+        'res/conditions/3d_box.svg'
+      )
+      .addCodeOnlyParameter('currentScene', '')
+      .addParameter('layer', _('Layer'), '', true)
+      .setDefaultValue('""')
+      .addParameter('expression', _('Camera number (default : 0)'), '', true)
+      .setDefaultValue('0')
+      .markAsAdvanced()
+      .setFunctionName('gdjs.scene3d.camera.removeThirdPersonCameraRig')
+      .setIncludeFile('Extensions/3D/Scene3DTools.js');
+
     {
       const effect = extension
         .addEffect('LinearFog')
@@ -5801,13 +5883,13 @@ module.exports = {
         .setType('boolean');
       properties
         .getOrCreate('qualityMode')
-        .setValue('medium')
+        .setValue('high')
         .setLabel(_('Quality mode'))
         .setType('string')
         .setDescription(_('Use: low, medium, or high.'));
       properties
         .getOrCreate('adaptiveQuality')
-        .setValue('true')
+        .setValue('false')
         .setLabel(_('Adaptive quality'))
         .setType('boolean')
         .setDescription(
@@ -5857,7 +5939,7 @@ module.exports = {
         .setDescription(_('Between 0 and 1'));
       properties
         .getOrCreate('qualityMode')
-        .setValue('medium')
+        .setValue('high')
         .setLabel(_('Quality mode'))
         .setType('string')
         .setDescription(_('Use: low, medium, or high.'));
@@ -5907,7 +5989,7 @@ module.exports = {
         );
       properties
         .getOrCreate('qualityMode')
-        .setValue('medium')
+        .setValue('high')
         .setLabel(_('Quality mode'))
         .setType('string')
         .setDescription(_('Use: low, medium, or high.'));
@@ -6051,7 +6133,7 @@ module.exports = {
         );
       properties
         .getOrCreate('qualityMode')
-        .setValue('medium')
+        .setValue('high')
         .setLabel(_('Quality mode'))
         .setType('string')
         .setDescription(_('Use: low, medium, or high.'));
@@ -6101,7 +6183,7 @@ module.exports = {
         .setDescription(_('Maximum distance for volumetric ray marching.'));
       properties
         .getOrCreate('qualityMode')
-        .setValue('medium')
+        .setValue('high')
         .setLabel(_('Quality mode'))
         .setType('string')
         .setDescription(_('Use: low, medium, or high.'));
@@ -6157,7 +6239,7 @@ module.exports = {
         );
       properties
         .getOrCreate('qualityMode')
-        .setValue('medium')
+        .setValue('high')
         .setLabel(_('Quality mode'))
         .setType('string')
         .setDescription(_('Use: low, medium, or high.'));

@@ -29,6 +29,8 @@ MouseExtension::MouseExtension() {
       "gdjs.evtTools.input.getCursorY");
   GetAllConditions()["IsMouseInsideCanvas"].SetFunctionName(
       "gdjs.evtTools.input.isMouseInsideCanvas");
+  GetAllConditions()["IsPointerLocked"].SetFunctionName(
+      "gdjs.evtTools.input.isPointerLocked");
   GetAllConditions()["SourisX"].SetFunctionName(
       "gdjs.evtTools.input.getCursorX"); // Deprecated
   GetAllConditions()["SourisY"].SetFunctionName(
@@ -47,6 +49,10 @@ MouseExtension::MouseExtension() {
       "gdjs.evtTools.input.hideCursor");
   GetAllActions()["ShowCursor"].SetFunctionName(
       "gdjs.evtTools.input.showCursor");
+  GetAllActions()["RequestPointerLock"].SetFunctionName(
+      "gdjs.evtTools.input.requestPointerLock");
+  GetAllActions()["ExitPointerLock"].SetFunctionName(
+      "gdjs.evtTools.input.exitPointerLock");
   // Compatibility with GD <= 5.6.251
   GetAllActions()["CacheSouris"].SetFunctionName(
       "gdjs.evtTools.input.hideCursor");
@@ -124,6 +130,10 @@ MouseExtension::MouseExtension() {
 
   GetAllExpressions()["MouseWheelDelta"].SetFunctionName(
       "gdjs.evtTools.input.getMouseWheelDelta");
+  GetAllExpressions()["MouseMovementX"].SetFunctionName(
+      "gdjs.evtTools.input.getMouseMovementX");
+  GetAllExpressions()["MouseMovementY"].SetFunctionName(
+      "gdjs.evtTools.input.getMouseMovementY");
 
   StripUnimplementedInstructionsAndExpressions();
 }
