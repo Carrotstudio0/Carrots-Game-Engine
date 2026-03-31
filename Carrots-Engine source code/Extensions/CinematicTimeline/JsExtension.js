@@ -65,6 +65,26 @@ module.exports = {
 
     extension
       .addAction(
+        'LoadNamedFromProjectStorage',
+        _('Load named cinematic from project storage'),
+        _(
+          'Load a cinematic timeline by scene name from the built-in project storage variable.'
+        ),
+        _('Load cinematic timeline "_PARAM1_" from project storage'),
+        _('Cinematic Timeline'),
+        'res/actions/animation24.png',
+        'res/actions/animation.png'
+      )
+      .addCodeOnlyParameter('currentScene', '')
+      .addParameter('string', _('Scene name'), '', false)
+      .getCodeExtraInformation()
+      .setIncludeFile(
+        'Extensions/CinematicTimeline/cinematictimelinetools.js'
+      )
+      .setFunctionName('gdjs.evtTools.cinematicTimeline.loadFromProjectStorage');
+
+    extension
+      .addAction(
         'LoadAndPlayFromProjectStorage',
         _('Load and play cinematic from project storage'),
         _(
@@ -86,6 +106,28 @@ module.exports = {
 
     extension
       .addAction(
+        'LoadAndPlayNamedFromProjectStorage',
+        _('Load and play named cinematic from project storage'),
+        _(
+          'Load a cinematic timeline by scene name from project storage then start playback immediately.'
+        ),
+        _('Load and play cinematic timeline "_PARAM1_" from project storage'),
+        _('Cinematic Timeline'),
+        'res/actions/sonplaying24.png',
+        'res/actions/sonplaying.png'
+      )
+      .addCodeOnlyParameter('currentScene', '')
+      .addParameter('string', _('Scene name'), '', false)
+      .getCodeExtraInformation()
+      .setIncludeFile(
+        'Extensions/CinematicTimeline/cinematictimelinetools.js'
+      )
+      .setFunctionName(
+        'gdjs.evtTools.cinematicTimeline.loadAndPlayFromProjectStorage'
+      );
+
+    extension
+      .addAction(
         'SaveLoadedToProjectStorage',
         _('Save loaded cinematic to project storage'),
         _(
@@ -97,6 +139,26 @@ module.exports = {
         'res/actions/animation.png'
       )
       .addCodeOnlyParameter('currentScene', '')
+      .getCodeExtraInformation()
+      .setIncludeFile(
+        'Extensions/CinematicTimeline/cinematictimelinetools.js'
+      )
+      .setFunctionName('gdjs.evtTools.cinematicTimeline.saveLoadedToProjectStorage');
+
+    extension
+      .addAction(
+        'SaveLoadedToNamedProjectStorage',
+        _('Save loaded cinematic as named scene'),
+        _(
+          'Save the currently loaded cinematic timeline into project storage under the given scene name.'
+        ),
+        _('Save loaded cinematic timeline as "_PARAM1_" in project storage'),
+        _('Cinematic Timeline'),
+        'res/actions/animation24.png',
+        'res/actions/animation.png'
+      )
+      .addCodeOnlyParameter('currentScene', '')
+      .addParameter('string', _('Scene name'), '', false)
       .getCodeExtraInformation()
       .setIncludeFile(
         'Extensions/CinematicTimeline/cinematictimelinetools.js'
@@ -340,6 +402,24 @@ module.exports = {
         'Extensions/CinematicTimeline/cinematictimelinetools.js'
       )
       .setFunctionName('gdjs.evtTools.cinematicTimeline.hasLoadedScene');
+
+    extension
+      .addCondition(
+        'HasSceneInProjectStorage',
+        _('Has scene in project storage'),
+        _('Check if a named cinematic scene exists in project storage.'),
+        _('Project storage has cinematic scene _PARAM1_'),
+        _('Cinematic Timeline'),
+        'res/actions/animation24.png',
+        'res/actions/animation.png'
+      )
+      .addCodeOnlyParameter('currentScene', '')
+      .addParameter('string', _('Scene name'), '', false)
+      .getCodeExtraInformation()
+      .setIncludeFile(
+        'Extensions/CinematicTimeline/cinematictimelinetools.js'
+      )
+      .setFunctionName('gdjs.evtTools.cinematicTimeline.hasSceneInProjectStorage');
 
     extension
       .addCondition(

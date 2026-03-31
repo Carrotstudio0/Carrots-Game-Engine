@@ -211,6 +211,31 @@ declare namespace gdjs {
     const object: any;
   }
   const evtTools: any;
+  namespace cinematicTimeline {
+    function loadFromJson(runtimeScene: RuntimeScene, jsonString: string): void;
+    function loadFromProjectStorage(
+      runtimeScene: RuntimeScene,
+      sceneName?: string
+    ): void;
+    function loadAndPlayFromProjectStorage(
+      runtimeScene: RuntimeScene,
+      sceneName?: string
+    ): void;
+    function saveLoadedToProjectStorage(
+      runtimeScene: RuntimeScene,
+      sceneName?: string
+    ): void;
+    function play(runtimeScene: RuntimeScene): void;
+    function pause(runtimeScene: RuntimeScene): void;
+    function stop(runtimeScene: RuntimeScene): void;
+    function setCurrentFrame(runtimeScene: RuntimeScene, frame: number): void;
+    function isPlaying(runtimeScene: RuntimeScene): boolean;
+    function hasLoadedScene(runtimeScene: RuntimeScene): boolean;
+    function hasSceneInProjectStorage(
+      runtimeScene: RuntimeScene,
+      sceneName: string
+    ): boolean;
+  }
   namespace ts {
     const bridge: typeof tsModules;
     function setExternalModule(moduleName: string, moduleValue: any): void;

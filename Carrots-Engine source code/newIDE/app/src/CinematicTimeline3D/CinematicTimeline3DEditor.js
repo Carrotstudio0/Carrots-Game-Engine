@@ -175,6 +175,7 @@ const DEFAULT_EVENT_CONDITION = 'Always';
 const PROJECT_TIMELINES_FOLDER = '.carrots/cinematics';
 const PROJECT_TIMELINE_FILE_EXTENSION = '.timeline.json';
 const TIMELINE_FILE_FORMAT = 'carrots-cinematic-timeliner-v1';
+const TIMELINE_STORAGE_VERSION = 2;
 
 const transformPropertyDefinitions = [
   {
@@ -1049,6 +1050,85 @@ const getProjectStorageVariable = (
   return variablesContainer.insertNew(PROJECT_STORAGE_VARIABLE, 0);
 };
 
+const normalizeStoredSceneName = (
+  sceneName: string,
+  fallbackSceneName: string
+): string => {
+  const trimmedSceneName = (sceneName || '').trim();
+  return trimmedSceneName || fallbackSceneName;
+};
+
+const getStoredScenesByName = (payload: any): { [string]: any } => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return {};
+  }
+  const scenesByName = payload.scenesByName;
+  if (
+    !scenesByName ||
+    typeof scenesByName !== 'object' ||
+    Array.isArray(scenesByName)
+  ) {
+    return {};
+  }
+  return scenesByName;
+};
+
+const findStoredSceneEntry = (
+  payload: any,
+  preferredSceneName?: ?string
+): ?{| key: string, sceneName: string, entry: any |} => {
+  const scenesByName = getStoredScenesByName(payload);
+  const sceneKeys = Object.keys(scenesByName);
+  if (!sceneKeys.length) return null;
+
+  const normalizedPreferredSceneName = (preferredSceneName || '').trim();
+  const findSceneKey = (sceneNameToFind: string): string => {
+    if (!sceneNameToFind) return '';
+    if (Object.prototype.hasOwnProperty.call(scenesByName, sceneNameToFind)) {
+      return sceneNameToFind;
+    }
+    const lowerCaseSceneNameToFind = sceneNameToFind.toLowerCase();
+    const byKeyMatch = sceneKeys.find(
+      sceneKey => sceneKey.toLowerCase() === lowerCaseSceneNameToFind
+    );
+    if (byKeyMatch) return byKeyMatch;
+    return (
+      sceneKeys.find(sceneKey => {
+        const entry = scenesByName[sceneKey];
+        const entrySceneName =
+          entry && typeof entry.sceneName === 'string'
+            ? entry.sceneName.trim()
+            : '';
+        return (
+          !!entrySceneName &&
+          entrySceneName.toLowerCase() === lowerCaseSceneNameToFind
+        );
+      }) || ''
+    );
+  };
+
+  let selectedKey = findSceneKey(normalizedPreferredSceneName);
+  if (!selectedKey && payload && typeof payload.activeSceneName === 'string') {
+    selectedKey = findSceneKey(payload.activeSceneName.trim());
+  }
+  if (!selectedKey && payload && typeof payload.sceneName === 'string') {
+    selectedKey = findSceneKey(payload.sceneName.trim());
+  }
+  if (!selectedKey) selectedKey = sceneKeys[0];
+  if (!selectedKey) return null;
+
+  const entry = scenesByName[selectedKey];
+  if (!entry || typeof entry !== 'object') return null;
+  const entrySceneName =
+    (typeof entry.sceneName === 'string' && entry.sceneName.trim()) || selectedKey;
+
+  return {
+    key: selectedKey,
+    sceneName: entrySceneName,
+    entry,
+  };
+};
+
 const saveTimelinerDataToProject = (
   project: gdProject,
   data: TimelinerData,
@@ -1057,6 +1137,11 @@ const saveTimelinerDataToProject = (
 ) => {
   const variable = getProjectStorageVariable(project, true);
   if (!variable) return;
+  const fallbackSceneName = `${project.getName()} Cinematic`;
+  const normalizedSceneName = normalizeStoredSceneName(
+    sceneName,
+    fallbackSceneName
+  );
   const normalizedData = buildDataWithDefaults(data, fps);
   const existingMeta =
     normalizedData.gdCinematicMeta &&
@@ -1065,30 +1150,98 @@ const saveTimelinerDataToProject = (
       : {};
   const normalizedTimelinerData = {
     ...normalizedData,
-    title: sceneName,
+    title: normalizedSceneName,
     gdCinematicMeta: {
       ...existingMeta,
       fps,
-      sceneName,
+      sceneName: normalizedSceneName,
     },
   };
+  const runtimeScene = timelinerDataToRuntimeScene(
+    normalizedTimelinerData,
+    fps,
+    normalizedSceneName
+  );
+  const savedAt = new Date().toISOString();
+
+  let existingPayload = null;
+  const rawString = variable.getString();
+  if (rawString && typeof rawString === 'string') {
+    try {
+      const parsedExistingPayload = JSON.parse(rawString);
+      if (
+        parsedExistingPayload &&
+        typeof parsedExistingPayload === 'object' &&
+        !Array.isArray(parsedExistingPayload)
+      ) {
+        existingPayload = parsedExistingPayload;
+      }
+    } catch (error) {
+      // Ignore invalid legacy payload and override it with the new one.
+    }
+  }
+
+  const existingScenesByName = existingPayload
+    ? getStoredScenesByName(existingPayload)
+    : {};
+  const nextScenesByName = {
+    ...existingScenesByName,
+  };
+  const hasLegacyRootScene =
+    existingPayload &&
+    typeof existingPayload.sceneName === 'string' &&
+    existingPayload.sceneName.trim() &&
+    (isTimelinerData(existingPayload.timelinerData) ||
+      isRuntimeCinematicScene(existingPayload.runtimeScene));
+  if (hasLegacyRootScene) {
+    const legacySceneName = existingPayload.sceneName.trim();
+    if (!nextScenesByName[legacySceneName]) {
+      nextScenesByName[legacySceneName] = {
+        sceneName: legacySceneName,
+        fps: clampInteger(
+          parseFiniteNumber(existingPayload.fps, DEFAULT_FPS),
+          MIN_FPS,
+          MAX_FPS
+        ),
+        savedAt:
+          typeof existingPayload.savedAt === 'string'
+            ? existingPayload.savedAt
+            : savedAt,
+        timelinerData: isTimelinerData(existingPayload.timelinerData)
+          ? existingPayload.timelinerData
+          : undefined,
+        runtimeScene: isRuntimeCinematicScene(existingPayload.runtimeScene)
+          ? existingPayload.runtimeScene
+          : undefined,
+      };
+    }
+  }
+
+  nextScenesByName[normalizedSceneName] = {
+    sceneName: normalizedSceneName,
+    fps,
+    savedAt,
+    timelinerData: normalizedTimelinerData,
+    runtimeScene,
+  };
+
   const payload = {
     format: TIMELINE_FILE_FORMAT,
-    sceneName,
+    version: TIMELINE_STORAGE_VERSION,
+    sceneName: normalizedSceneName,
+    activeSceneName: normalizedSceneName,
     fps,
-    savedAt: new Date().toISOString(),
+    savedAt,
     timelinerData: normalizedTimelinerData,
-    runtimeScene: timelinerDataToRuntimeScene(
-      normalizedTimelinerData,
-      fps,
-      sceneName
-    ),
+    runtimeScene,
+    scenesByName: nextScenesByName,
   };
   variable.setString(JSON.stringify(payload));
 };
 
 const loadTimelinerDataFromProject = (
-  project: gdProject
+  project: gdProject,
+  preferredSceneName?: ?string
 ): ?{| data: TimelinerData, fps: number, sceneName: string |} => {
   const defaultSceneName = `${project.getName()} Cinematic`;
   const variable = getProjectStorageVariable(project, false);
@@ -1104,6 +1257,64 @@ const loadTimelinerDataFromProject = (
       parsedValue.format === TIMELINE_FILE_FORMAT
         ? parsedValue
         : null;
+
+    const wrappedSceneEntry = wrappedPayload
+      ? findStoredSceneEntry(wrappedPayload, preferredSceneName)
+      : null;
+    const wrappedEntryTimelinerData =
+      wrappedSceneEntry && isTimelinerData(wrappedSceneEntry.entry.timelinerData)
+        ? wrappedSceneEntry.entry.timelinerData
+        : null;
+    const wrappedEntryRuntimeScene =
+      wrappedSceneEntry && isRuntimeCinematicScene(wrappedSceneEntry.entry.runtimeScene)
+        ? wrappedSceneEntry.entry.runtimeScene
+        : null;
+
+    if (wrappedEntryTimelinerData) {
+      const wrappedEntryFps = clampInteger(
+        parseFiniteNumber(
+          wrappedSceneEntry && wrappedSceneEntry.entry.fps,
+          parseFiniteNumber(
+            wrappedEntryTimelinerData.gdCinematicMeta &&
+              wrappedEntryTimelinerData.gdCinematicMeta.fps,
+            DEFAULT_FPS
+          )
+        ),
+        MIN_FPS,
+        MAX_FPS
+      );
+      const parsedData = buildDataWithDefaults(
+        wrappedEntryTimelinerData,
+        wrappedEntryFps
+      );
+      return {
+        data: parsedData,
+        fps: wrappedEntryFps,
+        sceneName:
+          (wrappedSceneEntry && wrappedSceneEntry.sceneName) ||
+          (parsedData.gdCinematicMeta &&
+            parsedData.gdCinematicMeta.sceneName) ||
+          parsedData.title ||
+          defaultSceneName,
+      };
+    }
+
+    if (wrappedEntryRuntimeScene) {
+      const converted = runtimeSceneToTimelinerData(
+        wrappedEntryRuntimeScene,
+        wrappedSceneEntry && wrappedSceneEntry.sceneName
+          ? wrappedSceneEntry.sceneName
+          : defaultSceneName
+      );
+      return {
+        ...converted,
+        sceneName:
+          (wrappedSceneEntry && wrappedSceneEntry.sceneName) ||
+          converted.sceneName ||
+          defaultSceneName,
+      };
+    }
+
     const wrappedTimelinerData =
       wrappedPayload && isTimelinerData(wrappedPayload.timelinerData)
         ? wrappedPayload.timelinerData
@@ -1244,12 +1455,20 @@ const saveTimelinerDataToProjectFile = (
 
   const projectRootPath = path.dirname((projectFilePath: any));
   const normalizedData = buildDataWithDefaults(data, fps);
+  const normalizedSceneName = normalizeStoredSceneName(sceneName, 'Cinematic');
   const payload = {
     format: TIMELINE_FILE_FORMAT,
-    sceneName,
+    version: TIMELINE_STORAGE_VERSION,
+    sceneName: normalizedSceneName,
+    activeSceneName: normalizedSceneName,
     fps,
     savedAt: new Date().toISOString(),
     timelinerData: normalizedData,
+    runtimeScene: timelinerDataToRuntimeScene(
+      normalizedData,
+      fps,
+      normalizedSceneName
+    ),
   };
 
   const targetDirectory = path.dirname(resolvedFilePath);
@@ -1311,6 +1530,7 @@ const CinematicTimeline3DEditor = ({
   const timelinerHostRef = React.useRef<?HTMLDivElement>(null);
   const timelinerRef = React.useRef<?any>(null);
   const resizeObserverRef = React.useRef<?ResizeObserver>(null);
+  const importFileInputRef = React.useRef<?HTMLInputElement>(null);
   const latestDataRef = React.useRef<TimelinerData>(
     createEmptyTimelinerData(`${project.getName()} Cinematic`)
   );
@@ -2391,6 +2611,12 @@ const CinematicTimeline3DEditor = ({
     [onImportJsonText]
   );
 
+  const onOpenImportJsonDialog = React.useCallback(() => {
+    const input = importFileInputRef.current;
+    if (!input) return;
+    input.click();
+  }, []);
+
   const projectTimelineFilePath = React.useMemo(
     () => getProjectTimelineFilePath(projectFilePath, sceneName),
     [projectFilePath, sceneName]
@@ -2436,7 +2662,10 @@ const CinematicTimeline3DEditor = ({
         return;
       }
 
-      const storedData = loadTimelinerDataFromProject(project);
+      const storedData = loadTimelinerDataFromProject(
+        project,
+        sceneNameRef.current
+      );
       if (storedData) {
         setFps(storedData.fps);
         fpsRef.current = storedData.fps;
@@ -2633,6 +2862,70 @@ const CinematicTimeline3DEditor = ({
           >
             <span className="ct3d-icon-stop" />
           </button>
+        </div>
+
+        <div className="ct3d-toolbarRow ct3d-toolbarRow-meta">
+          <label className="ct3d-inlineField ct3d-field-scene">
+            <span className="ct3d-fieldLabel">Scene</span>
+            <input
+              className="ct3d-input"
+              type="text"
+              value={sceneName}
+              onChange={onChangeSceneName}
+              placeholder={`${project.getName()} Cinematic`}
+            />
+          </label>
+          <label className="ct3d-inlineField ct3d-field-fps">
+            <span className="ct3d-fieldLabel">FPS</span>
+            <input
+              className="ct3d-input"
+              type="number"
+              min={MIN_FPS}
+              max={MAX_FPS}
+              step={1}
+              value={fps}
+              onChange={onChangeFps}
+            />
+          </label>
+          <label className="ct3d-inlineField ct3d-field-duration">
+            <span className="ct3d-fieldLabel">Duration (sec)</span>
+            <input
+              className="ct3d-input"
+              type="number"
+              min={MIN_DURATION_SECONDS}
+              max={MAX_DURATION_SECONDS}
+              step={0.1}
+              value={Number.isFinite(durationSeconds) ? durationSeconds : 0}
+              onChange={onChangeDuration}
+            />
+          </label>
+          <button className="ct3d-btn ct3d-btn-primary" onClick={onSaveToProjectFile}>
+            Save
+          </button>
+          <button className="ct3d-btn" onClick={onLoadFromProjectFile}>
+            Load
+          </button>
+          <button className="ct3d-btn" onClick={onOpenImportJsonDialog}>
+            Import JSON
+          </button>
+          <button className="ct3d-btn" onClick={onExportRuntimeJson}>
+            Export Runtime JSON
+          </button>
+          <button className="ct3d-btn" onClick={onSendCurrentFrame}>
+            Sync Frame
+          </button>
+          <input
+            ref={importFileInputRef}
+            className="ct3d-hiddenInput"
+            type="file"
+            accept="application/json,.json"
+            onChange={onImportJsonFile}
+          />
+          {projectTimelineFilePath ? (
+            <span className="ct3d-fileHint" title={projectTimelineFilePath}>
+              {projectTimelineFilePath}
+            </span>
+          ) : null}
         </div>
       </div>
 

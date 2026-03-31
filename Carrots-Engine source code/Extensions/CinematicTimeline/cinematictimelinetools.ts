@@ -141,6 +141,7 @@ namespace gdjs {
       const DEFAULT_EVENT_CONDITION = 'Always';
       const PROJECT_STORAGE_VARIABLE = '__carrots_cinematic_timeliner_v1';
       const TIMELINE_FILE_FORMAT = 'carrots-cinematic-timeliner-v1';
+      const TIMELINE_STORAGE_VERSION = 2;
 
       const clampNumber = (value: number, min: number, max: number): number =>
         Math.max(min, Math.min(max, value));
@@ -968,10 +969,96 @@ namespace gdjs {
         }
       };
 
-      const extractRuntimeScenePayload = (
+      const normalizeSceneName = (value: any): string =>
+        String(value || '').trim();
+
+      const getScenesByNameFromPayload = (
         rawValue: any
+      ): { [sceneName: string]: any } => {
+        if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue))
+          return {};
+        const scenesByName = rawValue.scenesByName;
+        if (
+          !scenesByName ||
+          typeof scenesByName !== 'object' ||
+          Array.isArray(scenesByName)
+        )
+          return {};
+        return scenesByName;
+      };
+
+      const findSceneEntryInPayload = (
+        rawValue: any,
+        preferredSceneName?: string
+      ): { sceneName: string; entry: any } | null => {
+        const scenesByName = getScenesByNameFromPayload(rawValue);
+        const sceneKeys = Object.keys(scenesByName);
+        if (!sceneKeys.length) return null;
+
+        const findSceneKey = (sceneNameToFind: string): string => {
+          if (!sceneNameToFind) return '';
+          if (
+            Object.prototype.hasOwnProperty.call(scenesByName, sceneNameToFind)
+          ) {
+            return sceneNameToFind;
+          }
+          const lowerCaseSceneNameToFind = sceneNameToFind.toLowerCase();
+          for (let i = 0; i < sceneKeys.length; i++) {
+            const sceneKey = sceneKeys[i];
+            if (sceneKey.toLowerCase() === lowerCaseSceneNameToFind) {
+              return sceneKey;
+            }
+            const entry = scenesByName[sceneKey];
+            const entrySceneName = normalizeSceneName(entry && entry.sceneName);
+            if (
+              entrySceneName &&
+              entrySceneName.toLowerCase() === lowerCaseSceneNameToFind
+            ) {
+              return sceneKey;
+            }
+          }
+          return '';
+        };
+
+        let selectedSceneKey = findSceneKey(normalizeSceneName(preferredSceneName));
+        if (!selectedSceneKey) {
+          selectedSceneKey = findSceneKey(
+            normalizeSceneName(rawValue && rawValue.activeSceneName)
+          );
+        }
+        if (!selectedSceneKey) {
+          selectedSceneKey = findSceneKey(
+            normalizeSceneName(rawValue && rawValue.sceneName)
+          );
+        }
+        if (!selectedSceneKey) {
+          selectedSceneKey = sceneKeys[0];
+        }
+        if (!selectedSceneKey) return null;
+
+        const entry = scenesByName[selectedSceneKey];
+        if (!entry || typeof entry !== 'object') return null;
+        const entrySceneName = normalizeSceneName(entry.sceneName) || selectedSceneKey;
+
+        return {
+          sceneName: entrySceneName,
+          entry,
+        };
+      };
+
+      const extractRuntimeScenePayload = (
+        rawValue: any,
+        preferredSceneName?: string
       ): CinematicTimelineScene | null => {
         if (!rawValue || typeof rawValue !== 'object') return normalizeScene(rawValue);
+
+        const sceneEntry = findSceneEntryInPayload(rawValue, preferredSceneName);
+        if (sceneEntry) {
+          const sceneFromEntry =
+            normalizeScene(sceneEntry.entry.runtimeScene) ||
+            normalizeScene(sceneEntry.entry);
+          if (sceneFromEntry) return sceneFromEntry;
+        }
 
         if (
           rawValue.format === TIMELINE_FILE_FORMAT &&
@@ -1007,7 +1094,8 @@ namespace gdjs {
       };
 
       export const loadFromProjectStorage = (
-        runtimeScene: gdjs.RuntimeScene
+        runtimeScene: gdjs.RuntimeScene,
+        sceneName?: string
       ): void => {
         const state = getState(runtimeScene);
         const rawText = runtimeScene
@@ -1024,10 +1112,13 @@ namespace gdjs {
 
         try {
           const parsedValue = JSON.parse(String(rawText));
-          const scene = extractRuntimeScenePayload(parsedValue);
+          const scene = extractRuntimeScenePayload(parsedValue, sceneName);
           if (!scene) {
+            const normalizedSceneName = normalizeSceneName(sceneName);
             logger.warn(
-              'Cinematic Timeline: project storage contains an invalid timeline payload.'
+              normalizedSceneName
+                ? `Cinematic Timeline: scene "${normalizedSceneName}" was not found in project storage payload.`
+                : 'Cinematic Timeline: project storage contains an invalid timeline payload.'
             );
             return;
           }
@@ -1040,14 +1131,16 @@ namespace gdjs {
       };
 
       export const loadAndPlayFromProjectStorage = (
-        runtimeScene: gdjs.RuntimeScene
+        runtimeScene: gdjs.RuntimeScene,
+        sceneName?: string
       ): void => {
-        loadFromProjectStorage(runtimeScene);
+        loadFromProjectStorage(runtimeScene, sceneName);
         if (hasLoadedScene(runtimeScene)) play(runtimeScene);
       };
 
       export const saveLoadedToProjectStorage = (
-        runtimeScene: gdjs.RuntimeScene
+        runtimeScene: gdjs.RuntimeScene,
+        sceneName?: string
       ): void => {
         const state = getState(runtimeScene);
         if (!state.scene) {
@@ -1057,19 +1150,72 @@ namespace gdjs {
           return;
         }
 
-        const payload = {
-          format: TIMELINE_FILE_FORMAT,
-          sceneName: state.scene.name || '',
+        const normalizedSceneName =
+          normalizeSceneName(sceneName) ||
+          normalizeSceneName(state.scene.name) ||
+          'Cinematic Scene';
+        const savedAt = new Date().toISOString();
+        const projectStorageVariable = runtimeScene
+          .getGame()
+          .getVariables()
+          .get(PROJECT_STORAGE_VARIABLE);
+
+        let existingPayload: any = null;
+        const existingRawText = projectStorageVariable.getAsString();
+        if (existingRawText && String(existingRawText).trim()) {
+          try {
+            const parsedValue = JSON.parse(String(existingRawText));
+            if (parsedValue && typeof parsedValue === 'object') {
+              existingPayload = parsedValue;
+            }
+          } catch (error) {
+            // Ignore invalid payload and overwrite it.
+          }
+        }
+
+        const nextScenesByName = {
+          ...getScenesByNameFromPayload(existingPayload),
+        };
+        const hasLegacyRootScene =
+          existingPayload &&
+          typeof existingPayload.sceneName === 'string' &&
+          normalizeSceneName(existingPayload.sceneName) &&
+          existingPayload.runtimeScene &&
+          typeof existingPayload.runtimeScene === 'object';
+        if (hasLegacyRootScene) {
+          const legacySceneName = normalizeSceneName(existingPayload.sceneName);
+          if (!nextScenesByName[legacySceneName]) {
+            nextScenesByName[legacySceneName] = {
+              sceneName: legacySceneName,
+              fps: parseFiniteNumber(existingPayload.fps, state.scene.fps),
+              savedAt:
+                typeof existingPayload.savedAt === 'string'
+                  ? existingPayload.savedAt
+                  : savedAt,
+              runtimeScene: existingPayload.runtimeScene,
+            };
+          }
+        }
+
+        nextScenesByName[normalizedSceneName] = {
+          sceneName: normalizedSceneName,
           fps: state.scene.fps,
-          savedAt: new Date().toISOString(),
+          savedAt,
           runtimeScene: state.scene,
         };
 
-        runtimeScene
-          .getGame()
-          .getVariables()
-          .get(PROJECT_STORAGE_VARIABLE)
-          .setString(JSON.stringify(payload));
+        const payload = {
+          format: TIMELINE_FILE_FORMAT,
+          version: TIMELINE_STORAGE_VERSION,
+          sceneName: normalizedSceneName,
+          activeSceneName: normalizedSceneName,
+          fps: state.scene.fps,
+          savedAt,
+          runtimeScene: state.scene,
+          scenesByName: nextScenesByName,
+        };
+
+        projectStorageVariable.setString(JSON.stringify(payload));
       };
 
       export const play = (runtimeScene: gdjs.RuntimeScene): void => {
@@ -1240,6 +1386,27 @@ namespace gdjs {
         runtimeScene: gdjs.RuntimeScene
       ): boolean => !!getState(runtimeScene).scene;
 
+      export const hasSceneInProjectStorage = (
+        runtimeScene: gdjs.RuntimeScene,
+        sceneName: string
+      ): boolean => {
+        const normalizedSceneName = normalizeSceneName(sceneName);
+        if (!normalizedSceneName) return false;
+        const rawText = runtimeScene
+          .getGame()
+          .getVariables()
+          .get(PROJECT_STORAGE_VARIABLE)
+          .getAsString();
+        if (!rawText || !String(rawText).trim()) return false;
+
+        try {
+          const parsedValue = JSON.parse(String(rawText));
+          return !!findSceneEntryInPayload(parsedValue, normalizedSceneName);
+        } catch (error) {
+          return false;
+        }
+      };
+
       export const isLoopRangeEnabled = (
         runtimeScene: gdjs.RuntimeScene
       ): boolean => {
@@ -1340,5 +1507,59 @@ namespace gdjs {
         registerTriggeredEvent(state, eventMarker);
       };
     }
+  }
+
+  export namespace cinematicTimeline {
+    export const loadFromJson = (
+      runtimeScene: gdjs.RuntimeScene,
+      jsonString: string
+    ): void => evtTools.cinematicTimeline.loadFromJson(runtimeScene, jsonString);
+
+    export const loadFromProjectStorage = (
+      runtimeScene: gdjs.RuntimeScene,
+      sceneName?: string
+    ): void =>
+      evtTools.cinematicTimeline.loadFromProjectStorage(runtimeScene, sceneName);
+
+    export const loadAndPlayFromProjectStorage = (
+      runtimeScene: gdjs.RuntimeScene,
+      sceneName?: string
+    ): void =>
+      evtTools.cinematicTimeline.loadAndPlayFromProjectStorage(
+        runtimeScene,
+        sceneName
+      );
+
+    export const saveLoadedToProjectStorage = (
+      runtimeScene: gdjs.RuntimeScene,
+      sceneName?: string
+    ): void =>
+      evtTools.cinematicTimeline.saveLoadedToProjectStorage(
+        runtimeScene,
+        sceneName
+      );
+
+    export const play = (runtimeScene: gdjs.RuntimeScene): void =>
+      evtTools.cinematicTimeline.play(runtimeScene);
+    export const pause = (runtimeScene: gdjs.RuntimeScene): void =>
+      evtTools.cinematicTimeline.pause(runtimeScene);
+    export const stop = (runtimeScene: gdjs.RuntimeScene): void =>
+      evtTools.cinematicTimeline.stop(runtimeScene);
+    export const setCurrentFrame = (
+      runtimeScene: gdjs.RuntimeScene,
+      frame: number
+    ): void => evtTools.cinematicTimeline.setCurrentFrame(runtimeScene, frame);
+    export const isPlaying = (runtimeScene: gdjs.RuntimeScene): boolean =>
+      evtTools.cinematicTimeline.isPlaying(runtimeScene);
+    export const hasLoadedScene = (runtimeScene: gdjs.RuntimeScene): boolean =>
+      evtTools.cinematicTimeline.hasLoadedScene(runtimeScene);
+    export const hasSceneInProjectStorage = (
+      runtimeScene: gdjs.RuntimeScene,
+      sceneName: string
+    ): boolean =>
+      evtTools.cinematicTimeline.hasSceneInProjectStorage(
+        runtimeScene,
+        sceneName
+      );
   }
 }
