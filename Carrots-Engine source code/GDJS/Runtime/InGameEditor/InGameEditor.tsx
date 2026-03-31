@@ -375,6 +375,7 @@ namespace gdjs {
   const cameraDistanceResponsiveness = 24;
   const cameraFloatEpsilon = 0.0001;
   const pointerLockReleaseGracePeriodMs = 100;
+  const absoluteVerticalMovementVector = new THREE.Vector3(0, 0, 1);
 
   const normalizeCameraAngleDegrees = (angle: float): float => {
     if (!Number.isFinite(angle)) {
@@ -8168,7 +8169,7 @@ namespace gdjs {
         }
 
         // Movement with the keyboard while right mouse is held:
-        // arrow keys (camera plane) + WASD ("FPS move" + Q/E for up/down).
+        // arrow keys (camera plane) + WASD ("FPS move") + Q/E for absolute up/down.
         const moveSpeedPerFrameAt60Fps =
           (isShiftPressed(inputManager)
             ? freeCameraFastMoveSpeedPerFrameAt60Fps
@@ -8212,12 +8213,13 @@ namespace gdjs {
             movementIntent.addScaledVector(right, 1);
           }
 
-          // Up/down
+          // Up/down should stay aligned to the scene vertical axis like Unity/Godot,
+          // otherwise raising the camera becomes skewed when the camera is pitched.
           if (inputManager.isKeyPressed(Q_KEY)) {
-            movementIntent.addScaledVector(up, -1);
+            movementIntent.addScaledVector(absoluteVerticalMovementVector, -1);
           }
           if (inputManager.isKeyPressed(E_KEY)) {
-            movementIntent.addScaledVector(up, 1);
+            movementIntent.addScaledVector(absoluteVerticalMovementVector, 1);
           }
 
         }
