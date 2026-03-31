@@ -1666,6 +1666,17 @@ namespace gdjs {
       }
     }
 
+    private _applyRuntimeInstanceHierarchy(
+      instanceData: InstanceData,
+      runtimeObject: gdjs.RuntimeObject,
+      runtimeObjectsByPersistentUuid: Record<string, gdjs.RuntimeObject>
+    ): void {
+      runtimeObject.applyHierarchicalInstanceData(
+        instanceData,
+        runtimeObjectsByPersistentUuid
+      );
+    }
+
     hotReloadRuntimeInstances(
       oldInstances: InstanceData[],
       newInstances: InstanceData[],
@@ -1814,6 +1825,26 @@ namespace gdjs {
             true
           );
         }
+      }
+
+      const refreshedRuntimeObjectByUuid = HotReloader.indexByPersistentUuid(
+        runtimeInstanceContainer.getAdhocListOfAllInstances()
+      );
+      const runtimeObjectsByPersistentUuid: Record<string, gdjs.RuntimeObject> =
+        {};
+      refreshedRuntimeObjectByUuid.forEach((object, persistentUuid) => {
+        runtimeObjectsByPersistentUuid[persistentUuid] = object;
+      });
+      for (const persistentUuid of newInstanceByUuid.keys()) {
+        const newInstance = newInstanceByUuid.get(persistentUuid);
+        const runtimeObject = refreshedRuntimeObjectByUuid.get(persistentUuid);
+        if (!newInstance || !runtimeObject) continue;
+
+        this._applyRuntimeInstanceHierarchy(
+          newInstance,
+          runtimeObject,
+          runtimeObjectsByPersistentUuid
+        );
       }
     }
 

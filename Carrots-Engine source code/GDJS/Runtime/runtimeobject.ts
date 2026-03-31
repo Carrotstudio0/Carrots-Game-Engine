@@ -738,6 +738,77 @@ namespace gdjs {
     }
 
     /**
+     * Apply hierarchy data from an instance definition to this runtime object.
+     *
+     * This keeps the world transform while reparenting, then reapplies the
+     * serialized local transform if a parent exists.
+     */
+    applyHierarchicalInstanceData(
+      instanceData: Pick<
+        InstanceData,
+        | 'parentPersistentUuid'
+        | 'localX'
+        | 'localY'
+        | 'localZ'
+        | 'localAngle'
+        | 'localRotationX'
+        | 'localRotationY'
+        | 'localScaleX'
+        | 'localScaleY'
+        | 'inheritRotation'
+        | 'inheritScale'
+      >,
+      runtimeObjectsByPersistentUuid: Record<string, gdjs.RuntimeObject>
+    ): void {
+      const desiredParentUuid = instanceData.parentPersistentUuid || '';
+      const desiredParent = desiredParentUuid
+        ? runtimeObjectsByPersistentUuid[desiredParentUuid] || null
+        : null;
+
+      if (!desiredParent) {
+        if (this._parentObject) {
+          this.removeParent({ keepWorld: true });
+        }
+        return;
+      }
+
+      if (this._parentObject !== desiredParent) {
+        this.setParent(desiredParent, { keepWorld: true });
+      }
+
+      this.setInheritRotation(instanceData.inheritRotation !== false);
+      this.setInheritScale(instanceData.inheritScale !== false);
+
+      this.setLocalPosition(
+        instanceData.localX !== undefined
+          ? instanceData.localX
+          : this.getLocalX(),
+        instanceData.localY !== undefined
+          ? instanceData.localY
+          : this.getLocalY(),
+        instanceData.localZ !== undefined
+          ? instanceData.localZ
+          : this.getLocalZ()
+      );
+
+      if (instanceData.localAngle !== undefined) {
+        this.setLocalAngle(instanceData.localAngle);
+      }
+      if (instanceData.localRotationX !== undefined) {
+        this.setLocalRotationX(instanceData.localRotationX);
+      }
+      if (instanceData.localRotationY !== undefined) {
+        this.setLocalRotationY(instanceData.localRotationY);
+      }
+      if (instanceData.localScaleX !== undefined) {
+        this.setLocalScaleX(instanceData.localScaleX);
+      }
+      if (instanceData.localScaleY !== undefined) {
+        this.setLocalScaleY(instanceData.localScaleY);
+      }
+    }
+
+    /**
      * The gdjs.RuntimeScene the object belongs to.
      */
     getRuntimeScene(): gdjs.RuntimeScene {
@@ -1105,7 +1176,7 @@ namespace gdjs {
     private _is3DObject(): boolean {
       return !!(
         // @ts-ignore - Optional 3D extension
-        gdjs.Base3DHandler && gdjs.Base3DHandler.is3D(this)
+        (gdjs.Base3DHandler && gdjs.Base3DHandler.is3D(this))
       );
     }
 
@@ -1145,12 +1216,16 @@ namespace gdjs {
 
     private _getActualScaleX(): float {
       const scalable = this as any;
-      return typeof scalable.getScaleX === 'function' ? scalable.getScaleX() : 1;
+      return typeof scalable.getScaleX === 'function'
+        ? scalable.getScaleX()
+        : 1;
     }
 
     private _getActualScaleY(): float {
       const scalable = this as any;
-      return typeof scalable.getScaleY === 'function' ? scalable.getScaleY() : 1;
+      return typeof scalable.getScaleY === 'function'
+        ? scalable.getScaleY()
+        : 1;
     }
 
     private _setActualScaleX(scaleX: float): void {

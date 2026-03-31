@@ -105,6 +105,7 @@ import {
   buildInstancesIndex,
   collectDescendants,
   syncLocalFromWorld,
+  applyParentTransformToDescendants,
 } from '../InstancesEditor/ParentingHelpers';
 
 const gd: libGDevelop = global.gd;
@@ -165,6 +166,17 @@ interface InstanceData extends InstancePersistentUuidData {
   locked?: boolean;
   sealed?: boolean;
   name: string;
+  parentPersistentUuid?: string;
+  localX?: number;
+  localY?: number;
+  localZ?: number;
+  localAngle?: number;
+  localRotationX?: number;
+  localRotationY?: number;
+  localScaleX?: number;
+  localScaleY?: number;
+  inheritRotation?: boolean;
+  inheritScale?: boolean;
 
   x: number;
   y: number;
@@ -388,7 +400,8 @@ export default class SceneEditor extends React.Component<Props, State> {
 
     this.instancesSelection = new InstancesSelection();
 
-    const initialInstancesEditorSettings = props.getInitialInstancesEditorSettings();
+    const initialInstancesEditorSettings =
+      props.getInitialInstancesEditorSettings();
 
     this.state = {
       setupGridOpen: false,
@@ -452,12 +465,13 @@ export default class SceneEditor extends React.Component<Props, State> {
       );
     }
 
-    this.resourceExternallyChangedCallbackId = registerOnResourceExternallyChangedCallback(
-      this.onResourceExternallyChanged.bind(this)
-    );
+    this.resourceExternallyChangedCallbackId =
+      registerOnResourceExternallyChangedCallback(
+        this.onResourceExternallyChanged.bind(this)
+      );
     if (this.props.previewDebuggerServer && !this.unregisterDebuggerCallback) {
-      this.unregisterDebuggerCallback = this.props.previewDebuggerServer.registerCallbacks(
-        {
+      this.unregisterDebuggerCallback =
+        this.props.previewDebuggerServer.registerCallbacks({
           onErrorReceived: () => {},
           onConnectionClosed: () => {},
           onConnectionOpened: () => {},
@@ -508,8 +522,7 @@ export default class SceneEditor extends React.Component<Props, State> {
               this.cutSelection();
             }
           },
-        }
-      );
+        });
     }
   }
 
@@ -540,7 +553,7 @@ export default class SceneEditor extends React.Component<Props, State> {
     // TODO: adapt all of this to get all instances in one shot.
     // and reorganize this.
     const modifiedInstances: gdInitialInstance[] = [];
-    changes.updatedInstances.forEach(instanceData => {
+    changes.updatedInstances.forEach((instanceData) => {
       const {
         persistentUuid,
         x,
@@ -556,6 +569,17 @@ export default class SceneEditor extends React.Component<Props, State> {
         defaultWidth,
         defaultHeight,
         defaultDepth,
+        parentPersistentUuid,
+        localX,
+        localY,
+        localZ,
+        localAngle,
+        localRotationX,
+        localRotationY,
+        localScaleX,
+        localScaleY,
+        inheritRotation,
+        inheritScale,
       } = instanceData;
       const instance = getInstanceInLayoutWithPersistentUuid(
         this.props.initialInstances,
@@ -588,25 +612,51 @@ export default class SceneEditor extends React.Component<Props, State> {
       instance.setDefaultWidth(defaultWidth || 0);
       instance.setDefaultHeight(defaultHeight || 0);
       instance.setDefaultDepth(defaultDepth || 0);
+      if (parentPersistentUuid !== undefined) {
+        instance.setParentPersistentUuid(parentPersistentUuid || '');
+        instance.setInheritRotation(inheritRotation !== false);
+        instance.setInheritScale(inheritScale !== false);
+      }
+      if (localX !== undefined) {
+        instance.setLocalX(localX);
+      }
+      if (localY !== undefined) {
+        instance.setLocalY(localY);
+      }
+      if (localZ !== undefined) {
+        instance.setLocalZ(localZ);
+      }
+      if (localAngle !== undefined) {
+        instance.setLocalAngle(localAngle);
+      }
+      if (localRotationX !== undefined) {
+        instance.setLocalRotationX(localRotationX);
+      }
+      if (localRotationY !== undefined) {
+        instance.setLocalRotationY(localRotationY);
+      }
+      if (localScaleX !== undefined) {
+        instance.setLocalScaleX(localScaleX);
+      }
+      if (localScaleY !== undefined) {
+        instance.setLocalScaleY(localScaleY);
+      }
 
       modifiedInstances.push(instance);
     });
     if (modifiedInstances.length > 0) {
       const instancesIndex = buildInstancesIndex(this.props.initialInstances);
-      modifiedInstances.forEach(instance => {
+      modifiedInstances.forEach((instance) => {
         syncLocalFromWorld(instance, instancesIndex);
+        applyParentTransformToDescendants(instance, instancesIndex);
       });
       this._onInstancesMoved(modifiedInstances);
     }
 
     const newlySelectedInstances = changes.selectedInstances
-      .map(selectedInstanceData => {
-        const {
-          persistentUuid,
-          defaultWidth,
-          defaultHeight,
-          defaultDepth,
-        } = selectedInstanceData;
+      .map((selectedInstanceData) => {
+        const { persistentUuid, defaultWidth, defaultHeight, defaultDepth } =
+          selectedInstanceData;
         const instance = getInstanceInLayoutWithPersistentUuid(
           this.props.initialInstances,
           persistentUuid
@@ -621,7 +671,7 @@ export default class SceneEditor extends React.Component<Props, State> {
       .filter(Boolean);
 
     const justRemovedInstances = changes.removedInstances
-      .map(removedInstanceData => {
+      .map((removedInstanceData) => {
         const { persistentUuid } = removedInstanceData;
         const instance = getInstanceInLayoutWithPersistentUuid(
           this.props.initialInstances,
@@ -631,7 +681,7 @@ export default class SceneEditor extends React.Component<Props, State> {
       })
       .filter(Boolean);
 
-    justRemovedInstances.forEach(instance => {
+    justRemovedInstances.forEach((instance) => {
       this.props.initialInstances.removeInstance(instance);
     });
     if (justRemovedInstances.length) {
@@ -661,8 +711,9 @@ export default class SceneEditor extends React.Component<Props, State> {
       );
     }
 
-    const justAddedInstances = changes.addedInstances.map(addedInstance => {
-      const instance: gdInitialInstance = this.props.initialInstances.insertNewInitialInstance();
+    const justAddedInstances = changes.addedInstances.map((addedInstance) => {
+      const instance: gdInitialInstance =
+        this.props.initialInstances.insertNewInitialInstance();
       unserializeFromJSObject(
         instance,
         addedInstance,
@@ -720,10 +771,10 @@ export default class SceneEditor extends React.Component<Props, State> {
         gd.ProjectBrowserHelper.exposeProjectObjects(project, objectsCollector);
         const objectNames = objectsCollector.getObjectNames().toJSArray();
         objectsCollector.delete();
-        ObjectsRenderingService.renderersCacheClearingMethods.forEach(clear =>
+        ObjectsRenderingService.renderersCacheClearingMethods.forEach((clear) =>
           clear(project)
         );
-        objectNames.forEach(objectName => {
+        objectNames.forEach((objectName) => {
           editorDisplay.instancesHandlers.resetInstanceRenderersFor(objectName);
         });
       } finally {
@@ -805,12 +856,8 @@ export default class SceneEditor extends React.Component<Props, State> {
           toggleGrid={this.toggleGrid}
           isGridShown={!!this.state.instancesEditorSettings.grid}
           toggleSelectedPhysicsHitboxes={this.toggleSelectedPhysicsHitboxes}
-          canToggleSelectedPhysicsHitboxes={
-            this.hasSelectedPhysics3DBehaviors()
-          }
-          areSelectedPhysicsHitboxesShown={
-            this.areSelectedPhysics3DHitboxesShown()
-          }
+          canToggleSelectedPhysicsHitboxes={this.hasSelectedPhysics3DBehaviors()}
+          areSelectedPhysicsHitboxesShown={this.areSelectedPhysics3DHitboxesShown()}
           openSetupGrid={this.openSetupGrid}
           setZoomFactor={this.setZoomFactor}
           getContextMenuZoomItems={this.getContextMenuZoomItems}
@@ -851,12 +898,8 @@ export default class SceneEditor extends React.Component<Props, State> {
           toggleGrid={this.toggleGrid}
           isGridShown={!!this.state.instancesEditorSettings.grid}
           toggleSelectedPhysicsHitboxes={this.toggleSelectedPhysicsHitboxes}
-          canToggleSelectedPhysicsHitboxes={
-            this.hasSelectedPhysics3DBehaviors()
-          }
-          areSelectedPhysicsHitboxesShown={
-            this.areSelectedPhysics3DHitboxesShown()
-          }
+          canToggleSelectedPhysicsHitboxes={this.hasSelectedPhysics3DBehaviors()}
+          areSelectedPhysicsHitboxesShown={this.areSelectedPhysics3DHitboxesShown()}
           openSetupGrid={this.openSetupGrid}
           setZoomFactor={this.setZoomFactor}
           getContextMenuZoomItems={this.getContextMenuZoomItems}
@@ -901,11 +944,12 @@ export default class SceneEditor extends React.Component<Props, State> {
         this.props.initialInstances
       );
       this.setState(({ selectedObjectFolderOrObjectsWithContext }) => ({
-        selectedObjectFolderOrObjectsWithContext: cleanNonExistingObjectFolderOrObjectWithContexts(
-          this.props.globalObjectsContainer,
-          this.props.objectsContainer,
-          selectedObjectFolderOrObjectsWithContext
-        ),
+        selectedObjectFolderOrObjectsWithContext:
+          cleanNonExistingObjectFolderOrObjectWithContexts(
+            this.props.globalObjectsContainer,
+            this.props.objectsContainer,
+            selectedObjectFolderOrObjectsWithContext
+          ),
       }));
     }
   }
@@ -961,15 +1005,18 @@ export default class SceneEditor extends React.Component<Props, State> {
     const instanceAsAny = (instance: any);
 
     const baseWidth =
-      Number.isFinite(instance.getDefaultWidth()) && instance.getDefaultWidth() !== 0
+      Number.isFinite(instance.getDefaultWidth()) &&
+      instance.getDefaultWidth() !== 0
         ? instance.getDefaultWidth()
         : 1;
     const baseHeight =
-      Number.isFinite(instance.getDefaultHeight()) && instance.getDefaultHeight() !== 0
+      Number.isFinite(instance.getDefaultHeight()) &&
+      instance.getDefaultHeight() !== 0
         ? instance.getDefaultHeight()
         : 1;
     const baseDepth =
-      Number.isFinite(instance.getDefaultDepth()) && instance.getDefaultDepth() !== 0
+      Number.isFinite(instance.getDefaultDepth()) &&
+      instance.getDefaultDepth() !== 0
         ? instance.getDefaultDepth()
         : 1;
 
@@ -1119,21 +1166,21 @@ export default class SceneEditor extends React.Component<Props, State> {
     const selectedObjectNames = uniq(
       this.instancesSelection
         .getSelectedInstances()
-        .map(instance => instance.getObjectName())
+        .map((instance) => instance.getObjectName())
     );
 
     return selectedObjectNames
-      .map(objectName =>
+      .map((objectName) =>
         getObjectByName(globalObjectsContainer, objectsContainer, objectName)
       )
       .filter(Boolean)
-      .map(object => {
+      .map((object) => {
         const behaviors = object
           .getAllBehaviorNames()
           .toJSArray()
-          .map(behaviorName => object.getBehavior(behaviorName))
+          .map((behaviorName) => object.getBehavior(behaviorName))
           .filter(
-            behavior => behavior.getTypeName() === PHYSICS_3D_BEHAVIOR_TYPE
+            (behavior) => behavior.getTypeName() === PHYSICS_3D_BEHAVIOR_TYPE
           );
 
         return { object, behaviors };
@@ -1156,26 +1203,28 @@ export default class SceneEditor extends React.Component<Props, State> {
   };
 
   areSelectedPhysics3DHitboxesShown = (): boolean => {
-    const selectedObjectsWithPhysics3D = this.getSelectedObjectsWithPhysics3DBehaviors();
+    const selectedObjectsWithPhysics3D =
+      this.getSelectedObjectsWithPhysics3DBehaviors();
     if (!selectedObjectsWithPhysics3D.length) return false;
 
     return selectedObjectsWithPhysics3D.every(({ behaviors }) =>
-      behaviors.every(behavior => this.isPhysics3DHitboxShown(behavior))
+      behaviors.every((behavior) => this.isPhysics3DHitboxShown(behavior))
     );
   };
 
   toggleSelectedPhysicsHitboxes = () => {
-    const selectedObjectsWithPhysics3D = this.getSelectedObjectsWithPhysics3DBehaviors();
+    const selectedObjectsWithPhysics3D =
+      this.getSelectedObjectsWithPhysics3DBehaviors();
     if (!selectedObjectsWithPhysics3D.length) return;
 
     const shouldShowHitboxes = !selectedObjectsWithPhysics3D.every(
       ({ behaviors }) =>
-        behaviors.every(behavior => this.isPhysics3DHitboxShown(behavior))
+        behaviors.every((behavior) => this.isPhysics3DHitboxShown(behavior))
     );
     const updatedObjects = [];
 
     selectedObjectsWithPhysics3D.forEach(({ object, behaviors }) => {
-      const hasBehaviorBeenUpdated = behaviors.some(behavior =>
+      const hasBehaviorBeenUpdated = behaviors.some((behavior) =>
         behavior.updateProperty(
           PHYSICS_3D_SHOW_COLLIDER_PROPERTY,
           shouldShowHitboxes ? '1' : '0'
@@ -1302,11 +1351,12 @@ export default class SceneEditor extends React.Component<Props, State> {
   };
 
   editObjectInPropertiesPanel = (objectName: string) => {
-    const objectFolderOrObjectWithContext = getObjectFolderOrObjectWithContextFromObjectName(
-      this.props.globalObjectsContainer,
-      this.props.objectsContainer,
-      objectName
-    );
+    const objectFolderOrObjectWithContext =
+      getObjectFolderOrObjectWithContextFromObjectName(
+        this.props.globalObjectsContainer,
+        this.props.objectsContainer,
+        objectName
+      );
     if (!objectFolderOrObjectWithContext) return;
 
     this.setState({
@@ -1355,7 +1405,7 @@ export default class SceneEditor extends React.Component<Props, State> {
 
     previewDebuggerServer
       .getExistingEmbeddedGameFrameDebuggerIds()
-      .forEach(debuggerId => {
+      .forEach((debuggerId) => {
         previewDebuggerServer.sendMessage(debuggerId, {
           command: 'setInstancesEditorSettings',
           payload: {
@@ -1436,7 +1486,7 @@ export default class SceneEditor extends React.Component<Props, State> {
 
     previewDebuggerServer
       .getExistingEmbeddedGameFrameDebuggerIds()
-      .forEach(debuggerId => {
+      .forEach((debuggerId) => {
         previewDebuggerServer.sendMessage(debuggerId, {
           command: 'hotReloadAllInstances',
           payload: {
@@ -1478,7 +1528,8 @@ export default class SceneEditor extends React.Component<Props, State> {
 
     // Remember where to create the instance, when the object will be created.
     this.setState({
-      newObjectInstanceSceneCoordinates: editorDisplay.viewControls.getLastCursorSceneCoordinates(),
+      newObjectInstanceSceneCoordinates:
+        editorDisplay.viewControls.getLastCursorSceneCoordinates(),
     });
     editorDisplay.openNewObjectDialog();
   };
@@ -1496,7 +1547,7 @@ export default class SceneEditor extends React.Component<Props, State> {
     const objectType = primitive3D.objectType;
     const objectName = newNameGenerator(
       primitive3D.defaultName,
-      name =>
+      (name) =>
         objectsContainer.hasObjectNamed(name) ||
         (!!globalObjectsContainer &&
           globalObjectsContainer.hasObjectNamed(name))
@@ -1508,7 +1559,8 @@ export default class SceneEditor extends React.Component<Props, State> {
 
     this.setState(
       {
-        newObjectInstanceSceneCoordinates: editorDisplay.viewControls.getLastCursorSceneCoordinates(),
+        newObjectInstanceSceneCoordinates:
+          editorDisplay.viewControls.getLastCursorSceneCoordinates(),
       },
       () => {
         const object = objectsContainer.insertNewObject(
@@ -1542,7 +1594,7 @@ export default class SceneEditor extends React.Component<Props, State> {
     const objectType = light3D.objectType;
     const objectName = newNameGenerator(
       light3D.defaultName,
-      name =>
+      (name) =>
         objectsContainer.hasObjectNamed(name) ||
         (!!globalObjectsContainer &&
           globalObjectsContainer.hasObjectNamed(name))
@@ -1554,7 +1606,8 @@ export default class SceneEditor extends React.Component<Props, State> {
 
     this.setState(
       {
-        newObjectInstanceSceneCoordinates: editorDisplay.viewControls.getLastCursorSceneCoordinates(),
+        newObjectInstanceSceneCoordinates:
+          editorDisplay.viewControls.getLastCursorSceneCoordinates(),
       },
       () => {
         const object = objectsContainer.insertNewObject(
@@ -1619,7 +1672,7 @@ export default class SceneEditor extends React.Component<Props, State> {
 
   _onInstancesAdded = (instances: Array<gdInitialInstance>) => {
     let invisibleLayerOnWhichInstancesHaveJustBeenAdded = null;
-    instances.forEach(instance => {
+    instances.forEach((instance) => {
       if (invisibleLayerOnWhichInstancesHaveJustBeenAdded === null) {
         const layer = this.props.layersContainer.getLayer(instance.getLayer());
         if (!layer.getVisibility()) {
@@ -1666,11 +1719,11 @@ export default class SceneEditor extends React.Component<Props, State> {
     if (previewDebuggerServer) {
       previewDebuggerServer
         .getExistingEmbeddedGameFrameDebuggerIds()
-        .forEach(debuggerId => {
+        .forEach((debuggerId) => {
           previewDebuggerServer.sendMessage(debuggerId, {
             command: 'addInstances',
             payload: {
-              instances: instances.map(instance =>
+              instances: instances.map((instance) =>
                 serializeToJSObject(instance)
               ),
               moveUnderCursor: false,
@@ -1819,12 +1872,12 @@ export default class SceneEditor extends React.Component<Props, State> {
       return;
     }
 
-    const serializedInstances = instances.map(instance =>
+    const serializedInstances = instances.map((instance) =>
       serializeToJSObject(instance)
     );
     previewDebuggerServer
       .getExistingEmbeddedGameFrameDebuggerIds()
-      .forEach(debuggerId => {
+      .forEach((debuggerId) => {
         previewDebuggerServer.sendMessage(debuggerId, {
           command: 'updateInstances',
           payload: {
@@ -1835,10 +1888,11 @@ export default class SceneEditor extends React.Component<Props, State> {
   };
 
   _sendUpdatedInstances = (instances: Array<gdInitialInstance>) => {
-    instances.forEach(instance => {
+    instances.forEach((instance) => {
       const persistentUuid = instance.getPersistentUuid();
       const key =
-        persistentUuid || `no-persistent-uuid-${this._pendingUpdatedInstancesNoUuidCount++}`;
+        persistentUuid ||
+        `no-persistent-uuid-${this._pendingUpdatedInstancesNoUuidCount++}`;
       this._pendingUpdatedInstances.set(key, instance);
     });
 
@@ -1861,14 +1915,14 @@ export default class SceneEditor extends React.Component<Props, State> {
   }: {|
     updatedObjects: Array<gdObject>,
   |}) => {
-    const serializedObjects = updatedObjects.map(object =>
+    const serializedObjects = updatedObjects.map((object) =>
       serializeObjectWithCleanDefaultBehaviorFlags(object)
     );
     const { previewDebuggerServer } = this.props;
     if (previewDebuggerServer) {
       previewDebuggerServer
         .getExistingEmbeddedGameFrameDebuggerIds()
-        .forEach(debuggerId => {
+        .forEach((debuggerId) => {
           previewDebuggerServer.sendMessage(debuggerId, {
             command: 'hotReloadObjects',
             payload: {
@@ -1938,13 +1992,13 @@ export default class SceneEditor extends React.Component<Props, State> {
     if (previewDebuggerServer) {
       previewDebuggerServer
         .getExistingEmbeddedGameFrameDebuggerIds()
-        .forEach(debuggerId => {
+        .forEach((debuggerId) => {
           previewDebuggerServer.sendMessage(debuggerId, {
             command: 'setSelectedInstances',
             payload: {
               instanceUuids: this.instancesSelection
                 .getSelectedInstances()
-                .map(instance => instance.getPersistentUuid()),
+                .map((instance) => instance.getPersistentUuid()),
             },
           });
         });
@@ -2018,7 +2072,7 @@ export default class SceneEditor extends React.Component<Props, State> {
     });
   };
 
-  _onRemoveLayer = (layerName: string, done: boolean => void) => {
+  _onRemoveLayer = (layerName: string, done: (boolean) => void) => {
     const getNewState = (doRemove: boolean) => {
       const newState: {| layerRemoved: null, chosenLayer?: string |} = {
         layerRemoved: null,
@@ -2093,14 +2147,14 @@ export default class SceneEditor extends React.Component<Props, State> {
 
   _sendHotReloadLayers = () => {
     const { previewDebuggerServer, layersContainer, project } = this.props;
-    const layers = mapFor(0, layersContainer.getLayersCount(), i => {
+    const layers = mapFor(0, layersContainer.getLayersCount(), (i) => {
       const layer = layersContainer.getLayerAt(i);
       return serializeToJSObject(layer);
     });
     if (previewDebuggerServer) {
       previewDebuggerServer
         .getExistingEmbeddedGameFrameDebuggerIds()
-        .forEach(debuggerId => {
+        .forEach((debuggerId) => {
           previewDebuggerServer.sendMessage(debuggerId, {
             command: 'hotReloadLayers',
             payload: {
@@ -2120,7 +2174,7 @@ export default class SceneEditor extends React.Component<Props, State> {
     if (previewDebuggerServer) {
       previewDebuggerServer
         .getExistingEmbeddedGameFrameDebuggerIds()
-        .forEach(debuggerId => {
+        .forEach((debuggerId) => {
           previewDebuggerServer.sendMessage(debuggerId, {
             command: 'setBackgroundColor',
             payload: {
@@ -2158,7 +2212,7 @@ export default class SceneEditor extends React.Component<Props, State> {
     if (previewDebuggerServer) {
       previewDebuggerServer
         .getExistingEmbeddedGameFrameDebuggerIds()
-        .forEach(debuggerId => {
+        .forEach((debuggerId) => {
           previewDebuggerServer.sendMessage(debuggerId, {
             command: 'setSelectedLayer',
             payload: {
@@ -2179,11 +2233,11 @@ export default class SceneEditor extends React.Component<Props, State> {
   _onDeleteObjects = (
     i18n: I18nType,
     objectsWithContext: ObjectWithContext[],
-    done: boolean => void
+    done: (boolean) => void
   ) => {
     const { project, layout, eventsBasedObject, onObjectsDeleted } = this.props;
 
-    objectsWithContext.forEach(objectWithContext => {
+    objectsWithContext.forEach((objectWithContext) => {
       const { object, global } = objectWithContext;
 
       // Unselect instances of the deleted object because these instances
@@ -2239,12 +2293,14 @@ export default class SceneEditor extends React.Component<Props, State> {
     const { project, layout, projectScopedContainersAccessor } = this.props;
 
     const projectScopedContainers = projectScopedContainersAccessor.get();
-    const objectsContainersList = projectScopedContainers.getObjectsContainersList();
-    const variablesContainersList = projectScopedContainers.getVariablesContainersList();
+    const objectsContainersList =
+      projectScopedContainers.getObjectsContainersList();
+    const variablesContainersList =
+      projectScopedContainers.getVariablesContainersList();
 
     const safeAndUniqueNewName = newNameGenerator(
       gd.Project.getSafeName(newName),
-      tentativeNewName => {
+      (tentativeNewName) => {
         if (
           objectsContainersList.hasObjectOrGroupNamed(tentativeNewName) ||
           variablesContainersList.has(tentativeNewName)
@@ -2258,7 +2314,7 @@ export default class SceneEditor extends React.Component<Props, State> {
           const layoutsWithObjectOrGroupWithSameName: Array<string> = mapFor(
             0,
             project.getLayoutsCount(),
-            i => {
+            (i) => {
               const otherLayout = project.getLayoutAt(i);
               const otherLayoutName = otherLayout.getName();
               if (layoutName !== otherLayoutName) {
@@ -2349,13 +2405,12 @@ export default class SceneEditor extends React.Component<Props, State> {
   _onRenameObjectFolderOrObjectWithContextFinish = (
     objectFolderOrObjectWithContext: ObjectFolderOrObjectWithContext,
     newName: string,
-    done: boolean => void
+    done: (boolean) => void
   ) => {
     const { objectFolderOrObject, global } = objectFolderOrObjectWithContext;
 
-    const unifiedName = getObjectFolderOrObjectUnifiedName(
-      objectFolderOrObject
-    );
+    const unifiedName =
+      getObjectFolderOrObjectUnifiedName(objectFolderOrObject);
     // Avoid triggering renaming refactoring if name has not really changed
     if (unifiedName === newName) {
       this._onObjectFolderOrObjectWithContextSelected(
@@ -2395,7 +2450,7 @@ export default class SceneEditor extends React.Component<Props, State> {
     const highestZOrderFinder = new gd.HighestZOrderFinder();
 
     const extremeZOrderByLayerName = {};
-    layerNames.forEach(layerName => {
+    layerNames.forEach((layerName) => {
       highestZOrderFinder.reset();
       highestZOrderFinder.restrictSearchToLayer(layerName);
       this.props.initialInstances.iterateOverInstances(highestZOrderFinder);
@@ -2407,7 +2462,7 @@ export default class SceneEditor extends React.Component<Props, State> {
     });
     highestZOrderFinder.delete();
 
-    selectedInstances.forEach(instance => {
+    selectedInstances.forEach((instance) => {
       if (!instance.isLocked()) {
         // $FlowFixMe[invalid-computed-prop]
         const extremeZOrder = extremeZOrderByLayerName[instance.getLayer()];
@@ -2423,7 +2478,7 @@ export default class SceneEditor extends React.Component<Props, State> {
 
   _onDeleteObjectGroup = (
     groupWithContext: GroupWithContext,
-    done: boolean => void
+    done: (boolean) => void
   ) => {
     // done() actually does the deletion of the object group,
     // so ensure groupWithContext is not used after this call.
@@ -2434,7 +2489,7 @@ export default class SceneEditor extends React.Component<Props, State> {
   _onRenameObjectGroup = (
     groupWithContext: GroupWithContext,
     newName: string,
-    done: boolean => void
+    done: (boolean) => void
   ) => {
     const { group, global } = groupWithContext;
     const {
@@ -2491,7 +2546,7 @@ export default class SceneEditor extends React.Component<Props, State> {
     const layoutsWithObjectOrGroupWithSameName: Array<string> = mapFor(
       0,
       project.getLayoutsCount(),
-      i => {
+      (i) => {
         const otherLayout = project.getLayoutAt(i);
         const otherLayoutName = otherLayout.getName();
         if (layoutName !== otherLayoutName) {
@@ -2510,9 +2565,11 @@ export default class SceneEditor extends React.Component<Props, State> {
     if (layoutsWithObjectOrGroupWithSameName.length > 0) {
       return Window.showConfirmDialog(
         i18n._(
-          t`Making "${objectOrGroupName}" global would conflict with the following scenes that have a group or an object with the same name:${'\n\n - ' +
+          t`Making "${objectOrGroupName}" global would conflict with the following scenes that have a group or an object with the same name:${
+            '\n\n - ' +
             layoutsWithObjectOrGroupWithSameName.join('\n\n - ') +
-            '\n\n'}Continue only if you know what you're doing.`
+            '\n\n'
+          }Continue only if you know what you're doing.`
         ),
         'warning'
       );
@@ -2525,16 +2582,16 @@ export default class SceneEditor extends React.Component<Props, State> {
     const instancesIndex = buildInstancesIndex(this.props.initialInstances);
     const instancesToDeleteByUuid: Map<string, gdInitialInstance> = new Map();
 
-    selectedInstances.forEach(instance => {
+    selectedInstances.forEach((instance) => {
       if (instance.isLocked()) return;
       instancesToDeleteByUuid.set(instance.getPersistentUuid(), instance);
       const descendants = collectDescendants(instance, instancesIndex);
-      descendants.forEach(child => {
+      descendants.forEach((child) => {
         instancesToDeleteByUuid.set(child.getPersistentUuid(), child);
       });
     });
 
-    instancesToDeleteByUuid.forEach(instance => {
+    instancesToDeleteByUuid.forEach((instance) => {
       this.props.initialInstances.removeInstance(instance);
     });
 
@@ -2564,7 +2621,7 @@ export default class SceneEditor extends React.Component<Props, State> {
     if (previewDebuggerServer) {
       previewDebuggerServer
         .getExistingEmbeddedGameFrameDebuggerIds()
-        .forEach(debuggerId => {
+        .forEach((debuggerId) => {
           previewDebuggerServer.sendMessage(debuggerId, {
             command: 'deleteSelection',
             payload: {},
@@ -2750,7 +2807,7 @@ export default class SceneEditor extends React.Component<Props, State> {
       if (!previewDebuggerServer) return;
       previewDebuggerServer
         .getExistingEmbeddedGameFrameDebuggerIds()
-        .forEach(debuggerId => {
+        .forEach((debuggerId) => {
           previewDebuggerServer.sendMessage(debuggerId, {
             command: 'setZoom',
             payload: {
@@ -2767,7 +2824,7 @@ export default class SceneEditor extends React.Component<Props, State> {
       if (!previewDebuggerServer) return;
       previewDebuggerServer
         .getExistingEmbeddedGameFrameDebuggerIds()
-        .forEach(debuggerId => {
+        .forEach((debuggerId) => {
           previewDebuggerServer.sendMessage(debuggerId, {
             command: 'zoomBy',
             payload: {
@@ -2799,7 +2856,8 @@ export default class SceneEditor extends React.Component<Props, State> {
   ) => {
     if (this.contextMenu) {
       this.contextMenu.open(x, y, {
-        ignoreSelectedObjectsForContextMenu: !!ignoreSelectedObjectsForContextMenu,
+        ignoreSelectedObjectsForContextMenu:
+          !!ignoreSelectedObjectsForContextMenu,
       });
     }
   };
@@ -2843,7 +2901,8 @@ export default class SceneEditor extends React.Component<Props, State> {
           submenu: [
             {
               label: i18n._(t`Box`),
-              click: () => this._createPrimitive3DObjectAndInstanceUnderCursor('box'),
+              click: () =>
+                this._createPrimitive3DObjectAndInstanceUnderCursor('box'),
             },
             {
               label: i18n._(t`Ball`),
@@ -2867,7 +2926,8 @@ export default class SceneEditor extends React.Component<Props, State> {
           submenu: [
             {
               label: i18n._(t`Spot Light`),
-              click: () => this._createLight3DObjectAndInstanceUnderCursor('spot'),
+              click: () =>
+                this._createLight3DObjectAndInstanceUnderCursor('spot'),
             },
           ],
         },
@@ -2880,7 +2940,7 @@ export default class SceneEditor extends React.Component<Props, State> {
     const instances = this.instancesSelection.getSelectedInstances();
     if (
       instances.length === 1 ||
-      uniq(instances.map(instance => instance.getObjectName())).length === 1
+      uniq(instances.map((instance) => instance.getObjectName())).length === 1
     ) {
       const { project, globalObjectsContainer, objectsContainer } = this.props;
       const objectName = instances[0].getObjectName();
@@ -2939,9 +2999,8 @@ export default class SceneEditor extends React.Component<Props, State> {
                 customObjectExtension
               ),
               click: () => {
-                const customObjectConfiguration = gd.asCustomObjectConfiguration(
-                  object.getConfiguration()
-                );
+                const customObjectConfiguration =
+                  gd.asCustomObjectConfiguration(object.getConfiguration());
                 this.props.onOpenEventBasedObjectVariantEditor(
                   gd.PlatformExtension.getExtensionFromFullObjectType(
                     object.getType()
@@ -2971,12 +3030,13 @@ export default class SceneEditor extends React.Component<Props, State> {
   }: CopyCutPasteOptions = {}) => {
     const serializedSelection = this.instancesSelection
       .getSelectedInstances()
-      .map(instance => serializeToJSObject(instance));
+      .map((instance) => serializeToJSObject(instance));
 
     let x = 0;
     let y = 0;
     if (this.editorDisplay) {
-      const selectionAABB = this.editorDisplay.instancesHandlers.getSelectionAABB();
+      const selectionAABB =
+        this.editorDisplay.instancesHandlers.getSelectionAABB();
       x = selectionAABB.centerX();
       y = selectionAABB.centerY();
     }
@@ -3001,7 +3061,7 @@ export default class SceneEditor extends React.Component<Props, State> {
   }: CopyCutPasteOptions = {}) => {
     const serializedSelection = this.instancesSelection
       .getSelectedInstances()
-      .map(instance => serializeToJSObject(instance));
+      .map((instance) => serializeToJSObject(instance));
 
     const newInstances = addSerializedInstances({
       project: this.props.project,
@@ -3046,7 +3106,7 @@ export default class SceneEditor extends React.Component<Props, State> {
       copyReferential: [x, y],
       serializedInstances: instancesContent,
       addInstancesInTheForeground: pasteInTheForeground,
-      doesObjectExistInContext: objectName =>
+      doesObjectExistInContext: (objectName) =>
         this.props.projectScopedContainersAccessor
           .get()
           .getObjectsContainersList()
@@ -3094,9 +3154,9 @@ export default class SceneEditor extends React.Component<Props, State> {
 
     const serializedSelection = this.instancesSelection
       .getSelectedInstances()
-      .map(instance => serializeToJSObject(instance));
+      .map((instance) => serializeToJSObject(instance));
 
-    const newName = newNameGenerator(chosenName, name =>
+    const newName = newNameGenerator(chosenName, (name) =>
       project.hasExternalLayoutNamed(name)
     );
     const newExternalLayout = project.insertNewExternalLayout(
@@ -3235,7 +3295,7 @@ export default class SceneEditor extends React.Component<Props, State> {
     const resourcesInUse = new gd.ResourcesInUseHelper(
       project.getResourcesManager()
     );
-    projectScopedContainersAccessor.forEachObject(object => {
+    projectScopedContainersAccessor.forEachObject((object) => {
       if (project.hasEventsBasedObject(object.getType())) {
         object.getConfiguration().exposeResources(resourcesInUse);
       }
@@ -3250,7 +3310,7 @@ export default class SceneEditor extends React.Component<Props, State> {
       // This callback is executed even if there is no image to load.
       const { editorDisplay } = this;
       if (editorDisplay) {
-        projectScopedContainersAccessor.forEachObject(object => {
+        projectScopedContainersAccessor.forEachObject((object) => {
           editorDisplay.instancesHandlers.resetInstanceRenderersFor(
             object.getName()
           );
@@ -3330,7 +3390,8 @@ export default class SceneEditor extends React.Component<Props, State> {
     const isCustomVariant = eventsBasedObject
       ? eventsBasedObject.getDefaultVariant() !== eventsBasedObjectVariant
       : false;
-    const selectedInstanceCinematicSnapshot = this.getSelectedInstanceCinematicSnapshot();
+    const selectedInstanceCinematicSnapshot =
+      this.getSelectedInstanceCinematicSnapshot();
     const embeddedEditorOverlay =
       this.state.isCinematicTimelineShown &&
       this.props.gameEditorMode === 'embedded-game' ? (
@@ -3369,7 +3430,7 @@ export default class SceneEditor extends React.Component<Props, State> {
                     globalObjectsContainer={this.props.globalObjectsContainer}
                     objectsContainer={this.props.objectsContainer}
                     onEditObject={this.editObject}
-                    onEditObjectVariables={object => {
+                    onEditObjectVariables={(object) => {
                       this.editObject(object, 'variables');
                     }}
                     onOpenSceneProperties={this.openSceneProperties}
@@ -3378,7 +3439,7 @@ export default class SceneEditor extends React.Component<Props, State> {
                     onEditLayer={this.editLayer}
                   />
                   <EditorsDisplay
-                    ref={ref => (this.editorDisplay = ref)}
+                    ref={(ref) => (this.editorDisplay = ref)}
                     gameEditorMode={this.props.gameEditorMode}
                     onRestartInGameEditor={this.props.onRestartInGameEditor}
                     showRestartInGameEditorAfterErrorButton={
@@ -3557,14 +3618,14 @@ export default class SceneEditor extends React.Component<Props, State> {
                           // An hot-reload for an edited image may be on hold.
                           this.props.triggerHotReloadInGameEditorIfNeeded();
                         }}
-                        getValidatedObjectOrGroupName={newName =>
+                        getValidatedObjectOrGroupName={(newName) =>
                           this._getValidatedObjectOrGroupName(
                             newName,
                             editedObjectWithContext.global,
                             i18n
                           )
                         }
-                        onRename={newName => {
+                        onRename={(newName) => {
                           this._onRenameEditedObject(newName);
                         }}
                         onApply={(
@@ -3573,7 +3634,8 @@ export default class SceneEditor extends React.Component<Props, State> {
                         ) => {
                           // The editedObjectWithContext state must be reset
                           // because no hot-reload can happen while an object is edited.
-                          const appliedObjectWithContext = editedObjectWithContext;
+                          const appliedObjectWithContext =
+                            editedObjectWithContext;
                           this.editObject(null, undefined, () => {
                             // When resource parameters changed an hot-reload is
                             // already triggered by _onObjectEdited.
@@ -3824,16 +3886,22 @@ export default class SceneEditor extends React.Component<Props, State> {
                           if (previewDebuggerServer) {
                             previewDebuggerServer
                               .getExistingEmbeddedGameFrameDebuggerIds()
-                              .forEach(debuggerId => {
+                              .forEach((debuggerId) => {
                                 previewDebuggerServer.sendMessage(debuggerId, {
                                   command: 'updateInnerArea',
                                   payload: {
-                                    areaMinX: eventsBasedObjectVariant.getAreaMinX(),
-                                    areaMinY: eventsBasedObjectVariant.getAreaMinY(),
-                                    areaMinZ: eventsBasedObjectVariant.getAreaMinZ(),
-                                    areaMaxX: eventsBasedObjectVariant.getAreaMaxX(),
-                                    areaMaxY: eventsBasedObjectVariant.getAreaMaxY(),
-                                    areaMaxZ: eventsBasedObjectVariant.getAreaMaxZ(),
+                                    areaMinX:
+                                      eventsBasedObjectVariant.getAreaMinX(),
+                                    areaMinY:
+                                      eventsBasedObjectVariant.getAreaMinY(),
+                                    areaMinZ:
+                                      eventsBasedObjectVariant.getAreaMinZ(),
+                                    areaMaxX:
+                                      eventsBasedObjectVariant.getAreaMaxX(),
+                                    areaMaxY:
+                                      eventsBasedObjectVariant.getAreaMaxY(),
+                                    areaMaxZ:
+                                      eventsBasedObjectVariant.getAreaMaxZ(),
                                   },
                                 });
                               });
@@ -3868,14 +3936,14 @@ export default class SceneEditor extends React.Component<Props, State> {
                       <ExtractAsExternalLayoutDialog
                         suggestedName={newNameGenerator(
                           i18n._(t`${layout.getName()} part`),
-                          name => project.hasExternalLayoutNamed(name)
+                          (name) => project.hasExternalLayoutNamed(name)
                         )}
                         onCancel={() =>
                           this.setState({
                             extractAsExternalLayoutDialogOpen: false,
                           })
                         }
-                        onApply={chosenName =>
+                        onApply={(chosenName) =>
                           this.extractAsExternalLayout(chosenName)
                         }
                       />
@@ -3906,7 +3974,7 @@ export default class SceneEditor extends React.Component<Props, State> {
                       )}
                     />
                     <ContextMenu
-                      ref={contextMenu => (this.contextMenu = contextMenu)}
+                      ref={(contextMenu) => (this.contextMenu = contextMenu)}
                       buildMenuTemplate={this.buildContextMenu}
                     />
                   </React.Fragment>

@@ -197,7 +197,7 @@ describe('gdjs.HotReloader._hotReloadRuntimeGame', () => {
         gridColor: 0,
         gridAlpha: 1,
         snap: false,
-      }
+      },
     };
   };
 
@@ -243,7 +243,7 @@ describe('gdjs.HotReloader._hotReloadRuntimeGame', () => {
         gridColor: 0,
         gridAlpha: 1,
         snap: false,
-      }
+      },
     };
   };
 
@@ -258,6 +258,24 @@ describe('gdjs.HotReloader._hotReloadRuntimeGame', () => {
     }
     const currentFrame = instance._animator.getCurrentFrame();
     return currentFrame ? currentFrame.image : null;
+  };
+
+  /**
+   * @internal
+   * @param {gdjs.RuntimeScene} scene
+   * @param {string} persistentUuid
+   * @returns {gdjs.RuntimeObject}
+   */
+  const getSceneInstanceByPersistentUuid = (scene, persistentUuid) => {
+    const instance = scene
+      .getAdhocListOfAllInstances()
+      .find((runtimeObject) => runtimeObject.persistentUuid === persistentUuid);
+    if (!instance) {
+      throw new Error(
+        `Couldn't find a runtime instance with persistent UUID "${persistentUuid}".`
+      );
+    }
+    return instance;
   };
 
   it('can move instances of a scene at hot-reload', async () => {
@@ -305,6 +323,138 @@ describe('gdjs.HotReloader._hotReloadRuntimeGame', () => {
     expect(instances[0].getY()).to.be(678);
     expect(instances[1].getX()).to.be(222);
     expect(instances[1].getY()).to.be(234);
+  });
+
+  it('can reparent an existing instance of a scene at hot-reload', async () => {
+    const oldProjectData = createProjectData({
+      layouts: [
+        createSceneData({
+          instances: [
+            { persistentUuid: '1', x: 100, y: 200 },
+            { persistentUuid: '2', x: 130, y: 240, angle: 15 },
+          ],
+        }),
+      ],
+    });
+    const runtimeGame = new gdjs.RuntimeGame(oldProjectData);
+    const hotReloader = new gdjs.HotReloader(runtimeGame);
+    await runtimeGame.loadFirstAssetsAndStartBackgroundLoading(
+      'Scene1',
+      () => {}
+    );
+    runtimeGame._sceneStack.push('Scene1');
+    const scene = runtimeGame.getSceneStack().getCurrentScene();
+    if (!scene) throw new Error("Couldn't set a current scene for testing.");
+
+    const newProjectData = createProjectData({
+      layouts: [
+        createSceneData({
+          instances: [
+            { persistentUuid: '1', x: 100, y: 200, angle: 45 },
+            {
+              persistentUuid: '2',
+              x: 130,
+              y: 240,
+              angle: 15,
+              parentPersistentUuid: '1',
+              localX: 30,
+              localY: 40,
+              localAngle: 15,
+              localZ: 0,
+              localRotationX: 0,
+              localRotationY: 0,
+              localScaleX: 1,
+              localScaleY: 1,
+              inheritRotation: false,
+            },
+          ],
+        }),
+      ],
+    });
+
+    await hotReloader._hotReloadRuntimeGame(
+      oldProjectData,
+      newProjectData,
+      [],
+      runtimeGame
+    );
+
+    const parent = getSceneInstanceByPersistentUuid(scene, '1');
+    const child = getSceneInstanceByPersistentUuid(scene, '2');
+
+    expect(child.getParentObject()).to.be(parent);
+    expect(child.getLocalX()).to.be(30);
+    expect(child.getLocalY()).to.be(40);
+    expect(child.inheritRotation()).to.be(false);
+
+    parent.setPosition(200, 300);
+    parent.setAngle(90);
+
+    expect(child.getX()).to.be(230);
+    expect(child.getY()).to.be(340);
+    expect(child.getAngle()).to.be(15);
+  });
+
+  it('can create a new child instance attached to an existing instance at hot-reload', async () => {
+    const oldProjectData = createProjectData({
+      layouts: [
+        createSceneData({
+          instances: [{ persistentUuid: '1', x: 100, y: 200 }],
+        }),
+      ],
+    });
+    const runtimeGame = new gdjs.RuntimeGame(oldProjectData);
+    const hotReloader = new gdjs.HotReloader(runtimeGame);
+    await runtimeGame.loadFirstAssetsAndStartBackgroundLoading(
+      'Scene1',
+      () => {}
+    );
+    runtimeGame._sceneStack.push('Scene1');
+    const scene = runtimeGame.getSceneStack().getCurrentScene();
+    if (!scene) throw new Error("Couldn't set a current scene for testing.");
+
+    const newProjectData = createProjectData({
+      layouts: [
+        createSceneData({
+          instances: [
+            { persistentUuid: '1', x: 100, y: 200 },
+            {
+              persistentUuid: '2',
+              x: 130,
+              y: 240,
+              parentPersistentUuid: '1',
+              localX: 30,
+              localY: 40,
+              localZ: 0,
+              localAngle: 0,
+              localRotationX: 0,
+              localRotationY: 0,
+              localScaleX: 1,
+              localScaleY: 1,
+            },
+          ],
+        }),
+      ],
+    });
+
+    await hotReloader._hotReloadRuntimeGame(
+      oldProjectData,
+      newProjectData,
+      [],
+      runtimeGame
+    );
+
+    const parent = getSceneInstanceByPersistentUuid(scene, '1');
+    const child = getSceneInstanceByPersistentUuid(scene, '2');
+
+    expect(child.getParentObject()).to.be(parent);
+    expect(child.getLocalX()).to.be(30);
+    expect(child.getLocalY()).to.be(40);
+
+    parent.setPosition(150, 260);
+
+    expect(child.getX()).to.be(180);
+    expect(child.getY()).to.be(300);
   });
 
   it('can change the image of a sprite object of a scene at hot-reload', async () => {
