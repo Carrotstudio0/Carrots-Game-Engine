@@ -362,7 +362,7 @@ namespace gdjs {
   const cameraMaxInputDeltaPerFrame = 260;
   const orbitCameraMinElevation = -45;
   const orbitCameraMaxElevation = 175;
-  const freeCameraMinElevation = 5;
+  const freeCameraMinElevation = -175;
   const freeCameraMaxElevation = 175;
   const freeCameraMoveSpeedMultiplierMin = 0.05;
   const freeCameraMoveSpeedMultiplierMax = 64;
@@ -589,12 +589,15 @@ namespace gdjs {
     getIKChainNames: () => string[];
     getIKChainSettings: (chainName: string) => IKChainSettings | null;
     getIKBoneNames: () => string[];
+    exportIKChainsToJSON: () => string;
+    importIKChainsFromJSON: (json: string, clearExisting: boolean) => void;
     saveIKPose: (poseName: string) => void;
     applyIKPose: (poseName: string) => void;
     removeIKPose: (poseName: string) => void;
     clearIKPoses: () => void;
     hasIKPose: (poseName: string) => boolean;
     getIKPoseCount: () => number;
+    getIKPoseNames: () => string[];
     exportIKPosesToJSON: () => string;
     importIKPosesFromJSON: (json: string, clearExisting: boolean) => void;
     pinIKTargetToCurrentEffector: (chainName: string) => void;
@@ -1181,6 +1184,16 @@ namespace gdjs {
             : null,
         isIKModeEnabled: () => this._isIKModeEnabledForSelection(),
         setIKModeEnabled: (enabled: boolean) => this._setIKModeEnabled(enabled),
+        persistIKState: (
+          objectName: string,
+          ikChainsJson: string,
+          ikPosesJson: string
+        ) =>
+          this._persistIKStateToObjectConfiguration(
+            objectName,
+            ikChainsJson,
+            ikPosesJson
+          ),
       });
 
       this._applyInGameEditorSettings();
@@ -4890,6 +4903,25 @@ namespace gdjs {
     private _getEditorCamera(): EditorCamera {
       return this._editorCamera;
     }
+
+    private _persistIKStateToObjectConfiguration(
+      objectName: string,
+      ikChainsJson: string,
+      ikPosesJson: string
+    ): void {
+      const debuggerClient = this._runtimeGame._debuggerClient;
+      if (!debuggerClient || !objectName) {
+        return;
+      }
+
+      debuggerClient.sendObjectConfigurationChanges({
+        objectName,
+        updatedProperties: {
+          ikChainsJson,
+          ikPosesJson,
+        },
+      });
+    }
   }
 
   class IKSettingsPanel {
@@ -4900,6 +4932,7 @@ namespace gdjs {
       chainCountLabel: HTMLSpanElement;
       modeCheckbox: HTMLInputElement;
       chainSelect: HTMLSelectElement;
+      createChainFromSelectedButton: HTMLButtonElement;
       chainNameInput: HTMLInputElement;
       effectorSelect: HTMLSelectElement;
       targetModeSelect: HTMLSelectElement;
@@ -4916,6 +4949,7 @@ namespace gdjs {
       toleranceInput: HTMLInputElement;
       chainEnabledCheckbox: HTMLInputElement;
       gizmosCheckbox: HTMLInputElement;
+      poseSelect: HTMLSelectElement;
       poseNameInput: HTMLInputElement;
       poseCountLabel: HTMLSpanElement;
       jsonTextarea: HTMLTextAreaElement;
@@ -4939,28 +4973,45 @@ namespace gdjs {
     private _getSelectedBoneName: () => string | null;
     private _isIKModeEnabled: () => boolean;
     private _setIKModeEnabled: (enabled: boolean) => void;
+    private _persistIKState: (
+      objectName: string,
+      ikChainsJson: string,
+      ikPosesJson: string
+    ) => void;
     private _activeObject: IKConfigurableObject | null = null;
     private _selectedChainName = '';
     private _lastChainSignature = '';
     private _lastBoneSignature = '';
+    private _lastPoseSignature = '';
     private _isSyncingFormValues = false;
     private _statusTimeout: number | null = null;
+    private _persistTimeout: number | null = null;
+    private _lastPersistedObjectName = '';
+    private _lastPersistedIKChainsJson = '';
+    private _lastPersistedIKPosesJson = '';
 
     constructor({
       getActiveIKObject,
       getSelectedBoneName,
       isIKModeEnabled,
       setIKModeEnabled,
+      persistIKState,
     }: {
       getActiveIKObject: () => IKConfigurableObject | null;
       getSelectedBoneName: () => string | null;
       isIKModeEnabled: () => boolean;
       setIKModeEnabled: (enabled: boolean) => void;
+      persistIKState: (
+        objectName: string,
+        ikChainsJson: string,
+        ikPosesJson: string
+      ) => void;
     }) {
       this._getActiveIKObject = getActiveIKObject;
       this._getSelectedBoneName = getSelectedBoneName;
       this._isIKModeEnabled = isIKModeEnabled;
       this._setIKModeEnabled = setIKModeEnabled;
+      this._persistIKState = persistIKState;
 
       this._addOrUpdateStyle();
     }
@@ -4969,6 +5020,10 @@ namespace gdjs {
       if (this._statusTimeout !== null) {
         window.clearTimeout(this._statusTimeout);
         this._statusTimeout = null;
+      }
+      if (this._persistTimeout !== null) {
+        window.clearTimeout(this._persistTimeout);
+        this._persistTimeout = null;
       }
       if (this._root) {
         this._root.remove();
@@ -4980,6 +5035,7 @@ namespace gdjs {
       this._selectedChainName = '';
       this._lastChainSignature = '';
       this._lastBoneSignature = '';
+      this._lastPoseSignature = '';
     }
 
     hide() {
@@ -5006,22 +5062,24 @@ namespace gdjs {
           right: max(6px, env(safe-area-inset-right));
           z-index: 16;
           pointer-events: none;
-          padding: 0 8px;
+          padding: 0 10px;
         }
         .InGameEditor-IKPanel-Card {
-          width: min(360px, calc(100vw - 16px));
-          max-height: calc(100vh - 58px);
+          width: min(420px, calc(100vw - 20px));
+          max-height: calc(100vh - 60px);
           overflow: auto;
           pointer-events: auto;
-          border-radius: 12px;
-          border: 1px solid rgba(255, 255, 255, 0.18);
-          background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(0,0,0,0.25)), rgba(8, 16, 20, 0.86);
-          box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
+          border-radius: 14px;
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          background:
+            linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.22)),
+            rgba(7, 14, 18, 0.9);
+          box-shadow: 0 18px 42px rgba(0, 0, 0, 0.36);
           backdrop-filter: blur(6px);
           display: flex;
           flex-direction: column;
-          gap: 8px;
-          padding: 10px;
+          gap: 10px;
+          padding: 12px;
           color: var(--in-game-editor-theme-text-color-primary);
           font-family: inherit;
         }
@@ -5029,15 +5087,15 @@ namespace gdjs {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 8px;
-          font-size: 12px;
+          gap: 10px;
+          font-size: 13px;
           font-weight: 700;
           letter-spacing: 0.05em;
           text-transform: uppercase;
         }
         .InGameEditor-IKPanel-Subtle {
-          font-size: 10px;
-          opacity: 0.74;
+          font-size: 11px;
+          opacity: 0.78;
           text-transform: none;
           letter-spacing: 0;
           font-weight: 600;
@@ -5045,16 +5103,16 @@ namespace gdjs {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
-          max-width: 160px;
+          max-width: 220px;
         }
         .InGameEditor-IKPanel-Section {
           border: 1px solid rgba(255, 255, 255, 0.13);
-          border-radius: 10px;
-          padding: 8px;
+          border-radius: 12px;
+          padding: 10px;
           display: flex;
           flex-direction: column;
-          gap: 6px;
-          background: rgba(0, 0, 0, 0.18);
+          gap: 8px;
+          background: rgba(0, 0, 0, 0.2);
         }
         .InGameEditor-IKPanel-SectionTitle {
           font-size: 11px;
@@ -5062,14 +5120,22 @@ namespace gdjs {
           letter-spacing: 0.04em;
           text-transform: uppercase;
         }
+        .InGameEditor-IKPanel-Hint {
+          font-size: 12px;
+          line-height: 1.45;
+          opacity: 0.82;
+          padding: 8px 10px;
+          border-radius: 10px;
+          background: rgba(255, 255, 255, 0.04);
+        }
         .InGameEditor-IKPanel-Row {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 8px;
         }
         .InGameEditor-IKPanel-Label {
-          min-width: 68px;
-          font-size: 11px;
+          min-width: 82px;
+          font-size: 12px;
           opacity: 0.92;
         }
         .InGameEditor-IKPanel-Input,
@@ -5078,51 +5144,80 @@ namespace gdjs {
           flex: 1;
           min-width: 0;
           border: 1px solid rgba(255, 255, 255, 0.2);
-          border-radius: 7px;
-          padding: 6px 8px;
+          border-radius: 8px;
+          padding: 8px 10px;
           background: rgba(0, 0, 0, 0.3);
           color: var(--in-game-editor-theme-text-color-primary);
-          font-size: 12px;
+          font-size: 13px;
         }
         .InGameEditor-IKPanel-Grid-2 {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 6px;
+          gap: 8px;
         }
         .InGameEditor-IKPanel-Grid-3 {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 6px;
+          gap: 8px;
         }
         .InGameEditor-IKPanel-Button {
           border: 1px solid rgba(255, 255, 255, 0.18);
           border-radius: 8px;
-          min-height: 30px;
-          padding: 6px;
+          min-height: 34px;
+          padding: 7px 10px;
           background: rgba(255, 255, 255, 0.06);
           color: var(--in-game-editor-theme-text-color-primary);
-          font-size: 11px;
+          font-size: 12px;
           font-weight: 700;
+          cursor: pointer;
+        }
+        .InGameEditor-IKPanel-Button:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.1);
+        }
+        .InGameEditor-IKPanel-Button-Primary {
+          background: rgba(76, 163, 255, 0.22);
+          border-color: rgba(76, 163, 255, 0.48);
         }
         .InGameEditor-IKPanel-Button:disabled {
           opacity: 0.5;
+          cursor: default;
         }
         .InGameEditor-IKPanel-Checkbox {
           display: flex;
           align-items: center;
           gap: 6px;
-          font-size: 11px;
+          font-size: 12px;
           user-select: none;
         }
         .InGameEditor-IKPanel-Textarea {
-          min-height: 82px;
+          min-height: 92px;
           resize: vertical;
           line-height: 1.35;
           font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
           font-size: 11px;
         }
+        .InGameEditor-IKPanel-Details {
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          padding-top: 8px;
+        }
+        .InGameEditor-IKPanel-Details > summary {
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 700;
+          opacity: 0.88;
+          list-style: none;
+        }
+        .InGameEditor-IKPanel-Details > summary::-webkit-details-marker {
+          display: none;
+        }
+        .InGameEditor-IKPanel-DetailsContent {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-top: 8px;
+        }
         .InGameEditor-IKPanel-Status {
-          min-height: 16px;
+          min-height: 18px;
           font-size: 11px;
           opacity: 0.86;
         }
@@ -5345,6 +5440,46 @@ namespace gdjs {
       return true;
     }
 
+    private _persistCurrentIKState(force = false) {
+      const activeObject = this._activeObject || this._getActiveIKObject();
+      if (!activeObject) {
+        return;
+      }
+
+      const objectName = activeObject.getName();
+      const ikChainsJson = activeObject.exportIKChainsToJSON();
+      const ikPosesJson = activeObject.exportIKPosesToJSON();
+      const hasChanged =
+        objectName !== this._lastPersistedObjectName ||
+        ikChainsJson !== this._lastPersistedIKChainsJson ||
+        ikPosesJson !== this._lastPersistedIKPosesJson;
+      if (!hasChanged && !force) {
+        return;
+      }
+
+      const persistNow = () => {
+        this._persistTimeout = null;
+        this._persistIKState(objectName, ikChainsJson, ikPosesJson);
+        this._lastPersistedObjectName = objectName;
+        this._lastPersistedIKChainsJson = ikChainsJson;
+        this._lastPersistedIKPosesJson = ikPosesJson;
+      };
+
+      if (force) {
+        if (this._persistTimeout !== null) {
+          window.clearTimeout(this._persistTimeout);
+          this._persistTimeout = null;
+        }
+        persistNow();
+        return;
+      }
+
+      if (this._persistTimeout !== null) {
+        return;
+      }
+      this._persistTimeout = window.setTimeout(persistNow, 180);
+    }
+
     private _getChainNameFromForm(options?: {
       requireExistingChain?: boolean;
     }): string | null {
@@ -5368,16 +5503,23 @@ namespace gdjs {
       return chainName;
     }
 
-    private _applyChainFromForm() {
+    private _applyChainFromForm(options?: {
+      skipStatus?: boolean;
+      pinToCurrentEffector?: boolean;
+    }) {
       if (!this._elements) return;
       const chainName = this._getChainNameFromForm();
       if (!chainName) {
-        this._setStatus('Chain name is required.', true);
+        if (!(options && options.skipStatus)) {
+          this._setStatus('Chain name is required.', true);
+        }
         return;
       }
       const effectorBoneName = this._elements.effectorSelect.value.trim();
       if (!effectorBoneName) {
-        this._setStatus('Choose an effector bone.', true);
+        if (!(options && options.skipStatus)) {
+          this._setStatus('Choose an effector bone.', true);
+        }
         return;
       }
 
@@ -5387,10 +5529,12 @@ namespace gdjs {
           : ('bone' as IKTargetMode);
       const targetBoneName = this._elements.targetBoneSelect.value.trim();
       if (targetMode === 'bone' && !targetBoneName) {
-        this._setStatus(
-          'Choose a target bone or switch to position mode.',
-          true
-        );
+        if (!(options && options.skipStatus)) {
+          this._setStatus(
+            'Choose a target bone or switch to position mode.',
+            true
+          );
+        }
         return;
       }
 
@@ -5488,6 +5632,9 @@ namespace gdjs {
         activeObject.setIKAngleLimits(chainName, minAngle, maxAngle);
         activeObject.setIKTargetTolerance(chainName, targetTolerance);
         activeObject.setIKGizmosEnabled(gizmosEnabled);
+        if (options && options.pinToCurrentEffector) {
+          activeObject.pinIKTargetToCurrentEffector(chainName);
+        }
       });
       if (!hasApplied) {
         return;
@@ -5495,7 +5642,11 @@ namespace gdjs {
 
       this._selectedChainName = chainName;
       this._lastChainSignature = '';
-      this._setStatus(`Applied chain "${chainName}".`);
+      this._persistCurrentIKState(options ? !!options.skipStatus : false);
+      if (!(options && options.skipStatus)) {
+        this._setStatus(`Applied chain "${chainName}".`);
+      }
+      this._applyCurrentChainSettingsToForm(true);
     }
 
     private _removeCurrentChain() {
@@ -5517,6 +5668,7 @@ namespace gdjs {
 
       this._selectedChainName = '';
       this._lastChainSignature = '';
+      this._persistCurrentIKState(true);
       this._setStatus(`Removed chain "${chainName}".`);
     }
 
@@ -5530,7 +5682,27 @@ namespace gdjs {
       }
       this._selectedChainName = '';
       this._lastChainSignature = '';
+      this._persistCurrentIKState(true);
       this._setStatus('Cleared all IK chains.');
+    }
+
+    private _createChainFromSelectedBone() {
+      if (!this._elements) return;
+      const selectedBoneName = this._getSelectedBoneName();
+      if (!selectedBoneName) {
+        this._setStatus('Select a bone handle first.', true);
+        return;
+      }
+
+      this._elements.effectorSelect.value = selectedBoneName;
+      if (!this._elements.chainNameInput.value.trim()) {
+        this._elements.chainNameInput.value = `chain_${selectedBoneName}`;
+      }
+      this._elements.targetModeSelect.value = 'position';
+      this._updateTargetInputsVisibility();
+      this._applyChainFromForm({
+        pinToCurrentEffector: true,
+      });
     }
 
     private _setEffectorFromSelectedBone() {
@@ -5551,6 +5723,9 @@ namespace gdjs {
       if (!this._elements.chainNameInput.value.trim()) {
         this._elements.chainNameInput.value = `chain_${selectedBoneName}`;
       }
+      this._applyChainFromForm({
+        skipStatus: true,
+      });
       this._setStatus(`Effector set to "${selectedBoneName}".`);
     }
 
@@ -5571,6 +5746,9 @@ namespace gdjs {
       this._elements.targetModeSelect.value = 'bone';
       this._elements.targetBoneSelect.value = selectedBoneName;
       this._updateTargetInputsVisibility();
+      this._applyChainFromForm({
+        skipStatus: true,
+      });
       this._setStatus(`Target set to "${selectedBoneName}".`);
     }
 
@@ -5589,6 +5767,7 @@ namespace gdjs {
       ) {
         return;
       }
+      this._persistCurrentIKState(true);
       this._setStatus(`Pinned "${chainName}" target to current effector.`);
     }
 
@@ -5600,6 +5779,7 @@ namespace gdjs {
       ) {
         return;
       }
+      this._persistCurrentIKState(true);
       this._setStatus('Pinned all IK targets to current effectors.');
     }
 
@@ -5617,6 +5797,7 @@ namespace gdjs {
       ) {
         return;
       }
+      this._persistCurrentIKState(true);
       this._setStatus(`Saved pose "${poseName}".`);
     }
 
@@ -5651,6 +5832,7 @@ namespace gdjs {
       ) {
         return;
       }
+      this._persistCurrentIKState(true);
       this._setStatus(`Removed pose "${poseName}".`);
     }
 
@@ -5662,6 +5844,7 @@ namespace gdjs {
       ) {
         return;
       }
+      this._persistCurrentIKState(true);
       this._setStatus('Cleared all poses.');
     }
 
@@ -5692,6 +5875,7 @@ namespace gdjs {
       ) {
         return;
       }
+      this._persistCurrentIKState(true);
       this._setStatus(
         clearExisting
           ? 'Imported poses (replaced existing).'
@@ -5776,6 +5960,13 @@ namespace gdjs {
           objectLabel
         )
       );
+      card.appendChild(
+        h(
+          'div',
+          { class: 'InGameEditor-IKPanel-Hint' },
+          'Select a skinned 3D model, click a bone, then create a chain. Moving the IK target updates the preview immediately, stays saved on the object, and saved poses now restore both bones and IK targets.'
+        )
+      );
 
       const modeCheckbox = h('input', {
         type: 'checkbox',
@@ -5800,8 +5991,23 @@ namespace gdjs {
         )
       );
       const chainSelect = makeSelect();
+      const createChainFromSelectedButton = makeButton('New from selected');
+      createChainFromSelectedButton.classList.add(
+        'InGameEditor-IKPanel-Button-Primary'
+      );
+      const removeChainButton = makeButton('Remove');
+      const clearChainsButton = makeButton('Clear all');
       const chainNameInput = makeInput('text', 'chain_name');
       chainSection.appendChild(makeRow('Select', chainSelect));
+      chainSection.appendChild(
+        h(
+          'div',
+          { class: 'InGameEditor-IKPanel-Grid-3' },
+          createChainFromSelectedButton,
+          removeChainButton,
+          clearChainsButton
+        )
+      );
       chainSection.appendChild(makeRow('Name', chainNameInput));
 
       const effectorSelect = makeSelect();
@@ -5848,7 +6054,6 @@ namespace gdjs {
       chainSection.appendChild(makeRow('Target Pos', targetPositionRow));
 
       const linksInput = makeInput('text', 'upperarm, forearm');
-      chainSection.appendChild(makeRow('Links', linksInput));
 
       const iterationsInput = makeInput('number');
       iterationsInput.min = '1';
@@ -5857,17 +6062,6 @@ namespace gdjs {
       blendInput.min = '0';
       blendInput.max = '1';
       blendInput.step = '0.01';
-      chainSection.appendChild(
-        makeRow(
-          'Solver',
-          h(
-            'div',
-            { class: 'InGameEditor-IKPanel-Grid-2' },
-            iterationsInput,
-            blendInput
-          )
-        )
-      );
 
       const minAngleInput = makeInput('number');
       minAngleInput.min = '0';
@@ -5880,18 +6074,6 @@ namespace gdjs {
       const toleranceInput = makeInput('number');
       toleranceInput.min = '0';
       toleranceInput.step = '0.0001';
-      chainSection.appendChild(
-        makeRow(
-          'Limits',
-          h(
-            'div',
-            { class: 'InGameEditor-IKPanel-Grid-3' },
-            minAngleInput,
-            maxAngleInput,
-            toleranceInput
-          )
-        )
-      );
 
       const chainEnabledCheckbox = h('input', {
         type: 'checkbox',
@@ -5919,21 +6101,51 @@ namespace gdjs {
       );
 
       const applyChainButton = makeButton('Apply chain');
-      const removeChainButton = makeButton('Remove chain');
-      const clearChainsButton = makeButton('Clear chains');
       const pinChainButton = makeButton('Pin chain target');
       const pinAllButton = makeButton('Pin all targets');
       chainSection.appendChild(
         h(
           'div',
           { class: 'InGameEditor-IKPanel-Grid-2' },
-          applyChainButton,
-          removeChainButton,
-          clearChainsButton,
           pinChainButton,
           pinAllButton
         )
       );
+      const advancedChainDetails = h(
+        'details',
+        { class: 'InGameEditor-IKPanel-Details' },
+        h('summary', {}, 'Advanced chain options')
+      ) as HTMLDetailsElement;
+      const advancedChainContent = h('div', {
+        class: 'InGameEditor-IKPanel-DetailsContent',
+      }) as HTMLDivElement;
+      advancedChainDetails.appendChild(advancedChainContent);
+      advancedChainContent.appendChild(makeRow('Links', linksInput));
+      advancedChainContent.appendChild(
+        makeRow(
+          'Solver',
+          h(
+            'div',
+            { class: 'InGameEditor-IKPanel-Grid-2' },
+            iterationsInput,
+            blendInput
+          )
+        )
+      );
+      advancedChainContent.appendChild(
+        makeRow(
+          'Limits',
+          h(
+            'div',
+            { class: 'InGameEditor-IKPanel-Grid-3' },
+            minAngleInput,
+            maxAngleInput,
+            toleranceInput
+          )
+        )
+      );
+      advancedChainContent.appendChild(applyChainButton);
+      chainSection.appendChild(advancedChainDetails);
 
       const poseSection = makeSection('Poses');
       card.appendChild(poseSection);
@@ -5945,6 +6157,8 @@ namespace gdjs {
           poseCountLabel
         )
       );
+      const poseSelect = makeSelect();
+      poseSection.appendChild(makeRow('Saved', poseSelect));
       const poseNameInput = makeInput('text', 'pose_name');
       poseSection.appendChild(makeRow('Pose', poseNameInput));
       const savePoseButton = makeButton('Save pose');
@@ -5966,11 +6180,20 @@ namespace gdjs {
         class: 'InGameEditor-IKPanel-Textarea',
         placeholder: 'IK pose JSON...',
       }) as HTMLTextAreaElement;
-      poseSection.appendChild(jsonTextarea);
       const exportJsonButton = makeButton('Export JSON');
       const importReplaceButton = makeButton('Import (replace)');
       const importMergeButton = makeButton('Import (merge)');
-      poseSection.appendChild(
+      const advancedPoseDetails = h(
+        'details',
+        { class: 'InGameEditor-IKPanel-Details' },
+        h('summary', {}, 'Pose JSON import/export')
+      ) as HTMLDetailsElement;
+      const advancedPoseContent = h('div', {
+        class: 'InGameEditor-IKPanel-DetailsContent',
+      }) as HTMLDivElement;
+      advancedPoseDetails.appendChild(advancedPoseContent);
+      advancedPoseContent.appendChild(jsonTextarea);
+      advancedPoseContent.appendChild(
         h(
           'div',
           { class: 'InGameEditor-IKPanel-Grid-3' },
@@ -5979,6 +6202,7 @@ namespace gdjs {
           importMergeButton
         )
       );
+      poseSection.appendChild(advancedPoseDetails);
 
       const statusLabel = h(
         'div',
@@ -5992,6 +6216,7 @@ namespace gdjs {
         chainCountLabel,
         modeCheckbox,
         chainSelect,
+        createChainFromSelectedButton,
         chainNameInput,
         effectorSelect,
         targetModeSelect,
@@ -6008,6 +6233,7 @@ namespace gdjs {
         toleranceInput,
         chainEnabledCheckbox,
         gizmosCheckbox,
+        poseSelect,
         poseNameInput,
         poseCountLabel,
         jsonTextarea,
@@ -6057,15 +6283,44 @@ namespace gdjs {
         );
         this._applyCurrentChainSettingsToForm(true);
       });
+      const applyChainLive = () => {
+        if (this._isSyncingFormValues) return;
+        this._applyChainFromForm({
+          skipStatus: true,
+        });
+      };
+      const applyChainNameFromInput = () => {
+        if (this._isSyncingFormValues) return;
+        this._applyChainFromForm();
+      };
+      chainNameInput.addEventListener('blur', applyChainNameFromInput);
+      chainNameInput.addEventListener('keydown', (event) => {
+        if ((event as KeyboardEvent).key === 'Enter') {
+          event.preventDefault();
+          applyChainNameFromInput();
+        }
+      });
       targetModeSelect.addEventListener('change', () => {
         this._updateTargetInputsVisibility();
+        applyChainLive();
       });
-      gizmosCheckbox.addEventListener('change', () => {
-        this._withActiveObject((activeObject) => {
-          activeObject.setIKGizmosEnabled(gizmosCheckbox.checked);
-        });
-      });
+      effectorSelect.addEventListener('change', applyChainLive);
+      targetBoneSelect.addEventListener('change', applyChainLive);
+      targetXInput.addEventListener('change', applyChainLive);
+      targetYInput.addEventListener('change', applyChainLive);
+      targetZInput.addEventListener('change', applyChainLive);
+      linksInput.addEventListener('change', applyChainLive);
+      iterationsInput.addEventListener('change', applyChainLive);
+      blendInput.addEventListener('change', applyChainLive);
+      minAngleInput.addEventListener('change', applyChainLive);
+      maxAngleInput.addEventListener('change', applyChainLive);
+      toleranceInput.addEventListener('change', applyChainLive);
+      chainEnabledCheckbox.addEventListener('change', applyChainLive);
+      gizmosCheckbox.addEventListener('change', applyChainLive);
 
+      createChainFromSelectedButton.addEventListener('click', () =>
+        this._createChainFromSelectedBone()
+      );
       applyChainButton.addEventListener('click', () =>
         this._applyChainFromForm()
       );
@@ -6086,6 +6341,14 @@ namespace gdjs {
       applyPoseButton.addEventListener('click', () => this._applyPose());
       removePoseButton.addEventListener('click', () => this._removePose());
       clearPosesButton.addEventListener('click', () => this._clearPoses());
+      poseSelect.addEventListener('change', () => {
+        if (this._isSyncingFormValues) return;
+        this._setFieldValueIfNotFocused(
+          poseNameInput,
+          poseSelect.value.trim(),
+          true
+        );
+      });
       exportJsonButton.addEventListener('click', () =>
         this._exportPosesToJson()
       );
@@ -6122,6 +6385,7 @@ namespace gdjs {
         this._selectedChainName = '';
         this._lastChainSignature = '';
         this._lastBoneSignature = '';
+        this._lastPoseSignature = '';
         this._setStatus('');
       }
       this._activeObject = activeObject;
@@ -6174,7 +6438,16 @@ namespace gdjs {
       }
 
       this._elements.chainCountLabel.textContent = `${chainNames.length} chains`;
-      this._elements.poseCountLabel.textContent = `${activeObject.getIKPoseCount()} poses`;
+      const poseNames = activeObject.getIKPoseNames();
+      const poseSignature = this._chainSignature(poseNames);
+      if (hasObjectChanged || poseSignature !== this._lastPoseSignature) {
+        this._lastPoseSignature = poseSignature;
+        this._syncSelectOptions(this._elements.poseSelect, poseNames, {
+          allowEmptyOption: true,
+          emptyOptionLabel: 'Select pose',
+        });
+      }
+      this._elements.poseCountLabel.textContent = `${poseNames.length} poses`;
       this._elements.gizmosCheckbox.checked =
         !!activeObject.areIKGizmosEnabled();
 
@@ -6185,11 +6458,25 @@ namespace gdjs {
       const hasSelectedChain =
         !!this._selectedChainName &&
         chainNames.includes(this._selectedChainName);
+      const selectedBoneName = this._getSelectedBoneName();
+      this._elements.createChainFromSelectedButton.disabled = !selectedBoneName;
+      this._elements.setEffectorFromSelectedButton.disabled = !selectedBoneName;
       this._elements.removeChainButton.disabled = !hasSelectedChain;
+      this._elements.clearChainsButton.disabled = chainNames.length === 0;
       this._elements.pinChainButton.disabled = !hasSelectedChain;
+      this._elements.applyChainButton.disabled =
+        !this._elements.chainNameInput.value.trim() ||
+        !this._elements.effectorSelect.value.trim();
       const poseName = this._elements.poseNameInput.value.trim();
+      this._setFieldValueIfNotFocused(
+        this._elements.poseSelect,
+        poseNames.includes(poseName) ? poseName : '',
+        true
+      );
       this._elements.applyPoseButton.disabled = !poseName;
       this._elements.removePoseButton.disabled = !poseName;
+      this._elements.clearPosesButton.disabled = poseNames.length === 0;
+      this._persistCurrentIKState();
     }
   }
 

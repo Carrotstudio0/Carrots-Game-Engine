@@ -1137,9 +1137,7 @@ module.exports = {
           behaviorContent.addChild('forceLevel').setDoubleValue(-1);
         }
         if (!behaviorContent.hasChild('modelSwitchCooldownMs')) {
-          behaviorContent
-            .addChild('modelSwitchCooldownMs')
-            .setDoubleValue(250);
+          behaviorContent.addChild('modelSwitchCooldownMs').setDoubleValue(250);
         }
         if (!behaviorContent.hasChild('useBoundingRadius')) {
           behaviorContent.addChild('useBoundingRadius').setBoolValue(true);
@@ -1241,11 +1239,15 @@ module.exports = {
           return true;
         }
         if (propertyName === 'lod1ModelResource') {
-          behaviorContent.getChild('lod1ModelResource').setStringValue(newValue);
+          behaviorContent
+            .getChild('lod1ModelResource')
+            .setStringValue(newValue);
           return true;
         }
         if (propertyName === 'lod2ModelResource') {
-          behaviorContent.getChild('lod2ModelResource').setStringValue(newValue);
+          behaviorContent
+            .getChild('lod2ModelResource')
+            .setStringValue(newValue);
           return true;
         }
         if (propertyName === 'forceLevel') {
@@ -1402,14 +1404,18 @@ module.exports = {
           .setAdvanced(true);
         behaviorProperties
           .getOrCreate('lod1ModelResource')
-          .setValue(behaviorContent.getChild('lod1ModelResource').getStringValue())
+          .setValue(
+            behaviorContent.getChild('lod1ModelResource').getStringValue()
+          )
           .setType('string')
           .setLabel(_('LOD1 model resource'))
           .setGroup(_('Model swap'))
           .setAdvanced(true);
         behaviorProperties
           .getOrCreate('lod2ModelResource')
-          .setValue(behaviorContent.getChild('lod2ModelResource').getStringValue())
+          .setValue(
+            behaviorContent.getChild('lod2ModelResource').getStringValue()
+          )
           .setType('string')
           .setLabel(_('LOD2 model resource'))
           .setGroup(_('Model swap'))
@@ -1440,7 +1446,10 @@ module.exports = {
         behaviorProperties
           .getOrCreate('distanceScale')
           .setValue(
-            behaviorContent.getChild('distanceScale').getDoubleValue().toString()
+            behaviorContent
+              .getChild('distanceScale')
+              .getDoubleValue()
+              .toString()
           )
           .setType('number')
           .setLabel(_('Distance scale'))
@@ -1543,10 +1552,7 @@ module.exports = {
         )
         .addParameter('object', _('Object'), '', false)
         .addParameter('behavior', _('Behavior'), 'LOD')
-        .useStandardParameters(
-          'number',
-          gd.ParameterOptions.makeNewOptions()
-        )
+        .useStandardParameters('number', gd.ParameterOptions.makeNewOptions())
         .setFunctionName('getCurrentLevel');
 
       lod
@@ -2468,12 +2474,190 @@ module.exports = {
         .setFunctionName('hasAnimationEnded');
 
       object
+        .addExpressionAndConditionAndAction(
+          'number',
+          'AnimatorStateIndex',
+          _('Animator state (by number)'),
+          _('the current 3D animator state index'),
+          _('the current 3D animator state index'),
+          _('3D animator'),
+          'res/actions/animation24.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .useStandardParameters(
+          'number',
+          gd.ParameterOptions.makeNewOptions().setDescription(_('State index'))
+        )
+        .markAsSimple()
+        .setFunctionName('setAnimationIndex')
+        .setGetter('getAnimationIndex');
+
+      object
+        .addExpressionAndCondition(
+          'number',
+          'AnimatorStateCount',
+          _('Animator state count'),
+          _('the number of states available in the 3D animator'),
+          _('the number of 3D animator states'),
+          _('3D animator'),
+          'res/actions/animation24.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .useStandardParameters(
+          'number',
+          gd.ParameterOptions.makeNewOptions().setDescription(_('State count'))
+        )
+        .setFunctionName('getAnimationCount');
+
+      object
+        .addExpressionAndConditionAndAction(
+          'string',
+          'AnimatorStateName',
+          _('Animator state (by name)'),
+          _('the current 3D animator state name'),
+          _('the current 3D animator state name'),
+          _('3D animator'),
+          'res/actions/animation24.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .useStandardParameters(
+          'objectAnimationName',
+          gd.ParameterOptions.makeNewOptions().setDescription(_('State name'))
+        )
+        .markAsSimple()
+        .setFunctionName('setAnimationName')
+        .setGetter('getAnimationName');
+
+      object
+        .addScopedCondition(
+          'AnimatorStateIs',
+          _('Animator state is'),
+          _('Check if the 3D animator is currently playing a given state.'),
+          _('Animator state of _PARAM0_ is _PARAM1_'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('State name'), '', false)
+        .setFunctionName('isCurrentAnimationName');
+
+      object
+        .addScopedAction(
+          'PauseAnimator',
+          _('Pause animator'),
+          _('Pause the 3D animator on this object.'),
+          _('Pause animator of _PARAM0_'),
+          _('3D animator'),
+          'res/actions/animation24.png',
+          'res/actions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('pauseAnimation');
+
+      object
+        .addScopedAction(
+          'ResumeAnimator',
+          _('Resume animator'),
+          _('Resume the 3D animator on this object.'),
+          _('Resume animator of _PARAM0_'),
+          _('3D animator'),
+          'res/actions/animation24.png',
+          'res/actions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('resumeAnimation');
+
+      object
+        .addExpressionAndConditionAndAction(
+          'number',
+          'AnimatorSpeedScale',
+          _('Animator speed scale'),
+          _('the current 3D animator speed scale'),
+          _('the current 3D animator speed scale'),
+          _('3D animator'),
+          'res/actions/animation24.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .useStandardParameters(
+          'number',
+          gd.ParameterOptions.makeNewOptions().setDescription(_('Speed scale'))
+        )
+        .setFunctionName('setAnimationSpeedScale')
+        .setGetter('getAnimationSpeedScale');
+
+      object
+        .addScopedCondition(
+          'IsAnimatorPaused',
+          _('Animator paused'),
+          _('Check if the 3D animator is paused.'),
+          _('Animator of _PARAM0_ is paused'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('isAnimationPaused');
+
+      object
+        .addScopedCondition(
+          'HasAnimatorEnded',
+          _('Animator finished'),
+          _('Check if the current 3D animator state has finished.'),
+          _('Animator of _PARAM0_ is finished'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('hasAnimationEnded');
+
+      object
+        .addExpressionAndConditionAndAction(
+          'number',
+          'AnimatorCrossfadeDuration',
+          _('Animator crossfade duration'),
+          _('the default crossfade duration of the 3D animator'),
+          _('the default crossfade duration of the 3D animator'),
+          _('3D animator'),
+          'res/actions/animation24.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .useStandardParameters(
+          'number',
+          gd.ParameterOptions.makeNewOptions().setDescription(
+            _('Crossfade duration (in seconds)')
+          )
+        )
+        .setFunctionName('setCrossfadeDuration')
+        .setGetter('getCrossfadeDuration');
+
+      object
+        .addExpressionAndConditionAndAction(
+          'number',
+          'AnimatorNumberParameterValue',
+          _('Animator number parameter'),
+          _('the value of a numeric 3D animator parameter'),
+          _('the value of a numeric 3D animator parameter'),
+          _('3D animator'),
+          'res/actions/animation24.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Parameter name'), '', false)
+        .useStandardParameters(
+          'number',
+          gd.ParameterOptions.makeNewOptions().setDescription(_('Value'))
+        )
+        .setFunctionName('setAnimatorNumberParameter')
+        .setGetter('getAnimatorNumberParameter');
+
+      object
         .addScopedAction(
           'SetCrossfadeDuration',
           _('Set crossfade duration'),
           _('Set the crossfade duration when switching to a new animation.'),
           _('Set crossfade duration of _PARAM0_ to _PARAM1_ seconds'),
-          _('Animations and images'),
+          _('3D animator'),
           'res/conditions/animation24.png',
           'res/conditions/animation.png'
         )
@@ -2483,11 +2667,81 @@ module.exports = {
 
       object
         .addScopedAction(
+          'SetAnimatorNumberParameter',
+          _('Set animator number parameter'),
+          _('Set a float or integer animator parameter by name.'),
+          _('Set animator number parameter _PARAM1_ of _PARAM0_ to _PARAM2_'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Parameter name'), '', false)
+        .addParameter('number', _('Value'), '', false)
+        .setFunctionName('setAnimatorNumberParameter');
+
+      object
+        .addScopedAction(
+          'SetAnimatorBooleanParameter',
+          _('Set animator boolean parameter'),
+          _('Set a boolean animator parameter by name.'),
+          _('Set animator boolean parameter _PARAM1_ of _PARAM0_ to _PARAM2_'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Parameter name'), '', false)
+        .addParameter('yesorno', _('Value'))
+        .setFunctionName('setAnimatorBooleanParameter');
+
+      object
+        .addScopedAction(
+          'TriggerAnimatorParameter',
+          _('Trigger animator parameter'),
+          _('Arm a trigger animator parameter by name.'),
+          _('Trigger animator parameter _PARAM1_ of _PARAM0_'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Trigger parameter name'), '', false)
+        .setFunctionName('triggerAnimatorParameter');
+
+      object
+        .addScopedAction(
+          'ResetAnimatorTrigger',
+          _('Reset animator trigger'),
+          _('Reset a trigger animator parameter by name.'),
+          _('Reset animator trigger _PARAM1_ of _PARAM0_'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Trigger parameter name'), '', false)
+        .setFunctionName('resetAnimatorTrigger');
+
+      object
+        .addScopedCondition(
+          'AnimatorBooleanParameter',
+          _('Animator boolean parameter is true'),
+          _('Check if an animator boolean parameter is true.'),
+          _('Animator boolean parameter _PARAM1_ of _PARAM0_ is true'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Parameter name'), '', false)
+        .setFunctionName('isAnimatorBooleanParameterTrue');
+
+      object
+        .addScopedAction(
           'ConfigureIKChain',
           _('Configure IK chain'),
-          _(
-            'Create or update an IK chain for this model using bone names.'
-          ),
+          _('Create or update an IK chain for this model using bone names.'),
           _(
             'Configure IK chain _PARAM1_ on _PARAM0_ (effector: _PARAM2_, target: _PARAM3_)'
           ),
@@ -2617,7 +2871,9 @@ module.exports = {
           _(
             'Set the convergence tolerance of one IK chain (smaller value = more precise, potentially more expensive).'
           ),
-          _('Set IK target tolerance of chain _PARAM1_ on _PARAM0_ to _PARAM2_'),
+          _(
+            'Set IK target tolerance of chain _PARAM1_ on _PARAM0_ to _PARAM2_'
+          ),
           _('Inverse kinematics'),
           'res/conditions/3d_box.svg',
           'res/conditions/3d_box.svg'
@@ -2655,9 +2911,7 @@ module.exports = {
           'ClearIKLinkAngleLimits',
           _('Clear IK link angle limits'),
           _('Remove per-axis angle constraints for one IK link bone.'),
-          _(
-            'Clear IK link limits of _PARAM2_ in chain _PARAM1_ on _PARAM0_'
-          ),
+          _('Clear IK link limits of _PARAM2_ in chain _PARAM1_ on _PARAM0_'),
           _('Inverse kinematics'),
           'res/conditions/3d_box.svg',
           'res/conditions/3d_box.svg'
@@ -2721,6 +2975,20 @@ module.exports = {
         .addParameter('object', _('3D model'), 'Model3DObject', false)
         .addParameter('string', _('Chain name'), '', false)
         .setFunctionName('hasIKChain');
+
+      object
+        .addExpressionAndCondition(
+          'number',
+          'IKChainCount',
+          _('IK chain count'),
+          _('the number of configured IK chains'),
+          _('the number of IK chains'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .useStandardParameters('number', gd.ParameterOptions.makeNewOptions())
+        .setFunctionName('getIKChainCount');
 
       object
         .addScopedAction(
@@ -2869,6 +3137,38 @@ module.exports = {
 
       object
         .addScopedAction(
+          'ImportIKChainsFromJSON',
+          _('Import IK chains from JSON'),
+          _(
+            'Import IK chains from JSON text previously generated by "IK chains as JSON".'
+          ),
+          _(
+            'Import IK chains on _PARAM0_ from JSON _PARAM1_ (clear existing: _PARAM2_)'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('IK chains JSON text'), '', false)
+        .addParameter('yesorno', _('Clear existing chains first'))
+        .setFunctionName('importIKChainsFromJSON');
+
+      object
+        .addStrExpression(
+          'IKChainsAsJSON',
+          _('IK chains as JSON'),
+          _(
+            'Return all configured IK chains as JSON text, for long-term saving using Storage or file system actions.'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('exportIKChainsToJSON');
+
+      object
+        .addScopedAction(
           'ImportIKPosesFromJSON',
           _('Import IK poses from JSON'),
           _(
@@ -2900,7 +3200,7 @@ module.exports = {
         .setFunctionName('exportIKPosesToJSON');
     }
 
-    const parse3DMaterialType = materialTypeValue => {
+    const parse3DMaterialType = (materialTypeValue) => {
       const normalizedValue = (materialTypeValue || '')
         .toString()
         .toLowerCase();
@@ -2914,10 +3214,10 @@ module.exports = {
       return null;
     };
 
-    const normalize3DMaterialType = materialTypeValue =>
+    const normalize3DMaterialType = (materialTypeValue) =>
       parse3DMaterialType(materialTypeValue) || 'Standard';
 
-    const add3DMaterialChoices = propertyDescriptor =>
+    const add3DMaterialChoices = (propertyDescriptor) =>
       propertyDescriptor
         .addChoice('Standard', _('Standard PBR (balanced)'))
         .addChoice('Matte', _('Matte (soft highlights)'))
@@ -2991,8 +3291,7 @@ module.exports = {
         propertyName === 'isCastingShadow' ||
         propertyName === 'isReceivingShadow'
       ) {
-        objectContent[propertyName] =
-          newValue === '1' || newValue === 'true';
+        objectContent[propertyName] = newValue === '1' || newValue === 'true';
         return true;
       }
 
@@ -3807,8 +4106,7 @@ module.exports = {
           propertyName === 'isCastingShadow' ||
           propertyName === 'isReceivingShadow'
         ) {
-          objectContent[propertyName] =
-            newValue === '1' || newValue === 'true';
+          objectContent[propertyName] = newValue === '1' || newValue === 'true';
           return true;
         }
 
@@ -4129,7 +4427,9 @@ module.exports = {
         .setType('boolean')
         .setLabel(_('Guardrails'))
         .setDescription(
-          _('Limit active spot lights automatically to keep performance stable.')
+          _(
+            'Limit active spot lights automatically to keep performance stable.'
+          )
         )
         .setGroup(_('Advanced'))
         .setAdvanced(true);
@@ -4424,7 +4724,12 @@ module.exports = {
       .addParameter('number', _('Distance'))
       .addParameter('number', _('Yaw (degrees)'))
       .addParameter('number', _('Pitch (degrees)'))
-      .addParameter('expression', _('Look delta yaw (degrees, optional)'), '', true)
+      .addParameter(
+        'expression',
+        _('Look delta yaw (degrees, optional)'),
+        '',
+        true
+      )
       .setDefaultValue('0')
       .addParameter(
         'expression',
@@ -4465,7 +4770,9 @@ module.exports = {
       )
       .setDefaultValue('12')
       .markAsAdvanced()
-      .setFunctionName('gdjs.scene3d.camera.updateThirdPersonCameraRigFromObject')
+      .setFunctionName(
+        'gdjs.scene3d.camera.updateThirdPersonCameraRigFromObject'
+      )
       .setIncludeFile('Extensions/3D/Scene3DTools.js');
 
     extension
@@ -4589,9 +4896,7 @@ module.exports = {
         .setValue('0.75')
         .setLabel(_('Realtime weight'))
         .setDescription(
-          _(
-            'Weight of realtime lighting contribution in hybrid mode (0 to 1).'
-          )
+          _('Weight of realtime lighting contribution in hybrid mode (0 to 1).')
         )
         .setType('number')
         .setAdvanced(true);
@@ -4616,9 +4921,7 @@ module.exports = {
         .getOrCreate('probeIntensity')
         .setValue('0.35')
         .setLabel(_('Probe intensity'))
-        .setDescription(
-          _('Intensity of probe-based indirect fill lighting.')
-        )
+        .setDescription(_('Intensity of probe-based indirect fill lighting.'))
         .setType('number')
         .setGroup(_('Probes'));
       properties
@@ -4668,9 +4971,7 @@ module.exports = {
         .addChoice('stylized', _('Stylized'))
         .setLabel(_('Attenuation model'))
         .setDescription(
-          _(
-            'Controls default falloff style used by point and spot lights.'
-          )
+          _('Controls default falloff style used by point and spot lights.')
         )
         .setType('choice')
         .setGroup(_('Attenuation'));
@@ -4691,9 +4992,7 @@ module.exports = {
         .setValue('1')
         .setLabel(_('Decay scale'))
         .setDescription(
-          _(
-            'Global decay multiplier for local-light attenuation (point/spot).'
-          )
+          _('Global decay multiplier for local-light attenuation (point/spot).')
         )
         .setType('number')
         .setGroup(_('Attenuation'))
@@ -5656,7 +5955,9 @@ module.exports = {
         .setValue('0.68')
         .setLabel(_('Exposure'))
         .setType('number')
-        .setDescription(_('Global brightness after atmospheric scattering (0 to 2).'))
+        .setDescription(
+          _('Global brightness after atmospheric scattering (0 to 2).')
+        )
         .setGroup(_('Lighting'));
       properties
         .getOrCreate('turbidity')
@@ -6377,7 +6678,7 @@ module.exports = {
       return newTransparentMaterial;
     };
 
-    const get3DMaterialProfile = materialType => {
+    const get3DMaterialProfile = (materialType) => {
       if (materialType === 'Matte') {
         return { roughness: 0.94, metalness: 0.01, envMapIntensity: 0.85 };
       }
@@ -6395,7 +6696,10 @@ module.exports = {
 
     const apply3DMaterialProfile = (materialType, material) => {
       if (!material || materialType === 'Basic') return;
-      if (material.roughness === undefined || material.metalness === undefined) {
+      if (
+        material.roughness === undefined ||
+        material.metalness === undefined
+      ) {
         return;
       }
 
@@ -6408,12 +6712,7 @@ module.exports = {
       material.needsUpdate = true;
     };
 
-    const create3DMaterial = ({
-      materialType,
-      color,
-      side,
-      vertexColors,
-    }) => {
+    const create3DMaterial = ({ materialType, color, side, vertexColors }) => {
       if (materialType === 'Basic') {
         return new THREE.MeshBasicMaterial({
           color,
@@ -6432,7 +6731,7 @@ module.exports = {
       });
     };
 
-    const normalize3DMaterialType = materialTypeValue => {
+    const normalize3DMaterialType = (materialTypeValue) => {
       const normalizedValue = (materialTypeValue || '')
         .toString()
         .toLowerCase();
@@ -6446,7 +6745,7 @@ module.exports = {
       return 'Standard';
     };
 
-    const normalizeModel3DMaterialType = materialTypeValue => {
+    const normalizeModel3DMaterialType = (materialTypeValue) => {
       const normalizedValue = (materialTypeValue || '')
         .toString()
         .toLowerCase();
@@ -6454,7 +6753,7 @@ module.exports = {
       return normalize3DMaterialType(materialTypeValue);
     };
 
-    const convertToBasicPreviewMaterial = material => {
+    const convertToBasicPreviewMaterial = (material) => {
       const basicMaterial = new THREE.MeshBasicMaterial();
       basicMaterial.name = material.name || '';
       if (material.color) {
@@ -6852,7 +7151,9 @@ module.exports = {
           this._shouldUseTransparentTexture = shouldUseTransparentTexture;
           materialsDirty = true;
         }
-        const materialType = normalize3DMaterialType(object.content.materialType);
+        const materialType = normalize3DMaterialType(
+          object.content.materialType
+        );
         if (this._materialType !== materialType) {
           this._materialType = materialType;
           materialsDirty = true;
@@ -7361,7 +7662,7 @@ module.exports = {
           const oldMaterial = this._threeObject.material;
           this._threeObject.material = this._createThreeMaterial();
           if (Array.isArray(oldMaterial)) {
-            oldMaterial.forEach(material => material.dispose());
+            oldMaterial.forEach((material) => material.dispose());
           } else if (oldMaterial) {
             oldMaterial.dispose();
           }
@@ -7405,7 +7706,9 @@ module.exports = {
         this._updateThreeMaterial(content);
 
         this._isCastingShadow =
-          content.isCastingShadow === undefined ? true : !!content.isCastingShadow;
+          content.isCastingShadow === undefined
+            ? true
+            : !!content.isCastingShadow;
         this._isReceivingShadow =
           content.isReceivingShadow === undefined
             ? true
@@ -7848,7 +8151,9 @@ module.exports = {
           return;
         }
 
-        const color = gdjs.rgbOrHexStringToNumber(content.color || '255;255;255');
+        const color = gdjs.rgbOrHexStringToNumber(
+          content.color || '255;255;255'
+        );
         const coreMaterial = /** @type {any} */ (gizmoCoreMesh.material);
         const coneMaterial = /** @type {any} */ (gizmoConeMesh.material);
         const directionLineMaterial = /** @type {any} */ (
@@ -8297,7 +8602,7 @@ module.exports = {
           return;
         }
 
-        const remapMaterial = sourceMaterial => {
+        const remapMaterial = (sourceMaterial) => {
           if (this._materialType === 'Basic') {
             return convertToBasicPreviewMaterial(sourceMaterial);
           }
@@ -8307,7 +8612,7 @@ module.exports = {
           return clonedMaterial;
         };
 
-        this._clonedModel3D.traverse(node => {
+        this._clonedModel3D.traverse((node) => {
           const mesh = /** @type {THREE.Mesh} */ (node);
           if (!mesh.material) {
             return;
@@ -8328,7 +8633,9 @@ module.exports = {
           .get3DModel(this._project, modelResourceName)
           .then((model3d) => {
             if (this._wasDestroyed) return;
-            this._clonedModel3D = THREE_ADDONS.SkeletonUtils.clone(model3d.scene);
+            this._clonedModel3D = THREE_ADDONS.SkeletonUtils.clone(
+              model3d.scene
+            );
             this._applyMaterialTypeOnModel();
             this._updateDefaultTransformation();
           });

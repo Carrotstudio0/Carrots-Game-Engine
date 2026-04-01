@@ -1,5 +1,64 @@
 namespace gdjs {
   type Model3DAnimation = { name: string; source: string; loop: boolean };
+  type AnimatorParameterType = 'float' | 'int' | 'bool' | 'trigger';
+  type AnimatorConditionOperator =
+    | 'equals'
+    | 'notEquals'
+    | 'greater'
+    | 'greaterOrEquals'
+    | 'less'
+    | 'lessOrEquals'
+    | 'isTrue'
+    | 'isFalse'
+    | 'triggered';
+  type AnimatorParameterValue = number | boolean;
+  type AnimatorParameterDefinition = {
+    id: string;
+    name: string;
+    type: AnimatorParameterType;
+    defaultValue: AnimatorParameterValue;
+  };
+  type AnimatorParameterState = AnimatorParameterDefinition & {
+    currentValue: AnimatorParameterValue;
+  };
+  type AnimatorTransitionCondition = {
+    id: string;
+    parameterId: string;
+    operator: AnimatorConditionOperator;
+    value: AnimatorParameterValue;
+  };
+  type AnimatorBlend1DMotion = {
+    id: string;
+    source: string;
+    threshold: number;
+    loop: boolean;
+  };
+  type AnimatorStateDefinition =
+    | {
+        type: 'clip';
+      }
+    | {
+        type: 'blend1d';
+        parameterId: string;
+        motions: AnimatorBlend1DMotion[];
+      };
+  type AnimatorPlaybackMotion = {
+    source: string;
+    loop: boolean;
+    weight: number;
+  };
+  type AnimatorStatePlayback = {
+    type: 'clip' | 'blend1d';
+    motions: AnimatorPlaybackMotion[];
+    primarySource: string;
+  };
+  type AnimatorTransition = {
+    id: string;
+    fromIndex: integer;
+    toIndex: integer;
+    crossfadeDuration: float | null;
+    conditions: AnimatorTransitionCondition[];
+  };
   type Model3DMaterialTypeString =
     | 'Basic'
     | 'StandardWithoutMetalness'
@@ -23,6 +82,9 @@ namespace gdjs {
 
   type Model3DObjectNetworkSyncData = Object3DNetworkSyncData &
     Model3DObjectNetworkSyncDataType;
+
+  const ANY_STATE_INDEX = -1;
+  const animatorEpsilon = 1 / (1 << 16);
 
   /**
    * Base parameters for {@link gdjs.Model3DRuntimeObject}
@@ -50,6 +112,11 @@ namespace gdjs {
         | 'BottomCenterY';
       animations: Model3DAnimation[];
       crossfadeDuration: float;
+      animatorStatesJson?: string;
+      animatorParametersJson?: string;
+      animatorTransitionsJson?: string;
+      ikChainsJson?: string;
+      ikPosesJson?: string;
       isCastingShadow: boolean;
       isReceivingShadow: boolean;
     };
@@ -79,6 +146,379 @@ namespace gdjs {
       .split(',')
       .map((boneName) => boneName.trim())
       .filter((boneName) => !!boneName);
+
+  const normalizeAnimatorParameterValue = (
+    parameterType: AnimatorParameterType,
+    rawValue: any
+  ): AnimatorParameterValue => {
+    if (parameterType === 'int') {
+      return Number.isFinite(rawValue) ? Math.trunc(rawValue) : 0;
+    }
+    if (parameterType === 'float') {
+      return Number.isFinite(rawValue) ? rawValue : 0;
+    }
+    return !!rawValue;
+  };
+
+  const getDefaultAnimatorConditionOperator = (
+    parameterType: AnimatorParameterType
+  ): AnimatorConditionOperator => {
+    if (parameterType === 'bool') return 'isTrue';
+    if (parameterType === 'trigger') return 'triggered';
+    return 'greater';
+  };
+
+  const parseAnimatorParameters = (
+    rawValue: string | null | undefined,
+    previousParametersById?: Map<string, AnimatorParameterState>
+  ): {
+    parametersById: Map<string, AnimatorParameterState>;
+    parameterIdsByName: Map<string, string>;
+  } => {
+    const parametersById = new Map<string, AnimatorParameterState>();
+    const parameterIdsByName = new Map<string, string>();
+    if (!rawValue) {
+      return { parametersById, parameterIdsByName };
+    }
+
+    try {
+      const parsedValue = JSON.parse(rawValue);
+      if (!Array.isArray(parsedValue)) {
+        return { parametersById, parameterIdsByName };
+      }
+
+      parsedValue.forEach((rawParameter: any, index: number) => {
+        if (!rawParameter || typeof rawParameter !== 'object') return;
+
+        const parameterType: AnimatorParameterType =
+          rawParameter.type === 'int' ||
+          rawParameter.type === 'bool' ||
+          rawParameter.type === 'trigger'
+            ? rawParameter.type
+            : 'float';
+        const id =
+          typeof rawParameter.id === 'string' && rawParameter.id
+            ? rawParameter.id
+            : `parameter-${index}`;
+        const name =
+          typeof rawParameter.name === 'string' ? rawParameter.name.trim() : '';
+        const defaultValue = normalizeAnimatorParameterValue(
+          parameterType,
+          rawParameter.defaultValue
+        );
+        const previousParameter = previousParametersById
+          ? previousParametersById.get(id)
+          : null;
+
+        const parameterState: AnimatorParameterState = {
+          id,
+          name,
+          type: parameterType,
+          defaultValue,
+          currentValue: previousParameter
+            ? normalizeAnimatorParameterValue(
+                parameterType,
+                previousParameter.currentValue
+              )
+            : defaultValue,
+        };
+        parametersById.set(id, parameterState);
+        if (name) {
+          parameterIdsByName.set(name.toLowerCase(), id);
+        }
+      });
+    } catch (error) {}
+
+    return { parametersById, parameterIdsByName };
+  };
+
+  const parseAnimatorTransitions = (
+    rawValue: string | null | undefined,
+    animationsCount: number,
+    parametersById: Map<string, AnimatorParameterState>
+  ): AnimatorTransition[] => {
+    if (!rawValue) return [];
+
+    try {
+      const parsedValue = JSON.parse(rawValue);
+      if (!Array.isArray(parsedValue)) return [];
+
+      return parsedValue.reduce(
+        (validTransitions: AnimatorTransition[], rawTransition: any, index) => {
+          if (!rawTransition || typeof rawTransition !== 'object') {
+            return validTransitions;
+          }
+
+          const fromIndex = Math.trunc(rawTransition.fromIndex);
+          const toIndex = Math.trunc(rawTransition.toIndex);
+          if (
+            !Number.isFinite(fromIndex) ||
+            !Number.isFinite(toIndex) ||
+            fromIndex < ANY_STATE_INDEX ||
+            toIndex < 0 ||
+            (fromIndex !== ANY_STATE_INDEX && fromIndex >= animationsCount) ||
+            toIndex >= animationsCount
+          ) {
+            return validTransitions;
+          }
+
+          const conditions = Array.isArray(rawTransition.conditions)
+            ? rawTransition.conditions.reduce(
+                (
+                  validConditions: AnimatorTransitionCondition[],
+                  rawCondition: any,
+                  conditionIndex
+                ) => {
+                  if (!rawCondition || typeof rawCondition !== 'object') {
+                    return validConditions;
+                  }
+                  const parameter = parametersById.get(
+                    rawCondition.parameterId
+                  );
+                  if (!parameter) {
+                    return validConditions;
+                  }
+                  const allowedOperator = [
+                    'equals',
+                    'notEquals',
+                    'greater',
+                    'greaterOrEquals',
+                    'less',
+                    'lessOrEquals',
+                    'isTrue',
+                    'isFalse',
+                    'triggered',
+                  ].includes(rawCondition.operator)
+                    ? rawCondition.operator
+                    : getDefaultAnimatorConditionOperator(parameter.type);
+
+                  validConditions.push({
+                    id:
+                      typeof rawCondition.id === 'string' && rawCondition.id
+                        ? rawCondition.id
+                        : `condition-${index}-${conditionIndex}`,
+                    parameterId: parameter.id,
+                    operator: allowedOperator as AnimatorConditionOperator,
+                    value: normalizeAnimatorParameterValue(
+                      parameter.type,
+                      rawCondition.value
+                    ),
+                  });
+                  return validConditions;
+                },
+                []
+              )
+            : [];
+
+          validTransitions.push({
+            id:
+              typeof rawTransition.id === 'string' && rawTransition.id
+                ? rawTransition.id
+                : `transition-${index}`,
+            fromIndex: fromIndex | 0,
+            toIndex: toIndex | 0,
+            crossfadeDuration: Number.isFinite(rawTransition.crossfadeDuration)
+              ? Math.max(rawTransition.crossfadeDuration, 0)
+              : null,
+            conditions,
+          });
+          return validTransitions;
+        },
+        []
+      );
+    } catch (error) {
+      return [];
+    }
+  };
+
+  const normalizeAnimatorBlend1DMotion = (
+    rawMotion: any,
+    index: number
+  ): AnimatorBlend1DMotion | null => {
+    if (!rawMotion || typeof rawMotion !== 'object') {
+      return null;
+    }
+
+    const source =
+      typeof rawMotion.source === 'string' ? rawMotion.source.trim() : '';
+    if (!source) {
+      return null;
+    }
+
+    return {
+      id:
+        typeof rawMotion.id === 'string' && rawMotion.id
+          ? rawMotion.id
+          : `blend-motion-${index}`,
+      source,
+      threshold: Number.isFinite(rawMotion.threshold) ? rawMotion.threshold : 0,
+      loop: !!rawMotion.loop,
+    };
+  };
+
+  const parseAnimatorStateDefinitions = (
+    rawValue: string | null | undefined,
+    animationsCount: number
+  ): AnimatorStateDefinition[] => {
+    const animatorStates: AnimatorStateDefinition[] = [];
+    for (let index = 0; index < animationsCount; index++) {
+      animatorStates.push({ type: 'clip' });
+    }
+
+    if (!rawValue) {
+      return animatorStates;
+    }
+
+    try {
+      const parsedValue = JSON.parse(rawValue);
+      if (!Array.isArray(parsedValue)) {
+        return animatorStates;
+      }
+
+      for (
+        let index = 0;
+        index < parsedValue.length && index < animationsCount;
+        index++
+      ) {
+        const rawState = parsedValue[index];
+        if (!rawState || typeof rawState !== 'object') {
+          continue;
+        }
+
+        if (rawState.type !== 'blend1d') {
+          animatorStates[index] = { type: 'clip' };
+          continue;
+        }
+
+        const motions: AnimatorBlend1DMotion[] = Array.isArray(rawState.motions)
+          ? rawState.motions.reduce(
+              (
+                validMotions: AnimatorBlend1DMotion[],
+                rawMotion,
+                motionIndex
+              ) => {
+                const motion = normalizeAnimatorBlend1DMotion(
+                  rawMotion,
+                  motionIndex
+                );
+                if (motion) {
+                  validMotions.push(motion);
+                }
+                return validMotions;
+              },
+              []
+            )
+          : [];
+        motions.sort((firstMotion, secondMotion) => {
+          if (firstMotion.threshold === secondMotion.threshold) {
+            return firstMotion.source.localeCompare(secondMotion.source);
+          }
+          return firstMotion.threshold - secondMotion.threshold;
+        });
+
+        animatorStates[index] = {
+          type: 'blend1d',
+          parameterId:
+            typeof rawState.parameterId === 'string'
+              ? rawState.parameterId
+              : '',
+          motions,
+        };
+      }
+    } catch (error) {
+      return animatorStates;
+    }
+
+    return animatorStates;
+  };
+
+  const computeBlend1DPlaybackMotions = (
+    motions: AnimatorBlend1DMotion[],
+    parameterValue: number
+  ): AnimatorPlaybackMotion[] => {
+    if (motions.length === 0) {
+      return [];
+    }
+
+    if (motions.length === 1) {
+      return [
+        {
+          source: motions[0].source,
+          loop: motions[0].loop,
+          weight: 1,
+        },
+      ];
+    }
+
+    if (!Number.isFinite(parameterValue)) {
+      parameterValue = motions[0].threshold;
+    }
+
+    if (parameterValue <= motions[0].threshold) {
+      return [
+        {
+          source: motions[0].source,
+          loop: motions[0].loop,
+          weight: 1,
+        },
+      ];
+    }
+
+    for (let index = 0; index < motions.length - 1; index++) {
+      const currentMotion = motions[index];
+      const nextMotion = motions[index + 1];
+      if (parameterValue > nextMotion.threshold) {
+        continue;
+      }
+
+      const range = nextMotion.threshold - currentMotion.threshold;
+      if (Math.abs(range) <= animatorEpsilon) {
+        return [
+          {
+            source: nextMotion.source,
+            loop: nextMotion.loop,
+            weight: 1,
+          },
+        ];
+      }
+
+      const factor = Math.max(
+        0,
+        Math.min((parameterValue - currentMotion.threshold) / range, 1)
+      );
+      if (currentMotion.source === nextMotion.source) {
+        return [
+          {
+            source: currentMotion.source,
+            loop: currentMotion.loop || nextMotion.loop,
+            weight: 1,
+          },
+        ];
+      }
+
+      return [
+        {
+          source: currentMotion.source,
+          loop: currentMotion.loop,
+          weight: 1 - factor,
+        },
+        {
+          source: nextMotion.source,
+          loop: nextMotion.loop,
+          weight: factor,
+        },
+      ].filter((motion) => motion.weight > animatorEpsilon);
+    }
+
+    const lastMotion = motions[motions.length - 1];
+    return [
+      {
+        source: lastMotion.source,
+        loop: lastMotion.loop,
+        weight: 1,
+      },
+    ];
+  };
 
   /**
    * A 3D object which displays a 3D model.
@@ -125,6 +565,10 @@ namespace gdjs {
     _animationSpeedScale: float = 1;
     _animationPaused: boolean = false;
     _crossfadeDuration: float = 0;
+    _animatorStateDefinitions: AnimatorStateDefinition[] = [];
+    _animatorParametersById: Map<string, AnimatorParameterState> = new Map();
+    _animatorParameterIdsByName: Map<string, string> = new Map();
+    _animatorTransitions: AnimatorTransition[] = [];
     _isCastingShadow: boolean = true;
     _isReceivingShadow: boolean = true;
     _data: Model3DObjectData;
@@ -152,10 +596,12 @@ namespace gdjs {
         objectData.content.materialType
       );
       this._crossfadeDuration = objectData.content.crossfadeDuration || 0;
+      this._loadAnimatorGraph(objectData);
 
       this.setIsCastingShadow(objectData.content.isCastingShadow);
       this.setIsReceivingShadow(objectData.content.isReceivingShadow);
       this.onModelChanged(objectData);
+      this._loadIKConfiguration(objectData);
 
       // *ALWAYS* call `this.onCreated()` at the very end of your object constructor.
       this.onCreated();
@@ -169,11 +615,13 @@ namespace gdjs {
     private onModelChanged(objectData: Model3DObjectData) {
       this._updateModel(objectData);
       if (this._animations.length > 0) {
-        this._renderer.playAnimation(
-          this._animations[0].source,
-          this._animations[0].loop,
-          true
-        );
+        if (
+          this._currentAnimationIndex < 0 ||
+          this._currentAnimationIndex >= this._animations.length
+        ) {
+          this._currentAnimationIndex = 0;
+        }
+        this._applyAnimatorStatePlayback(this._currentAnimationIndex, true);
       }
     }
 
@@ -245,22 +693,48 @@ namespace gdjs {
       ) {
         this.setIsReceivingShadow(newObjectData.content.isReceivingShadow);
       }
-      if (this.getInstanceContainer().getGame().isInGameEdition()) {
-        const oldDefaultAnimationSource =
-          this._animations.length > 0 ? this._animations[0].source : null;
+      if (
+        oldObjectData.content.crossfadeDuration !==
+        newObjectData.content.crossfadeDuration
+      ) {
+        this._crossfadeDuration = newObjectData.content.crossfadeDuration || 0;
+      }
+      if (
+        oldObjectData.content.animations !== newObjectData.content.animations ||
+        oldObjectData.content.animatorStatesJson !==
+          newObjectData.content.animatorStatesJson ||
+        oldObjectData.content.animatorParametersJson !==
+          newObjectData.content.animatorParametersJson ||
+        oldObjectData.content.animatorTransitionsJson !==
+          newObjectData.content.animatorTransitionsJson
+      ) {
         this._animations = newObjectData.content.animations;
-        const newDefaultAnimationSource =
-          this._animations.length > 0 ? this._animations[0].source : null;
-        if (
-          newDefaultAnimationSource &&
-          oldDefaultAnimationSource !== newDefaultAnimationSource
-        ) {
-          this._renderer.playAnimation(
-            newDefaultAnimationSource,
-            this._animations[0].loop,
-            true
-          );
+        this._loadAnimatorGraph(newObjectData);
+
+        if (this._currentAnimationIndex >= this._animations.length) {
+          this._currentAnimationIndex = 0;
         }
+
+        if (
+          this._animations.length > 0 &&
+          (oldObjectData.content.animations !==
+            newObjectData.content.animations ||
+            oldObjectData.content.animatorStatesJson !==
+              newObjectData.content.animatorStatesJson)
+        ) {
+          this._applyAnimatorStatePlayback(this._currentAnimationIndex, true);
+        } else {
+          this._refreshBlendAnimatorStatePlayback();
+        }
+      }
+      if (
+        oldObjectData.content.modelResourceName !==
+          newObjectData.content.modelResourceName ||
+        oldObjectData.content.ikChainsJson !==
+          newObjectData.content.ikChainsJson ||
+        oldObjectData.content.ikPosesJson !== newObjectData.content.ikPosesJson
+      ) {
+        this._loadIKConfiguration(newObjectData);
       }
       return true;
     }
@@ -357,7 +831,8 @@ namespace gdjs {
         case 'KeepOriginal':
           return gdjs.Model3DRuntimeObject.MaterialType.KeepOriginal;
         case 'StandardWithoutMetalness':
-          return gdjs.Model3DRuntimeObject.MaterialType.StandardWithoutMetalness;
+          return gdjs.Model3DRuntimeObject.MaterialType
+            .StandardWithoutMetalness;
         case 'Matte':
           return gdjs.Model3DRuntimeObject.MaterialType.Matte;
         case 'Glossy':
@@ -370,8 +845,262 @@ namespace gdjs {
       }
     }
 
+    private _loadAnimatorGraph(objectData: Model3DObjectData): void {
+      const { parametersById, parameterIdsByName } = parseAnimatorParameters(
+        objectData.content.animatorParametersJson,
+        this._animatorParametersById
+      );
+      this._animatorParametersById = parametersById;
+      this._animatorParameterIdsByName = parameterIdsByName;
+      this._animatorStateDefinitions = parseAnimatorStateDefinitions(
+        objectData.content.animatorStatesJson,
+        this._animations.length
+      );
+      this._animatorTransitions = parseAnimatorTransitions(
+        objectData.content.animatorTransitionsJson,
+        this._animations.length,
+        this._animatorParametersById
+      );
+    }
+
+    private _loadIKConfiguration(objectData: Model3DObjectData): void {
+      const ikChainsJson = objectData.content.ikChainsJson || '';
+      const ikPosesJson = objectData.content.ikPosesJson || '';
+
+      if (ikChainsJson) {
+        this._renderer.importIKChainsFromJSON(ikChainsJson, true);
+      } else {
+        this._renderer.clearIKChains();
+      }
+
+      if (ikPosesJson) {
+        this._renderer.importIKPosesFromJSON(ikPosesJson, true);
+      } else {
+        this._renderer.clearIKPoses();
+      }
+    }
+
+    private _getAnimatorStatePlayback(
+      animationIndex: number
+    ): AnimatorStatePlayback | null {
+      if (animationIndex < 0 || animationIndex >= this._animations.length) {
+        return null;
+      }
+
+      const animation = this._animations[animationIndex];
+      const stateDefinition = this._animatorStateDefinitions[animationIndex];
+      if (
+        stateDefinition &&
+        stateDefinition.type === 'blend1d' &&
+        stateDefinition.motions.length > 0
+      ) {
+        const parameterState = stateDefinition.parameterId
+          ? this._animatorParametersById.get(stateDefinition.parameterId) ||
+            null
+          : null;
+        const parameterValue =
+          parameterState &&
+          (parameterState.type === 'float' || parameterState.type === 'int')
+            ? Number(parameterState.currentValue)
+            : stateDefinition.motions[0].threshold;
+        const motions = computeBlend1DPlaybackMotions(
+          stateDefinition.motions,
+          parameterValue
+        );
+        if (motions.length > 0) {
+          const primaryMotion = motions.reduce((bestMotion, motion) =>
+            motion.weight > bestMotion.weight ? motion : bestMotion
+          );
+          return {
+            type: 'blend1d',
+            motions,
+            primarySource: primaryMotion.source,
+          };
+        }
+      }
+
+      if (!animation.source) {
+        return null;
+      }
+
+      return {
+        type: 'clip',
+        motions: [
+          {
+            source: animation.source,
+            loop: animation.loop,
+            weight: 1,
+          },
+        ],
+        primarySource: animation.source,
+      };
+    }
+
+    private _applyAnimatorStatePlayback(
+      animationIndex: number,
+      ignoreCrossFade: boolean = false,
+      crossfadeDuration: float | null = null
+    ): void {
+      const playback = this._getAnimatorStatePlayback(animationIndex);
+      if (!playback) {
+        return;
+      }
+
+      if (playback.type === 'blend1d') {
+        this._renderer.playBlendAnimation(
+          playback.motions,
+          ignoreCrossFade,
+          crossfadeDuration
+        );
+      } else {
+        const primaryMotion = playback.motions[0];
+        this._renderer.playAnimation(
+          primaryMotion.source,
+          primaryMotion.loop,
+          ignoreCrossFade,
+          crossfadeDuration
+        );
+      }
+
+      if (this._animationPaused) {
+        this._renderer.pauseAnimation();
+      }
+    }
+
+    private _refreshBlendAnimatorStatePlayback(): void {
+      const playback = this._getAnimatorStatePlayback(
+        this._currentAnimationIndex
+      );
+      if (!playback || playback.type !== 'blend1d') {
+        return;
+      }
+
+      this._renderer.updateBlendAnimation(playback.motions);
+      if (this._animationPaused) {
+        this._renderer.pauseAnimation();
+      }
+    }
+
+    private _getAnimatorParameterStateByName(
+      parameterName: string
+    ): AnimatorParameterState | null {
+      if (!parameterName) return null;
+      const parameterId = this._animatorParameterIdsByName.get(
+        parameterName.toLowerCase()
+      );
+      if (!parameterId) return null;
+      return this._animatorParametersById.get(parameterId) || null;
+    }
+
+    private _transitionConditionMatches(
+      condition: AnimatorTransitionCondition
+    ): boolean {
+      const parameterState = this._animatorParametersById.get(
+        condition.parameterId
+      );
+      if (!parameterState) {
+        return false;
+      }
+
+      const currentValue = parameterState.currentValue;
+      switch (condition.operator) {
+        case 'greater':
+          return Number(currentValue) > Number(condition.value);
+        case 'greaterOrEquals':
+          return Number(currentValue) >= Number(condition.value);
+        case 'less':
+          return Number(currentValue) < Number(condition.value);
+        case 'lessOrEquals':
+          return Number(currentValue) <= Number(condition.value);
+        case 'notEquals':
+          return currentValue !== condition.value;
+        case 'isTrue':
+          return !!currentValue;
+        case 'isFalse':
+          return !currentValue;
+        case 'triggered':
+          return !!currentValue;
+        case 'equals':
+        default:
+          return currentValue === condition.value;
+      }
+    }
+
+    private _transitionMatches(transition: AnimatorTransition): boolean {
+      if (transition.toIndex === this._currentAnimationIndex) {
+        return false;
+      }
+      if (transition.conditions.length === 0) {
+        return true;
+      }
+      return transition.conditions.every((condition) =>
+        this._transitionConditionMatches(condition)
+      );
+    }
+
+    private _consumeTransitionTriggers(transition: AnimatorTransition): void {
+      transition.conditions.forEach((condition) => {
+        if (condition.operator !== 'triggered') return;
+        const parameterState = this._animatorParametersById.get(
+          condition.parameterId
+        );
+        if (!parameterState || parameterState.type !== 'trigger') return;
+        parameterState.currentValue = false;
+      });
+    }
+
+    private _evaluateAnimatorTransitions(): void {
+      if (
+        this._animationPaused ||
+        this._animations.length === 0 ||
+        this._currentAnimationIndex < 0 ||
+        this._currentAnimationIndex >= this._animations.length
+      ) {
+        return;
+      }
+
+      const matchingAnyStateTransition =
+        this._animatorTransitions.find((transition) => {
+          if (transition.fromIndex !== ANY_STATE_INDEX) {
+            return false;
+          }
+          return this._transitionMatches(transition);
+        }) || null;
+
+      const matchingTransition =
+        matchingAnyStateTransition ||
+        this._animatorTransitions.find((transition) => {
+          if (transition.fromIndex !== this._currentAnimationIndex) {
+            return false;
+          }
+          return this._transitionMatches(transition);
+        }) ||
+        null;
+
+      if (!matchingTransition) {
+        return;
+      }
+
+      if (
+        matchingTransition.toIndex < 0 ||
+        matchingTransition.toIndex >= this._animations.length
+      ) {
+        return;
+      }
+
+      this._consumeTransitionTriggers(matchingTransition);
+      this._currentAnimationIndex = matchingTransition.toIndex;
+      this._applyAnimatorStatePlayback(
+        matchingTransition.toIndex,
+        false,
+        matchingTransition.crossfadeDuration
+      );
+    }
+
     update(instanceContainer: gdjs.RuntimeInstanceContainer): void {
       const elapsedTime = this.getElapsedTime() / 1000;
+      this._refreshBlendAnimatorStatePlayback();
+      this._evaluateAnimatorTransitions();
       this._renderer.updateAnimation(elapsedTime);
     }
 
@@ -381,6 +1110,10 @@ namespace gdjs {
      */
     getAnimationIndex(): number {
       return this._currentAnimationIndex;
+    }
+
+    getAnimationCount(): number {
+      return this._animations.length;
     }
 
     /**
@@ -394,12 +1127,8 @@ namespace gdjs {
         this._currentAnimationIndex !== animationIndex &&
         animationIndex >= 0
       ) {
-        const animation = this._animations[animationIndex];
         this._currentAnimationIndex = animationIndex;
-        this._renderer.playAnimation(animation.source, animation.loop);
-        if (this._animationPaused) {
-          this._renderer.pauseAnimation();
-        }
+        this._applyAnimatorStatePlayback(animationIndex);
       }
     }
 
@@ -458,6 +1187,77 @@ namespace gdjs {
     setCrossfadeDuration(duration: number): void {
       if (this._crossfadeDuration === duration) return;
       this._crossfadeDuration = duration;
+    }
+
+    getCrossfadeDuration(): number {
+      return this._crossfadeDuration;
+    }
+
+    setAnimatorNumberParameter(parameterName: string, value: number): void {
+      const parameterState =
+        this._getAnimatorParameterStateByName(parameterName);
+      if (
+        !parameterState ||
+        (parameterState.type !== 'float' && parameterState.type !== 'int')
+      ) {
+        return;
+      }
+      parameterState.currentValue = normalizeAnimatorParameterValue(
+        parameterState.type,
+        value
+      );
+    }
+
+    getAnimatorNumberParameter(parameterName: string): number {
+      const parameterState =
+        this._getAnimatorParameterStateByName(parameterName);
+      if (!parameterState) {
+        return 0;
+      }
+      return Number(parameterState.currentValue) || 0;
+    }
+
+    setAnimatorBooleanParameter(parameterName: string, value: boolean): void {
+      const parameterState =
+        this._getAnimatorParameterStateByName(parameterName);
+      if (
+        !parameterState ||
+        (parameterState.type !== 'bool' && parameterState.type !== 'trigger')
+      ) {
+        return;
+      }
+      parameterState.currentValue = !!value;
+    }
+
+    getAnimatorBooleanParameter(parameterName: string): boolean {
+      const parameterState =
+        this._getAnimatorParameterStateByName(parameterName);
+      if (!parameterState) {
+        return false;
+      }
+      return !!parameterState.currentValue;
+    }
+
+    triggerAnimatorParameter(parameterName: string): void {
+      const parameterState =
+        this._getAnimatorParameterStateByName(parameterName);
+      if (!parameterState || parameterState.type !== 'trigger') {
+        return;
+      }
+      parameterState.currentValue = true;
+    }
+
+    resetAnimatorTrigger(parameterName: string): void {
+      const parameterState =
+        this._getAnimatorParameterStateByName(parameterName);
+      if (!parameterState || parameterState.type !== 'trigger') {
+        return;
+      }
+      parameterState.currentValue = false;
+    }
+
+    isAnimatorBooleanParameterTrue(parameterName: string): boolean {
+      return this.getAnimatorBooleanParameter(parameterName);
     }
 
     configureIKChain(
@@ -589,6 +1389,14 @@ namespace gdjs {
       return this._renderer.getIKBoneNames();
     }
 
+    exportIKChainsToJSON(): string {
+      return this._renderer.exportIKChainsToJSON();
+    }
+
+    importIKChainsFromJSON(chainsJSON: string, clearExisting: boolean): void {
+      this._renderer.importIKChainsFromJSON(chainsJSON, clearExisting);
+    }
+
     saveIKPose(poseName: string): void {
       this._renderer.saveIKPose(poseName);
     }
@@ -611,6 +1419,10 @@ namespace gdjs {
 
     getIKPoseCount(): number {
       return this._renderer.getIKPoseCount();
+    }
+
+    getIKPoseNames(): string[] {
+      return this._renderer.getIKPoseNames();
     }
 
     pinIKTargetToCurrentEffector(chainName: string): void {
@@ -674,9 +1486,13 @@ namespace gdjs {
     }
 
     getAnimationDuration(): float {
-      return this._renderer.getAnimationDuration(
-        this._animations[this._currentAnimationIndex].source
+      const playback = this._getAnimatorStatePlayback(
+        this._currentAnimationIndex
       );
+      if (!playback) {
+        return 0;
+      }
+      return this._renderer.getAnimationDuration(playback.primarySource);
     }
 
     getCenterX(): float {

@@ -579,6 +579,19 @@ namespace gdjs {
         };
       };
 
+      const triggerEventsAtFrame = (
+        state: CinematicTimelineState,
+        frame: number
+      ): void => {
+        clearTriggeredEvents(state);
+        if (!state.scene || !state.scene.events.length) return;
+
+        state.scene.events.forEach(eventMarker => {
+          if (Math.abs(eventMarker.frame - frame) > EPSILON) return;
+          registerTriggeredEvent(state, eventMarker);
+        });
+      };
+
       const triggerEventsInRange = (
         state: CinematicTimelineState,
         fromFrame: number,
@@ -881,6 +894,31 @@ namespace gdjs {
         }
       };
 
+      const applyStateFrame = (
+        runtimeScene: gdjs.RuntimeScene,
+        state: CinematicTimelineState,
+        frame: number,
+        options?: {
+          clearTriggeredEvents?: boolean,
+          triggerEventsAtCurrentFrame?: boolean,
+        }
+      ): void => {
+        if (!state.scene) return;
+        const nextFrame = clampFrameToPlaybackRange(frame, state.playbackRange);
+        state.currentFrame = nextFrame;
+        state.frameCursor = nextFrame;
+        const activeShot = getShotForFrame(state.scene, nextFrame);
+        state.activeShotId = activeShot ? activeShot.id : '';
+
+        if (options && options.triggerEventsAtCurrentFrame) {
+          triggerEventsAtFrame(state, nextFrame);
+        } else if (!options || options.clearTriggeredEvents !== false) {
+          clearTriggeredEvents(state);
+        }
+
+        applyFrame(runtimeScene, state, nextFrame);
+      };
+
       const updatePlayback = (runtimeScene: gdjs.RuntimeScene): void => {
         const state = getState(runtimeScene);
         const scene = state.scene;
@@ -958,7 +996,7 @@ namespace gdjs {
         const state = getState(runtimeScene);
         try {
           const parsedValue = JSON.parse(String(jsonString || '').trim());
-          const scene = normalizeScene(parsedValue);
+          const scene = extractRuntimeScenePayload(parsedValue);
           if (!scene) {
             logger.warn('Cinematic Timeline: invalid cinematic JSON format.');
             return;
@@ -1089,8 +1127,7 @@ namespace gdjs {
         state.frameCursor = playbackRange.inFrame;
         state.activeShotId = '';
         state.configuredIKChains.clear();
-        clearTriggeredEvents(state);
-        applyFrame(runtimeScene, state, playbackRange.inFrame);
+        applyStateFrame(runtimeScene, state, playbackRange.inFrame);
       };
 
       export const loadFromProjectStorage = (
@@ -1228,11 +1265,19 @@ namespace gdjs {
         ) {
           state.playbackRange = getDefaultPlaybackRangeForScene(scene);
         }
-        state.currentFrame = clampFrameToPlaybackRange(
+        const nextFrame = clampFrameToPlaybackRange(
           state.currentFrame,
           state.playbackRange
         );
-        state.frameCursor = state.currentFrame;
+        const shouldTriggerCurrentFrameEvents =
+          !state.isPlaying &&
+          Math.abs(nextFrame - state.playbackRange.inFrame) <= EPSILON;
+        state.currentFrame = nextFrame;
+        state.frameCursor = nextFrame;
+        if (shouldTriggerCurrentFrameEvents) {
+          triggerEventsAtFrame(state, nextFrame);
+          applyFrame(runtimeScene, state, nextFrame);
+        }
         state.isPlaying = true;
       };
 
@@ -1250,13 +1295,12 @@ namespace gdjs {
           return;
         }
         setPlaybackRange(state, scene, shot.startFrame, shot.endFrame);
-        state.currentFrame = state.playbackRange.inFrame;
-        state.frameCursor = state.playbackRange.inFrame;
-        state.activeShotId = shot.id;
         state.loopPlayback =
           typeof shouldLoop !== 'undefined' ? toBoolean(shouldLoop) : false;
-        clearTriggeredEvents(state);
-        applyFrame(runtimeScene, state, state.currentFrame);
+        applyStateFrame(runtimeScene, state, state.playbackRange.inFrame, {
+          triggerEventsAtCurrentFrame: true,
+        });
+        state.activeShotId = shot.id;
         state.isPlaying = true;
       };
 
@@ -1275,13 +1319,11 @@ namespace gdjs {
           parseFiniteNumber(startFrame, 0),
           parseFiniteNumber(endFrame, scene.duration)
         );
-        state.currentFrame = state.playbackRange.inFrame;
-        state.frameCursor = state.playbackRange.inFrame;
-        state.activeShotId = '';
         state.loopPlayback =
           typeof shouldLoop !== 'undefined' ? toBoolean(shouldLoop) : false;
-        clearTriggeredEvents(state);
-        applyFrame(runtimeScene, state, state.currentFrame);
+        applyStateFrame(runtimeScene, state, state.playbackRange.inFrame, {
+          triggerEventsAtCurrentFrame: true,
+        });
         state.isPlaying = true;
       };
 
@@ -1294,18 +1336,15 @@ namespace gdjs {
         const state = getState(runtimeScene);
         state.isPlaying = false;
         state.configuredIKChains.clear();
-        clearTriggeredEvents(state);
         if (state.scene) {
           state.playbackRange = getDefaultPlaybackRangeForScene(state.scene);
-          state.currentFrame = state.playbackRange.inFrame;
-          state.frameCursor = state.playbackRange.inFrame;
-          state.activeShotId = '';
-          applyFrame(runtimeScene, state, state.currentFrame);
+          applyStateFrame(runtimeScene, state, state.playbackRange.inFrame);
         } else {
           state.currentFrame = 0;
           state.frameCursor = 0;
           state.playbackRange = createDefaultPlaybackRange();
           state.activeShotId = '';
+          clearTriggeredEvents(state);
         }
       };
 
@@ -1315,16 +1354,14 @@ namespace gdjs {
       ): void => {
         const state = getState(runtimeScene);
         if (!state.scene) return;
-        const nextFrame = clampFrameToPlaybackRange(
+        applyStateFrame(
+          runtimeScene,
+          state,
           parseFiniteNumber(frame, 0),
-          state.playbackRange
+          {
+            triggerEventsAtCurrentFrame: true,
+          }
         );
-        state.currentFrame = nextFrame;
-        state.frameCursor = nextFrame;
-        clearTriggeredEvents(state);
-        const activeShot = getShotForFrame(state.scene, nextFrame);
-        state.activeShotId = activeShot ? activeShot.id : '';
-        applyFrame(runtimeScene, state, nextFrame);
       };
 
       export const setLooping = (
@@ -1351,15 +1388,7 @@ namespace gdjs {
           state.scene.duration
         );
         state.playbackRange = getDefaultPlaybackRangeForScene(state.scene);
-        state.currentFrame = clampFrameToPlaybackRange(
-          state.currentFrame,
-          state.playbackRange
-        );
-        state.frameCursor = state.currentFrame;
-        const activeShot = getShotForFrame(state.scene, state.currentFrame);
-        state.activeShotId = activeShot ? activeShot.id : '';
-        clearTriggeredEvents(state);
-        applyFrame(runtimeScene, state, state.currentFrame);
+        applyStateFrame(runtimeScene, state, state.currentFrame);
       };
 
       export const setPlaybackSpeed = (
@@ -1539,6 +1568,30 @@ namespace gdjs {
         sceneName
       );
 
+    export const playShot = (
+      runtimeScene: gdjs.RuntimeScene,
+      shotIdOrName: string,
+      shouldLoop?: any
+    ): void =>
+      evtTools.cinematicTimeline.playShot(
+        runtimeScene,
+        shotIdOrName,
+        shouldLoop
+      );
+
+    export const playRange = (
+      runtimeScene: gdjs.RuntimeScene,
+      startFrame: number,
+      endFrame: number,
+      shouldLoop?: any
+    ): void =>
+      evtTools.cinematicTimeline.playRange(
+        runtimeScene,
+        startFrame,
+        endFrame,
+        shouldLoop
+      );
+
     export const play = (runtimeScene: gdjs.RuntimeScene): void =>
       evtTools.cinematicTimeline.play(runtimeScene);
     export const pause = (runtimeScene: gdjs.RuntimeScene): void =>
@@ -1549,6 +1602,18 @@ namespace gdjs {
       runtimeScene: gdjs.RuntimeScene,
       frame: number
     ): void => evtTools.cinematicTimeline.setCurrentFrame(runtimeScene, frame);
+    export const setLooping = (
+      runtimeScene: gdjs.RuntimeScene,
+      enableLooping: any
+    ): void => evtTools.cinematicTimeline.setLooping(runtimeScene, enableLooping);
+    export const setPlaybackSpeed = (
+      runtimeScene: gdjs.RuntimeScene,
+      playbackSpeed: number
+    ): void =>
+      evtTools.cinematicTimeline.setPlaybackSpeed(runtimeScene, playbackSpeed);
+    export const clearTriggeredEventsLog = (
+      runtimeScene: gdjs.RuntimeScene
+    ): void => evtTools.cinematicTimeline.clearTriggeredEventsLog(runtimeScene);
     export const isPlaying = (runtimeScene: gdjs.RuntimeScene): boolean =>
       evtTools.cinematicTimeline.isPlaying(runtimeScene);
     export const hasLoadedScene = (runtimeScene: gdjs.RuntimeScene): boolean =>
@@ -1560,6 +1625,43 @@ namespace gdjs {
       evtTools.cinematicTimeline.hasSceneInProjectStorage(
         runtimeScene,
         sceneName
+      );
+    export const isLoopRangeEnabled = (
+      runtimeScene: gdjs.RuntimeScene
+    ): boolean => evtTools.cinematicTimeline.isLoopRangeEnabled(runtimeScene);
+    export const wasEventTriggered = (
+      runtimeScene: gdjs.RuntimeScene,
+      eventIdOrName: string
+    ): boolean =>
+      evtTools.cinematicTimeline.wasEventTriggered(runtimeScene, eventIdOrName);
+    export const getCurrentFrame = (runtimeScene: gdjs.RuntimeScene): number =>
+      evtTools.cinematicTimeline.getCurrentFrame(runtimeScene);
+    export const getDuration = (runtimeScene: gdjs.RuntimeScene): number =>
+      evtTools.cinematicTimeline.getDuration(runtimeScene);
+    export const getFps = (runtimeScene: gdjs.RuntimeScene): number =>
+      evtTools.cinematicTimeline.getFps(runtimeScene);
+    export const getActiveShotName = (
+      runtimeScene: gdjs.RuntimeScene
+    ): string => evtTools.cinematicTimeline.getActiveShotName(runtimeScene);
+    export const getLastTriggeredEventName = (
+      runtimeScene: gdjs.RuntimeScene
+    ): string =>
+      evtTools.cinematicTimeline.getLastTriggeredEventName(runtimeScene);
+    export const getLastTriggeredEventPayload = (
+      runtimeScene: gdjs.RuntimeScene
+    ): string =>
+      evtTools.cinematicTimeline.getLastTriggeredEventPayload(runtimeScene);
+    export const getLoopInFrame = (runtimeScene: gdjs.RuntimeScene): number =>
+      evtTools.cinematicTimeline.getLoopInFrame(runtimeScene);
+    export const getLoopOutFrame = (runtimeScene: gdjs.RuntimeScene): number =>
+      evtTools.cinematicTimeline.getLoopOutFrame(runtimeScene);
+    export const triggerEventByIdOrName = (
+      runtimeScene: gdjs.RuntimeScene,
+      eventIdOrName: string
+    ): void =>
+      evtTools.cinematicTimeline.triggerEventByIdOrName(
+        runtimeScene,
+        eventIdOrName
       );
   }
 }

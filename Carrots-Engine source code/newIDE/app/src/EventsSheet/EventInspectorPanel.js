@@ -120,6 +120,15 @@ const countSubEventsRecursively = (eventsList: gdEventsList): number => {
   return count;
 };
 
+const formatCountSummary = (count: number, noun: string): string =>
+  `${count} ${noun}`;
+
+const formatEventPosition = (index: number, total: number): string =>
+  `#${index} / ${total}`;
+
+const formatSubEventsSummary = (directCount: number, totalCount: number): string =>
+  `${directCount} direct / ${totalCount} total`;
+
 const getEventInstructionStats = (
   event: gdBaseEvent,
   eventType: string
@@ -476,13 +485,15 @@ const EventInspectorPanel = ({
           <Trans>Inspector</Trans>
         </Text>
         {selectedInstruction ? (
-          <>
+          <div className="events-inspector-text-stack">
             <Text size="body2" noMargin>
               {selectedInstructionDisplayName}
             </Text>
-            <Text color="secondary" size="body-small" noMargin allowSelection>
-              {selectedInstructionType}
-            </Text>
+            <div className="events-inspector-code-text">
+              <Text color="secondary" size="body-small" noMargin allowSelection>
+                {selectedInstructionType}
+              </Text>
+            </div>
             <Text color="secondary" size="body-small" noMargin>
               {selectedInstructionIsCondition ? (
                 <Trans>Condition</Trans>
@@ -497,35 +508,33 @@ const EventInspectorPanel = ({
             )}
             {selectedInstructionsCount > 1 && (
               <Text color="secondary" size="body-small" noMargin>
-                <Trans>
-                  {selectedInstructionsCount} instructions are selected. Editing
-                  the last selected instruction.
-                </Trans>
+                {`${selectedInstructionsCount} instructions selected. Editing the last selected instruction.`}
               </Text>
             )}
-          </>
+          </div>
         ) : (
-          <>
+          <div className="events-inspector-text-stack">
             <Text size="body2" noMargin>
               {selectedEventDisplayName}
             </Text>
-            <Text color="secondary" size="body-small" noMargin allowSelection>
-              {selectedEventType}
-            </Text>
-            {selectedEventDescription && (
-              <Text color="secondary" size="body-small" noMargin>
-                {selectedEventDescription}
+            <div className="events-inspector-code-text">
+              <Text color="secondary" size="body-small" noMargin allowSelection>
+                {selectedEventType}
               </Text>
+            </div>
+            {selectedEventDescription && (
+              <div className="events-inspector-description">
+                <Text color="secondary" size="body-small" noMargin>
+                  {selectedEventDescription}
+                </Text>
+              </div>
             )}
             {selectedEventsCount > 1 && (
               <Text color="secondary" size="body-small" noMargin>
-                <Trans>
-                  {selectedEventsCount} events are selected. Editing the last
-                  selected event.
-                </Trans>
+                {`${selectedEventsCount} events selected. Editing the last selected event.`}
               </Text>
             )}
-          </>
+          </div>
         )}
       </div>
 
@@ -536,65 +545,87 @@ const EventInspectorPanel = ({
           </Text>
           <div className="events-inspector-overview-grid">
             <div className="events-inspector-overview-row">
-              <Text size="body-small" color="secondary" noMargin>
-                <Trans>Kind</Trans>
-              </Text>
-              <Text size="body2" noMargin>
-                {selectedEventKindLabel}
-              </Text>
+              <div className="events-inspector-overview-label">
+                <Text size="body-small" color="secondary" noMargin>
+                  <Trans>Kind</Trans>
+                </Text>
+              </div>
+              <div className="events-inspector-overview-value">
+                <Text size="body2" noMargin>
+                  {selectedEventKindLabel}
+                </Text>
+              </div>
             </div>
             <div className="events-inspector-overview-row">
-              <Text size="body-small" color="secondary" noMargin>
-                <Trans>Position</Trans>
-              </Text>
-              <Text size="body2" noMargin>
-                <Trans>
-                  #{selectedEventIndexInList} / {selectedEventSiblingsCount}
-                </Trans>
-              </Text>
+              <div className="events-inspector-overview-label">
+                <Text size="body-small" color="secondary" noMargin>
+                  <Trans>Position</Trans>
+                </Text>
+              </div>
+              <div className="events-inspector-overview-value">
+                <Text size="body2" noMargin>
+                  {formatEventPosition(
+                    selectedEventIndexInList,
+                    selectedEventSiblingsCount
+                  )}
+                </Text>
+              </div>
             </div>
             <div className="events-inspector-overview-row">
-              <Text size="body-small" color="secondary" noMargin>
-                <Trans>Total instructions</Trans>
-              </Text>
-              <Text size="body2" noMargin>
-                {selectedEventInstructionStats.totalInstructionsCount}
-              </Text>
+              <div className="events-inspector-overview-label">
+                <Text size="body-small" color="secondary" noMargin>
+                  <Trans>Total instructions</Trans>
+                </Text>
+              </div>
+              <div className="events-inspector-overview-value">
+                <Text size="body2" noMargin>
+                  {selectedEventInstructionStats.totalInstructionsCount}
+                </Text>
+              </div>
             </div>
             <div className="events-inspector-overview-row">
-              <Text size="body-small" color="secondary" noMargin>
-                <Trans>Sub-events</Trans>
-              </Text>
-              <Text size="body2" noMargin>
-                <Trans>
-                  {selectedEventDirectSubEventsCount} direct /{' '}
-                  {selectedEventTotalSubEventsCount} total
-                </Trans>
-              </Text>
+              <div className="events-inspector-overview-label">
+                <Text size="body-small" color="secondary" noMargin>
+                  <Trans>Sub-events</Trans>
+                </Text>
+              </div>
+              <div className="events-inspector-overview-value">
+                <Text size="body2" noMargin>
+                  {formatSubEventsSummary(
+                    selectedEventDirectSubEventsCount,
+                    selectedEventTotalSubEventsCount
+                  )}
+                </Text>
+              </div>
             </div>
           </div>
 
           <div className="events-inspector-badges">
             {selectedEventInstructionStats.whileConditionsCount > 0 && (
               <span className="events-inspector-badge">
-                <Trans>
-                  {selectedEventInstructionStats.whileConditionsCount} while
-                  condition(s)
-                </Trans>
+                {formatCountSummary(
+                  selectedEventInstructionStats.whileConditionsCount,
+                  'while condition(s)'
+                )}
               </span>
             )}
             <span className="events-inspector-badge">
-              <Trans>
-                {selectedEventInstructionStats.conditionsCount} condition(s)
-              </Trans>
+              {formatCountSummary(
+                selectedEventInstructionStats.conditionsCount,
+                'condition(s)'
+              )}
             </span>
             <span className="events-inspector-badge">
-              <Trans>
-                {selectedEventInstructionStats.actionsCount} action(s)
-              </Trans>
+              {formatCountSummary(
+                selectedEventInstructionStats.actionsCount,
+                'action(s)'
+              )}
             </span>
             <span className="events-inspector-badge">
-              <Trans>{selectedEventVariablesCount} local variable(s)</Trans>
+              {formatCountSummary(
+                selectedEventVariablesCount,
+                'local variable(s)'
+              )}
             </span>
           </div>
         </div>
@@ -607,29 +638,29 @@ const EventInspectorPanel = ({
           </Text>
           <div className="events-inspector-badges">
             <span className="events-inspector-badge">
-              <Trans>
-                {selectedInstruction.getParametersCount()} parameter(s)
-              </Trans>
+              {formatCountSummary(
+                selectedInstruction.getParametersCount(),
+                'parameter(s)'
+              )}
             </span>
             <span className="events-inspector-badge">
-              <Trans>
-                Instruction #
-                {selectedInstructionContext
+              {`Instruction #${
+                selectedInstructionContext
                   ? selectedInstructionContext.indexInList + 1
-                  : 1}
-              </Trans>
+                  : 1
+              }`}
             </span>
             <span className="events-inspector-badge">
-              <Trans>
-                {selectedInstructionSubInstructionsCount} direct
-                sub-instruction(s)
-              </Trans>
+              {formatCountSummary(
+                selectedInstructionSubInstructionsCount,
+                'direct sub-instruction(s)'
+              )}
             </span>
             <span className="events-inspector-badge">
-              <Trans>
-                {selectedInstructionNestedSubInstructionsCount} total nested
-                sub-instruction(s)
-              </Trans>
+              {formatCountSummary(
+                selectedInstructionNestedSubInstructionsCount,
+                'total nested sub-instruction(s)'
+              )}
             </span>
           </div>
           {selectedInstructionDescription && (
@@ -680,7 +711,7 @@ const EventInspectorPanel = ({
                   >
                     <div className="events-inspector-variable-header">
                       <Text size="body2" noMargin>
-                        <Trans>Parameter {parameterIndex + 1}</Trans>
+                        {`Parameter ${parameterIndex + 1}`}
                       </Text>
                     </div>
                     <TextField
@@ -786,20 +817,28 @@ const EventInspectorPanel = ({
           </Text>
           <div className="events-inspector-overview-grid">
             <div className="events-inspector-overview-row">
-              <Text size="body-small" color="secondary" noMargin>
-                <Trans>Type</Trans>
-              </Text>
-              <Text size="body2" noMargin>
-                {linkTargetKind}
-              </Text>
+              <div className="events-inspector-overview-label">
+                <Text size="body-small" color="secondary" noMargin>
+                  <Trans>Type</Trans>
+                </Text>
+              </div>
+              <div className="events-inspector-overview-value">
+                <Text size="body2" noMargin>
+                  {linkTargetKind}
+                </Text>
+              </div>
             </div>
             <div className="events-inspector-overview-row">
-              <Text size="body-small" color="secondary" noMargin>
-                <Trans>Target</Trans>
-              </Text>
-              <Text size="body2" noMargin allowSelection>
-                {linkTarget || '-'}
-              </Text>
+              <div className="events-inspector-overview-label">
+                <Text size="body-small" color="secondary" noMargin>
+                  <Trans>Target</Trans>
+                </Text>
+              </div>
+              <div className="events-inspector-overview-value">
+                <Text size="body2" noMargin allowSelection>
+                  {linkTarget || '-'}
+                </Text>
+              </div>
             </div>
           </div>
         </div>
@@ -812,20 +851,28 @@ const EventInspectorPanel = ({
           </Text>
           <div className="events-inspector-overview-grid">
             <div className="events-inspector-overview-row">
-              <Text size="body-small" color="secondary" noMargin>
-                <Trans>Code lines</Trans>
-              </Text>
-              <Text size="body2" noMargin>
-                {jsCodeLinesCount}
-              </Text>
+              <div className="events-inspector-overview-label">
+                <Text size="body-small" color="secondary" noMargin>
+                  <Trans>Code lines</Trans>
+                </Text>
+              </div>
+              <div className="events-inspector-overview-value">
+                <Text size="body2" noMargin>
+                  {jsCodeLinesCount}
+                </Text>
+              </div>
             </div>
             <div className="events-inspector-overview-row">
-              <Text size="body-small" color="secondary" noMargin>
-                <Trans>Parameter objects</Trans>
-              </Text>
-              <Text size="body2" noMargin allowSelection>
-                {jsCodeParameterObjects || '-'}
-              </Text>
+              <div className="events-inspector-overview-label">
+                <Text size="body-small" color="secondary" noMargin>
+                  <Trans>Parameter objects</Trans>
+                </Text>
+              </div>
+              <div className="events-inspector-overview-value">
+                <Text size="body2" noMargin allowSelection>
+                  {jsCodeParameterObjects || '-'}
+                </Text>
+              </div>
             </div>
           </div>
         </div>
@@ -881,61 +928,85 @@ const EventInspectorPanel = ({
           </Text>
           <div className="events-inspector-overview-grid">
             <div className="events-inspector-overview-row">
-              <Text size="body-small" color="secondary" noMargin>
-                <Trans>Index variable</Trans>
-              </Text>
-              <Text size="body2" noMargin allowSelection>
-                {loopEvent && loopEvent.getLoopIndexVariableName()
-                  ? loopEvent.getLoopIndexVariableName()
-                  : '-'}
-              </Text>
+              <div className="events-inspector-overview-label">
+                <Text size="body-small" color="secondary" noMargin>
+                  <Trans>Index variable</Trans>
+                </Text>
+              </div>
+              <div className="events-inspector-overview-value">
+                <Text size="body2" noMargin allowSelection>
+                  {loopEvent && loopEvent.getLoopIndexVariableName()
+                    ? loopEvent.getLoopIndexVariableName()
+                    : '-'}
+                </Text>
+              </div>
             </div>
             {selectedEventType === 'BuiltinCommonInstructions::Repeat' && (
               <div className="events-inspector-overview-row">
-                <Text size="body-small" color="secondary" noMargin>
-                  <Trans>Repeat expression</Trans>
-                </Text>
-                <Text size="body2" noMargin allowSelection>
-                  {repeatExpression || '-'}
-                </Text>
+                <div className="events-inspector-overview-label">
+                  <Text size="body-small" color="secondary" noMargin>
+                    <Trans>Repeat expression</Trans>
+                  </Text>
+                </div>
+                <div className="events-inspector-overview-value">
+                  <Text size="body2" noMargin allowSelection>
+                    {repeatExpression || '-'}
+                  </Text>
+                </div>
               </div>
             )}
             {selectedEventType === 'BuiltinCommonInstructions::ForEach' && (
               <div className="events-inspector-overview-row">
-                <Text size="body-small" color="secondary" noMargin>
-                  <Trans>Object to pick</Trans>
-                </Text>
-                <Text size="body2" noMargin allowSelection>
-                  {forEachObjectToPick || '-'}
-                </Text>
+                <div className="events-inspector-overview-label">
+                  <Text size="body-small" color="secondary" noMargin>
+                    <Trans>Object to pick</Trans>
+                  </Text>
+                </div>
+                <div className="events-inspector-overview-value">
+                  <Text size="body2" noMargin allowSelection>
+                    {forEachObjectToPick || '-'}
+                  </Text>
+                </div>
               </div>
             )}
             {selectedEventType ===
               'BuiltinCommonInstructions::ForEachChildVariable' && (
               <>
                 <div className="events-inspector-overview-row">
-                  <Text size="body-small" color="secondary" noMargin>
-                    <Trans>Iterable variable</Trans>
-                  </Text>
-                  <Text size="body2" noMargin allowSelection>
-                    {forEachChildIterableName || '-'}
-                  </Text>
+                  <div className="events-inspector-overview-label">
+                    <Text size="body-small" color="secondary" noMargin>
+                      <Trans>Iterable variable</Trans>
+                    </Text>
+                  </div>
+                  <div className="events-inspector-overview-value">
+                    <Text size="body2" noMargin allowSelection>
+                      {forEachChildIterableName || '-'}
+                    </Text>
+                  </div>
                 </div>
                 <div className="events-inspector-overview-row">
-                  <Text size="body-small" color="secondary" noMargin>
-                    <Trans>Value variable</Trans>
-                  </Text>
-                  <Text size="body2" noMargin allowSelection>
-                    {forEachChildValueName || '-'}
-                  </Text>
+                  <div className="events-inspector-overview-label">
+                    <Text size="body-small" color="secondary" noMargin>
+                      <Trans>Value variable</Trans>
+                    </Text>
+                  </div>
+                  <div className="events-inspector-overview-value">
+                    <Text size="body2" noMargin allowSelection>
+                      {forEachChildValueName || '-'}
+                    </Text>
+                  </div>
                 </div>
                 <div className="events-inspector-overview-row">
-                  <Text size="body-small" color="secondary" noMargin>
-                    <Trans>Key variable</Trans>
-                  </Text>
-                  <Text size="body2" noMargin allowSelection>
-                    {forEachChildKeyName || '-'}
-                  </Text>
+                  <div className="events-inspector-overview-label">
+                    <Text size="body-small" color="secondary" noMargin>
+                      <Trans>Key variable</Trans>
+                    </Text>
+                  </div>
+                  <div className="events-inspector-overview-value">
+                    <Text size="body2" noMargin allowSelection>
+                      {forEachChildKeyName || '-'}
+                    </Text>
+                  </div>
                 </div>
               </>
             )}
@@ -961,7 +1032,7 @@ const EventInspectorPanel = ({
             <Trans>Local Variables</Trans>
           </Text>
           <Text color="secondary" size="body-small" noMargin>
-            <Trans>{variablesContainer.count()} variable(s)</Trans>
+            {formatCountSummary(variablesContainer.count(), 'variable(s)')}
           </Text>
 
           <div className="events-inspector-actions-row">
@@ -1069,7 +1140,10 @@ const EventInspectorPanel = ({
                     />
                   ) : (
                     <Text size="body-small" color="secondary" noMargin>
-                      <Trans>{variable.getChildrenCount()} child(ren)</Trans>
+                      {formatCountSummary(
+                        variable.getChildrenCount(),
+                        'child(ren)'
+                      )}
                     </Text>
                   )}
                 </div>

@@ -2025,6 +2025,23 @@ namespace gdjs {
       );
     }
 
+    sendObjectConfigurationChanges(changes: {
+      objectName: string;
+      updatedProperties: { [propertyName: string]: string };
+    }): void {
+      const inGameEditor = this._runtimegame.getInGameEditor();
+      if (!inGameEditor) {
+        return;
+      }
+      this._sendMessage(
+        circularSafeStringify({
+          command: 'updateObjectConfiguration',
+          editorId: inGameEditor.getEditorId(),
+          payload: changes,
+        })
+      );
+    }
+
     sendOpenContextMenu(cursorX: float, cursorY: float): void {
       const inGameEditor = this._runtimegame.getInGameEditor();
       if (!inGameEditor) {

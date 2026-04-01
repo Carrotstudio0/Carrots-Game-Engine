@@ -71,6 +71,21 @@ const createTypeScriptCompilerWorker = (): Worker =>
 
 const GDEVELOP_COMPILER_AMBIENT_DECLARATIONS = `
 declare namespace gdjs {
+  type Model3DIKTargetMode = 'bone' | 'position';
+  type Model3DIKChainSettings = {
+    name: string;
+    enabled: boolean;
+    effectorBoneName: string;
+    targetMode: Model3DIKTargetMode;
+    targetBoneName: string;
+    targetPosition: [number, number, number];
+    linkBoneNames: string[];
+    iterationCount: number;
+    blendFactor: number;
+    minAngle: number;
+    maxAngle: number;
+    targetTolerance: number;
+  };
   class RuntimeScene {}
   class RuntimeObject {
     getBehavior(name: string): RuntimeBehavior;
@@ -78,6 +93,89 @@ declare namespace gdjs {
     getAllBehaviorNames(): string[];
     getBehaviorByType(behaviorType: string): RuntimeBehavior | null;
     getBehaviorsByType(behaviorType: string): RuntimeBehavior[];
+  }
+  class Model3DRuntimeObject extends RuntimeObject {
+    getAnimationIndex(): number;
+    getAnimationCount(): number;
+    setAnimationIndex(animationIndex: number): void;
+    getAnimationName(): string;
+    setAnimationName(newAnimationName: string): void;
+    isCurrentAnimationName(name: string): boolean;
+    hasAnimationEnded(): boolean;
+    isAnimationPaused(): boolean;
+    pauseAnimation(): void;
+    resumeAnimation(): void;
+    getAnimationSpeedScale(): number;
+    setAnimationSpeedScale(ratio: number): void;
+    setCrossfadeDuration(duration: number): void;
+    getCrossfadeDuration(): number;
+    setAnimatorNumberParameter(parameterName: string, value: number): void;
+    getAnimatorNumberParameter(parameterName: string): number;
+    setAnimatorBooleanParameter(parameterName: string, value: boolean): void;
+    getAnimatorBooleanParameter(parameterName: string): boolean;
+    triggerAnimatorParameter(parameterName: string): void;
+    resetAnimatorTrigger(parameterName: string): void;
+    isAnimatorBooleanParameterTrue(parameterName: string): boolean;
+    configureIKChain(
+      chainName: string,
+      effectorBoneName: string,
+      targetBoneName: string,
+      linkBoneNames: string,
+      iterationCount: number,
+      blendFactor: number,
+      minAngle: number,
+      maxAngle: number
+    ): void;
+    setIKTargetPosition(
+      chainName: string,
+      targetX: number,
+      targetY: number,
+      targetZ: number
+    ): void;
+    setIKTargetBone(chainName: string, targetBoneName: string): void;
+    setIKEnabled(chainName: string, enabled: boolean): void;
+    setIKIterationCount(chainName: string, iterationCount: number): void;
+    setIKBlendFactor(chainName: string, blendFactor: number): void;
+    setIKAngleLimits(
+      chainName: string,
+      minAngleDegrees: number,
+      maxAngleDegrees: number
+    ): void;
+    setIKTargetTolerance(chainName: string, tolerance: number): void;
+    setIKLinkAngleLimits(
+      chainName: string,
+      linkBoneName: string,
+      minAngleXDegrees: number,
+      maxAngleXDegrees: number,
+      minAngleYDegrees: number,
+      maxAngleYDegrees: number,
+      minAngleZDegrees: number,
+      maxAngleZDegrees: number
+    ): void;
+    clearIKLinkAngleLimits(chainName: string, linkBoneName: string): void;
+    clearIKLinkConstraints(chainName: string): void;
+    setIKGizmosEnabled(enabled: boolean): void;
+    areIKGizmosEnabled(): boolean;
+    removeIKChain(chainName: string): void;
+    clearIKChains(): void;
+    hasIKChain(chainName: string): boolean;
+    getIKChainCount(): number;
+    getIKChainNames(): string[];
+    getIKChainSettings(chainName: string): Model3DIKChainSettings | null;
+    getIKBoneNames(): string[];
+    exportIKChainsToJSON(): string;
+    importIKChainsFromJSON(chainsJSON: string, clearExisting: boolean): void;
+    saveIKPose(poseName: string): void;
+    applyIKPose(poseName: string): void;
+    removeIKPose(poseName: string): void;
+    clearIKPoses(): void;
+    hasIKPose(poseName: string): boolean;
+    getIKPoseCount(): number;
+    getIKPoseNames(): string[];
+    pinIKTargetToCurrentEffector(chainName: string): void;
+    pinAllIKTargetsToCurrentEffectors(): void;
+    exportIKPosesToJSON(): string;
+    importIKPosesFromJSON(posesJSON: string, clearExisting: boolean): void;
   }
   class RuntimeBehavior {
     owner: RuntimeObject;
@@ -225,16 +323,50 @@ declare namespace gdjs {
       runtimeScene: RuntimeScene,
       sceneName?: string
     ): void;
+    function playShot(
+      runtimeScene: RuntimeScene,
+      shotIdOrName: string,
+      shouldLoop?: boolean
+    ): void;
+    function playRange(
+      runtimeScene: RuntimeScene,
+      startFrame: number,
+      endFrame: number,
+      shouldLoop?: boolean
+    ): void;
     function play(runtimeScene: RuntimeScene): void;
     function pause(runtimeScene: RuntimeScene): void;
     function stop(runtimeScene: RuntimeScene): void;
     function setCurrentFrame(runtimeScene: RuntimeScene, frame: number): void;
+    function setLooping(runtimeScene: RuntimeScene, enableLooping: boolean): void;
+    function setPlaybackSpeed(
+      runtimeScene: RuntimeScene,
+      playbackSpeed: number
+    ): void;
+    function clearTriggeredEventsLog(runtimeScene: RuntimeScene): void;
     function isPlaying(runtimeScene: RuntimeScene): boolean;
     function hasLoadedScene(runtimeScene: RuntimeScene): boolean;
     function hasSceneInProjectStorage(
       runtimeScene: RuntimeScene,
       sceneName: string
     ): boolean;
+    function isLoopRangeEnabled(runtimeScene: RuntimeScene): boolean;
+    function wasEventTriggered(
+      runtimeScene: RuntimeScene,
+      eventIdOrName: string
+    ): boolean;
+    function getCurrentFrame(runtimeScene: RuntimeScene): number;
+    function getDuration(runtimeScene: RuntimeScene): number;
+    function getFps(runtimeScene: RuntimeScene): number;
+    function getActiveShotName(runtimeScene: RuntimeScene): string;
+    function getLastTriggeredEventName(runtimeScene: RuntimeScene): string;
+    function getLastTriggeredEventPayload(runtimeScene: RuntimeScene): string;
+    function getLoopInFrame(runtimeScene: RuntimeScene): number;
+    function getLoopOutFrame(runtimeScene: RuntimeScene): number;
+    function triggerEventByIdOrName(
+      runtimeScene: RuntimeScene,
+      eventIdOrName: string
+    ): void;
   }
   namespace ts {
     const bridge: typeof tsModules;
@@ -390,7 +522,7 @@ const loadTypeScript = async (): Promise<TypeScriptModule> => {
   if (!typeScriptModulePromise) {
     typeScriptModulePromise = import(
       /* webpackChunkName: "typescript-compiler" */ 'typescript'
-    ).then(module => {
+    ).then((module) => {
       const resolvedModule = (module.default || module) as TypeScriptModule;
       return resolvedModule;
     });
@@ -518,8 +650,8 @@ const transpileTypeScriptCodeOnMainThread = async (
       error instanceof Error
         ? error.message
         : typeof error === 'string'
-        ? error
-        : 'Unknown transpilation error.';
+          ? error
+          : 'Unknown transpilation error.';
     console.error('Unable to transpile TypeScript code.', error);
     const detailedErrorMessage = `Unable to transpile TypeScript code: ${errorDetails}`;
     return {
@@ -610,7 +742,7 @@ export const preloadTypeScriptCompiler = (): void => {
     } catch (error) {}
   }
 
-  loadTypeScript().catch(error => {
+  loadTypeScript().catch((error) => {
     console.error('Unable to preload the TypeScript compiler.', error);
   });
 };

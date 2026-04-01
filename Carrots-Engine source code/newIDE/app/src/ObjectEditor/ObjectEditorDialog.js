@@ -30,6 +30,7 @@ const gd: libGDevelop = global.gd;
 
 export type ObjectEditorTab =
   | 'properties'
+  | 'animation'
   | 'behaviors'
   | 'variables'
   | 'effects';
@@ -86,6 +87,7 @@ type Props = {|
 type InnerDialogProps = {|
   ...Props,
   editorComponent: ?React.ComponentType<EditorProps>,
+  animationEditorComponent: ?React.ComponentType<EditorProps>,
   objectName: string,
   helpPagePath: ?string,
   object: gdObject,
@@ -118,7 +120,9 @@ const InnerDialog = (props: InnerDialogProps) => {
     isVariableListLocked,
   } = props;
   const [currentTab, setCurrentTab] = React.useState<ObjectEditorTab>(
-    initialTab || 'properties'
+    initialTab === 'animation' && !props.animationEditorComponent
+      ? 'properties'
+      : initialTab || 'properties'
   );
   const [objectName, setObjectName] = React.useState(props.objectName);
   const forceUpdate = useForceUpdate();
@@ -157,6 +161,9 @@ const InnerDialog = (props: InnerDialogProps) => {
 
   const EditorComponent: ?React.ComponentType<EditorProps> =
     props.editorComponent;
+  const AnimationEditorComponent: ?React.ComponentType<EditorProps> =
+    props.animationEditorComponent;
+  const hasAnimationTab = !!AnimationEditorComponent;
 
   const onApply = async () => {
     props.onApply(hasResourceChanged, hasAnyEffectBeenAdded);
@@ -234,6 +241,7 @@ const InnerDialog = (props: InnerDialogProps) => {
     <Dialog
       title={<Trans>Edit {objectName}</Trans>}
       key={object && object.ptr}
+      maxWidth={hasAnimationTab ? 'xl' : undefined}
       actions={[
         <FlatButton
           key="cancel"
@@ -271,6 +279,12 @@ const InnerDialog = (props: InnerDialogProps) => {
               label: <Trans>Properties</Trans>,
               value: 'properties',
             },
+            hasAnimationTab
+              ? {
+                  label: <Trans>Animation</Trans>,
+                  value: 'animation',
+                }
+              : null,
             {
               label: <Trans>Behaviors</Trans>,
               value: 'behaviors',
@@ -336,6 +350,35 @@ const InnerDialog = (props: InnerDialogProps) => {
                 autoFocus="desktop"
               />
             )}
+            onOpenEventBasedObjectEditor={onOpenEventBasedObjectEditor}
+            onOpenEventBasedObjectVariantEditor={
+              onOpenEventBasedObjectVariantEditor
+            }
+            onDeleteEventsBasedObjectVariant={onDeleteEventsBasedObjectVariant}
+          />
+        </Column>
+      ) : null}
+      {currentTab === 'animation' && AnimationEditorComponent ? (
+        <Column
+          noMargin
+          expand
+          useFullHeight
+          noOverflowParent
+        >
+          <AnimationEditorComponent
+            objectConfiguration={object.getConfiguration()}
+            project={project}
+            layout={layout}
+            eventsFunctionsExtension={eventsFunctionsExtension}
+            eventsBasedObject={eventsBasedObject}
+            object={object}
+            resourceManagementProps={_resourceManagementProps}
+            projectScopedContainersAccessor={projectScopedContainersAccessor}
+            onSizeUpdated={
+              forceUpdate /*Force update to ensure dialog is properly positioned*/
+            }
+            objectName={props.objectName}
+            onObjectUpdated={notifyOfChange}
             onOpenEventBasedObjectEditor={onOpenEventBasedObjectEditor}
             onOpenEventBasedObjectVariantEditor={
               onOpenEventBasedObjectVariantEditor
@@ -435,6 +478,7 @@ const InnerDialog = (props: InnerDialogProps) => {
 
 type State = {|
   editorComponent: ?React.ComponentType<EditorProps>,
+  animationEditorComponent: ?React.ComponentType<EditorProps>,
   castToObjectType: ?(
     objectConfiguration: gdObjectConfiguration
   ) => gdObjectConfiguration,
@@ -446,6 +490,7 @@ class ObjectEditorDialog extends React.Component<Props, State> {
   // $FlowFixMe[missing-local-annot]
   state = {
     editorComponent: null,
+    animationEditorComponent: null,
     castToObjectType: null,
     helpPagePath: null,
     objectName: '',
@@ -477,12 +522,14 @@ class ObjectEditorDialog extends React.Component<Props, State> {
     if (!editorConfiguration) {
       return this.setState({
         editorComponent: null,
+        animationEditorComponent: null,
         castToObjectType: null,
       });
     }
 
     this.setState({
       editorComponent: editorConfiguration.component,
+      animationEditorComponent: editorConfiguration.animationComponent || null,
       helpPagePath: editorConfiguration.helpPagePath,
       castToObjectType: editorConfiguration.castToObjectType,
       objectName: object.getName(),
@@ -492,13 +539,19 @@ class ObjectEditorDialog extends React.Component<Props, State> {
   // $FlowFixMe[missing-local-annot]
   render() {
     const { object, initialTab } = this.props;
-    const { editorComponent, castToObjectType, helpPagePath } = this.state;
+    const {
+      editorComponent,
+      animationEditorComponent,
+      castToObjectType,
+      helpPagePath,
+    } = this.state;
 
     if (!object || !castToObjectType) return null;
 
     return (
       <InnerDialog
         {...this.props}
+        animationEditorComponent={animationEditorComponent}
         editorComponent={editorComponent}
         key={this.props.object && this.props.object.ptr}
         helpPagePath={helpPagePath}

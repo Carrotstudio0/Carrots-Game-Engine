@@ -216,6 +216,11 @@ type InstanceChanges = {|
   objectNameToEdit: string | null,
 |};
 
+type ObjectConfigurationChanges = {|
+  objectName: string,
+  updatedProperties: { [string]: string },
+|};
+
 export type EditorId =
   | 'objects-list'
   | 'properties'
@@ -499,6 +504,8 @@ export default class SceneEditor extends React.Component<Props, State> {
             }
             if (parsedMessage.command === 'updateInstances') {
               this.onReceiveInstanceChanges(parsedMessage.payload);
+            } else if (parsedMessage.command === 'updateObjectConfiguration') {
+              this.onReceiveObjectConfigurationChanges(parsedMessage.payload);
             } else if (parsedMessage.command === 'setCameraState') {
               setCameraState(parsedMessage.editorId, parsedMessage.payload);
             } else if (parsedMessage.command === 'openContextMenu') {
@@ -740,6 +747,54 @@ export default class SceneEditor extends React.Component<Props, State> {
       this.editObjectInPropertiesPanel(changes.objectNameToEdit);
     }
   }
+
+  onReceiveObjectConfigurationChanges = (
+    changes: ObjectConfigurationChanges
+  ) => {
+    if (
+      !changes ||
+      !changes.objectName ||
+      !changes.updatedProperties ||
+      typeof changes.updatedProperties !== 'object'
+    ) {
+      return;
+    }
+
+    const object = getObjectByName(
+      this.props.globalObjectsContainer,
+      this.props.objectsContainer,
+      changes.objectName
+    );
+    if (!object) {
+      return;
+    }
+
+    const objectConfiguration = object.getConfiguration();
+    let hasUpdatedProperty = false;
+    Object.keys(changes.updatedProperties).forEach((propertyName) => {
+      const propertyValue = changes.updatedProperties[propertyName];
+      if (typeof propertyValue !== 'string') {
+        return;
+      }
+      const hasBeenUpdated = objectConfiguration.updateProperty(
+        propertyName,
+        propertyValue
+      );
+      if (hasBeenUpdated) {
+        hasUpdatedProperty = true;
+      }
+    });
+
+    if (!hasUpdatedProperty) {
+      return;
+    }
+
+    if (this.props.unsavedChanges) {
+      this.props.unsavedChanges.triggerUnsavedChanges();
+    }
+    this._hotReloadObjects({ updatedObjects: [object] });
+    this.forceUpdatePropertiesEditor();
+  };
 
   onResourceExternallyChanged = async (resourceInfo: {|
     identifier: string,

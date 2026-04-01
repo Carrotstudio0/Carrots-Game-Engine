@@ -153,6 +153,15 @@ public:
   double GetRotationY() const { return rotationY; };
   double GetRotationZ() const { return rotationZ; };
   double GetCrossfadeDuration() const { return crossfadeDuration; };
+  const gd::String& GetAnimatorStatesJson() const { return animatorStatesJson; };
+  const gd::String& GetAnimatorParametersJson() const {
+    return animatorParametersJson;
+  };
+  const gd::String& GetAnimatorTransitionsJson() const {
+    return animatorTransitionsJson;
+  };
+  const gd::String& GetIKChainsJson() const { return ikChainsJson; };
+  const gd::String& GetIKPosesJson() const { return ikPosesJson; };
 
   const gd::String& GetModelResourceName() const { return modelResourceName; };
   const gd::String& GetMaterialType() const { return materialType; };
@@ -177,6 +186,11 @@ private:
   double rotationY;
   double rotationZ;
   double crossfadeDuration;
+  gd::String animatorStatesJson;
+  gd::String animatorParametersJson;
+  gd::String animatorTransitionsJson;
+  gd::String ikChainsJson;
+  gd::String ikPosesJson;
 
   gd::String modelResourceName;
   gd::String materialType;

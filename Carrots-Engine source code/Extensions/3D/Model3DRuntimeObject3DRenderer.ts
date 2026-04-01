@@ -166,8 +166,36 @@ namespace gdjs {
     scale: FloatPoint3D;
   };
 
+  type Model3DIKPoseChainTarget = {
+    enabled: boolean;
+    targetMode: Model3DIKTargetMode;
+    targetBoneName: string;
+    targetPosition: FloatPoint3D;
+  };
+
   type Model3DIKPoseSnapshot = {
     bonesByName: Map<string, Model3DIKBonePose>;
+    chainTargetsByName: Map<string, Model3DIKPoseChainTarget>;
+  };
+
+  type Model3DAnimationPlaybackMotion = {
+    source: string;
+    loop: boolean;
+    weight: number;
+  };
+
+  type Model3DAnimationActionEntry = {
+    source: string;
+    action: THREE.AnimationAction;
+    loop: boolean;
+    baseWeight: number;
+  };
+
+  type Model3DAnimationTransitionWeight = {
+    source: string;
+    action: THREE.AnimationAction;
+    fromWeight: number;
+    toWeight: number;
   };
 
   const clampNumber = (value: number, min: number, max: number): number =>
@@ -182,6 +210,13 @@ namespace gdjs {
     private _originalModel: THREE_ADDONS.GLTF;
     private _animationMixer: THREE.AnimationMixer;
     private _action: THREE.AnimationAction | null;
+    private _actionsBySource: Map<string, THREE.AnimationAction>;
+    private _currentActionEntries: Map<string, Model3DAnimationActionEntry>;
+    private _transitionWeightsBySource:
+      | Map<string, Model3DAnimationTransitionWeight>
+      | null;
+    private _transitionDuration: number;
+    private _transitionElapsed: number;
     private _ikChains: Map<string, Model3DIKChainDefinition>;
     private _resolvedIKChains: Map<string, Model3DIKResolvedChain>;
     private _bonesByName: Map<string, THREE.Bone>;
@@ -255,6 +290,11 @@ namespace gdjs {
 
       this._animationMixer = new THREE.AnimationMixer(model);
       this._action = null;
+      this._actionsBySource = new Map();
+      this._currentActionEntries = new Map();
+      this._transitionWeightsBySource = null;
+      this._transitionDuration = 0;
+      this._transitionElapsed = 0;
       this._ikChains = new Map();
       this._resolvedIKChains = new Map();
       this._bonesByName = new Map();
@@ -262,6 +302,7 @@ namespace gdjs {
     }
 
     updateAnimation(timeDelta: float) {
+      this._advanceAnimationTransition(timeDelta);
       this._animationMixer.update(timeDelta);
       this._updateIKGizmoInteraction();
       this._updateIK();
@@ -475,6 +516,12 @@ namespace gdjs {
 
       // Start the current animation on the new 3D object.
       this._animationMixer = new THREE.AnimationMixer(root);
+      this._actionsBySource = new Map();
+      this._currentActionEntries = new Map();
+      this._transitionWeightsBySource = null;
+      this._transitionDuration = 0;
+      this._transitionElapsed = 0;
+      this._action = null;
       const isAnimationPaused = this._model3DRuntimeObject.isAnimationPaused();
       this._model3DRuntimeObject.setAnimationIndex(
         this._model3DRuntimeObject.getAnimationIndex()
@@ -806,6 +853,196 @@ namespace gdjs {
       return Array.from(this._bonesByName.keys());
     }
 
+    exportIKChainsToJSON(): string {
+      const serializedChains = Array.from(this._ikChains.values()).map(
+        (chain) => ({
+          name: chain.name,
+          enabled: chain.enabled,
+          effectorBoneName: chain.effectorBoneName,
+          targetMode: chain.targetMode,
+          targetBoneName: chain.targetBoneName,
+          targetPosition: [
+            chain.targetPosition[0],
+            chain.targetPosition[1],
+            chain.targetPosition[2],
+          ] as FloatPoint3D,
+          linkBoneNames: chain.linkBoneNames.slice(),
+          iterationCount: chain.iterationCount,
+          blendFactor: chain.blendFactor,
+          minAngle: chain.minAngle,
+          maxAngle: chain.maxAngle,
+          targetTolerance: chain.targetTolerance,
+          linkConstraints: Array.from(
+            chain.linkConstraintsByBoneName.entries()
+          ).map(([boneName, linkConstraint]) => ({
+            boneName,
+            minEulerDegrees: [
+              linkConstraint.minEulerDegrees[0],
+              linkConstraint.minEulerDegrees[1],
+              linkConstraint.minEulerDegrees[2],
+            ] as FloatPoint3D,
+            maxEulerDegrees: [
+              linkConstraint.maxEulerDegrees[0],
+              linkConstraint.maxEulerDegrees[1],
+              linkConstraint.maxEulerDegrees[2],
+            ] as FloatPoint3D,
+          })),
+        })
+      );
+
+      return JSON.stringify({
+        version: 1,
+        chains: serializedChains,
+      });
+    }
+
+    importIKChainsFromJSON(chainsJSON: string, clearExisting: boolean): boolean {
+      if (clearExisting) {
+        this._ikChains.clear();
+      }
+      if (!chainsJSON) {
+        this._resolveIKChains();
+        return clearExisting;
+      }
+
+      let parsedPayload: unknown = null;
+      try {
+        parsedPayload = JSON.parse(chainsJSON);
+      } catch (_error) {
+        return false;
+      }
+
+      const serializedChains = Array.isArray(parsedPayload)
+        ? parsedPayload
+        : this._isObjectRecord(parsedPayload) && Array.isArray(parsedPayload.chains)
+          ? parsedPayload.chains
+          : null;
+      if (!serializedChains) {
+        return false;
+      }
+
+      let importedChainCount = 0;
+      for (const rawChain of serializedChains) {
+        if (!this._isObjectRecord(rawChain)) {
+          continue;
+        }
+
+        const rawChainName = rawChain.name;
+        const rawEffectorBoneName = rawChain.effectorBoneName;
+        const rawLinkBoneNames = rawChain.linkBoneNames;
+        if (
+          typeof rawChainName !== 'string' ||
+          typeof rawEffectorBoneName !== 'string' ||
+          !Array.isArray(rawLinkBoneNames)
+        ) {
+          continue;
+        }
+
+        const normalizedChainName = rawChainName.trim();
+        const normalizedEffectorBoneName = rawEffectorBoneName.trim();
+        const normalizedLinkBoneNames = rawLinkBoneNames
+          .map((linkBoneName) =>
+            typeof linkBoneName === 'string' ? linkBoneName.trim() : ''
+          )
+          .filter((linkBoneName) => !!linkBoneName);
+        if (
+          !normalizedChainName ||
+          !normalizedEffectorBoneName ||
+          normalizedLinkBoneNames.length === 0
+        ) {
+          continue;
+        }
+
+        const targetMode =
+          rawChain.targetMode === 'bone' ? ('bone' as Model3DIKTargetMode) : 'position';
+        const targetBoneName =
+          typeof rawChain.targetBoneName === 'string'
+            ? rawChain.targetBoneName.trim()
+            : '';
+        const targetPosition =
+          this._parseIKPoseVector3(rawChain.targetPosition) || [
+            this._object.getX(),
+            this._object.getY(),
+            this._object.getZ(),
+          ];
+
+        let minAngleDegrees = Number.isFinite(rawChain.minAngle)
+          ? Math.max(0, Number(rawChain.minAngle))
+          : 0;
+        let maxAngleDegrees = Number.isFinite(rawChain.maxAngle)
+          ? Math.max(0, Number(rawChain.maxAngle))
+          : 0;
+        if (maxAngleDegrees > 0 && minAngleDegrees > maxAngleDegrees) {
+          const temp = minAngleDegrees;
+          minAngleDegrees = maxAngleDegrees;
+          maxAngleDegrees = temp;
+        }
+
+        const linkConstraintsByBoneName = new Map<
+          string,
+          Model3DIKLinkConstraintDefinition
+        >();
+        if (Array.isArray(rawChain.linkConstraints)) {
+          rawChain.linkConstraints.forEach((rawConstraint) => {
+            if (!this._isObjectRecord(rawConstraint)) {
+              return;
+            }
+
+            const rawBoneName = rawConstraint.boneName;
+            if (typeof rawBoneName !== 'string') {
+              return;
+            }
+
+            const normalizedBoneName = rawBoneName.trim();
+            if (!normalizedBoneName) {
+              return;
+            }
+
+            const minEulerDegrees = this._parseIKPoseVector3(
+              rawConstraint.minEulerDegrees
+            );
+            const maxEulerDegrees = this._parseIKPoseVector3(
+              rawConstraint.maxEulerDegrees
+            );
+            if (!minEulerDegrees || !maxEulerDegrees) {
+              return;
+            }
+
+            linkConstraintsByBoneName.set(normalizedBoneName, {
+              minEulerDegrees,
+              maxEulerDegrees,
+            });
+          });
+        }
+
+        this._ikChains.set(normalizedChainName, {
+          name: normalizedChainName,
+          enabled: rawChain.enabled !== false,
+          effectorBoneName: normalizedEffectorBoneName,
+          targetMode,
+          targetBoneName: targetMode === 'bone' ? targetBoneName : '',
+          targetPosition,
+          linkBoneNames: normalizedLinkBoneNames,
+          iterationCount: this._sanitizeIKIterationCount(
+            Number(rawChain.iterationCount)
+          ),
+          blendFactor: this._sanitizeIKBlendFactor(
+            Number(rawChain.blendFactor)
+          ),
+          minAngle: minAngleDegrees,
+          maxAngle: maxAngleDegrees,
+          targetTolerance: this._sanitizeIKTargetTolerance(
+            Number(rawChain.targetTolerance)
+          ),
+          linkConstraintsByBoneName,
+        });
+        importedChainCount++;
+      }
+
+      this._resolveIKChains();
+      return importedChainCount > 0 || clearExisting;
+    }
+
     saveIKPose(poseName: string): boolean {
       const normalizedPoseName = poseName.trim();
       if (!normalizedPoseName || this._bonesByName.size === 0) {
@@ -826,7 +1063,24 @@ namespace gdjs {
         });
       }
 
-      this._ikPoses.set(normalizedPoseName, { bonesByName });
+      const chainTargetsByName = new Map<string, Model3DIKPoseChainTarget>();
+      for (const [chainName, chain] of this._ikChains.entries()) {
+        chainTargetsByName.set(chainName, {
+          enabled: chain.enabled,
+          targetMode: chain.targetMode,
+          targetBoneName: chain.targetBoneName,
+          targetPosition: [
+            chain.targetPosition[0],
+            chain.targetPosition[1],
+            chain.targetPosition[2],
+          ],
+        });
+      }
+
+      this._ikPoses.set(normalizedPoseName, {
+        bonesByName,
+        chainTargetsByName,
+      });
       return true;
     }
 
@@ -863,6 +1117,27 @@ namespace gdjs {
         return false;
       }
 
+      let hasAppliedChainTarget = false;
+      for (const [chainName, chainTarget] of pose.chainTargetsByName.entries()) {
+        const chainDefinition = this._ikChains.get(chainName);
+        if (!chainDefinition) {
+          continue;
+        }
+
+        chainDefinition.enabled = chainTarget.enabled;
+        chainDefinition.targetMode = chainTarget.targetMode;
+        chainDefinition.targetBoneName = chainTarget.targetBoneName;
+        chainDefinition.targetPosition = [
+          chainTarget.targetPosition[0],
+          chainTarget.targetPosition[1],
+          chainTarget.targetPosition[2],
+        ];
+        hasAppliedChainTarget = true;
+      }
+
+      if (hasAppliedChainTarget) {
+        this._resolveIKChains();
+      }
       this._threeObject.updateMatrixWorld(true);
       return true;
     }
@@ -881,6 +1156,10 @@ namespace gdjs {
 
     getIKPoseCount(): number {
       return this._ikPoses.size;
+    }
+
+    getIKPoseNames(): string[] {
+      return Array.from(this._ikPoses.keys());
     }
 
     pinIKTargetToCurrentEffector(chainName: string): boolean {
@@ -949,6 +1228,19 @@ namespace gdjs {
                 FloatPoint3D,
             })
           ),
+          targets: Array.from(pose.chainTargetsByName.entries()).map(
+            ([chainName, chainTarget]) => ({
+              chainName,
+              enabled: chainTarget.enabled,
+              targetMode: chainTarget.targetMode,
+              targetBoneName: chainTarget.targetBoneName,
+              targetPosition: [
+                chainTarget.targetPosition[0],
+                chainTarget.targetPosition[1],
+                chainTarget.targetPosition[2],
+              ] as FloatPoint3D,
+            })
+          ),
         })
       );
 
@@ -991,6 +1283,7 @@ namespace gdjs {
 
         const rawPoseName = serializedPose.name;
         const rawBones = serializedPose.bones;
+        const rawTargets = serializedPose.targets;
         if (typeof rawPoseName !== 'string' || !Array.isArray(rawBones)) {
           continue;
         }
@@ -1034,7 +1327,45 @@ namespace gdjs {
           continue;
         }
 
-        this._ikPoses.set(normalizedPoseName, { bonesByName });
+        const chainTargetsByName = new Map<string, Model3DIKPoseChainTarget>();
+        if (Array.isArray(rawTargets)) {
+          for (const rawTarget of rawTargets) {
+            if (!this._isObjectRecord(rawTarget)) {
+              continue;
+            }
+
+            const rawChainName = rawTarget.chainName;
+            if (typeof rawChainName !== 'string' || !rawChainName.trim()) {
+              continue;
+            }
+
+            const targetPosition = this._parseIKPoseVector3(
+              rawTarget.targetPosition
+            );
+            if (!targetPosition) {
+              continue;
+            }
+
+            const targetMode: Model3DIKTargetMode =
+              rawTarget.targetMode === 'bone' ? 'bone' : 'position';
+            const targetBoneName =
+              typeof rawTarget.targetBoneName === 'string'
+                ? rawTarget.targetBoneName.trim()
+                : '';
+
+            chainTargetsByName.set(rawChainName.trim(), {
+              enabled: rawTarget.enabled !== false,
+              targetMode,
+              targetBoneName,
+              targetPosition,
+            });
+          }
+        }
+
+        this._ikPoses.set(normalizedPoseName, {
+          bonesByName,
+          chainTargetsByName,
+        });
         importedPoseCount++;
       }
 
@@ -1845,61 +2176,422 @@ namespace gdjs {
     }
 
     pauseAnimation() {
-      if (!this._action) {
-        return;
-      }
-      this._action.paused = true;
+      this._getTrackedActionsBySource().forEach((action) => {
+        action.paused = true;
+      });
     }
 
     resumeAnimation() {
-      if (!this._action) {
+      this._getTrackedActionsBySource().forEach((action) => {
+        action.paused = false;
+      });
+    }
+
+    private _findAnimationClip(
+      animationName: string
+    ): THREE.AnimationClip | null {
+      return (
+        THREE.AnimationClip.findByName(
+          this._originalModel.animations,
+          animationName
+        ) || null
+      );
+    }
+
+    private _getOrCreateAnimationAction(
+      animationName: string
+    ): THREE.AnimationAction | null {
+      const existingAction = this._actionsBySource.get(animationName);
+      if (existingAction) {
+        return existingAction;
+      }
+
+      const clip = this._findAnimationClip(animationName);
+      if (!clip) {
+        console.error(
+          `The GLB file: ${this._model3DRuntimeObject._modelResourceName} doesn't have any animation named: ${animationName}`
+        );
+        return null;
+      }
+
+      const action = this._animationMixer.clipAction(clip);
+      this._actionsBySource.set(animationName, action);
+      return action;
+    }
+
+    private _configureAnimationAction(
+      action: THREE.AnimationAction,
+      shouldLoop: boolean,
+      shouldReset: boolean
+    ): void {
+      if (shouldReset) {
+        action.reset();
+      }
+      action.enabled = true;
+      action.setLoop(
+        shouldLoop ? THREE.LoopRepeat : THREE.LoopOnce,
+        shouldLoop ? Number.POSITIVE_INFINITY : 1
+      );
+      action.clampWhenFinished = true;
+      action.timeScale =
+        this._model3DRuntimeObject.getAnimationSpeedScale();
+      action.paused = this._model3DRuntimeObject.isAnimationPaused();
+      action.play();
+    }
+
+    private _setAnimationActionWeight(
+      action: THREE.AnimationAction,
+      weight: number
+    ): void {
+      const clampedWeight = Math.max(0, Math.min(weight, 1));
+      action.enabled = clampedWeight > epsilon;
+      action.setEffectiveWeight(clampedWeight);
+    }
+
+    private _stopAnimationAction(action: THREE.AnimationAction): void {
+      action.stop();
+      action.enabled = false;
+      action.setEffectiveWeight(0);
+    }
+
+    private _getTrackedActionsBySource(): Map<string, THREE.AnimationAction> {
+      const trackedActionsBySource = new Map<string, THREE.AnimationAction>();
+
+      this._currentActionEntries.forEach((entry, source) => {
+        trackedActionsBySource.set(source, entry.action);
+      });
+      if (this._transitionWeightsBySource) {
+        this._transitionWeightsBySource.forEach((entry, source) => {
+          trackedActionsBySource.set(source, entry.action);
+        });
+      }
+
+      return trackedActionsBySource;
+    }
+
+    private _clearAnimationTransition(): void {
+      this._transitionWeightsBySource = null;
+      this._transitionDuration = 0;
+      this._transitionElapsed = 0;
+    }
+
+    private _selectPrimaryAction(): void {
+      let primaryAction: THREE.AnimationAction | null = null;
+      let highestWeight = -1;
+
+      this._currentActionEntries.forEach((entry) => {
+        if (entry.baseWeight > highestWeight) {
+          highestWeight = entry.baseWeight;
+          primaryAction = entry.action;
+        }
+      });
+
+      this._action = primaryAction;
+    }
+
+    private _normalizePlaybackMotions(
+      motions: Model3DAnimationPlaybackMotion[]
+    ): Model3DAnimationPlaybackMotion[] {
+      const mergedMotionsBySource = new Map<
+        string,
+        Model3DAnimationPlaybackMotion
+      >();
+
+      motions.forEach((motion) => {
+        if (!motion.source) {
+          return;
+        }
+
+        const weight = Number.isFinite(motion.weight) ? motion.weight : 0;
+        if (weight <= epsilon) {
+          return;
+        }
+
+        const previousMotion = mergedMotionsBySource.get(motion.source);
+        if (previousMotion) {
+          previousMotion.weight += weight;
+          previousMotion.loop = previousMotion.loop || motion.loop;
+          return;
+        }
+
+        mergedMotionsBySource.set(motion.source, {
+          source: motion.source,
+          loop: motion.loop,
+          weight,
+        });
+      });
+
+      const normalizedMotions = Array.from(mergedMotionsBySource.values());
+      const totalWeight = normalizedMotions.reduce(
+        (sum, motion) => sum + motion.weight,
+        0
+      );
+
+      if (totalWeight > epsilon) {
+        normalizedMotions.forEach((motion) => {
+          motion.weight /= totalWeight;
+        });
+      }
+
+      return normalizedMotions;
+    }
+
+    private _applyCurrentActionWeights(): void {
+      const trackedActionsBySource = this._getTrackedActionsBySource();
+
+      trackedActionsBySource.forEach((action, source) => {
+        const currentEntry = this._currentActionEntries.get(source);
+        if (!currentEntry) {
+          this._stopAnimationAction(action);
+          return;
+        }
+
+        this._configureAnimationAction(action, currentEntry.loop, false);
+        this._setAnimationActionWeight(action, currentEntry.baseWeight);
+      });
+
+      this._selectPrimaryAction();
+    }
+
+    private _applyTransitionWeights(): void {
+      if (!this._transitionWeightsBySource) {
+        this._applyCurrentActionWeights();
         return;
       }
-      this._action.paused = false;
+
+      const factor =
+        this._transitionDuration <= epsilon
+          ? 1
+          : Math.max(
+              0,
+              Math.min(this._transitionElapsed / this._transitionDuration, 1)
+            );
+
+      this._transitionWeightsBySource.forEach((entry) => {
+        const interpolatedWeight =
+          entry.fromWeight + (entry.toWeight - entry.fromWeight) * factor;
+        this._setAnimationActionWeight(entry.action, interpolatedWeight);
+      });
+
+      if (factor >= 1) {
+        const finishedTransitionWeights = this._transitionWeightsBySource;
+        this._clearAnimationTransition();
+
+        finishedTransitionWeights.forEach((entry, source) => {
+          if (
+            !this._currentActionEntries.has(source) ||
+            entry.toWeight <= epsilon
+          ) {
+            this._stopAnimationAction(entry.action);
+          }
+        });
+      }
+
+      this._selectPrimaryAction();
+    }
+
+    private _advanceAnimationTransition(timeDelta: float): void {
+      if (
+        !this._transitionWeightsBySource ||
+        this._transitionDuration <= epsilon ||
+        this.animationPaused()
+      ) {
+        return;
+      }
+
+      this._transitionElapsed = Math.min(
+        this._transitionElapsed + timeDelta,
+        this._transitionDuration
+      );
+      this._applyTransitionWeights();
+    }
+
+    private _setPlaybackActions(
+      motions: Model3DAnimationPlaybackMotion[],
+      ignoreCrossFade: boolean,
+      crossfadeDuration: number | null | undefined,
+      shouldReset: boolean
+    ): void {
+      const normalizedMotions = this._normalizePlaybackMotions(motions);
+      if (normalizedMotions.length === 0) {
+        this._getTrackedActionsBySource().forEach((action) => {
+          this._stopAnimationAction(action);
+        });
+        this._currentActionEntries.clear();
+        this._clearAnimationTransition();
+        this._action = null;
+        return;
+      }
+
+      const trackedActionsBySource = this._getTrackedActionsBySource();
+      const previousWeightsBySource = new Map<string, number>();
+      trackedActionsBySource.forEach((action, source) => {
+        previousWeightsBySource.set(source, action.getEffectiveWeight());
+      });
+
+      const nextActionEntries = new Map<string, Model3DAnimationActionEntry>();
+      normalizedMotions.forEach((motion) => {
+        const action = this._getOrCreateAnimationAction(motion.source);
+        if (!action) {
+          return;
+        }
+
+        this._configureAnimationAction(
+          action,
+          motion.loop,
+          shouldReset || !trackedActionsBySource.has(motion.source)
+        );
+        nextActionEntries.set(motion.source, {
+          source: motion.source,
+          action,
+          loop: motion.loop,
+          baseWeight: motion.weight,
+        });
+      });
+
+      if (nextActionEntries.size === 0) {
+        this._getTrackedActionsBySource().forEach((action) => {
+          this._stopAnimationAction(action);
+        });
+        this._currentActionEntries.clear();
+        this._clearAnimationTransition();
+        this._action = null;
+        return;
+      }
+
+      this._currentActionEntries = nextActionEntries;
+
+      const resolvedCrossfadeDuration =
+        typeof crossfadeDuration === 'number' && Number.isFinite(crossfadeDuration)
+          ? Math.max(crossfadeDuration, 0)
+          : Math.max(this._model3DRuntimeObject._crossfadeDuration, 0);
+      const shouldCrossFade =
+        !ignoreCrossFade &&
+        previousWeightsBySource.size > 0 &&
+        resolvedCrossfadeDuration > epsilon;
+
+      if (!shouldCrossFade) {
+        trackedActionsBySource.forEach((action, source) => {
+          if (!nextActionEntries.has(source)) {
+            this._stopAnimationAction(action);
+          }
+        });
+        this._clearAnimationTransition();
+        this._applyCurrentActionWeights();
+        this._animationMixer.update(0);
+        return;
+      }
+
+      const transitionWeightsBySource = new Map<
+        string,
+        Model3DAnimationTransitionWeight
+      >();
+      const nextSources = new Set(nextActionEntries.keys());
+      const transitionSources = new Set<string>([
+        ...previousWeightsBySource.keys(),
+        ...nextSources,
+      ]);
+
+      transitionSources.forEach((source) => {
+        const nextEntry = nextActionEntries.get(source);
+        const action =
+          (nextEntry && nextEntry.action) || trackedActionsBySource.get(source);
+        if (!action) {
+          return;
+        }
+
+        const fromWeight = previousWeightsBySource.get(source) || 0;
+        const toWeight = nextEntry ? nextEntry.baseWeight : 0;
+        this._setAnimationActionWeight(action, fromWeight);
+        transitionWeightsBySource.set(source, {
+          source,
+          action,
+          fromWeight,
+          toWeight,
+        });
+      });
+
+      this._transitionWeightsBySource = transitionWeightsBySource;
+      this._transitionDuration = resolvedCrossfadeDuration;
+      this._transitionElapsed = 0;
+      this._applyTransitionWeights();
+      this._animationMixer.update(0);
     }
 
     playAnimation(
       animationName: string,
       shouldLoop: boolean,
-      ignoreCrossFade: boolean = false
+      ignoreCrossFade: boolean = false,
+      crossfadeDuration: number | null = null
     ) {
-      const clip = THREE.AnimationClip.findByName(
-        this._originalModel.animations,
-        animationName
+      this._setPlaybackActions(
+        [{ source: animationName, loop: shouldLoop, weight: 1 }],
+        ignoreCrossFade,
+        crossfadeDuration,
+        true
       );
-      if (!clip) {
-        console.error(
-          `The GLB file: ${this._model3DRuntimeObject._modelResourceName} doesn't have any animation named: ${animationName}`
-        );
-        return;
-      }
-      const previousAction = this._action;
-      this._action = this._animationMixer.clipAction(clip);
-      // Reset the animation and play it from the start.
-      // `clipAction` always gives back the same action for a given animation
-      // and its likely to be in a finished or at least started state.
-      this._action.reset();
-      this._action.setLoop(
-        shouldLoop ? THREE.LoopRepeat : THREE.LoopOnce,
-        Number.POSITIVE_INFINITY
+    }
+
+    playBlendAnimation(
+      motions: Model3DAnimationPlaybackMotion[],
+      ignoreCrossFade: boolean = false,
+      crossfadeDuration: number | null = null
+    ) {
+      this._setPlaybackActions(
+        motions,
+        ignoreCrossFade,
+        crossfadeDuration,
+        true
       );
-      this._action.clampWhenFinished = true;
-      this._action.timeScale =
-        this._model3DRuntimeObject.getAnimationSpeedScale();
+    }
+
+    updateBlendAnimation(motions: Model3DAnimationPlaybackMotion[]) {
+      const normalizedMotions = this._normalizePlaybackMotions(motions);
+      const currentSources = Array.from(this._currentActionEntries.keys()).sort();
+      const nextSources = normalizedMotions
+        .map((motion) => motion.source)
+        .sort();
 
       if (
-        previousAction &&
-        previousAction !== this._action &&
-        !ignoreCrossFade
+        currentSources.length !== nextSources.length ||
+        currentSources.some((source, index) => source !== nextSources[index])
       ) {
-        this._action.crossFadeFrom(
-          previousAction,
-          this._model3DRuntimeObject._crossfadeDuration,
-          false
-        );
+        this.playBlendAnimation(normalizedMotions, true, 0);
+        return;
       }
-      this._action.play();
-      // Make sure the first frame is displayed.
+
+      const nextActionEntries = new Map<string, Model3DAnimationActionEntry>();
+      normalizedMotions.forEach((motion) => {
+        const currentEntry = this._currentActionEntries.get(motion.source);
+        const action = currentEntry
+          ? currentEntry.action
+          : this._getOrCreateAnimationAction(motion.source);
+        if (!action) {
+          return;
+        }
+
+        this._configureAnimationAction(action, motion.loop, false);
+        nextActionEntries.set(motion.source, {
+          source: motion.source,
+          action,
+          loop: motion.loop,
+          baseWeight: motion.weight,
+        });
+      });
+
+      this._currentActionEntries = nextActionEntries;
+
+      if (this._transitionWeightsBySource) {
+        this._transitionWeightsBySource.forEach((entry, source) => {
+          entry.toWeight = nextActionEntries.get(source)
+            ? nextActionEntries.get(source)!.baseWeight
+            : 0;
+        });
+        this._applyTransitionWeights();
+      } else {
+        this._applyCurrentActionWeights();
+      }
+
       this._animationMixer.update(0);
     }
 
@@ -1908,15 +2600,15 @@ namespace gdjs {
     }
 
     setAnimationElapsedTime(time: float): void {
-      if (this._action) {
-        this._action.time = time;
-      }
+      this._getTrackedActionsBySource().forEach((action) => {
+        action.time = time;
+      });
     }
 
     setAnimationTimeScale(timeScale: float): void {
-      if (this._action) {
-        this._action.timeScale = timeScale;
-      }
+      this._getTrackedActionsBySource().forEach((action) => {
+        action.timeScale = timeScale;
+      });
     }
 
     getAnimationDuration(animationName: string): float {
