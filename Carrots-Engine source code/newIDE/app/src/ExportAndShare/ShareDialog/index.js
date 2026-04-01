@@ -15,6 +15,7 @@ import TextButton from '../../UI/TextButton';
 import useAlertDialog from '../../UI/Alert/useAlertDialog';
 import PreferencesContext from '../../MainFrame/Preferences/PreferencesContext';
 import { type FileMetadata, type StorageProvider } from '../../ProjectsStorage';
+import { localFileStorageProviderInternalName } from '../../ProjectsStorage/LocalFileStorageProvider/LocalFileStorageProviderInternalName';
 import { useOnlineStatus } from '../../Utils/OnlineStatus';
 import ErrorBoundary from '../../UI/ErrorBoundary';
 import type { GamesList } from '../../GameDashboard/UseGamesList';
@@ -275,6 +276,12 @@ const ShareDialog = ({
         <InviteHome
           cloudProjectId={
             storageProvider.internalName === 'Cloud' && fileMetadata
+              ? fileMetadata.fileIdentifier
+              : null
+          }
+          localProjectFilePath={
+            storageProvider.internalName === localFileStorageProviderInternalName &&
+            fileMetadata
               ? fileMetadata.fileIdentifier
               : null
           }

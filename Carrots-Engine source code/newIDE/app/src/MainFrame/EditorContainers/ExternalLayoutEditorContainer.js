@@ -374,6 +374,7 @@ export class ExternalLayoutEditorContainer extends React.Component<
             }
             onOpenProjectManager={this.props.onOpenProjectManager}
             onOpenEvents={this.props.onOpenEvents}
+            onOpenTypeScriptScripts={this.props.onOpenTypeScriptScripts}
             onOpenMoreSettings={this.openExternalPropertiesDialog}
             isActive={isActive}
             previewDebuggerServer={this.props.previewDebuggerServer}

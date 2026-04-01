@@ -23,6 +23,27 @@
 using namespace std;
 
 namespace gd {
+namespace {
+bool IsTruthyBooleanParameter(const gd::String& value) {
+  const auto normalizedValue = value.LowerCase();
+  return normalizedValue == "true" || normalizedValue == "vrai" ||
+         normalizedValue == "yes" || normalizedValue == "oui";
+}
+
+gd::String NormalizeOperatorParameterValue(const gd::String& value) {
+  const auto normalizedValue = value.LowerCase();
+  if (normalizedValue == "true" || normalizedValue == "vrai") {
+    return "True";
+  }
+  if (normalizedValue == "false" || normalizedValue == "faux") {
+    return "False";
+  }
+  if (normalizedValue == "toggle") {
+    return "Toggle";
+  }
+  return value;
+}
+}  // namespace
 
 /**
  * Generate call using a relational operator.
@@ -911,6 +932,7 @@ gd::String EventsCodeGenerator::GenerateParameterCodes(
     argOutput = "\"" + argOutput + "\"";
   } else if (metadata.GetType() == "operator") {
     argOutput += parameter.GetPlainString();
+    argOutput = NormalizeOperatorParameterValue(argOutput);
     if (argOutput != "=" && argOutput != "+" && argOutput != "-" &&
         argOutput != "/" && argOutput != "*" && argOutput != "True" &&
         argOutput != "False" && argOutput != "Toggle") {
@@ -949,16 +971,14 @@ gd::String EventsCodeGenerator::GenerateParameterCodes(
   } else if (metadata.GetType() == "mouse") {
     argOutput = "\"" + ConvertToString(parameter.GetPlainString()) + "\"";
   } else if (metadata.GetType() == "yesorno") {
-    auto parameterString = parameter.GetPlainString();
-    argOutput += (parameterString == "yes" || parameterString == "oui")
-                     ? GenerateTrue()
-                     : GenerateFalse();
+    const auto parameterString = parameter.GetPlainString();
+    argOutput +=
+        IsTruthyBooleanParameter(parameterString) ? GenerateTrue() : GenerateFalse();
   } else if (metadata.GetType() == "trueorfalse") {
-    auto parameterString = parameter.GetPlainString();
+    const auto parameterString = parameter.GetPlainString();
     // This is duplicated in AdvancedExtension.cpp for GDJS
-    argOutput += (parameterString == "True" || parameterString == "Vrai")
-                     ? GenerateTrue()
-                     : GenerateFalse();
+    argOutput +=
+        IsTruthyBooleanParameter(parameterString) ? GenerateTrue() : GenerateFalse();
   }
   // Code only parameter type
   else if (metadata.GetType() == "inlineCode") {

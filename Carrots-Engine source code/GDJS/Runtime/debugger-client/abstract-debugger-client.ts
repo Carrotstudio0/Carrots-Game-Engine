@@ -157,6 +157,159 @@ namespace gdjs {
     };
   };
 
+  type CinematicTimelineEasing =
+    | 'linear'
+    | 'step'
+    | 'none'
+    | 'quadEaseIn'
+    | 'quadEaseOut'
+    | 'quadEaseInOut';
+
+  type CinematicTimelineVec3 = {
+    x: number;
+    y: number;
+    z: number;
+  };
+
+  type CinematicTimelineTransformValue = {
+    position: CinematicTimelineVec3;
+    rotation: CinematicTimelineVec3;
+    scale: CinematicTimelineVec3;
+  };
+
+  type CinematicTimelineIKValue = {
+    target: CinematicTimelineVec3;
+    pole: CinematicTimelineVec3;
+    weight: number;
+  };
+
+  type CinematicTimelineKeyframe<T> = {
+    frame: number;
+    easing: CinematicTimelineEasing;
+    value: T;
+  };
+
+  type CinematicTimelineTransformTrack = {
+    id: string;
+    type: 'transform';
+    targetId: string;
+    keyframes: Array<CinematicTimelineKeyframe<CinematicTimelineTransformValue>>;
+  };
+
+  type CinematicTimelineIKTrack = {
+    id: string;
+    type: 'ik';
+    name: string;
+    targetId: string;
+    chainRoot: string;
+    endEffector: string;
+    keyframes: Array<CinematicTimelineKeyframe<CinematicTimelineIKValue>>;
+  };
+
+  type CinematicTimelineTrack =
+    | CinematicTimelineTransformTrack
+    | CinematicTimelineIKTrack;
+
+  type CinematicTimelineLoopRange = {
+    enabled: boolean;
+    inFrame: number;
+    outFrame: number;
+  };
+
+  type CinematicTimelineShot = {
+    id: string;
+    name: string;
+    startFrame: number;
+    endFrame: number;
+  };
+
+  type CinematicTimelineEventMarker = {
+    id: string;
+    name: string;
+    action: string;
+    condition: string;
+    frame: number;
+    payload: string;
+  };
+
+  type CinematicTimelinePlaybackRange = {
+    inFrame: number;
+    outFrame: number;
+  };
+
+  type CinematicTimelineScene = {
+    fps: number;
+    duration: number;
+    tracks: Array<CinematicTimelineTrack>;
+    loopRange: CinematicTimelineLoopRange;
+    shots: Array<CinematicTimelineShot>;
+    events: Array<CinematicTimelineEventMarker>;
+  };
+
+  type CinematicTimelinePayload = {
+    scene?: unknown;
+    frame?: unknown;
+    fps?: unknown;
+    duration?: unknown;
+    loopPlayback?: unknown;
+    shotId?: unknown;
+    shotName?: unknown;
+    startFrame?: unknown;
+    endFrame?: unknown;
+  };
+
+  type IKTimelineRuntimeObject = gdjs.RuntimeObject & {
+    configureIKChain: (
+      chainName: string,
+      effectorBoneName: string,
+      targetBoneName: string,
+      linkBoneNames: string,
+      iterationCount: number,
+      blendFactor: number,
+      minAngle: number,
+      maxAngle: number
+    ) => void;
+    setIKTargetPosition: (
+      chainName: string,
+      x: number,
+      y: number,
+      z: number
+    ) => void;
+    setIKEnabled: (chainName: string, enabled: boolean) => void;
+    setIKBlendFactor: (chainName: string, blendFactor: number) => void;
+    setIKIterationCount: (chainName: string, iterationCount: number) => void;
+    setIKAngleLimits: (
+      chainName: string,
+      minAngleDegrees: number,
+      maxAngleDegrees: number
+    ) => void;
+    setIKTargetTolerance: (chainName: string, tolerance: number) => void;
+  };
+
+  const isIKTimelineRuntimeObject = (
+    object: gdjs.RuntimeObject
+  ): object is IKTimelineRuntimeObject => {
+    const candidate = object as any;
+    return (
+      typeof candidate.configureIKChain === 'function' &&
+      typeof candidate.setIKTargetPosition === 'function' &&
+      typeof candidate.setIKEnabled === 'function'
+    );
+  };
+
+  type CinematicTimelineRuntimeState = {
+    scene: CinematicTimelineScene;
+    currentFrame: number;
+    timerId: number | null;
+    startedAtMs: number;
+    startedFromFrame: number;
+    loopPlayback: boolean;
+    playbackRange: CinematicTimelinePlaybackRange;
+    activeShotId: string;
+    configuredIKChains: Set<string>;
+    warnedMissingTargets: Set<string>;
+  };
+
   /**
    * The base class describing a debugger client, that can be used to inspect
    * a runtime game (dump its state) or alter it.
@@ -169,6 +322,7 @@ namespace gdjs {
     _inGameDebugger: gdjs.InGameDebugger;
 
     _hasLoggedUncaughtException = false;
+    _cinematicTimelineState: CinematicTimelineRuntimeState | null = null;
 
     constructor(runtimeGame: RuntimeGame) {
       this._runtimegame = runtimeGame;
@@ -485,9 +639,20 @@ namespace gdjs {
           if (inGameEditor) {
             this.sendSelectionAABB(data.messageId);
           }
+        } else if (data.command === 'cinematicTimeline.play') {
+          this._playCinematicTimeline(data.payload || {});
+        } else if (data.command === 'cinematicTimeline.playShot') {
+          this._playCinematicTimelineShot(data.payload || {});
+        } else if (data.command === 'cinematicTimeline.pause') {
+          this._pauseCinematicTimeline(data.payload || {});
+        } else if (data.command === 'cinematicTimeline.setFrame') {
+          this._setCinematicTimelineFrame(data.payload || {});
+        } else if (data.command === 'cinematicTimeline.stop') {
+          this._stopCinematicTimeline(data.payload || {});
         } else if (data.command === 'hardReload') {
           // This usually means that the preview was modified so much that an entire reload
           // is needed, or that the runtime itself could have been modified.
+          this._clearCinematicTimelineTimer();
           this.launchHardReload();
         } else {
           logger.info(
@@ -496,6 +661,1054 @@ namespace gdjs {
         }
       } catch (error) {
         this.onUncaughtException(error);
+      }
+    }
+
+    private _parseFiniteNumber(value: unknown, fallbackValue: number): number {
+      const parsedValue =
+        typeof value === 'number'
+          ? value
+          : typeof value === 'string'
+          ? Number.parseFloat(value)
+          : NaN;
+      return Number.isFinite(parsedValue) ? parsedValue : fallbackValue;
+    }
+
+    private _clampNumber(value: number, min: number, max: number): number {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    private _clampInteger(value: number, min: number, max: number): number {
+      return Math.round(this._clampNumber(value, min, max));
+    }
+
+    private _lerpNumber(from: number, to: number, alpha: number): number {
+      return from + (to - from) * alpha;
+    }
+
+    private _normalizeCinematicVec3(
+      value: unknown,
+      fallbackValue: CinematicTimelineVec3
+    ): CinematicTimelineVec3 {
+      if (!value || typeof value !== 'object') return fallbackValue;
+      const vec3Value = value as any;
+      return {
+        x: this._parseFiniteNumber(vec3Value.x, fallbackValue.x),
+        y: this._parseFiniteNumber(vec3Value.y, fallbackValue.y),
+        z: this._parseFiniteNumber(vec3Value.z, fallbackValue.z),
+      };
+    }
+
+    private _normalizeCinematicTransformValue(
+      value: unknown
+    ): CinematicTimelineTransformValue {
+      const fallbackValue: CinematicTimelineTransformValue = {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      };
+
+      if (!value || typeof value !== 'object') return fallbackValue;
+      const transformValue = value as any;
+      return {
+        position: this._normalizeCinematicVec3(
+          transformValue.position,
+          fallbackValue.position
+        ),
+        rotation: this._normalizeCinematicVec3(
+          transformValue.rotation,
+          fallbackValue.rotation
+        ),
+        scale: this._normalizeCinematicVec3(
+          transformValue.scale,
+          fallbackValue.scale
+        ),
+      };
+    }
+
+    private _normalizeCinematicIKValue(value: unknown): CinematicTimelineIKValue {
+      const fallbackValue: CinematicTimelineIKValue = {
+        target: { x: 0, y: 0, z: 0 },
+        pole: { x: 0, y: 0, z: 0 },
+        weight: 1,
+      };
+
+      if (!value || typeof value !== 'object') return fallbackValue;
+      const ikValue = value as any;
+      return {
+        target: this._normalizeCinematicVec3(ikValue.target, fallbackValue.target),
+        pole: this._normalizeCinematicVec3(ikValue.pole, fallbackValue.pole),
+        weight: this._clampNumber(
+          this._parseFiniteNumber(ikValue.weight, fallbackValue.weight),
+          0,
+          1
+        ),
+      };
+    }
+
+    private _normalizeCinematicKeyframes<T>(
+      keyframes: unknown,
+      duration: number,
+      normalizeValue: (value: unknown) => T
+    ): Array<CinematicTimelineKeyframe<T>> {
+      if (!Array.isArray(keyframes)) return [];
+
+      const keyframesByFrame = new Map<number, CinematicTimelineKeyframe<T>>();
+      for (const rawKeyframe of keyframes) {
+        if (!rawKeyframe || typeof rawKeyframe !== 'object') continue;
+        const keyframeValue = rawKeyframe as any;
+        const frame = this._clampInteger(
+          this._parseFiniteNumber(keyframeValue.frame, 0),
+          0,
+          duration
+        );
+        keyframesByFrame.set(frame, {
+          frame,
+          easing:
+            keyframeValue.easing === 'step' ||
+            keyframeValue.easing === 'none' ||
+            keyframeValue.easing === 'quadEaseIn' ||
+            keyframeValue.easing === 'quadEaseOut' ||
+            keyframeValue.easing === 'quadEaseInOut'
+              ? keyframeValue.easing
+              : 'linear',
+          value: normalizeValue(keyframeValue.value),
+        });
+      }
+
+      return Array.from(keyframesByFrame.values()).sort(
+        (a, b) => a.frame - b.frame
+      );
+    }
+
+    private _normalizeCinematicLoopRange(
+      value: unknown,
+      duration: number
+    ): CinematicTimelineLoopRange {
+      const fallbackLoopRange: CinematicTimelineLoopRange = {
+        enabled: false,
+        inFrame: 0,
+        outFrame: duration,
+      };
+      if (!value || typeof value !== 'object') return fallbackLoopRange;
+      const loopRange = value as any;
+      const inFrame = this._clampInteger(
+        this._parseFiniteNumber(loopRange.inFrame, fallbackLoopRange.inFrame),
+        0,
+        duration
+      );
+      const outFrame = this._clampInteger(
+        this._parseFiniteNumber(loopRange.outFrame, fallbackLoopRange.outFrame),
+        0,
+        duration
+      );
+      return {
+        enabled: loopRange.enabled === true,
+        inFrame: Math.min(inFrame, outFrame),
+        outFrame: Math.max(inFrame, outFrame),
+      };
+    }
+
+    private _normalizeCinematicShots(
+      value: unknown,
+      duration: number
+    ): Array<CinematicTimelineShot> {
+      if (!Array.isArray(value)) return [];
+      return value
+        .map((rawShot, index) => {
+          if (!rawShot || typeof rawShot !== 'object') return null;
+          const shot = rawShot as any;
+          const startFrame = this._clampInteger(
+            this._parseFiniteNumber(shot.startFrame, 0),
+            0,
+            duration
+          );
+          const endFrame = this._clampInteger(
+            this._parseFiniteNumber(shot.endFrame, startFrame),
+            0,
+            duration
+          );
+          return {
+            id:
+              typeof shot.id === 'string' && shot.id
+                ? shot.id
+                : `shot-${index + 1}`,
+            name:
+              typeof shot.name === 'string' && shot.name
+                ? shot.name
+                : `Shot ${index + 1}`,
+            startFrame: Math.min(startFrame, endFrame),
+            endFrame: Math.max(startFrame, endFrame),
+          };
+        })
+        .filter((shot): shot is CinematicTimelineShot => !!shot)
+        .sort((a, b) => a.startFrame - b.startFrame || a.endFrame - b.endFrame);
+    }
+
+    private _normalizeCinematicEvents(
+      value: unknown,
+      duration: number
+    ): Array<CinematicTimelineEventMarker> {
+      if (!Array.isArray(value)) return [];
+      return value
+        .map((rawEvent, index) => {
+          if (!rawEvent || typeof rawEvent !== 'object') return null;
+          const eventMarker = rawEvent as any;
+          return {
+            id:
+              typeof eventMarker.id === 'string' && eventMarker.id
+                ? eventMarker.id
+                : `event-${index + 1}`,
+            name:
+              typeof eventMarker.name === 'string' && eventMarker.name
+                ? eventMarker.name
+                : `Event ${index + 1}`,
+            action:
+              typeof eventMarker.action === 'string' && eventMarker.action
+                ? eventMarker.action
+                : 'Trigger',
+            condition:
+              typeof eventMarker.condition === 'string' && eventMarker.condition
+                ? eventMarker.condition
+                : 'Always',
+            frame: this._clampInteger(
+              this._parseFiniteNumber(eventMarker.frame, 0),
+              0,
+              duration
+            ),
+            payload:
+              typeof eventMarker.payload === 'string' ? eventMarker.payload : '',
+          };
+        })
+        .filter((eventMarker): eventMarker is CinematicTimelineEventMarker => !!eventMarker)
+        .sort((a, b) => a.frame - b.frame);
+    }
+
+    private _normalizeCinematicScene(payload: CinematicTimelinePayload): CinematicTimelineScene {
+      const sceneValue =
+        payload.scene && typeof payload.scene === 'object' ? payload.scene : {};
+      const sceneData = sceneValue as any;
+
+      const fps = this._clampInteger(
+        this._parseFiniteNumber(sceneData.fps ?? payload.fps, 30),
+        1,
+        240
+      );
+      const duration = this._clampInteger(
+        this._parseFiniteNumber(sceneData.duration ?? payload.duration, 240),
+        1,
+        20000
+      );
+
+      const rawTracks = Array.isArray(sceneData.tracks) ? sceneData.tracks : [];
+      const tracks: Array<CinematicTimelineTrack> = rawTracks.map(
+        (rawTrack, index) => {
+          const trackValue = rawTrack && typeof rawTrack === 'object' ? rawTrack : {};
+          const track = trackValue as any;
+          const trackId =
+            typeof track.id === 'string' && track.id
+              ? track.id
+              : `track-${index + 1}`;
+          const targetId =
+            typeof track.targetId === 'string' ? track.targetId.trim() : '';
+
+          if (track.type === 'ik') {
+            return {
+              id: trackId,
+              type: 'ik',
+              name:
+                typeof track.name === 'string' && track.name
+                  ? track.name
+                  : `IK Track ${index + 1}`,
+              targetId,
+              chainRoot:
+                typeof track.chainRoot === 'string' ? track.chainRoot : 'Hips',
+              endEffector:
+                typeof track.endEffector === 'string'
+                  ? track.endEffector
+                  : 'Hand.R',
+              keyframes: this._normalizeCinematicKeyframes(
+                track.keyframes,
+                duration,
+                value => this._normalizeCinematicIKValue(value)
+              ),
+            };
+          }
+
+          return {
+            id: trackId,
+            type: 'transform',
+            targetId,
+            keyframes: this._normalizeCinematicKeyframes(
+              track.keyframes,
+              duration,
+              value => this._normalizeCinematicTransformValue(value)
+            ),
+          };
+        }
+      );
+
+      const loopRange = this._normalizeCinematicLoopRange(
+        sceneData.loopRange,
+        duration
+      );
+      const shots = this._normalizeCinematicShots(sceneData.shots, duration);
+      const events = this._normalizeCinematicEvents(sceneData.events, duration);
+
+      return {
+        fps,
+        duration,
+        tracks,
+        loopRange,
+        shots,
+        events,
+      };
+    }
+
+    private _normalizeCinematicFrame(
+      rawFrame: unknown,
+      sceneDuration: number
+    ): number {
+      return this._clampInteger(
+        this._parseFiniteNumber(rawFrame, 0),
+        0,
+        Math.max(1, sceneDuration)
+      );
+    }
+
+    private _getDefaultPlaybackRange(
+      scene: CinematicTimelineScene
+    ): CinematicTimelinePlaybackRange {
+      if (scene.loopRange.enabled) {
+        return {
+          inFrame: scene.loopRange.inFrame,
+          outFrame: scene.loopRange.outFrame,
+        };
+      }
+      return {
+        inFrame: 0,
+        outFrame: scene.duration,
+      };
+    }
+
+    private _resolveCinematicPlaybackRange(
+      scene: CinematicTimelineScene,
+      payload: CinematicTimelinePayload,
+      fallbackRange?: CinematicTimelinePlaybackRange
+    ): CinematicTimelinePlaybackRange {
+      const baseRange = fallbackRange || this._getDefaultPlaybackRange(scene);
+      const hasCustomStart = payload.startFrame !== undefined;
+      const hasCustomEnd = payload.endFrame !== undefined;
+      if (!hasCustomStart && !hasCustomEnd) {
+        return {
+          inFrame: this._clampInteger(baseRange.inFrame, 0, scene.duration),
+          outFrame: this._clampInteger(baseRange.outFrame, 0, scene.duration),
+        };
+      }
+      const inFrame = this._clampInteger(
+        this._parseFiniteNumber(
+          payload.startFrame,
+          hasCustomEnd ? this._parseFiniteNumber(payload.endFrame, 0) : 0
+        ),
+        0,
+        scene.duration
+      );
+      const outFrame = this._clampInteger(
+        this._parseFiniteNumber(
+          payload.endFrame,
+          hasCustomStart ? this._parseFiniteNumber(payload.startFrame, scene.duration) : scene.duration
+        ),
+        0,
+        scene.duration
+      );
+      return {
+        inFrame: Math.min(inFrame, outFrame),
+        outFrame: Math.max(inFrame, outFrame),
+      };
+    }
+
+    private _resolveCinematicShot(
+      scene: CinematicTimelineScene,
+      payload: CinematicTimelinePayload
+    ): CinematicTimelineShot | null {
+      const shotId =
+        typeof payload.shotId === 'string' ? payload.shotId.trim() : '';
+      const shotName =
+        typeof payload.shotName === 'string' ? payload.shotName.trim() : '';
+      if (shotId) {
+        const shot = scene.shots.find(candidate => candidate.id === shotId);
+        if (shot) return shot;
+      }
+      if (shotName) {
+        const normalizedShotName = shotName.toLowerCase();
+        const shot = scene.shots.find(
+          candidate => candidate.name.toLowerCase() === normalizedShotName
+        );
+        if (shot) return shot;
+      }
+      return null;
+    }
+
+    private _easeCinematicProgress(
+      alpha: number,
+      easing: CinematicTimelineEasing
+    ): number {
+      const clampedAlpha = this._clampNumber(alpha, 0, 1);
+      if (easing === 'step' || easing === 'none') return 0;
+      if (easing === 'quadEaseIn') return clampedAlpha * clampedAlpha;
+      if (easing === 'quadEaseOut')
+        return -clampedAlpha * (clampedAlpha - 2);
+      if (easing === 'quadEaseInOut') {
+        const doubleAlpha = clampedAlpha * 2;
+        if (doubleAlpha < 1) return 0.5 * doubleAlpha * doubleAlpha;
+        const normalized = doubleAlpha - 1;
+        return -0.5 * (normalized * (normalized - 2) - 1);
+      }
+      return clampedAlpha;
+    }
+
+    private _evaluateCinematicKeyframes<T>(
+      keyframes: Array<CinematicTimelineKeyframe<T>>,
+      frame: number,
+      lerpValues: (from: T, to: T, alpha: number) => T
+    ): T | null {
+      if (!keyframes.length) return null;
+
+      const keyframesCount = keyframes.length;
+      if (frame <= keyframes[0].frame) return keyframes[0].value;
+      if (frame >= keyframes[keyframesCount - 1].frame)
+        return keyframes[keyframesCount - 1].value;
+
+      for (let index = 0; index < keyframesCount - 1; index++) {
+        const fromKeyframe = keyframes[index];
+        const toKeyframe = keyframes[index + 1];
+        if (frame === fromKeyframe.frame) return fromKeyframe.value;
+        if (frame === toKeyframe.frame) return toKeyframe.value;
+        if (frame < fromKeyframe.frame || frame > toKeyframe.frame) continue;
+
+        if (
+          fromKeyframe.easing === 'step' ||
+          fromKeyframe.easing === 'none'
+        ) {
+          return fromKeyframe.value;
+        }
+        const alpha =
+          (frame - fromKeyframe.frame) / (toKeyframe.frame - fromKeyframe.frame);
+        return lerpValues(
+          fromKeyframe.value,
+          toKeyframe.value,
+          this._easeCinematicProgress(alpha, fromKeyframe.easing)
+        );
+      }
+
+      return keyframes[keyframesCount - 1].value;
+    }
+
+    private _evaluateTransformTrackAtFrame(
+      track: CinematicTimelineTransformTrack,
+      frame: number
+    ): CinematicTimelineTransformValue {
+      const defaultTransformValue: CinematicTimelineTransformValue = {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      };
+      const value = this._evaluateCinematicKeyframes(
+        track.keyframes,
+        frame,
+        (from, to, alpha) => ({
+          position: {
+            x: this._lerpNumber(from.position.x, to.position.x, alpha),
+            y: this._lerpNumber(from.position.y, to.position.y, alpha),
+            z: this._lerpNumber(from.position.z, to.position.z, alpha),
+          },
+          rotation: {
+            x: this._lerpNumber(from.rotation.x, to.rotation.x, alpha),
+            y: this._lerpNumber(from.rotation.y, to.rotation.y, alpha),
+            z: this._lerpNumber(from.rotation.z, to.rotation.z, alpha),
+          },
+          scale: {
+            x: this._lerpNumber(from.scale.x, to.scale.x, alpha),
+            y: this._lerpNumber(from.scale.y, to.scale.y, alpha),
+            z: this._lerpNumber(from.scale.z, to.scale.z, alpha),
+          },
+        })
+      );
+      return value || defaultTransformValue;
+    }
+
+    private _evaluateIKTrackAtFrame(
+      track: CinematicTimelineIKTrack,
+      frame: number
+    ): CinematicTimelineIKValue {
+      const defaultIKValue: CinematicTimelineIKValue = {
+        target: { x: 0, y: 0, z: 0 },
+        pole: { x: 0, y: 0, z: 0 },
+        weight: 1,
+      };
+      const value = this._evaluateCinematicKeyframes(
+        track.keyframes,
+        frame,
+        (from, to, alpha) => ({
+          target: {
+            x: this._lerpNumber(from.target.x, to.target.x, alpha),
+            y: this._lerpNumber(from.target.y, to.target.y, alpha),
+            z: this._lerpNumber(from.target.z, to.target.z, alpha),
+          },
+          pole: {
+            x: this._lerpNumber(from.pole.x, to.pole.x, alpha),
+            y: this._lerpNumber(from.pole.y, to.pole.y, alpha),
+            z: this._lerpNumber(from.pole.z, to.pole.z, alpha),
+          },
+          weight: this._lerpNumber(from.weight, to.weight, alpha),
+        })
+      );
+      return value || defaultIKValue;
+    }
+
+    private _getCinematicTimelineTargetContainer(): gdjs.RuntimeInstanceContainer | null {
+      const inGameEditor = this._runtimegame.getInGameEditor();
+      if (inGameEditor) {
+        const editedInstanceContainer = inGameEditor.getEditedInstanceContainer();
+        if (editedInstanceContainer) {
+          return editedInstanceContainer;
+        }
+      }
+
+      const currentScene = this._runtimegame.getSceneStack().getCurrentScene();
+      return currentScene || null;
+    }
+
+    private _resolveCinematicTrackTargetObject(
+      targetId: string,
+      objectsByName: Map<string, gdjs.RuntimeObject>,
+      objectsById: Map<number, gdjs.RuntimeObject>,
+      objectsByPersistentUuid: Map<string, gdjs.RuntimeObject>
+    ): gdjs.RuntimeObject | null {
+      const trimmedTargetId = targetId.trim();
+      if (!trimmedTargetId) return null;
+
+      let resolverMode: 'auto' | 'name' | 'id' | 'uuid' = 'auto';
+      let resolverValue = trimmedTargetId;
+      const separatorIndex = trimmedTargetId.indexOf(':');
+      if (separatorIndex > 0) {
+        const prefix = trimmedTargetId.slice(0, separatorIndex).toLowerCase();
+        const value = trimmedTargetId.slice(separatorIndex + 1).trim();
+        if (value) {
+          if (prefix === 'name' || prefix === 'id' || prefix === 'uuid') {
+            resolverMode = prefix;
+            resolverValue = value;
+          }
+        }
+      }
+
+      if (resolverMode === 'uuid') {
+        return objectsByPersistentUuid.get(resolverValue) || null;
+      }
+      if (resolverMode === 'id') {
+        const objectId = Number.parseInt(resolverValue, 10);
+        return Number.isFinite(objectId) ? objectsById.get(objectId) || null : null;
+      }
+      if (resolverMode === 'name') {
+        return objectsByName.get(resolverValue) || null;
+      }
+
+      return (
+        objectsByPersistentUuid.get(resolverValue) ||
+        (() => {
+          const objectId = Number.parseInt(resolverValue, 10);
+          return Number.isFinite(objectId) ? objectsById.get(objectId) : null;
+        })() ||
+        objectsByName.get(resolverValue) ||
+        null
+      );
+    }
+
+    private _applyCinematicTransformToObject(
+      object: gdjs.RuntimeObject,
+      value: CinematicTimelineTransformValue
+    ): void {
+      object.setX(value.position.x);
+      object.setY(value.position.y);
+      object.setAngle(value.rotation.z);
+
+      const scalableObject = object as any;
+      const hasScaleXSetter = typeof scalableObject.setScaleX === 'function';
+      const hasScaleYSetter = typeof scalableObject.setScaleY === 'function';
+      if (hasScaleXSetter) {
+        scalableObject.setScaleX(value.scale.x);
+      }
+      if (hasScaleYSetter) {
+        scalableObject.setScaleY(value.scale.y);
+      }
+      if (
+        !hasScaleXSetter &&
+        !hasScaleYSetter &&
+        typeof scalableObject.setScale === 'function'
+      ) {
+        scalableObject.setScale((value.scale.x + value.scale.y) / 2);
+      }
+
+      if (gdjs.Base3DHandler && gdjs.Base3DHandler.is3D(object)) {
+        object.setZ(value.position.z);
+        object.setRotationX(value.rotation.x);
+        object.setRotationY(value.rotation.y);
+        object.setScaleZ(value.scale.z);
+      }
+    }
+
+    private _ensureCinematicIKChain(
+      state: CinematicTimelineRuntimeState,
+      object: IKTimelineRuntimeObject,
+      track: CinematicTimelineIKTrack,
+      value: CinematicTimelineIKValue
+    ): string {
+      const chainName = (track.name || track.id || 'IKChain').trim() || 'IKChain';
+      const cacheKey = `${object.id}:${chainName}`;
+      if (state.configuredIKChains.has(cacheKey)) {
+        return chainName;
+      }
+
+      const links = (track.chainRoot || '').trim();
+      const effectorBoneName = (track.endEffector || '').trim() || 'Hand.R';
+      object.configureIKChain(
+        chainName,
+        effectorBoneName,
+        '',
+        links,
+        12,
+        value.weight,
+        -180,
+        180
+      );
+      object.setIKEnabled(chainName, true);
+      object.setIKIterationCount(chainName, 12);
+      object.setIKBlendFactor(chainName, value.weight);
+      object.setIKAngleLimits(chainName, -180, 180);
+      object.setIKTargetTolerance(chainName, 0.002);
+      state.configuredIKChains.add(cacheKey);
+      return chainName;
+    }
+
+    private _applyCinematicIKToObject(
+      state: CinematicTimelineRuntimeState,
+      object: gdjs.RuntimeObject,
+      track: CinematicTimelineIKTrack,
+      value: CinematicTimelineIKValue
+    ): void {
+      if (!isIKTimelineRuntimeObject(object)) {
+        return;
+      }
+
+      const chainName = this._ensureCinematicIKChain(state, object, track, value);
+      object.setIKTargetPosition(
+        chainName,
+        value.target.x,
+        value.target.y,
+        value.target.z
+      );
+      object.setIKBlendFactor(chainName, value.weight);
+      object.setIKEnabled(chainName, value.weight > 0.0001);
+    }
+
+    private _applyCinematicFrame(
+      scene: CinematicTimelineScene,
+      frame: number
+    ): void {
+      const state = this._cinematicTimelineState;
+      if (!state) return;
+
+      const targetContainer = this._getCinematicTimelineTargetContainer();
+      if (!targetContainer) return;
+
+      const allInstances = targetContainer.getAdhocListOfAllInstances();
+      if (!allInstances.length) return;
+
+      const objectsByName = new Map<string, gdjs.RuntimeObject>();
+      const objectsById = new Map<number, gdjs.RuntimeObject>();
+      const objectsByPersistentUuid = new Map<string, gdjs.RuntimeObject>();
+      for (const object of allInstances) {
+        if (!objectsByName.has(object.getName())) {
+          objectsByName.set(object.getName(), object);
+        }
+        objectsById.set(object.id, object);
+        if (object.persistentUuid) {
+          objectsByPersistentUuid.set(object.persistentUuid, object);
+        }
+      }
+
+      for (const track of scene.tracks) {
+        if (!track.targetId) continue;
+        const targetObject = this._resolveCinematicTrackTargetObject(
+          track.targetId,
+          objectsByName,
+          objectsById,
+          objectsByPersistentUuid
+        );
+        if (!targetObject) {
+          if (!state.warnedMissingTargets.has(track.targetId)) {
+            state.warnedMissingTargets.add(track.targetId);
+            logger.warn(
+              `CinematicTimeline: target "${track.targetId}" was not found in the active scene.`
+            );
+          }
+          continue;
+        }
+
+        if (track.type === 'ik') {
+          this._applyCinematicIKToObject(
+            state,
+            targetObject,
+            track,
+            this._evaluateIKTrackAtFrame(track, frame)
+          );
+        } else {
+          this._applyCinematicTransformToObject(
+            targetObject,
+            this._evaluateTransformTrackAtFrame(track, frame)
+          );
+        }
+      }
+    }
+
+    private _clearCinematicTimelineTimer(): void {
+      if (!this._cinematicTimelineState || this._cinematicTimelineState.timerId === null)
+        return;
+      clearInterval(this._cinematicTimelineState.timerId);
+      this._cinematicTimelineState.timerId = null;
+    }
+
+    private _tickCinematicTimeline(): void {
+      const state = this._cinematicTimelineState;
+      if (!state) return;
+
+      const rangeInFrame = this._clampInteger(
+        state.playbackRange.inFrame,
+        0,
+        state.scene.duration
+      );
+      const rangeOutFrame = this._clampInteger(
+        state.playbackRange.outFrame,
+        rangeInFrame,
+        state.scene.duration
+      );
+      const elapsedSeconds = (performance.now() - state.startedAtMs) / 1000;
+      const elapsedFrames = elapsedSeconds * state.scene.fps;
+      const rawFrame = state.startedFromFrame + elapsedFrames;
+
+      let nextFrame = rangeInFrame;
+      if (state.loopPlayback) {
+        const frameRange = Math.max(1, rangeOutFrame - rangeInFrame + 1);
+        const wrappedFrame =
+          ((rawFrame - rangeInFrame) % frameRange + frameRange) % frameRange;
+        nextFrame = this._clampInteger(
+          rangeInFrame + wrappedFrame,
+          rangeInFrame,
+          rangeOutFrame
+        );
+      } else {
+        nextFrame = this._clampInteger(rawFrame, rangeInFrame, rangeOutFrame);
+      }
+
+      if (nextFrame === state.currentFrame) {
+        if (!state.loopPlayback && nextFrame >= rangeOutFrame) {
+          this._clearCinematicTimelineTimer();
+        }
+        return;
+      }
+      state.currentFrame = nextFrame;
+      this._applyCinematicFrame(state.scene, nextFrame);
+
+      if (!state.loopPlayback && nextFrame >= rangeOutFrame) {
+        this._clearCinematicTimelineTimer();
+      }
+    }
+
+    private _playCinematicTimeline(payload: CinematicTimelinePayload): void {
+      const currentState = this._cinematicTimelineState;
+      const scene =
+        payload.scene || !currentState
+          ? this._normalizeCinematicScene(payload)
+          : currentState.scene;
+      const fallbackRange =
+        currentState && currentState.scene === scene
+          ? currentState.playbackRange
+          : this._getDefaultPlaybackRange(scene);
+      const playbackRange = this._resolveCinematicPlaybackRange(
+        scene,
+        payload,
+        fallbackRange
+      );
+      const requestedFrame =
+        payload.frame === undefined
+          ? currentState && currentState.scene === scene
+            ? currentState.currentFrame
+            : playbackRange.inFrame
+          : this._normalizeCinematicFrame(payload.frame, scene.duration);
+      const frame = this._clampInteger(
+        requestedFrame,
+        playbackRange.inFrame,
+        playbackRange.outFrame
+      );
+      const loopPlayback =
+        typeof payload.loopPlayback === 'boolean'
+          ? payload.loopPlayback
+          : scene.loopRange.enabled;
+
+      this._clearCinematicTimelineTimer();
+      this._cinematicTimelineState = {
+        scene,
+        currentFrame: frame,
+        timerId: null,
+        startedAtMs: performance.now(),
+        startedFromFrame: frame,
+        loopPlayback,
+        playbackRange,
+        activeShotId: '',
+        configuredIKChains:
+          currentState && currentState.scene === scene
+            ? currentState.configuredIKChains
+            : new Set<string>(),
+        warnedMissingTargets:
+          currentState && currentState.scene === scene
+            ? currentState.warnedMissingTargets
+            : new Set<string>(),
+      };
+      this._applyCinematicFrame(scene, frame);
+
+      this._cinematicTimelineState.timerId = setInterval(() => {
+        try {
+          this._tickCinematicTimeline();
+        } catch (error) {
+          this._clearCinematicTimelineTimer();
+          this.onUncaughtException(error as Error);
+        }
+      }, 16) as unknown as number;
+    }
+
+    private _playCinematicTimelineShot(payload: CinematicTimelinePayload): void {
+      const currentState = this._cinematicTimelineState;
+      const scene =
+        payload.scene || !currentState
+          ? this._normalizeCinematicScene(payload)
+          : currentState.scene;
+      const shot = this._resolveCinematicShot(scene, payload);
+      if (!shot) {
+        logger.warn('CinematicTimeline: requested shot was not found.');
+        this._playCinematicTimeline(payload);
+        return;
+      }
+
+      const playbackRange: CinematicTimelinePlaybackRange = {
+        inFrame: shot.startFrame,
+        outFrame: shot.endFrame,
+      };
+      const requestedFrame =
+        payload.frame === undefined
+          ? shot.startFrame
+          : this._normalizeCinematicFrame(payload.frame, scene.duration);
+      const frame = this._clampInteger(
+        requestedFrame,
+        playbackRange.inFrame,
+        playbackRange.outFrame
+      );
+      const loopPlayback =
+        typeof payload.loopPlayback === 'boolean' ? payload.loopPlayback : false;
+
+      this._clearCinematicTimelineTimer();
+      this._cinematicTimelineState = {
+        scene,
+        currentFrame: frame,
+        timerId: null,
+        startedAtMs: performance.now(),
+        startedFromFrame: frame,
+        loopPlayback,
+        playbackRange,
+        activeShotId: shot.id,
+        configuredIKChains:
+          currentState && currentState.scene === scene
+            ? currentState.configuredIKChains
+            : new Set<string>(),
+        warnedMissingTargets:
+          currentState && currentState.scene === scene
+            ? currentState.warnedMissingTargets
+            : new Set<string>(),
+      };
+      this._applyCinematicFrame(scene, frame);
+
+      this._cinematicTimelineState.timerId = setInterval(() => {
+        try {
+          this._tickCinematicTimeline();
+        } catch (error) {
+          this._clearCinematicTimelineTimer();
+          this.onUncaughtException(error as Error);
+        }
+      }, 16) as unknown as number;
+    }
+
+    private _pauseCinematicTimeline(payload: CinematicTimelinePayload): void {
+      const currentState = this._cinematicTimelineState;
+      if (!currentState) {
+        if (payload.scene && typeof payload.scene === 'object') {
+          this._setCinematicTimelineFrame(payload);
+        }
+        return;
+      }
+
+      const scene =
+        payload.scene && typeof payload.scene === 'object'
+          ? this._normalizeCinematicScene(payload)
+          : currentState.scene;
+      const fallbackRange =
+        currentState.scene === scene
+          ? currentState.playbackRange
+          : this._getDefaultPlaybackRange(scene);
+      const playbackRange = this._resolveCinematicPlaybackRange(
+        scene,
+        payload,
+        fallbackRange
+      );
+      const requestedFrame =
+        payload.frame === undefined
+          ? currentState.currentFrame
+          : this._normalizeCinematicFrame(payload.frame, scene.duration);
+      const frame = this._clampInteger(
+        requestedFrame,
+        playbackRange.inFrame,
+        playbackRange.outFrame
+      );
+
+      this._clearCinematicTimelineTimer();
+      this._cinematicTimelineState = {
+        scene,
+        currentFrame: frame,
+        timerId: null,
+        startedAtMs: performance.now(),
+        startedFromFrame: frame,
+        loopPlayback:
+          typeof payload.loopPlayback === 'boolean'
+            ? payload.loopPlayback
+            : currentState.loopPlayback,
+        playbackRange,
+        activeShotId:
+          scene === currentState.scene ? currentState.activeShotId : '',
+        configuredIKChains:
+          scene === currentState.scene
+            ? currentState.configuredIKChains
+            : new Set<string>(),
+        warnedMissingTargets:
+          scene === currentState.scene
+            ? currentState.warnedMissingTargets
+            : new Set<string>(),
+      };
+      this._applyCinematicFrame(scene, frame);
+    }
+
+    private _setCinematicTimelineFrame(payload: CinematicTimelinePayload): void {
+      const currentState = this._cinematicTimelineState;
+      const scene =
+        payload.scene || !currentState
+          ? this._normalizeCinematicScene(payload)
+          : currentState.scene;
+      const playbackRange = this._resolveCinematicPlaybackRange(
+        scene,
+        payload,
+        currentState && currentState.scene === scene
+          ? currentState.playbackRange
+          : this._getDefaultPlaybackRange(scene)
+      );
+      const requestedFrame =
+        payload.frame === undefined
+          ? currentState && currentState.scene === scene
+            ? currentState.currentFrame
+            : playbackRange.inFrame
+          : this._normalizeCinematicFrame(payload.frame, scene.duration);
+      const frame = this._clampInteger(
+        requestedFrame,
+        playbackRange.inFrame,
+        playbackRange.outFrame
+      );
+      const selectedShot = this._resolveCinematicShot(scene, payload);
+
+      this._clearCinematicTimelineTimer();
+      this._cinematicTimelineState = {
+        scene,
+        currentFrame: frame,
+        timerId: null,
+        startedAtMs: performance.now(),
+        startedFromFrame: frame,
+        loopPlayback:
+          typeof payload.loopPlayback === 'boolean'
+            ? payload.loopPlayback
+            : currentState
+            ? currentState.loopPlayback
+            : scene.loopRange.enabled,
+        playbackRange,
+        activeShotId:
+          selectedShot?.id ||
+          (currentState && currentState.scene === scene
+            ? currentState.activeShotId
+            : ''),
+        configuredIKChains:
+          currentState && currentState.scene === scene
+            ? currentState.configuredIKChains
+            : new Set<string>(),
+        warnedMissingTargets:
+          currentState && currentState.scene === scene
+            ? currentState.warnedMissingTargets
+            : new Set<string>(),
+      };
+      this._applyCinematicFrame(scene, frame);
+    }
+
+    private _stopCinematicTimeline(payload: CinematicTimelinePayload): void {
+      const currentState = this._cinematicTimelineState;
+      if (!currentState) return;
+
+      this._clearCinematicTimelineTimer();
+      if (payload && Object.keys(payload).length > 0) {
+        const scene =
+          payload.scene && typeof payload.scene === 'object'
+            ? this._normalizeCinematicScene(payload)
+            : currentState.scene;
+        const playbackRange = this._resolveCinematicPlaybackRange(
+          scene,
+          payload,
+          scene === currentState.scene
+            ? currentState.playbackRange
+            : this._getDefaultPlaybackRange(scene)
+        );
+        const requestedFrame =
+          payload.frame === undefined
+            ? playbackRange.inFrame
+            : this._normalizeCinematicFrame(payload.frame, scene.duration);
+        const frame = this._clampInteger(
+          requestedFrame,
+          playbackRange.inFrame,
+          playbackRange.outFrame
+        );
+        this._cinematicTimelineState = {
+          scene,
+          currentFrame: frame,
+          timerId: null,
+          startedAtMs: performance.now(),
+          startedFromFrame: frame,
+          loopPlayback:
+            typeof payload.loopPlayback === 'boolean'
+              ? payload.loopPlayback
+              : currentState.loopPlayback,
+          playbackRange,
+          activeShotId: '',
+          configuredIKChains:
+            scene === currentState.scene
+              ? currentState.configuredIKChains
+              : new Set<string>(),
+          warnedMissingTargets:
+            scene === currentState.scene
+              ? currentState.warnedMissingTargets
+              : new Set<string>(),
+        };
+        this._applyCinematicFrame(scene, frame);
       }
     }
 
@@ -806,6 +2019,23 @@ namespace gdjs {
       this._sendMessage(
         circularSafeStringify({
           command: 'updateInstances',
+          editorId: inGameEditor.getEditorId(),
+          payload: changes,
+        })
+      );
+    }
+
+    sendObjectConfigurationChanges(changes: {
+      objectName: string;
+      updatedProperties: { [propertyName: string]: string };
+    }): void {
+      const inGameEditor = this._runtimegame.getInGameEditor();
+      if (!inGameEditor) {
+        return;
+      }
+      this._sendMessage(
+        circularSafeStringify({
+          command: 'updateObjectConfiguration',
           editorId: inGameEditor.getEditorId(),
           payload: changes,
         })

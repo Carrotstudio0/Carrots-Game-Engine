@@ -7,7 +7,6 @@ import {
   getBuildFileUploadOptions,
 } from '../../Utils/GDevelopServices/Build';
 import { type AuthenticatedUser } from '../../Profile/AuthenticatedUserContext';
-import { findGDJS } from '../../GameEngineFinder/LocalGDJSFinder';
 import { uploadLocalFile } from './LocalFileUploader';
 import { archiveLocalFolder } from '../../Utils/LocalArchiver';
 import optionalRequire from '../../Utils/OptionalRequire';
@@ -23,6 +22,7 @@ import {
   ExportFlow,
 } from '../GenericExporters/OnlineElectronExport';
 import { downloadUrlsToLocalFiles } from '../../Utils/LocalFileDownloader';
+const { findGDJS } = require('../../GameEngineFinder/LocalGDJSFinder');
 
 const path = optionalRequire('path');
 const os = optionalRequire('os');

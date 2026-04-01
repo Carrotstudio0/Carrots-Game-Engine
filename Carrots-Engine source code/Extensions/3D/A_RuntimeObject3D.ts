@@ -92,8 +92,15 @@ namespace gdjs {
       return null;
     }
 
-    get3DRendererObject() {
-      return this.getRenderer().get3DRendererObject();
+    get3DRendererObject(): THREE.Object3D | null {
+      const renderer = this.getRenderer();
+      if (
+        !renderer ||
+        typeof (renderer as any).get3DRendererObject !== 'function'
+      ) {
+        return null;
+      }
+      return renderer.get3DRendererObject();
     }
 
     updateFromObjectData(

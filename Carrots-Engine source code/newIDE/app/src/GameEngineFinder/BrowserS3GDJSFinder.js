@@ -39,21 +39,11 @@ const filesToDownload: { [FileSet]: Array<string> } = {
 
 export type TextFileDescriptor = {| text: string, filePath: string |};
 
-export const findGDJS = (
-  fileSet: FileSet
-): Promise<{|
+const fetchFilesFromRoot = (
   gdjsRoot: string,
-  filesContent: Array<TextFileDescriptor>,
-|}> => {
-  // Get GDJS for this version. If you updated the version,
-  // run `newIDE/web-app/scripts/deploy-GDJS-Runtime` script.
-  let gdjsRoot = `https://resources.gdevelop-app.com/GDJS-${getIDEVersionWithHash()}`;
-
-  if (Window.isDev()) {
-    gdjsRoot = `http://localhost:5002`;
-  }
-
-  return Promise.all(
+  fileSet: FileSet
+): Promise<Array<TextFileDescriptor>> =>
+  Promise.all(
     filesToDownload[fileSet].map(relativeFilePath => {
       const url = gdjsRoot + relativeFilePath;
 
@@ -71,10 +61,51 @@ export const findGDJS = (
         }));
       });
     })
-  ).then(filesContent => {
-    return {
+  );
+
+const tryFindGDJS = (
+  roots: Array<string>,
+  fileSet: FileSet,
+  previousError?: Error
+): Promise<{|
+  gdjsRoot: string,
+  filesContent: Array<TextFileDescriptor>,
+|}> => {
+  const gdjsRoot = roots[0];
+  if (!gdjsRoot) {
+    throw previousError || new Error('No GDJS root available.');
+  }
+
+  return fetchFilesFromRoot(gdjsRoot, fileSet)
+    .then(filesContent => ({
       gdjsRoot,
       filesContent,
-    };
-  });
+    }))
+    .catch(error => {
+      if (roots.length === 1) {
+        throw error;
+      }
+
+      console.warn(
+        `[BrowserS3GDJSFinder] Unable to use GDJS from "${gdjsRoot}". Falling back to "${roots[1]}".`,
+        error
+      );
+      return tryFindGDJS(roots.slice(1), fileSet, error);
+    });
+};
+
+export const findGDJS = (
+  fileSet: FileSet
+): Promise<{|
+  gdjsRoot: string,
+  filesContent: Array<TextFileDescriptor>,
+|}> => {
+  // Get GDJS for this version. If you updated the version,
+  // run `newIDE/web-app/scripts/deploy-GDJS-Runtime` script.
+  const remoteGdjsRoot = `https://resources.gdevelop-app.com/GDJS-${getIDEVersionWithHash()}`;
+  const candidateRoots = Window.isDev()
+    ? ['http://localhost:5002', remoteGdjsRoot]
+    : [remoteGdjsRoot];
+
+  return tryFindGDJS(candidateRoots, fileSet);
 };

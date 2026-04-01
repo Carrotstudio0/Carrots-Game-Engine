@@ -164,9 +164,6 @@ namespace gdjs {
       if (!behavior.activated()) {
         return null;
       }
-      if (behavior._shape === 'Mesh') {
-        behavior._shape = 'Box';
-      }
       const sharedData = behavior._sharedData;
 
       this._physics3D = {
@@ -1141,6 +1138,20 @@ namespace gdjs {
 
       updateObjectFromBody() {
         this.physicsBodyUpdater.updateObjectFromBody();
+      }
+
+      capturePhysicsSnapshot(
+        snapshotBuffer: Float32Array,
+        snapshotOffset: integer
+      ): boolean {
+        if (!this.physicsBodyUpdater.capturePhysicsSnapshot) {
+          return false;
+        }
+
+        return this.physicsBodyUpdater.capturePhysicsSnapshot(
+          snapshotBuffer,
+          snapshotOffset
+        );
       }
 
       updateBodyFromObject() {

@@ -26,7 +26,7 @@ type Props = {|
 
 const fakeLocalFileStorageProvider: StorageProvider = {
   internalName: 'LocalFile',
-  name: t`Save to computer with GDevelop desktop app`,
+  name: t`Save to computer with Carrots Engine desktop app`,
   disabled: true,
   renderIcon: props => <Computer fontSize={props.size} />,
   createOperations: () => ({}),

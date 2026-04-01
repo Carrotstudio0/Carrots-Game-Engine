@@ -1,13 +1,10 @@
 {
   "tier": "reviewed",
-  "authorIds": [
-    "IWykYNRvhCZBN3vEgKEbBPOR3Oc2",
-    "m8kleQHonagHWsvILDhyJhgVhuF2"
-  ],
+  "authorIds": ["IWykYNRvhCZBN3vEgKEbBPOR3Oc2", "m8kleQHonagHWsvILDhyJhgVhuF2"],
   "extensionNamespace": "",
   "fullName": "First person 3D camera",
   "name": "FirstPersonCamera",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "url": "https://resources.gdevelop-app.com/extensions/FirstPersonCamera.json",
   "headerUrl": "https://resources.gdevelop-app.com/extensions/FirstPersonCamera-header.json",
   "tags": "3d,camera,fps",
@@ -16,7 +13,7 @@
   "gdevelopVersion": ">=5.5.222",
   "shortDescription": "Move the camera to look though objects eyes.",
   "eventsBasedBehaviorsCount": 0,
-  "eventsFunctionsCount": 1,
+  "eventsFunctionsCount": 2,
   "helpPath": "/extensions/first-person-camera",
   "eventsBasedBehaviors": [],
   "eventsFunctions": [
@@ -24,6 +21,12 @@
       "name": "LookFrom3DObjectEyes",
       "fullName": "Look through object eyes",
       "description": "Move the camera to look though the object eyes. The object must look to the right when all its angles are 0 and the top of its head be toward Z+.",
+      "functionType": "Action"
+    },
+    {
+      "name": "LookFrom3DObjectEyesAdvanced",
+      "fullName": "Look through object eyes (advanced)",
+      "description": "Move the camera to look through the object eyes with optional smoothing, offsets and pitch clamping.",
       "functionType": "Action"
     }
   ],

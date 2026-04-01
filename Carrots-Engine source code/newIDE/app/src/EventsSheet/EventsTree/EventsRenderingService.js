@@ -26,6 +26,7 @@ const EventsRenderingService = {
     'BuiltinCommonInstructions::While': WhileEvent,
     'BuiltinCommonInstructions::Link': LinkEvent,
     'BuiltinCommonInstructions::JsCode': JsCodeEvent,
+    'BuiltinCommonInstructions::JsCodeInsert': JsCodeEvent,
   },
   // $FlowFixMe[missing-this-annot]
   getEventComponent: function(

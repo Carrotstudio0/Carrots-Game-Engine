@@ -4,7 +4,6 @@ import { Trans } from '@lingui/macro';
 import React from 'react';
 import RaisedButton from '../../UI/RaisedButton';
 import { Column, Line } from '../../UI/Grid';
-import { findGDJS } from '../../GameEngineFinder/LocalGDJSFinder';
 import LocalFileSystem, { type UrlFileDescriptor } from './LocalFileSystem';
 import assignIn from 'lodash/assignIn';
 import optionalRequire from '../../Utils/OptionalRequire';
@@ -21,6 +20,7 @@ import {
   ExportFlow,
 } from '../GenericExporters/FacebookInstantGamesExport';
 import { downloadUrlsToLocalFiles } from '../../Utils/LocalFileDownloader';
+const { findGDJS } = require('../../GameEngineFinder/LocalGDJSFinder');
 
 const path = optionalRequire('path');
 // It's important to use remote and not electron for folder actions,

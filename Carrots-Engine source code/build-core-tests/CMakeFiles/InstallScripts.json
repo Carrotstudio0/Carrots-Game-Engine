@@ -1,0 +1,9 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Users/Tech Shop/Desktop/Carrots-Game-Engine/Carrots-Engine source code/build-core-tests/cmake_install.cmake",
+		"C:/Users/Tech Shop/Desktop/Carrots-Game-Engine/Carrots-Engine source code/build-core-tests/ExtLibs/cmake_install.cmake",
+		"C:/Users/Tech Shop/Desktop/Carrots-Game-Engine/Carrots-Engine source code/build-core-tests/Core/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

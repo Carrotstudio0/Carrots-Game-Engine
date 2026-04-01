@@ -211,6 +211,10 @@ void EventsListSerialization::UnserializeEventsFrom(
     SerializerElement& eventElem = events.GetChild(i);
     gd::String type =
         eventElem.GetChild("type", 0, "Type").GetValue().GetString();
+    // Compatibility with projects saved when JavaScript events used the old id.
+    if (type == "BuiltinCommonInstructions::JsCodeInsert") {
+      type = "BuiltinCommonInstructions::JsCode";
+    }
     gd::BaseEventSPtr event = project.CreateEvent(type);
     if (event != std::shared_ptr<gd::BaseEvent>())
       event->UnserializeFrom(project, eventElem);

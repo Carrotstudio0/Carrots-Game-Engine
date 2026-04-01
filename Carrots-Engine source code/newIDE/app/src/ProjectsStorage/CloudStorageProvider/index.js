@@ -39,7 +39,7 @@ const isURL = (filename: string) => {
 
 export default ({
   internalName: cloudStorageProviderInternalName,
-  name: t`GDevelop Cloud`,
+  name: t`Carrots Cloud`,
   renderIcon: props => <Cloud fontSize={props.size} />,
   hiddenInOpenDialog: true,
   needUserAuthentication: true,

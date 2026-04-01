@@ -146,7 +146,10 @@ namespace gdjs {
       const hasHemisphereLight = effects.some(
         effect => effect.effectType === 'Scene3D::HemisphereLight'
       );
-      if (hasDirectionalLight && hasHemisphereLight) return;
+      const hasToneMapping = effects.some(
+        effect => effect.effectType === 'Scene3D::ToneMapping'
+      );
+      if (hasDirectionalLight && hasHemisphereLight && hasToneMapping) return;
 
       const existingNames = new Set(effects.map(effect => effect.name));
       if (!hasDirectionalLight) {
@@ -158,7 +161,7 @@ namespace gdjs {
           effectType: 'Scene3D::DirectionalLight',
           name: sunLightName,
           doubleParameters: {
-            intensity: 0.75,
+            intensity: 1.05,
             elevation: 40,
             rotation: 300,
             minimumShadowBias: 0,
@@ -166,9 +169,9 @@ namespace gdjs {
             frustumSize: 4000,
           },
           stringParameters: {
-            color: '255;255;255',
+            color: '255;244;214',
             top: 'Z+',
-            shadowQuality: 'medium',
+            shadowQuality: 'high',
           },
           booleanParameters: {
             isCastingShadow: true,
@@ -184,16 +187,35 @@ namespace gdjs {
           effectType: 'Scene3D::HemisphereLight',
           name: skyLightName,
           doubleParameters: {
-            intensity: 0.33,
+            intensity: 0.22,
             elevation: 40,
             rotation: 300,
           },
           stringParameters: {
-            skyColor: '255;255;255',
-            groundColor: '127;127;127',
+            skyColor: '198;219;255',
+            groundColor: '116;104;92',
             top: 'Z+',
           },
           booleanParameters: {},
+        });
+      }
+
+      if (!hasToneMapping) {
+        const toneMappingName = existingNames.has('3D Tone Mapping')
+          ? '__auto_3d_tone_mapping'
+          : '3D Tone Mapping';
+        this.addEffect({
+          effectType: 'Scene3D::ToneMapping',
+          name: toneMappingName,
+          doubleParameters: {
+            exposure: 1.08,
+          },
+          stringParameters: {
+            mode: 'ACESFilmic',
+          },
+          booleanParameters: {
+            enabled: true,
+          },
         });
       }
     }

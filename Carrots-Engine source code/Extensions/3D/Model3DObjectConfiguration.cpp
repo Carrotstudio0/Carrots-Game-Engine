@@ -21,9 +21,14 @@ using namespace std;
 
 Model3DObjectConfiguration::Model3DObjectConfiguration()
     : width(100), height(100), depth(100), rotationX(90), rotationY(0),
-      rotationZ(90), modelResourceName(""), materialType("StandardWithoutMetalness"),
+      rotationZ(90), crossfadeDuration(0.1f), animatorStatesJson("[]"),
+      animatorParametersJson("[]"),
+      animatorTransitionsJson("[]"),
+      ikChainsJson("{\"version\":1,\"chains\":[]}"),
+      ikPosesJson("{\"version\":1,\"poses\":[]}"),
+      modelResourceName(""), materialType("Standard"),
       originLocation("ModelOrigin"), centerLocation("ModelOrigin"),
-      keepAspectRatio(true), crossfadeDuration(0.1f), isCastingShadow(true), isReceivingShadow(true) {}
+      keepAspectRatio(true), isCastingShadow(true), isReceivingShadow(true) {}
 
 bool Model3DObjectConfiguration::UpdateProperty(const gd::String &propertyName,
                                                 const gd::String &newValue) {
@@ -59,6 +64,14 @@ bool Model3DObjectConfiguration::UpdateProperty(const gd::String &propertyName,
     auto normalizedValue = newValue.LowerCase();
     if (normalizedValue == "basic")
       materialType = "Basic";
+    else if (normalizedValue == "matte")
+      materialType = "Matte";
+    else if (normalizedValue == "standard")
+      materialType = "Standard";
+    else if (normalizedValue == "glossy")
+      materialType = "Glossy";
+    else if (normalizedValue == "metallic")
+      materialType = "Metallic";
     else if (normalizedValue == "standardwithoutmetalness")
       materialType = "StandardWithoutMetalness";
     else if (normalizedValue == "keeporiginal")
@@ -98,21 +111,41 @@ bool Model3DObjectConfiguration::UpdateProperty(const gd::String &propertyName,
     return true;
   }
   if (propertyName == "keepAspectRatio") {
-    keepAspectRatio = newValue == "1";
+    keepAspectRatio = newValue == "1" || newValue == "true";
     return true;
   }
   if(propertyName == "crossfadeDuration") {
     crossfadeDuration = newValue.To<double>();
     return true;
   }
+  if (propertyName == "animatorStatesJson") {
+    animatorStatesJson = newValue;
+    return true;
+  }
+  if (propertyName == "animatorParametersJson") {
+    animatorParametersJson = newValue;
+    return true;
+  }
+  if (propertyName == "animatorTransitionsJson") {
+    animatorTransitionsJson = newValue;
+    return true;
+  }
+  if (propertyName == "ikChainsJson") {
+    ikChainsJson = newValue;
+    return true;
+  }
+  if (propertyName == "ikPosesJson") {
+    ikPosesJson = newValue;
+    return true;
+  }
   if(propertyName == "isCastingShadow")
   {
-    isCastingShadow = newValue == "1";
+    isCastingShadow = newValue == "1" || newValue == "true";
     return true;
   }
   if(propertyName == "isReceivingShadow")
   {
-    isReceivingShadow = newValue == "1";
+    isReceivingShadow = newValue == "1" || newValue == "true";
     return true;
   }
 
@@ -181,10 +214,14 @@ Model3DObjectConfiguration::GetProperties() const {
       .SetLabel(_("3D model"));
 
   objectProperties["materialType"]
-      .SetValue(materialType.empty() ? "Basic" : materialType)
+      .SetValue(materialType.empty() ? "Standard" : materialType)
       .SetType("choice")
-      .AddChoice("Basic", _("Basic (no lighting, no shadows)"))
+      .AddChoice("Standard", _("Standard PBR (balanced)"))
+      .AddChoice("Matte", _("Matte (soft highlights)"))
+      .AddChoice("Glossy", _("Glossy (strong highlights)"))
+      .AddChoice("Metallic", _("Metallic (reflective metal)"))
       .AddChoice("StandardWithoutMetalness", _("Standard (without metalness)"))
+      .AddChoice("Basic", _("Basic (no lighting, no shadows)"))
       .AddChoice("KeepOriginal", _("Keep original"))
       .SetLabel(_("Material"))
       .SetGroup(_("Lighting"));
@@ -218,6 +255,46 @@ Model3DObjectConfiguration::GetProperties() const {
       .SetLabel(_("Crossfade duration"))
       .SetGroup(_("Animations"))
       .SetMeasurementUnit(gd::MeasurementUnit::GetSecond());
+
+  objectProperties["animatorParametersJson"]
+      .SetValue(animatorParametersJson)
+      .SetType("string")
+      .SetLabel(_("Animator parameters"))
+      .SetGroup(_("Animations"))
+      .SetAdvanced(true)
+      .SetHidden();
+
+  objectProperties["animatorStatesJson"]
+      .SetValue(animatorStatesJson)
+      .SetType("string")
+      .SetLabel(_("Animator states"))
+      .SetGroup(_("Animations"))
+      .SetAdvanced(true)
+      .SetHidden();
+
+  objectProperties["animatorTransitionsJson"]
+      .SetValue(animatorTransitionsJson)
+      .SetType("string")
+      .SetLabel(_("Animator transitions"))
+      .SetGroup(_("Animations"))
+      .SetAdvanced(true)
+      .SetHidden();
+
+  objectProperties["ikChainsJson"]
+      .SetValue(ikChainsJson)
+      .SetType("string")
+      .SetLabel(_("IK chains"))
+      .SetGroup(_("Inverse kinematics"))
+      .SetAdvanced(true)
+      .SetHidden();
+
+  objectProperties["ikPosesJson"]
+      .SetValue(ikPosesJson)
+      .SetType("string")
+      .SetLabel(_("IK poses"))
+      .SetGroup(_("Inverse kinematics"))
+      .SetAdvanced(true)
+      .SetHidden();
 
   objectProperties["isCastingShadow"]
       .SetValue(isCastingShadow ? "true" : "false")
@@ -265,6 +342,13 @@ void Model3DObjectConfiguration::DoUnserializeFrom(
   centerLocation = content.GetStringAttribute("centerLocation");
   keepAspectRatio = content.GetBoolAttribute("keepAspectRatio");
   crossfadeDuration = content.GetDoubleAttribute("crossfadeDuration");
+  animatorStatesJson = content.GetStringAttribute("animatorStatesJson", "[]");
+  animatorParametersJson = content.GetStringAttribute("animatorParametersJson", "[]");
+  animatorTransitionsJson = content.GetStringAttribute("animatorTransitionsJson", "[]");
+  ikChainsJson = content.GetStringAttribute(
+      "ikChainsJson", "{\"version\":1,\"chains\":[]}");
+  ikPosesJson = content.GetStringAttribute(
+      "ikPosesJson", "{\"version\":1,\"poses\":[]}");
   isCastingShadow = content.GetBoolAttribute("isCastingShadow");
   isReceivingShadow = content.GetBoolAttribute("isReceivingShadow");
 
@@ -296,6 +380,11 @@ void Model3DObjectConfiguration::DoSerializeTo(
   content.SetAttribute("centerLocation", centerLocation);
   content.SetAttribute("keepAspectRatio", keepAspectRatio);
   content.SetAttribute("crossfadeDuration", crossfadeDuration);
+  content.SetAttribute("animatorStatesJson", animatorStatesJson);
+  content.SetAttribute("animatorParametersJson", animatorParametersJson);
+  content.SetAttribute("animatorTransitionsJson", animatorTransitionsJson);
+  content.SetAttribute("ikChainsJson", ikChainsJson);
+  content.SetAttribute("ikPosesJson", ikPosesJson);
   content.SetAttribute("isCastingShadow", isCastingShadow);
   content.SetAttribute("isReceivingShadow", isReceivingShadow);
 

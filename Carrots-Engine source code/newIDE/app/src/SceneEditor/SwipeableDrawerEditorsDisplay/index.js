@@ -317,14 +317,24 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
               scope="scene-editor-canvas"
             >
               {gameEditorMode === 'embedded-game' ? (
-                <EmbeddedGameFrameHole
-                  marginBottom={bottomContainerHeight}
-                  isActive={isActive}
-                  onRestartInGameEditor={onRestartInGameEditor}
-                  showRestartInGameEditorAfterErrorButton={
-                    showRestartInGameEditorAfterErrorButton
-                  }
-                />
+                <div
+                  style={{
+                    position: 'relative',
+                    width: '100%',
+                    height: '100%',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <EmbeddedGameFrameHole
+                    marginBottom={bottomContainerHeight}
+                    isActive={isActive}
+                    onRestartInGameEditor={onRestartInGameEditor}
+                    showRestartInGameEditorAfterErrorButton={
+                      showRestartInGameEditorAfterErrorButton
+                    }
+                  />
+                  {props.embeddedEditorOverlay || null}
+                </div>
               ) : (
                 <InstancesEditor
                   ref={editorRef}
@@ -408,6 +418,7 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
                         onOpenEventBasedObjectVariantEditor={
                           props.onOpenEventBasedObjectVariantEditor
                         }
+                        onOpenTypeScriptScripts={props.onOpenTypeScriptScripts}
                         onExportAssets={props.onExportAssets}
                         onImportAssets={props.onImportAssets}
                         onDeleteObjects={(objectWithContext, cb) =>

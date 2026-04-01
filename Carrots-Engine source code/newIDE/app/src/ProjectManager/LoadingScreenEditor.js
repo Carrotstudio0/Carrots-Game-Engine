@@ -1,9 +1,6 @@
 // @flow
 import { t, Trans } from '@lingui/macro';
 import * as React from 'react';
-import SubscriptionChecker, {
-  type SubscriptionCheckerInterface,
-} from '../Profile/Subscription/SubscriptionChecker';
 import Checkbox from '../UI/Checkbox';
 import ColorField from '../UI/ColorField';
 import { I18n } from '@lingui/react';
@@ -21,9 +18,6 @@ import SelectField from '../UI/SelectField';
 import SelectOption from '../UI/SelectOption';
 import Text from '../UI/Text';
 import AlertMessage from '../UI/AlertMessage';
-import GetSubscriptionCard from '../Profile/Subscription/GetSubscriptionCard';
-import AuthenticatedUserContext from '../Profile/AuthenticatedUserContext';
-import { hasValidSubscriptionPlan } from '../Utils/GDevelopServices/Usage';
 import { ProjectScopedContainersAccessor } from '../InstructionOrExpression/EventsScope';
 
 type Props = {|
@@ -38,18 +32,6 @@ type Props = {|
   projectScopedContainersAccessor: ProjectScopedContainersAccessor,
 |};
 
-type TimeSettings = {|
-  minDuration: number,
-  logoAndProgressFadeInDuration: number,
-  logoAndProgressLogoFadeInDelay: number,
-|};
-
-const forcedLogo: TimeSettings = {
-  minDuration: 2,
-  logoAndProgressFadeInDuration: 0.2,
-  logoAndProgressLogoFadeInDelay: 0,
-};
-
 const watermarkPlacementOptions = [
   { value: 'top', label: t`Top` },
   { value: 'top-left', label: t`Top left corner` },
@@ -63,29 +45,16 @@ export const LoadingScreenEditor = ({
   loadingScreen,
   watermark,
   onLoadingScreenUpdated,
-  onChangeSubscription,
   project,
   resourceManagementProps,
   projectScopedContainersAccessor,
 }: Props): React.Node => {
-  const subscriptionChecker = React.useRef<?SubscriptionCheckerInterface>(null);
-  const authenticatedUser = React.useContext(AuthenticatedUserContext);
   const forceUpdate = useForceUpdate();
-  const hasValidSubscription = hasValidSubscriptionPlan(
-    authenticatedUser.subscription
-  );
 
   const onUpdate = () => {
     forceUpdate();
     onLoadingScreenUpdated();
   };
-
-  /** Remember the settings chosen by users when they are forced to a value */
-  const timeSettings = React.useRef<TimeSettings>({
-    minDuration: loadingScreen.getMinDuration(),
-    logoAndProgressFadeInDuration: loadingScreen.getLogoAndProgressFadeInDuration(),
-    logoAndProgressLogoFadeInDelay: loadingScreen.getLogoAndProgressLogoFadeInDelay(),
-  });
 
   return (
     <I18n>
@@ -105,16 +74,6 @@ export const LoadingScreenEditor = ({
                   }
                   checked={loadingScreen.isGDevelopLogoShownDuringLoadingScreen()}
                   onCheck={(e, checked) => {
-                    if (
-                      !checked &&
-                      !watermark.isGDevelopWatermarkShown() &&
-                      subscriptionChecker.current &&
-                      !subscriptionChecker.current.checkUserHasSubscription()
-                    ) {
-                      // If user wants to deactivate GDevelop splash screen although
-                      // watermark is hidden, we don't allow it if they have no subscription.
-                      return;
-                    }
                     loadingScreen.showGDevelopLogoDuringLoadingScreen(checked);
                     onUpdate();
                   }}
@@ -161,53 +120,7 @@ export const LoadingScreenEditor = ({
                   }
                   checked={watermark.isGDevelopWatermarkShown()}
                   onCheck={(e, checked) => {
-                    if (
-                      !checked &&
-                      !loadingScreen.isGDevelopLogoShownDuringLoadingScreen() &&
-                      subscriptionChecker.current &&
-                      !subscriptionChecker.current.checkUserHasSubscription()
-                    ) {
-                      // If user wants to deactivate watermark although GDevelop splash
-                      // screen is hidden, we don't allow it if they have no subscription.
-                      return;
-                    }
                     watermark.showGDevelopWatermark(checked);
-                    if (checked) {
-                      loadingScreen.setMinDuration(
-                        timeSettings.current.minDuration
-                      );
-                      loadingScreen.setLogoAndProgressFadeInDuration(
-                        timeSettings.current.logoAndProgressFadeInDuration
-                      );
-                      loadingScreen.setLogoAndProgressLogoFadeInDelay(
-                        timeSettings.current.logoAndProgressLogoFadeInDelay
-                      );
-                    } else if (
-                      subscriptionChecker.current &&
-                      !subscriptionChecker.current.hasUserSubscription()
-                    ) {
-                      if (
-                        loadingScreen.getMinDuration() < forcedLogo.minDuration
-                      ) {
-                        loadingScreen.setMinDuration(forcedLogo.minDuration);
-                      }
-                      if (
-                        loadingScreen.getLogoAndProgressFadeInDuration() >
-                        forcedLogo.logoAndProgressFadeInDuration
-                      ) {
-                        loadingScreen.setLogoAndProgressFadeInDuration(
-                          forcedLogo.logoAndProgressFadeInDuration
-                        );
-                      }
-                      if (
-                        loadingScreen.getLogoAndProgressLogoFadeInDelay() >
-                        forcedLogo.logoAndProgressLogoFadeInDelay
-                      ) {
-                        loadingScreen.setLogoAndProgressLogoFadeInDelay(
-                          forcedLogo.logoAndProgressLogoFadeInDelay
-                        );
-                      }
-                    }
                     onUpdate();
                   }}
                 />
@@ -237,20 +150,6 @@ export const LoadingScreenEditor = ({
                 </SelectField>
               </Column>
             </ResponsiveLineStackLayout>
-            {!hasValidSubscription && (
-              <GetSubscriptionCard
-                subscriptionDialogOpeningReason="Disable GDevelop splash at startup"
-                recommendedPlanId="gdevelop_silver"
-                placementId="gdevelop-branding"
-              >
-                <Text>
-                  <Trans>
-                    Get a silver or gold subscription to disable GDevelop
-                    branding.
-                  </Trans>
-                </Text>
-              </GetSubscriptionCard>
-            )}
           </ColumnStackLayout>
           <Text size="section-title">
             <Trans>Loading screen</Trans>
@@ -439,22 +338,11 @@ export const LoadingScreenEditor = ({
             value={'' + loadingScreen.getMinDuration()}
             onChange={newValue => {
               const newMinDuration = Math.max(0, parseFloat(newValue) || 0);
-              if (
-                newMinDuration < forcedLogo.minDuration &&
-                !watermark.isGDevelopWatermarkShown() &&
-                subscriptionChecker.current &&
-                !subscriptionChecker.current.checkUserHasSubscription()
-              ) {
-                // If users want to reduce GDevelop splash screen although
-                // watermark is hidden, we don't allow it if they have no subscription.
-                return;
-              }
               const currentMinDuration = loadingScreen.getMinDuration();
               if (currentMinDuration === newMinDuration) {
                 return;
               }
               loadingScreen.setMinDuration(newMinDuration);
-              timeSettings.current.minDuration = newMinDuration;
               onUpdate();
             }}
             helperMarkdownText={i18n._(
@@ -479,17 +367,6 @@ export const LoadingScreenEditor = ({
                   0,
                   parseFloat(newValue) || 0
                 );
-                if (
-                  newLogoAndProgressLogoFadeInDelay >
-                    forcedLogo.logoAndProgressLogoFadeInDelay &&
-                  !watermark.isGDevelopWatermarkShown() &&
-                  subscriptionChecker.current &&
-                  !subscriptionChecker.current.checkUserHasSubscription()
-                ) {
-                  // If users want to reduce GDevelop splash screen although
-                  // watermark is hidden, we don't allow it if they have no subscription.
-                  return;
-                }
                 const currentLogoAndProgressLogoFadeInDelay = loadingScreen.getLogoAndProgressLogoFadeInDelay();
                 if (
                   currentLogoAndProgressLogoFadeInDelay ===
@@ -499,7 +376,6 @@ export const LoadingScreenEditor = ({
                 loadingScreen.setLogoAndProgressLogoFadeInDelay(
                   newLogoAndProgressLogoFadeInDelay
                 );
-                timeSettings.current.logoAndProgressLogoFadeInDelay = newLogoAndProgressLogoFadeInDelay;
                 onUpdate();
               }}
             />
@@ -520,17 +396,6 @@ export const LoadingScreenEditor = ({
                   0,
                   parseFloat(newValue) || 0
                 );
-                if (
-                  newLogoAndProgressFadeInDuration >
-                    forcedLogo.logoAndProgressFadeInDuration &&
-                  !watermark.isGDevelopWatermarkShown() &&
-                  subscriptionChecker.current &&
-                  !subscriptionChecker.current.checkUserHasSubscription()
-                ) {
-                  // If users want to reduce GDevelop splash screen although
-                  // watermark is hidden, we don't allow it if they have no subscription.
-                  return;
-                }
                 const currentLogoAndProgressFadeInDuration = loadingScreen.getLogoAndProgressFadeInDuration();
                 if (
                   currentLogoAndProgressFadeInDuration ===
@@ -540,7 +405,6 @@ export const LoadingScreenEditor = ({
                 loadingScreen.setLogoAndProgressFadeInDuration(
                   newLogoAndProgressFadeInDuration
                 );
-                timeSettings.current.logoAndProgressFadeInDuration = newLogoAndProgressFadeInDuration;
                 onUpdate();
               }}
             />
@@ -553,15 +417,6 @@ export const LoadingScreenEditor = ({
               </Trans>
             </AlertMessage>
           ) : null}
-
-          <SubscriptionChecker
-            ref={subscriptionChecker}
-            onChangeSubscription={onChangeSubscription}
-            mode="mandatory"
-            id="Disable GDevelop splash at startup"
-            title={<Trans>Disable GDevelop splash at startup</Trans>}
-            placementId="gdevelop-branding"
-          />
         </ColumnStackLayout>
       )}
     </I18n>

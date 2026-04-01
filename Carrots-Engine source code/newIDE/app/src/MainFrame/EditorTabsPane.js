@@ -1,6 +1,6 @@
 // @flow
 import * as React from 'react';
-import TabsTitlebar from './TabsTitlebar';
+import TabsTitlebar, { type TabsTitlebarQuickAccessMenu } from './TabsTitlebar';
 import Toolbar, { type ToolbarInterface } from './Toolbar';
 import { TabContentContainer } from '../UI/ClosableTabs';
 import { DraggableEditorTabs } from './EditorTabs/DraggableEditorTabs';
@@ -29,6 +29,7 @@ import {
   type InstancesOutsideEditorChanges,
   type ObjectsOutsideEditorChanges,
   type ObjectGroupsOutsideEditorChanges,
+  type TypeScriptScriptTarget,
 } from './EditorContainers/BaseEditor';
 import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
 import { type HotReloadPreviewButtonProps } from '../HotReload/HotReloadPreviewButton';
@@ -61,6 +62,9 @@ import { type FloatingPaneState } from './PanesContainer';
 import { type CreateProjectResult } from '../Utils/UseCreateProject';
 import { type OpenAskAiOptions } from '../AiGeneration/Utils';
 import { type ToolbarButtonConfig } from './CustomToolbarButton';
+import { type MainMenuCallbacks, type BuildMainMenuProps } from './MainMenu';
+import { type MenuItemTemplate } from '../UI/Menu/Menu.flow';
+import CommandsContext from '../CommandPalette/CommandsContext';
 
 const styles = {
   container: {
@@ -104,6 +108,8 @@ export type EditorTabsPaneCommonProps = {|
   setGameEditorMode: ('embedded-game' | 'instances-editor') => void,
   toolbarButtons: Array<ToolbarButtonConfig>,
   projectPath: ?string,
+  buildMainMenuProps: BuildMainMenuProps,
+  mainMenuCallbacks: MainMenuCallbacks,
 
   // Callbacks from MainFrame
   toggleProjectManager: () => void,
@@ -147,6 +153,8 @@ export type EditorTabsPaneCommonProps = {|
     eventsBasedObjectVariantName: string | null,
   |}) => void,
   openExternalEvents: (name: string) => void,
+  openExternalLayout: (name: string) => void,
+  openEventsFunctionsExtension: (name: string) => void,
   openLayout: (
     name: string,
     options?: {|
@@ -158,6 +166,10 @@ export type EditorTabsPaneCommonProps = {|
         | 'events'
         | 'none',
     |}
+  ) => void,
+  openTypeScriptScripts: (
+    sceneName?: string,
+    preferredScriptTarget?: ?TypeScriptScriptTarget
   ) => void,
   openTemplateFromTutorial: (tutorialId: string) => Promise<void>,
   openTemplateFromCourseChapter: (
@@ -314,7 +326,6 @@ const EditorTabsPane: React.ComponentType<{
     checkedOutVersionStatus,
     canDoNetworkPreview,
     gamesPlatformFrameTools,
-    toggleProjectManager,
     saveProject,
     saveProjectAsWithStorageProvider,
     onCheckoutVersion,
@@ -333,7 +344,10 @@ const EditorTabsPane: React.ComponentType<{
     getStorageProvider,
     setPreviewedLayout,
     openExternalEvents,
+    openExternalLayout,
+    openEventsFunctionsExtension,
     openLayout,
+    openTypeScriptScripts,
     openTemplateFromTutorial,
     openTemplateFromCourseChapter,
     previewDebuggerServer,
@@ -401,7 +415,10 @@ const EditorTabsPane: React.ComponentType<{
     showRestartInGameEditorAfterErrorButton,
     toolbarButtons,
     projectPath,
+    buildMainMenuProps,
+    mainMenuCallbacks,
   } = props;
+  const commandManager = React.useContext(CommandsContext);
 
   const toolbarRef = React.useRef<?ToolbarInterface>(null);
   const unsavedChanges = React.useContext(UnsavedChangesContext);
@@ -528,6 +545,20 @@ const EditorTabsPane: React.ComponentType<{
 
   const paneEditorTabs = getEditorsForPane(editorTabs, paneIdentifier);
   const currentTab = getCurrentTabForPane(editorTabs, paneIdentifier);
+  const visibleTitlebarTabs = React.useMemo(
+    () =>
+      paneEditorTabs.filter(
+        editorTab =>
+          editorTab.kind !== 'layout' && editorTab.kind !== 'layout events'
+      ),
+    [paneEditorTabs]
+  );
+  const visibleCurrentTab =
+    currentTab && visibleTitlebarTabs.includes(currentTab) ? currentTab : null;
+  const getPaneTabIndex = React.useCallback(
+    (editorTab: EditorTab): number => paneEditorTabs.indexOf(editorTab),
+    [paneEditorTabs]
+  );
 
   // Use a layout effect to read the pane width and height, which is then used
   // to communicate to children editors the dimensions of their "window" (the pane).
@@ -566,6 +597,323 @@ const EditorTabsPane: React.ComponentType<{
     [askAiPaneIdentifier, onOpenAskAi, onSetPaneDrawerState]
   );
 
+  const triggerProjectCommand = React.useCallback(
+    (commandName: string) => {
+      if (!commandManager || !commandManager.getNamedCommand) return;
+      const command = commandManager.getNamedCommand(commandName);
+      if (command && command.handler) {
+        command.handler();
+      }
+    },
+    [commandManager]
+  );
+
+  const openSceneFromHeader = React.useCallback(
+    (sceneName: string) => {
+      openLayout(sceneName, {
+        openEventsEditor: false,
+        openSceneEditor: true,
+        focusWhenOpened: 'scene',
+      });
+    },
+    [openLayout]
+  );
+  const openSceneEventsFromHeader = React.useCallback(
+    (sceneName: string) => {
+      openLayout(sceneName, {
+        openEventsEditor: true,
+        openSceneEditor: false,
+        focusWhenOpened: 'events',
+      });
+    },
+    [openLayout]
+  );
+
+  const quickAccessMenus: Array<TabsTitlebarQuickAccessMenu> = React.useMemo(() => {
+    const sceneItems: Array<MenuItemTemplate> = [];
+    const extensionItems: Array<MenuItemTemplate> = [];
+    const externalLayoutItems: Array<MenuItemTemplate> = [];
+    const externalEventsItems: Array<MenuItemTemplate> = [];
+
+    if (currentProject) {
+      for (let i = 0; i < currentProject.getLayoutsCount(); i++) {
+        const layout = currentProject.getLayoutAt(i);
+        const sceneName = layout.getName();
+        sceneItems.push({
+          label: sceneName,
+          submenu: [
+            {
+              label: 'Scene',
+              click: () => openSceneFromHeader(sceneName),
+            },
+            {
+              label: 'Scene (Events)',
+              click: () => openSceneEventsFromHeader(sceneName),
+            },
+          ],
+        });
+      }
+
+      for (
+        let i = 0;
+        i < currentProject.getEventsFunctionsExtensionsCount();
+        i++
+      ) {
+        const extension = currentProject.getEventsFunctionsExtensionAt(i);
+        const extensionName = extension.getName();
+        extensionItems.push({
+          label: extensionName,
+          click: () => openEventsFunctionsExtension(extensionName),
+        });
+      }
+
+      for (let i = 0; i < currentProject.getExternalLayoutsCount(); i++) {
+        const externalLayout = currentProject.getExternalLayoutAt(i);
+        const externalLayoutName = externalLayout.getName();
+        externalLayoutItems.push({
+          label: externalLayoutName,
+          click: () => openExternalLayout(externalLayoutName),
+        });
+      }
+
+      for (let i = 0; i < currentProject.getExternalEventsCount(); i++) {
+        const externalEvents = currentProject.getExternalEventsAt(i);
+        const externalEventsName = externalEvents.getName();
+        externalEventsItems.push({
+          label: externalEventsName,
+          click: () => openExternalEvents(externalEventsName),
+        });
+      }
+    }
+
+    return [
+      {
+        label: 'Game settings',
+        submenu: [
+          {
+            label: 'Project manager',
+            click: () => openProjectManager(true),
+            enabled: !!currentProject,
+          },
+          { type: 'separator' },
+          {
+            label: 'Properties & Icons',
+            click: () => triggerProjectCommand('OPEN_PROJECT_PROPERTIES'),
+            enabled: !!currentProject,
+          },
+          {
+            label: 'Global variables',
+            click: () => triggerProjectCommand('OPEN_PROJECT_VARIABLES'),
+            enabled: !!currentProject,
+          },
+          {
+            label: 'Resources',
+            click: () => triggerProjectCommand('OPEN_PROJECT_RESOURCES'),
+            enabled: !!currentProject,
+          },
+          {
+            label: 'Script',
+            click: () =>
+              triggerProjectCommand('OPEN_PROJECT_TYPESCRIPT_SCRIPTS'),
+            enabled: !!currentProject,
+          },
+          {
+            label: 'Loading screen',
+            click: () => triggerProjectCommand('OPEN_PROJECT_LOADING_SCREEN'),
+            enabled: !!currentProject,
+          },
+          {
+            label: 'Project icons',
+            click: () =>
+              triggerProjectCommand('OPEN_PLATFORM_SPECIFIC_ASSETS_DIALOG'),
+            enabled: !!currentProject,
+          },
+          {
+            label: 'Game Dashboard',
+            click: () => {
+              mainMenuCallbacks.onOpenHomePage();
+            },
+            enabled: !!currentProject,
+          },
+        ],
+      },
+      {
+        label: 'Scenes',
+        submenu: [
+          {
+            label: 'Open scene manager',
+            click: () => openProjectManager(true),
+            enabled: !!currentProject,
+          },
+          { type: 'separator' },
+          ...(sceneItems.length
+            ? sceneItems
+            : [{ label: 'No scenes', enabled: false }]),
+        ],
+      },
+      {
+        label: 'Extensions',
+        submenu: [
+          {
+            label: 'Search/import extensions',
+            click: () => triggerProjectCommand('OPEN_SEARCH_EXTENSIONS_DIALOG'),
+            enabled: !!currentProject,
+          },
+          { type: 'separator' },
+          ...(extensionItems.length
+            ? extensionItems
+            : [{ label: 'No extensions', enabled: false }]),
+        ],
+      },
+      {
+        label: 'External Layout',
+        submenu: [
+          {
+            label: 'Open project manager',
+            click: () => openProjectManager(true),
+            enabled: !!currentProject,
+          },
+          { type: 'separator' },
+          ...(externalLayoutItems.length
+            ? externalLayoutItems
+            : [{ label: 'No external layouts', enabled: false }]),
+        ],
+      },
+      {
+        label: 'External Events',
+        submenu: [
+          {
+            label: 'Open project manager',
+            click: () => openProjectManager(true),
+            enabled: !!currentProject,
+          },
+          { type: 'separator' },
+          ...(externalEventsItems.length
+            ? externalEventsItems
+            : [{ label: 'No external events', enabled: false }]),
+        ],
+      },
+    ];
+  }, [
+    currentProject,
+    mainMenuCallbacks,
+    openProjectManager,
+    openEventsFunctionsExtension,
+    openExternalEvents,
+    openExternalLayout,
+    openSceneEventsFromHeader,
+    openSceneFromHeader,
+    triggerProjectCommand,
+  ]);
+
+  const searchInProjectFromHeader = React.useCallback(
+    (query: string) => {
+      const term = query.trim().toLowerCase();
+      if (!term || !currentProject) return;
+
+      if (
+        term.includes('properties') ||
+        term.includes('icon') ||
+        term === 'game settings'
+      ) {
+        triggerProjectCommand('OPEN_PROJECT_PROPERTIES');
+        return;
+      }
+      if (term.includes('global')) {
+        triggerProjectCommand('OPEN_PROJECT_VARIABLES');
+        return;
+      }
+      if (term.includes('resource')) {
+        triggerProjectCommand('OPEN_PROJECT_RESOURCES');
+        return;
+      }
+      if (term.includes('typescript') || term.includes('script')) {
+        triggerProjectCommand('OPEN_PROJECT_TYPESCRIPT_SCRIPTS');
+        return;
+      }
+      if (term.includes('dashboard')) {
+        mainMenuCallbacks.onOpenHomePage();
+        return;
+      }
+      if (term.includes('manager')) {
+        openProjectManager(true);
+        return;
+      }
+      if (term.includes('loading')) {
+        triggerProjectCommand('OPEN_PROJECT_LOADING_SCREEN');
+        return;
+      }
+      if (term.includes('icon')) {
+        triggerProjectCommand('OPEN_PLATFORM_SPECIFIC_ASSETS_DIALOG');
+        return;
+      }
+      if (term.includes('import extension') || term.includes('search extension')) {
+        triggerProjectCommand('OPEN_SEARCH_EXTENSIONS_DIALOG');
+        return;
+      }
+
+      for (let i = 0; i < currentProject.getLayoutsCount(); i++) {
+        const layout = currentProject.getLayoutAt(i);
+        const sceneName = layout.getName();
+        const sceneNameLower = sceneName.toLowerCase();
+        if (
+          term.includes('events') &&
+          (sceneNameLower.includes(term.replace('events', '').trim()) ||
+            sceneNameLower.includes(term.replace('(events)', '').trim()))
+        ) {
+          openSceneEventsFromHeader(sceneName);
+          return;
+        }
+        if (sceneNameLower.includes(term)) {
+          openSceneFromHeader(sceneName);
+          return;
+        }
+      }
+
+      for (
+        let i = 0;
+        i < currentProject.getEventsFunctionsExtensionsCount();
+        i++
+      ) {
+        const extension = currentProject.getEventsFunctionsExtensionAt(i);
+        const extensionName = extension.getName();
+        if (extensionName.toLowerCase().includes(term)) {
+          openEventsFunctionsExtension(extensionName);
+          return;
+        }
+      }
+
+      for (let i = 0; i < currentProject.getExternalLayoutsCount(); i++) {
+        const externalLayout = currentProject.getExternalLayoutAt(i);
+        const externalLayoutName = externalLayout.getName();
+        if (externalLayoutName.toLowerCase().includes(term)) {
+          openExternalLayout(externalLayoutName);
+          return;
+        }
+      }
+
+      for (let i = 0; i < currentProject.getExternalEventsCount(); i++) {
+        const externalEvents = currentProject.getExternalEventsAt(i);
+        const externalEventsName = externalEvents.getName();
+        if (externalEventsName.toLowerCase().includes(term)) {
+          openExternalEvents(externalEventsName);
+          return;
+        }
+      }
+    },
+    [
+      currentProject,
+      mainMenuCallbacks,
+      openProjectManager,
+      openEventsFunctionsExtension,
+      openExternalEvents,
+      openExternalLayout,
+      openSceneEventsFromHeader,
+      openSceneFromHeader,
+      triggerProjectCommand,
+    ]
+  );
+
   return (
     <div style={styles.container} ref={containerRef}>
       {isDrawer ? (
@@ -581,13 +929,22 @@ const EditorTabsPane: React.ComponentType<{
           isRightMostPane={isRightMostPane}
           displayMenuIcon={paneIdentifier === 'center'}
           hidden={tabsTitleBarAndEditorToolbarHidden}
-          toggleProjectManager={toggleProjectManager}
+          buildMainMenuProps={buildMainMenuProps}
+          mainMenuCallbacks={mainMenuCallbacks}
+          quickAccessMenus={quickAccessMenus}
+          onSearchInProject={searchInProjectFromHeader}
           renderTabs={(onEditorTabHovered, onEditorTabClosing) => (
             <DraggableEditorTabs
               hideLabels={false}
-              editors={paneEditorTabs}
-              currentTab={currentTab}
-              onClickTab={onChangeEditorTab}
+              editors={visibleTitlebarTabs}
+              currentTab={visibleCurrentTab}
+              onClickTab={(visibleTabIndex: number) => {
+                const editorTab = visibleTitlebarTabs[visibleTabIndex];
+                if (!editorTab) return;
+                const paneTabIndex = getPaneTabIndex(editorTab);
+                if (paneTabIndex === -1) return;
+                onChangeEditorTab(paneTabIndex);
+              }}
               onCloseTab={(editorTab: EditorTab) => {
                 // Call onEditorTabClosing before to ensure any tooltip is removed before the tab is closed.
                 onEditorTabClosing();
@@ -604,7 +961,15 @@ const EditorTabsPane: React.ComponentType<{
                 onCloseAllEditorTabs();
               }}
               onTabActivated={onEditorTabActivated}
-              onDropTab={onDropEditorTab}
+              onDropTab={(fromVisibleTabIndex, toVisibleTabIndex) => {
+                const fromEditorTab = visibleTitlebarTabs[fromVisibleTabIndex];
+                const toEditorTab = visibleTitlebarTabs[toVisibleTabIndex];
+                if (!fromEditorTab || !toEditorTab) return;
+                const fromPaneTabIndex = getPaneTabIndex(fromEditorTab);
+                const toPaneTabIndex = getPaneTabIndex(toEditorTab);
+                if (fromPaneTabIndex === -1 || toPaneTabIndex === -1) return;
+                onDropEditorTab(fromPaneTabIndex, toPaneTabIndex);
+              }}
               onHoverTab={onEditorTabHovered}
             />
           )}
@@ -705,6 +1070,14 @@ const EditorTabsPane: React.ComponentType<{
                           focusWhenOpened: 'events',
                         });
                       },
+                      onOpenTypeScriptScripts: (
+                        sceneName?: string,
+                        preferredScriptTarget?: ?TypeScriptScriptTarget
+                      ) =>
+                        openTypeScriptScripts(
+                          sceneName,
+                          preferredScriptTarget
+                        ),
                       onOpenLayout: openLayout,
                       onOpenTemplateFromTutorial: openTemplateFromTutorial,
                       onOpenTemplateFromCourseChapter: openTemplateFromCourseChapter,

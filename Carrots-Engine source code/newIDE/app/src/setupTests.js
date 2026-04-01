@@ -46,3 +46,4 @@ jest.setTimeout(10000);
 // Jest will automatically use the mock implementations from the __mocks__ folders
 jest.mock('./Utils/BackgroundSerializer.worker');
 jest.mock('./ResourcesList/ResourcePreview/Resource3DPreview.worker');
+jest.mock('./CodeEditor/TypeScriptCompiler.worker');

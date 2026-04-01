@@ -2,9 +2,9 @@
 import { darken, lighten } from '@material-ui/core/styles';
 
 const closeableTabSizeOverrides = {
-  width: 210,
-  height: 32,
-  closeButtonWidth: 26,
+  width: 180,
+  height: 28,
+  closeButtonWidth: 22,
 };
 
 export function getMuiOverrides({

@@ -80,7 +80,7 @@ const StorageProviderListItem = ({
                   <Spacer />
                   <RaisedButton
                     primary
-                    label={i18n._(t`Login with GDevelop`)}
+                    label={i18n._(t`Login with Carrots Engine`)}
                     onClick={() => authenticatedUser.onOpenLoginDialog()}
                   />
                 </Line>

@@ -37,6 +37,15 @@ export type ObjectTreeViewItemCallbacks = {|
   onObjectPasted?: gdObject => void,
   onSelectAllInstancesOfObjectInLayout?: string => void,
   onEditObject: (object: gdObject, initialTab: ?ObjectEditorTab) => void,
+  onOpenTypeScriptScripts?: (
+    sceneName: string,
+    preferredScriptTarget?: ?{|
+      contextKind: 'scene' | 'object' | 'behavior',
+      sceneName?: string,
+      objectName?: string,
+      behaviorName?: string,
+    |}
+  ) => void,
   onDeleteObjects: (
     objectWithContext: ObjectWithContext[],
     cb: (boolean) => void
@@ -93,6 +102,7 @@ export type ObjectTreeViewItemProps = {|
   forceUpdateList: () => void,
   forceUpdate: () => void,
   isListLocked: boolean,
+  sceneNameForTypeScriptScripts: string,
 |};
 
 export const addSerializedObjectToObjectsContainer = ({
@@ -301,12 +311,14 @@ export class ObjectTreeViewItemContent implements TreeViewItemContent {
       onEditObject,
       onMovedObjectFolderOrObjectToAnotherFolderInSameContainer,
       onAddObjectInstance,
+      onOpenTypeScriptScripts,
       canSetAsGlobalObject,
       setAsGlobalObject,
       onOpenEventBasedObjectVariantEditor,
       selectObjectFolderOrObjectWithContext,
       addFolder,
       isListLocked,
+      sceneNameForTypeScriptScripts,
     } = this.props;
 
     const container = this._isGlobal
@@ -386,6 +398,20 @@ export class ObjectTreeViewItemContent implements TreeViewItemContent {
         label: i18n._(t`Edit behaviors`),
         click: () => onEditObject(object, 'behaviors'),
       },
+      onOpenTypeScriptScripts
+        ? {
+            label: i18n._(t`Add TypeScript script`),
+            click: () =>
+              onOpenTypeScriptScripts(
+                this._isGlobal ? '' : sceneNameForTypeScriptScripts || '',
+                {
+                contextKind: 'object',
+                sceneName: this._isGlobal ? '' : sceneNameForTypeScriptScripts,
+                objectName: object.getName(),
+                }
+              ),
+          }
+        : null,
       {
         label: i18n._(t`Edit effects`),
         click: () => onEditObject(object, 'effects'),

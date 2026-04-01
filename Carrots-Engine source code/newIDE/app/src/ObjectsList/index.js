@@ -421,6 +421,9 @@ const objectTypeToDefaultName = {
   'TextInput::TextInputObject': 'NewTextInput',
   'Scene3D::Model3DObject': 'New3DModel',
   'Scene3D::Cube3DObject': 'New3DBox',
+  'Scene3D::Sphere3DObject': 'New3DBall',
+  'Scene3D::Plane3DObject': 'New3DPlane',
+  'Scene3D::Capsule3DObject': 'New3DCapsule',
   'Scene3D::SpotLightObject': 'New3DSpotLight',
   'SpineObject::SpineObject': 'NewSpine',
   'Video::VideoObject': 'NewVideo',
@@ -484,6 +487,15 @@ type Props = {|
     eventsBasedObjectName: string,
     variantName: string
   ) => void,
+  onOpenTypeScriptScripts?: (
+    sceneName: string,
+    preferredScriptTarget?: ?{|
+      contextKind: 'scene' | 'object' | 'behavior',
+      sceneName?: string,
+      objectName?: string,
+      behaviorName?: string,
+    |}
+  ) => void,
   onExportAssets: () => void,
   onImportAssets: () => void,
   onObjectCreated: (
@@ -536,6 +548,7 @@ const ObjectsList = React.forwardRef<Props, ObjectsListInterface>(
       onEditObject,
       onOpenEventBasedObjectEditor,
       onOpenEventBasedObjectVariantEditor,
+      onOpenTypeScriptScripts,
       onExportAssets,
       onImportAssets,
       onObjectCreated,
@@ -979,6 +992,8 @@ const ObjectsList = React.forwardRef<Props, ObjectsListInterface>(
         initialInstances,
         onOpenEventBasedObjectEditor,
         onOpenEventBasedObjectVariantEditor,
+        onOpenTypeScriptScripts,
+        sceneNameForTypeScriptScripts: (layout && layout.getName()) || '',
         getValidatedObjectOrGroupName,
         onRenameObjectFolderOrObjectWithContextFinish,
         onObjectModified,
@@ -1007,6 +1022,8 @@ const ObjectsList = React.forwardRef<Props, ObjectsListInterface>(
         initialInstances,
         onOpenEventBasedObjectEditor,
         onOpenEventBasedObjectVariantEditor,
+        onOpenTypeScriptScripts,
+        layout,
         getValidatedObjectOrGroupName,
         onRenameObjectFolderOrObjectWithContextFinish,
         onObjectModified,

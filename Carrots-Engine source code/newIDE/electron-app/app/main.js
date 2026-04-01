@@ -1,5 +1,6 @@
 const electron = require('electron');
 const path = require('path');
+const fs = require('fs');
 const child_process = require('child_process');
 const app = electron.app; // Module to control application life.
 const BrowserWindow = electron.BrowserWindow; // Module to create native browser window.
@@ -39,6 +40,7 @@ const {
   closePreviewWindowsForParent,
   closeAllPreviewWindows,
 } = require('./PreviewWindow');
+const { registerGitSyncIpcHandlers } = require('./GitSync');
 const {
   setupLocalGDJSDevelopmentWatcher,
   closeLocalGDJSDevelopmentWatcher,
@@ -49,7 +51,7 @@ const { setupWatcher, disableWatcher } = require('./LocalFilesystemWatcher');
 // Initialize `@electron/remote` module
 require('@electron/remote/main').initialize();
 
-log.info('GDevelop Electron app starting...');
+log.info('Carrots Engine Electron app starting...');
 
 // Logs made with electron-logs can be found
 // on Linux: ~/.config/<app name>/log.log
@@ -58,6 +60,40 @@ log.info('GDevelop Electron app starting...');
 autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
 autoUpdater.autoDownload = false;
+
+const getAutoUpdaterConfigPath = () => {
+  const resourcesPath =
+    process.resourcesPath || path.join(app.getAppPath(), '..', 'resources');
+  return path.join(resourcesPath, 'app-update.yml');
+};
+
+const canCheckForUpdatesInCurrentBuild = () => {
+  if (isDev) return false;
+
+  try {
+    return fs.existsSync(getAutoUpdaterConfigPath());
+  } catch (error) {
+    log.warn(
+      'Unable to probe auto-updater configuration file. Disabling updater checks.',
+      error
+    );
+    return false;
+  }
+};
+
+const isBenignRendererConsoleMessage = message => {
+  if (!message || typeof message !== 'string') return false;
+
+  return (
+    message.includes("Unrecognized feature: 'web-share'.") ||
+    message.includes(
+      'An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.'
+    ) ||
+    message.includes(
+      'THREE.WebGLRenderer: The property .useLegacyLights has been deprecated.'
+    )
+  );
+};
 
 // Keep a global reference of the window objects, if you don't, the windows will
 // be closed automatically when the JavaScript object is garbage collected.
@@ -69,11 +105,26 @@ let windowCounter = 0; // Counter for creating unique session partitions
 // so have to ignore one more).
 const args = parseArgs(process.argv.slice(isDev ? 2 : 1), {
   // "Officially" supported arguments and their types:
-  boolean: ['dev-tools', 'disable-update-check'],
+  boolean: ['dev-tools', 'disable-update-check', 'safe-gpu'],
   string: '_', // Files are always strings
 });
 
 const devTools = !!args['dev-tools'];
+const safeGpuMode =
+  !!args['safe-gpu'] || process.env.CARROTS_ENGINE_SAFE_GPU === '1';
+if (safeGpuMode) {
+  app.disableHardwareAcceleration();
+  log.warn(
+    'Safe GPU mode is enabled. Hardware acceleration has been disabled.'
+  );
+}
+
+process.on('uncaughtException', error => {
+  log.error('[MainProcess] Uncaught exception:', error);
+});
+process.on('unhandledRejection', reason => {
+  log.error('[MainProcess] Unhandled rejection:', reason);
+});
 
 // See registerGdideProtocol (used for HTML modules support)
 protocol.registerSchemesAsPrivileged([{ scheme: 'gdide' }]);
@@ -81,7 +132,7 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'gdide' }]);
 // Notifications on Microsoft Windows platforms show the app user model id.
 // If not set, defaults to `electron.app.{app.name}`.
 if (process.platform === 'win32') {
-  app.setAppUserModelId('gdevelop.ide');
+  app.setAppUserModelId('carrots.ide');
 }
 
 // Single instance lock - prevents multiple Electron processes
@@ -96,7 +147,7 @@ if (!gotTheLock) {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
     // User tried to launch app again - create a new window instead
     const secondInstanceArgs = parseArgs(commandLine.slice(isDev ? 2 : 1), {
-      boolean: ['dev-tools', 'disable-update-check'],
+      boolean: ['dev-tools', 'disable-update-check', 'safe-gpu'],
       string: '_',
     });
 
@@ -104,6 +155,10 @@ if (!gotTheLock) {
     createNewWindow(secondInstanceArgs);
   });
 }
+
+app.on('child-process-gone', (_event, details) => {
+  log.error('[MainProcess] Child process gone:', details);
+});
 
 // Quit when all windows are closed.
 app.on('window-all-closed', function() {
@@ -127,7 +182,7 @@ app.on('window-all-closed', function() {
   app.quit();
 });
 
-// Function to create a new GDevelop window
+// Function to create a new Carrots Engine window
 function createNewWindow(windowArgs = args) {
   const isIntegrated = windowArgs.mode === 'integrated';
 
@@ -164,9 +219,9 @@ function createNewWindow(windowArgs = args) {
   if (windowCounter > 0) {
     // Create a unique partition for this window so it has independent auth state
     // Each partition gets its own storage (IndexedDB, localStorage, cookies, etc.)
-    options.webPreferences.partition = `persist:gdevelop-window-${windowCounter}`;
+    options.webPreferences.partition = `persist:carrots-window-${windowCounter}`;
     log.info(
-      `Creating window #${windowCounter} with partition: persist:gdevelop-window-${windowCounter}`
+      `Creating window #${windowCounter} with partition: persist:carrots-window-${windowCounter}`
     );
   } else {
     log.info(
@@ -197,6 +252,29 @@ function createNewWindow(windowArgs = args) {
     `Created window with Electron ID: ${windowId}, window number: ${windowNumber}, isPrimary: ${isPrimaryWindow}`
   );
 
+  let rendererRecoveryAttempts = 0;
+  const recoverRendererIfPossible = trigger => {
+    if (newWindow.isDestroyed()) return;
+
+    const maxRecoveryAttempts = 2;
+    if (rendererRecoveryAttempts >= maxRecoveryAttempts) {
+      log.error(
+        `[Window ${windowId}] Renderer failed again after ${rendererRecoveryAttempts} recovery attempts (${trigger}).`
+      );
+      return;
+    }
+
+    rendererRecoveryAttempts++;
+    log.warn(
+      `[Window ${windowId}] Attempting renderer recovery (${rendererRecoveryAttempts}/${maxRecoveryAttempts}) after ${trigger}.`
+    );
+    try {
+      newWindow.webContents.reloadIgnoringCache();
+    } catch (error) {
+      log.error(`[Window ${windowId}] Renderer recovery failed:`, error);
+    }
+  };
+
   // Track this window
   mainWindows.add(newWindow);
 
@@ -210,6 +288,7 @@ function createNewWindow(windowArgs = args) {
 
   // Log process ID to verify separate renderer processes
   newWindow.webContents.once('did-finish-load', () => {
+    rendererRecoveryAttempts = 0;
     newWindow.webContents
       .executeJavaScript('process.pid')
       .then(pid => {
@@ -220,6 +299,61 @@ function createNewWindow(windowArgs = args) {
       .catch(err => {
         log.warn('Could not get renderer process PID:', err);
       });
+  });
+
+  newWindow.webContents.on(
+    'did-fail-load',
+    (
+      _event,
+      errorCode,
+      errorDescription,
+      validatedURL,
+      isMainFrame,
+      frameProcessId,
+      frameRoutingId
+    ) => {
+      log.error(
+        `[Window ${windowId}] did-fail-load code=${errorCode} description="${errorDescription}" url=${validatedURL} mainFrame=${isMainFrame} framePid=${frameProcessId} frameRoutingId=${frameRoutingId}`
+      );
+    }
+  );
+
+  newWindow.webContents.on(
+    'console-message',
+    (_event, level, message, line, sourceId) => {
+      const prefix = `[Renderer ${windowId}]`;
+      if (level >= 2) {
+        if (isBenignRendererConsoleMessage(message)) {
+          log.warn(`${prefix} ${sourceId}:${line} ${message}`);
+          return;
+        }
+        log.error(`${prefix} ${sourceId}:${line} ${message}`);
+        return;
+      }
+      if (level === 1 && process.env.CARROTS_ENGINE_LOG_RENDERER_WARNINGS) {
+        log.warn(`${prefix} ${sourceId}:${line} ${message}`);
+      }
+    }
+  );
+
+  newWindow.webContents.on('render-process-gone', (_event, details) => {
+    log.error(`[Window ${windowId}] Renderer process gone:`, details);
+    if (details && details.reason === 'clean-exit') {
+      return;
+    }
+    recoverRendererIfPossible('render-process-gone');
+  });
+
+  newWindow.webContents.on('unresponsive', () => {
+    log.warn(`[Window ${windowId}] Renderer became unresponsive.`);
+  });
+
+  newWindow.on('unresponsive', () => {
+    log.warn(`[Window ${windowId}] BrowserWindow became unresponsive.`);
+  });
+
+  newWindow.on('responsive', () => {
+    log.info(`[Window ${windowId}] Renderer is responsive again.`);
   });
 
   if (isDev)
@@ -582,6 +716,16 @@ app.on('ready', function() {
   });
 
   ipcMain.on('updates-check-and-download', event => {
+    if (!canCheckForUpdatesInCurrentBuild()) {
+      const reason = `Updater is disabled for this build (missing ${getAutoUpdaterConfigPath()}).`;
+      log.warn(reason);
+      event.sender.send('update-status', {
+        message: reason,
+        status: 'update-disabled',
+      });
+      return;
+    }
+
     // This will immediately download an update, then install when the
     // app quits.
     log.info('Starting check for updates (with auto-download if any)');
@@ -592,6 +736,16 @@ app.on('ready', function() {
   });
 
   ipcMain.on('updates-check', event => {
+    if (!canCheckForUpdatesInCurrentBuild()) {
+      const reason = `Updater is disabled for this build (missing ${getAutoUpdaterConfigPath()}).`;
+      log.warn(reason);
+      event.sender.send('update-status', {
+        message: reason,
+        status: 'update-disabled',
+      });
+      return;
+    }
+
     log.info('Starting check for updates (without auto-download)');
     autoUpdater.autoDownload = false;
     autoUpdater.checkForUpdates().catch(err => {
@@ -660,6 +814,7 @@ app.on('ready', function() {
   });
 
   setUpDiscordRichPresence(ipcMain);
+  registerGitSyncIpcHandlers(ipcMain);
 
   // npm script execution in external terminal (cross-platform)
   ipcMain.on('run-npm-script', (event, { projectPath, npmScript }) => {

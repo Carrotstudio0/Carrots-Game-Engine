@@ -4,6 +4,10 @@ import { GDevelopAssetApi } from './ApiConfigs';
 import { type UserPublicProfile } from './User';
 import { retryIfFailed } from '../RetryIfFailed';
 import { ensureIsArray } from '../DataValidator';
+import {
+  getLocalResourceUrl,
+  resolveLocalResourcePath,
+} from './LocalResourceUrl';
 
 // This file is mocked by tests.
 // Don't put any function that is not calling services.
@@ -13,9 +17,10 @@ const gd: libGDevelop = global.gd;
 type ExtensionTier = 'experimental' | 'reviewed' | 'installed';
 
 const USE_LOCAL_EXTENSIONS_REGISTRY = true;
-const LOCAL_EXTENSIONS_DATABASE_URL =
-  '/extensions-database/extensions-database.json';
-const LOCAL_EXTENSIONS_BASE_URL = '/extensions';
+const LOCAL_EXTENSIONS_DATABASE_URL = getLocalResourceUrl(
+  '/extensions-database/extensions-database.json'
+);
+const LOCAL_EXTENSIONS_BASE_URL = getLocalResourceUrl('/extensions');
 
 const getLocalExtensionUrls = (extensionName: string) => ({
   url: `${LOCAL_EXTENSIONS_BASE_URL}/${extensionName}.json`,
@@ -24,7 +29,24 @@ const getLocalExtensionUrls = (extensionName: string) => ({
 
 const loadLocalExtensionsDatabase = async () => {
   const response = await cdnClient.get(LOCAL_EXTENSIONS_DATABASE_URL);
-  return response.data;
+  const rawDatabase = response.data;
+  if (
+    !rawDatabase ||
+    typeof rawDatabase !== 'object' ||
+    !Array.isArray(rawDatabase.headers)
+  ) {
+    return rawDatabase;
+  }
+
+  const adaptedHeaders = rawDatabase.headers.map(header => ({
+    ...header,
+    previewIconUrl: resolveLocalResourcePath(header.previewIconUrl),
+  }));
+
+  return {
+    ...rawDatabase,
+    headers: adaptedHeaders,
+  };
 };
 
 export type ExtensionDependency = {

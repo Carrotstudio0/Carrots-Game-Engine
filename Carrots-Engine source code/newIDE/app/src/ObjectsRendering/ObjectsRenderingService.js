@@ -179,9 +179,9 @@ const ObjectsRenderingService = {
   registerInstanceRenderer: function(objectType: string, renderer: any) {
     if (!renderer.getThumbnail) {
       console.warn(
-        `Tried to register renderer for object "${objectType}", but getThumbnail is not defined.`
+        `Renderer for object "${objectType}" is missing getThumbnail. Falling back to unknown thumbnail to keep renderer registration active.`
       );
-      return;
+      renderer.getThumbnail = RenderedUnknownInstance.getThumbnail;
     }
 
     if (this.renderers.hasOwnProperty(objectType)) {

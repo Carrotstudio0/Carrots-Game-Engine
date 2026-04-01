@@ -237,7 +237,7 @@ namespace gdjs {
                 : 4;
             this._effectiveSamples = this._samples;
             this._qualityMode =
-              effectData.stringParameters.qualityMode || 'medium';
+              effectData.stringParameters.qualityMode || 'high';
             this.shaderPass.enabled = true;
           }
 
@@ -386,7 +386,7 @@ namespace gdjs {
           }
           updateStringParameter(parameterName: string, value: string): void {
             if (parameterName === 'qualityMode') {
-              this._qualityMode = value || 'medium';
+              this._qualityMode = value || 'high';
             }
           }
           updateColorParameter(parameterName: string, value: number): void {}
@@ -416,7 +416,7 @@ namespace gdjs {
             this._samples = Math.max(4, Math.min(32, Math.round(syncData.s)));
             this._effectiveSamples = Math.max(4, Math.min(24, this._samples));
             this._effectEnabled = syncData.e;
-            this._qualityMode = syncData.q || 'medium';
+            this._qualityMode = syncData.q || 'high';
 
             this.shaderPass.uniforms.radius.value = this._radius;
             this.shaderPass.uniforms.intensity.value = this._intensity;

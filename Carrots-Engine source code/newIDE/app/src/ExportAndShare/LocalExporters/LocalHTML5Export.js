@@ -4,7 +4,6 @@ import { Trans } from '@lingui/macro';
 import React from 'react';
 import RaisedButton from '../../UI/RaisedButton';
 import { Column, Line } from '../../UI/Grid';
-import { findGDJS } from '../../GameEngineFinder/LocalGDJSFinder';
 import LocalFileSystem, { type UrlFileDescriptor } from './LocalFileSystem';
 import LocalFolderPicker from '../../UI/LocalFolderPicker';
 import assignIn from 'lodash/assignIn';
@@ -21,6 +20,7 @@ import {
 } from '../GenericExporters/HTML5Export';
 import { downloadUrlsToLocalFiles } from '../../Utils/LocalFileDownloader';
 import DismissableTutorialMessage from '../../Hints/DismissableTutorialMessage';
+const { findGDJS } = require('../../GameEngineFinder/LocalGDJSFinder');
 
 // It's important to use remote and not electron for folder actions,
 // otherwise they will be opened in the background.

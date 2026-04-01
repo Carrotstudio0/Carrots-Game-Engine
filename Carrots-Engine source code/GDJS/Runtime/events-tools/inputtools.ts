@@ -270,6 +270,67 @@ namespace gdjs {
         instanceContainer.getScene().getRenderer().showCursor();
       };
 
+      const _sanitizePointerLockReason = (reason?: string): string => {
+        if (typeof reason !== 'string') {
+          return 'mouse-extension';
+        }
+        const trimmedReason = reason.trim();
+        return trimmedReason.length > 0 ? trimmedReason : 'mouse-extension';
+      };
+
+      export const requestPointerLock = function (
+        instanceContainer: gdjs.RuntimeInstanceContainer,
+        reason?: string
+      ): boolean {
+        const renderer = instanceContainer.getGame().getRenderer();
+        if (!renderer || typeof renderer.requestPointerLock !== 'function') {
+          return false;
+        }
+
+        return renderer.requestPointerLock(_sanitizePointerLockReason(reason));
+      };
+
+      export const exitPointerLock = function (
+        instanceContainer: gdjs.RuntimeInstanceContainer,
+        reason?: string
+      ): void {
+        const renderer = instanceContainer.getGame().getRenderer();
+        if (!renderer || typeof renderer.exitPointerLock !== 'function') {
+          return;
+        }
+
+        renderer.exitPointerLock(_sanitizePointerLockReason(reason));
+      };
+
+      export const isPointerLocked = function (
+        instanceContainer: gdjs.RuntimeInstanceContainer
+      ): boolean {
+        const renderer = instanceContainer.getGame().getRenderer();
+        if (!renderer || typeof renderer.isPointerLocked !== 'function') {
+          return false;
+        }
+
+        return renderer.isPointerLocked();
+      };
+
+      export const getMouseMovementX = function (
+        instanceContainer: gdjs.RuntimeInstanceContainer
+      ): float {
+        return instanceContainer
+          .getGame()
+          .getInputManager()
+          .getMouseMovementX();
+      };
+
+      export const getMouseMovementY = function (
+        instanceContainer: gdjs.RuntimeInstanceContainer
+      ): float {
+        return instanceContainer
+          .getGame()
+          .getInputManager()
+          .getMouseMovementY();
+      };
+
       export const getMouseWheelDelta = function (
         instanceContainer: gdjs.RuntimeInstanceContainer
       ) {

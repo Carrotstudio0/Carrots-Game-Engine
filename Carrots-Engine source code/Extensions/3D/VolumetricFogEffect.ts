@@ -223,7 +223,7 @@ namespace gdjs {
                 ? Math.max(0, effectData.doubleParameters.maxDistance)
                 : 1200;
             this._qualityMode =
-              effectData.stringParameters.qualityMode || 'medium';
+              effectData.stringParameters.qualityMode || 'high';
 
             this._lightPositions = makeVector3Array(MAX_VOLUMETRIC_LIGHTS);
             this._lightColors = makeVector3Array(MAX_VOLUMETRIC_LIGHTS);
@@ -464,7 +464,7 @@ namespace gdjs {
             if (parameterName === 'fogColor') {
               this._fogColor.setHex(gdjs.rgbOrHexStringToNumber(value));
             } else if (parameterName === 'qualityMode') {
-              this._qualityMode = value || 'medium';
+              this._qualityMode = value || 'high';
             }
           }
           updateColorParameter(parameterName: string, value: number): void {
@@ -502,7 +502,7 @@ namespace gdjs {
             this._lightScatter = syncData.ls;
             this._maxDistance = syncData.md;
             this._effectEnabled = syncData.e;
-            this._qualityMode = syncData.q || 'medium';
+            this._qualityMode = syncData.q || 'high';
 
             this.shaderPass.uniforms.fogColor.value.set(
               this._fogColor.r,

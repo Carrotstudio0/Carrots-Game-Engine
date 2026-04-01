@@ -31,6 +31,12 @@ class JsCodeEvent : public gd::BaseEvent {
 
   const gd::String& GetInlineCode() const { return inlineCode; };
   void SetInlineCode(const gd::String& code) { inlineCode = code; };
+  const gd::String& GetCodeLanguage() const { return codeLanguage; };
+  void SetCodeLanguage(const gd::String& language) {
+    codeLanguage = language == "typescript" ? "typescript" : "javascript";
+  };
+  const gd::String& GetTranspiledCode() const { return transpiledCode; };
+  void SetTranspiledCode(const gd::String& code) { transpiledCode = code; };
 
   const gd::String& GetParameterObjects() const { return parameterObjects.GetPlainString(); };
   void SetParameterObjects(const gd::String& objectName) {
@@ -54,6 +60,8 @@ class JsCodeEvent : public gd::BaseEvent {
   void Init(const JsCodeEvent& event);
 
   gd::String inlineCode;            ///< Contains the Javascript code of the event.
+  gd::String codeLanguage;          ///< "javascript" or "typescript".
+  gd::String transpiledCode;        ///< Generated JS when codeLanguage is TypeScript.
   gd::Expression parameterObjects;  ///< Name of the (group of) objects to pass as
                                     ///< parameter.
   bool useStrict;  ///< Should the generated JS function have "use strict". true

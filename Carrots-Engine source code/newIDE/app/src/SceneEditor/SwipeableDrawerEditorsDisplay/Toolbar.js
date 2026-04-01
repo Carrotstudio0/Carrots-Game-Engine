@@ -5,6 +5,7 @@ import * as React from 'react';
 import { ToolbarGroup } from '../../UI/Toolbar';
 import ToolbarSeparator from '../../UI/ToolbarSeparator';
 import IconButton from '../../UI/IconButton';
+import TextButton from '../../UI/TextButton';
 import ElementWithMenu from '../../UI/Menu/ElementWithMenu';
 import ToolbarCommands from '../ToolbarCommands';
 import { type MenuItemTemplate } from '../../UI/Menu/Menu.flow';
@@ -14,6 +15,10 @@ import TrashIcon from '../../UI/CustomSvgIcons/Trash';
 import GridIcon from '../../UI/CustomSvgIcons/Grid';
 import ZoomInIcon from '../../UI/CustomSvgIcons/ZoomIn';
 import EditSceneIcon from '../../UI/CustomSvgIcons/EditScene';
+import EventsIcon from '../../UI/CustomSvgIcons/Events';
+import FileWithLinesIcon from '../../UI/CustomSvgIcons/FileWithLines';
+import RectangleIcon from '../../UI/CustomSvgIcons/Rectangle';
+import VideoIcon from '../../UI/CustomSvgIcons/Video';
 import CompactToggleButtons from '../../UI/CompactToggleButtons';
 import Grid2d from '../../UI/CustomSvgIcons/Grid2d';
 import Grid3d from '../../UI/CustomSvgIcons/Grid3d';
@@ -23,7 +28,13 @@ type Props = {|
   setGameEditorMode: ('embedded-game' | 'instances-editor') => void,
   toggleObjectsList: () => void,
   toggleObjectGroupsList: () => void,
+  toggleCinematicTimeline: () => void,
+  isCinematicTimelineShown: boolean,
   toggleProperties: () => void,
+  onOpenSceneEvents: () => void,
+  onOpenSceneScript: () => void,
+  sceneEventsEnabled: boolean,
+  sceneScriptEnabled: boolean,
   toggleInstancesList: () => void,
   toggleLayersList: () => void,
   toggleProjectPanel: () => void,
@@ -39,6 +50,9 @@ type Props = {|
   toggleWindowMask: () => void,
   isGridShown: boolean,
   toggleGrid: () => void,
+  toggleSelectedPhysicsHitboxes: () => void,
+  canToggleSelectedPhysicsHitboxes: boolean,
+  areSelectedPhysicsHitboxesShown: boolean,
   openSetupGrid: () => void,
   getContextMenuZoomItems: I18nType => Array<MenuItemTemplate>,
   setZoomFactor: number => void,
@@ -96,6 +110,50 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function(props) {
           },
         ]}
       />
+      <TextButton
+        id="scene-toolbar-open-events-button-mobile"
+        label={<Trans>Events</Trans>}
+        icon={<EventsIcon />}
+        onClick={props.onOpenSceneEvents}
+        disabled={!props.sceneEventsEnabled}
+      />
+      <TextButton
+        id="scene-toolbar-open-script-button-mobile"
+        label={<Trans>Script</Trans>}
+        icon={<FileWithLinesIcon />}
+        onClick={props.onOpenSceneScript}
+        disabled={!props.sceneScriptEnabled}
+      />
+      <IconButton
+        size="small"
+        color="default"
+        onClick={props.toggleCinematicTimeline}
+        selected={props.isCinematicTimelineShown}
+        disabled={props.gameEditorMode !== 'embedded-game'}
+        tooltip={
+          props.gameEditorMode !== 'embedded-game'
+            ? t`Switch to 3D editor to use Cinematic Timeline`
+            : props.isCinematicTimelineShown
+            ? t`Close Cinematic Timeline`
+            : t`Open Cinematic Timeline`
+        }
+      >
+        <VideoIcon />
+      </IconButton>
+      <IconButton
+        size="small"
+        color="default"
+        onClick={props.toggleSelectedPhysicsHitboxes}
+        disabled={!props.canToggleSelectedPhysicsHitboxes}
+        selected={props.areSelectedPhysicsHitboxesShown}
+        tooltip={
+          props.areSelectedPhysicsHitboxesShown
+            ? t`Hide 3D physics hitboxes`
+            : t`Show 3D physics hitboxes`
+        }
+      >
+        <RectangleIcon />
+      </IconButton>
       <IconButton
         size="small"
         color="default"

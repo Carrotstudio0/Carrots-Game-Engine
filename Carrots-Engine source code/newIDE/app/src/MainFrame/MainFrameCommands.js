@@ -52,6 +52,7 @@ type CommandHandlers = {|
   onOpenDiagnosticReport: () => void,
   allowNetworkPreview: boolean,
   onOpenHomePage: () => void,
+  onOpenCinematicTimeline3D: () => void,
   onCreateProject: () => void,
   onOpenProject: () => void,
   onSaveProject: () => Promise<?FileMetadata>,
@@ -120,6 +121,10 @@ const useMainFrameCommands = (handlers: CommandHandlers) => {
 
   useCommand('OPEN_HOME_PAGE', true, {
     handler: handlers.onOpenHomePage,
+  });
+
+  useCommand('OPEN_CINEMATIC_TIMELINE_3D', !!handlers.project, {
+    handler: handlers.onOpenCinematicTimeline3D,
   });
 
   useCommand('CREATE_NEW_PROJECT', true, {

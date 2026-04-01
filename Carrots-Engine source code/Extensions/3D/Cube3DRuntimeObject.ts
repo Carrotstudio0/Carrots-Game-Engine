@@ -1,4 +1,12 @@
 namespace gdjs {
+  type Cube3DMaterialTypeString =
+    | 'Basic'
+    | 'StandardWithoutMetalness'
+    | 'Matte'
+    | 'Standard'
+    | 'Glossy'
+    | 'Metallic';
+
   /**
    * Base parameters for {@link gdjs.Cube3DRuntimeObject}
    * @category Objects > 3D Box
@@ -30,7 +38,7 @@ namespace gdjs {
       tint: string | undefined;
       isCastingShadow: boolean;
       isReceivingShadow: boolean;
-      materialType: 'Basic' | 'StandardWithoutMetalness';
+      materialType?: Cube3DMaterialTypeString;
     };
   }
   type FaceName = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom';
@@ -77,7 +85,7 @@ namespace gdjs {
       string,
     ];
     _materialType: gdjs.Cube3DRuntimeObject.MaterialType =
-      gdjs.Cube3DRuntimeObject.MaterialType.StandardWithoutMetalness;
+      gdjs.Cube3DRuntimeObject.MaterialType.Standard;
     _tint: string;
     _isCastingShadow: boolean = true;
     _isReceivingShadow: boolean = true;
@@ -439,7 +447,7 @@ namespace gdjs {
         oldObjectData.content.materialType !==
         newObjectData.content.materialType
       ) {
-        this.setMaterialType(newObjectData.content.materialType);
+        this.setMaterialType(newObjectData.content.materialType || 'Standard');
       }
       if (
         oldObjectData.content.isCastingShadow !==
@@ -539,12 +547,22 @@ namespace gdjs {
     }
 
     _convertMaterialType(
-      materialTypeString: string
+      materialTypeString: string | undefined
     ): gdjs.Cube3DRuntimeObject.MaterialType {
-      if (materialTypeString === 'StandardWithoutMetalness') {
-        return gdjs.Cube3DRuntimeObject.MaterialType.StandardWithoutMetalness;
-      } else {
-        return gdjs.Cube3DRuntimeObject.MaterialType.Basic;
+      switch (materialTypeString) {
+        case 'Basic':
+          return gdjs.Cube3DRuntimeObject.MaterialType.Basic;
+        case 'StandardWithoutMetalness':
+          return gdjs.Cube3DRuntimeObject.MaterialType.StandardWithoutMetalness;
+        case 'Matte':
+          return gdjs.Cube3DRuntimeObject.MaterialType.Matte;
+        case 'Glossy':
+          return gdjs.Cube3DRuntimeObject.MaterialType.Glossy;
+        case 'Metallic':
+          return gdjs.Cube3DRuntimeObject.MaterialType.Metallic;
+        case 'Standard':
+        default:
+          return gdjs.Cube3DRuntimeObject.MaterialType.Standard;
       }
     }
 
@@ -572,6 +590,10 @@ namespace gdjs {
     export enum MaterialType {
       Basic,
       StandardWithoutMetalness,
+      Matte,
+      Standard,
+      Glossy,
+      Metallic,
     }
   }
   gdjs.registerObject('Scene3D::Cube3DObject', gdjs.Cube3DRuntimeObject);

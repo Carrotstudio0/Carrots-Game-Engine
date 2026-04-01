@@ -1,4 +1,5 @@
 // @flow
+import * as React from 'react';
 import { type I18n as I18nType } from '@lingui/core';
 
 import {
@@ -158,6 +159,17 @@ export type SceneEditorsDisplayProps = {|
   onRestartInGameEditor: (reason: string) => void,
   showRestartInGameEditorAfterErrorButton: boolean,
   onEventsBasedObjectChildrenEdited: gdEventsBasedObject => void,
+  onOpenEvents: (sceneName: string) => void,
+  onOpenTypeScriptScripts: (
+    sceneName: string,
+    preferredScriptTarget?: ?{|
+      contextKind: 'scene' | 'object' | 'behavior',
+      sceneName?: string,
+      objectName?: string,
+      behaviorName?: string,
+    |}
+  ) => void,
+  embeddedEditorOverlay?: ?React.Node,
 |};
 
 export type SceneEditorsDisplayInterface = {|

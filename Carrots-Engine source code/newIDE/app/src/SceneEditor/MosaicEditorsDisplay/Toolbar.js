@@ -11,6 +11,8 @@ import { type MenuItemTemplate } from '../../UI/Menu/Menu.flow';
 import ObjectIcon from '../../UI/CustomSvgIcons/Object';
 import ObjectGroupIcon from '../../UI/CustomSvgIcons/ObjectGroup';
 import SceneIcon from '../../UI/CustomSvgIcons/Scene';
+import EventsIcon from '../../UI/CustomSvgIcons/Events';
+import FileWithLinesIcon from '../../UI/CustomSvgIcons/FileWithLines';
 import ExtensionIcon from '../../UI/CustomSvgIcons/Extension';
 import EditIcon from '../../UI/CustomSvgIcons/Edit';
 import InstancesListIcon from '../../UI/CustomSvgIcons/InstancesList';
@@ -18,12 +20,14 @@ import LayersIcon from '../../UI/CustomSvgIcons/Layers';
 import ProjectResourcesIcon from '../../UI/CustomSvgIcons/ProjectResources';
 import ConsoleIcon from '../../UI/CustomSvgIcons/Console';
 import BuildIcon from '../../UI/CustomSvgIcons/Hammer';
+import VideoIcon from '../../UI/CustomSvgIcons/Video';
 import UndoIcon from '../../UI/CustomSvgIcons/Undo';
 import RedoIcon from '../../UI/CustomSvgIcons/Redo';
 import TrashIcon from '../../UI/CustomSvgIcons/Trash';
 import GridIcon from '../../UI/CustomSvgIcons/Grid';
 import ZoomInIcon from '../../UI/CustomSvgIcons/ZoomIn';
 import EditSceneIcon from '../../UI/CustomSvgIcons/EditScene';
+import RectangleIcon from '../../UI/CustomSvgIcons/Rectangle';
 import {
   OPEN_INSTANCES_PANEL_BUTTON_ID,
   OPEN_LAYERS_PANEL_BUTTON_ID,
@@ -35,6 +39,7 @@ import {
   OPEN_OBJECT_GROUPS_PANEL_BUTTON_ID,
   OPEN_OBJECTS_PANEL_BUTTON_ID,
   OPEN_PROPERTIES_PANEL_BUTTON_ID,
+  TOGGLE_CINEMATIC_TIMELINE_BUTTON_ID,
 } from '../utils';
 import CompactToggleButtons from '../../UI/CompactToggleButtons';
 import Grid2d from '../../UI/CustomSvgIcons/Grid2d';
@@ -47,7 +52,13 @@ type Props = {|
   isObjectsListShown: boolean,
   toggleObjectGroupsList: () => void,
   isObjectGroupsListShown: boolean,
+  toggleCinematicTimeline: () => void,
+  isCinematicTimelineShown: boolean,
   onOpenScenesManager: () => void,
+  onOpenSceneEvents: () => void,
+  onOpenSceneScript: () => void,
+  sceneEventsEnabled: boolean,
+  sceneScriptEnabled: boolean,
   onOpenExtensionsManager: () => void,
   toggleProperties: () => void,
   isPropertiesShown: boolean,
@@ -71,6 +82,9 @@ type Props = {|
   toggleWindowMask: () => void,
   isGridShown: boolean,
   toggleGrid: () => void,
+  toggleSelectedPhysicsHitboxes: () => void,
+  canToggleSelectedPhysicsHitboxes: boolean,
+  areSelectedPhysicsHitboxesShown: boolean,
   openSetupGrid: () => void,
   getContextMenuZoomItems: I18nType => Array<MenuItemTemplate>,
   setZoomFactor: number => void,
@@ -139,8 +153,8 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
           selected={props.isInstancesListShown}
           tooltip={
             props.isInstancesListShown
-              ? t`Close Scene Objects Panel`
-              : t`Open Scene Objects Panel`
+              ? t`Close Hierarchy Panel`
+              : t`Open Hierarchy Panel`
           }
         >
           <InstancesListIcon />
@@ -201,6 +215,16 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
         >
           <BuildIcon />
         </IconButton>
+        <IconButton
+          size="small"
+          color="default"
+          id="scene-toolbar-open-script-button-left"
+          onClick={props.onOpenSceneScript}
+          disabled={!props.sceneScriptEnabled}
+          tooltip={t`Open Script Workspace`}
+        >
+          <FileWithLinesIcon />
+        </IconButton>
         <ToolbarSeparator />
       </ToolbarGroup>
       <ToolbarGroup lastChild>
@@ -212,8 +236,8 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
           selected={props.isObjectsListShown}
           tooltip={
             props.isObjectsListShown
-              ? t`Close Hierarchy Panel`
-              : t`Open Hierarchy Panel`
+              ? t`Close Objects Panel`
+              : t`Open Objects Panel`
           }
         >
           <ObjectIcon />
@@ -235,11 +259,36 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
         <IconButton
           size="small"
           color="default"
+          id={TOGGLE_CINEMATIC_TIMELINE_BUTTON_ID}
+          onClick={props.toggleCinematicTimeline}
+          selected={props.isCinematicTimelineShown}
+          disabled={props.gameEditorMode !== 'embedded-game'}
+          tooltip={
+            props.gameEditorMode !== 'embedded-game'
+              ? t`Switch to 3D editor to use Cinematic Timeline`
+              : props.isCinematicTimelineShown
+              ? t`Close Cinematic Timeline`
+              : t`Open Cinematic Timeline`
+          }
+        >
+          <VideoIcon />
+        </IconButton>
+        <IconButton
+          size="small"
+          color="default"
           id={OPEN_SCENES_MANAGER_BUTTON_ID}
           onClick={props.onOpenScenesManager}
           tooltip={t`Open Scenes Manager`}
         >
           <SceneIcon />
+        </IconButton>
+        <IconButton
+          id="scene-toolbar-open-events-button"
+          onClick={props.onOpenSceneEvents}
+          disabled={!props.sceneEventsEnabled}
+          tooltip={t`Open Events Sheet`}
+        >
+          <EventsIcon />
         </IconButton>
         <IconButton
           size="small"
@@ -263,6 +312,21 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
           }
         >
           <EditIcon />
+        </IconButton>
+        <ToolbarSeparator />
+        <IconButton
+          size="small"
+          color="default"
+          onClick={props.toggleSelectedPhysicsHitboxes}
+          disabled={!props.canToggleSelectedPhysicsHitboxes}
+          selected={props.areSelectedPhysicsHitboxesShown}
+          tooltip={
+            props.areSelectedPhysicsHitboxesShown
+              ? t`Hide 3D physics hitboxes`
+              : t`Show 3D physics hitboxes`
+          }
+        >
+          <RectangleIcon />
         </IconButton>
         <ToolbarSeparator />
         <ElementWithMenu

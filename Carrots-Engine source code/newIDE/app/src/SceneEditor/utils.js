@@ -13,9 +13,12 @@ export const OPEN_BUILD_PANEL_BUTTON_ID = 'toolbar-open-build-panel-button';
 export const OPEN_SCENES_MANAGER_BUTTON_ID = 'toolbar-open-scenes-button';
 export const OPEN_EXTENSIONS_MANAGER_BUTTON_ID =
   'toolbar-open-extensions-button';
+export const TOGGLE_CINEMATIC_TIMELINE_BUTTON_ID =
+  'toolbar-toggle-cinematic-timeline-button';
 export const TOOLBAR_COMMON_FORMATTED_BUTTON_IDS = [
   `#${OPEN_OBJECTS_PANEL_BUTTON_ID}`,
   `#${OPEN_OBJECT_GROUPS_PANEL_BUTTON_ID}`,
+  `#${TOGGLE_CINEMATIC_TIMELINE_BUTTON_ID}`,
   `#${OPEN_PROPERTIES_PANEL_BUTTON_ID}`,
   `#${OPEN_INSTANCES_PANEL_BUTTON_ID}`,
   `#${OPEN_LAYERS_PANEL_BUTTON_ID}`,

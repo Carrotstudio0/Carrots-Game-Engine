@@ -12,6 +12,7 @@ export type CommandName =
   | 'LAUNCH_PREVIEW_WITH_DIAGNOSTIC_REPORT'
   | 'OPEN_DIAGNOSTIC_REPORT'
   | 'OPEN_HOME_PAGE'
+  | 'OPEN_CINEMATIC_TIMELINE_3D'
   | 'CREATE_NEW_PROJECT'
   | 'OPEN_PROJECT'
   | 'SAVE_PROJECT'
@@ -27,6 +28,7 @@ export type CommandName =
   | 'OPEN_PROJECT_VARIABLES'
   | 'OPEN_PLATFORM_SPECIFIC_ASSETS_DIALOG'
   | 'OPEN_PROJECT_RESOURCES'
+  | 'OPEN_PROJECT_TYPESCRIPT_SCRIPTS'
   | 'OPEN_SEARCH_EXTENSIONS_DIALOG'
   | 'OPEN_LAYOUT'
   | 'OPEN_EXTERNAL_EVENTS'
@@ -127,6 +129,10 @@ const commandsList: { [CommandName]: CommandMetadata } = {
     displayText: t`Show diagnostic report`,
   },
   OPEN_HOME_PAGE: { area: 'IDE', displayText: t`Show Home` },
+  OPEN_CINEMATIC_TIMELINE_3D: {
+    area: 'IDE',
+    displayText: t`Open cinematic timeline 3D`,
+  },
   CREATE_NEW_PROJECT: {
     area: 'GENERAL',
     displayText: t`Create a new project`,
@@ -196,6 +202,10 @@ const commandsList: { [CommandName]: CommandMetadata } = {
   OPEN_PROJECT_RESOURCES: {
     area: 'PROJECT',
     displayText: t`Open project resources`,
+  },
+  OPEN_PROJECT_TYPESCRIPT_SCRIPTS: {
+    area: 'PROJECT',
+    displayText: t`Open TypeScript scripts`,
   },
   OPEN_SEARCH_EXTENSIONS_DIALOG: {
     area: 'PROJECT',

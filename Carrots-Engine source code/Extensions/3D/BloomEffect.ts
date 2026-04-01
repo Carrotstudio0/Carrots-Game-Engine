@@ -31,7 +31,7 @@ namespace gdjs {
             gdjs.markScene3DPostProcessingPass(this.shaderPass, 'BLOOM');
             this._isEnabled = false;
             this._qualityMode =
-              effectData.stringParameters.qualityMode || 'medium';
+              effectData.stringParameters.qualityMode || 'high';
             this._renderSize = new THREE.Vector2();
           }
 
@@ -144,7 +144,7 @@ namespace gdjs {
           }
           updateStringParameter(parameterName: string, value: string): void {
             if (parameterName === 'qualityMode') {
-              this._qualityMode = value || 'medium';
+              this._qualityMode = value || 'high';
             }
           }
           updateColorParameter(parameterName: string, value: number): void {}
@@ -164,7 +164,7 @@ namespace gdjs {
             this.shaderPass.strength = data.s;
             this.shaderPass.radius = data.r;
             this.shaderPass.threshold = data.t;
-            this._qualityMode = data.q || 'medium';
+            this._qualityMode = data.q || 'high';
           }
         })();
       }

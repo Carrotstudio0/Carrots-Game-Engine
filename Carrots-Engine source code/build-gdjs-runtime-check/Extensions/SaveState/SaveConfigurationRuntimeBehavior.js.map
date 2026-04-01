@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../Extensions/SaveState/SaveConfigurationRuntimeBehavior.ts"],
+  "sourcesContent": ["namespace gdjs {\r\n  // const logger = new gdjs.Logger('Save State');\r\n\r\n  /**\r\n   * @category Behaviors > Save State\r\n   */\r\n  export class SaveConfigurationRuntimeBehavior extends gdjs.RuntimeBehavior {\r\n    private readonly _defaultProfilePersistence: 'Persisted' | 'DoNotSave' =\r\n      'Persisted';\r\n    private readonly _persistedInProfiles = '';\r\n\r\n    constructor(\r\n      instanceContainer: gdjs.RuntimeInstanceContainer,\r\n      behaviorData: any,\r\n      owner: RuntimeObject\r\n    ) {\r\n      super(instanceContainer, behaviorData, owner);\r\n      this._defaultProfilePersistence =\r\n        behaviorData.defaultProfilePersistence || 'Persisted';\r\n      this._persistedInProfiles = behaviorData.persistedInProfiles || '';\r\n    }\r\n\r\n    getDefaultProfilePersistence() {\r\n      return this._defaultProfilePersistence;\r\n    }\r\n\r\n    getPersistedInProfiles() {\r\n      return this._persistedInProfiles;\r\n    }\r\n  }\r\n  gdjs.registerBehavior(\r\n    'SaveState::SaveConfiguration',\r\n    gdjs.SaveConfigurationRuntimeBehavior\r\n  );\r\n}\r\n"],
+  "mappings": "AAAA,GAAU,MAAV,UAAU,EAAV,CAMS,eAA+C,GAAK,eAAgB,CAKzE,YACE,EACA,EACA,EACA,CACA,MAAM,EAAmB,EAAc,GATxB,gCACf,YACe,0BAAuB,GAQtC,KAAK,2BACH,EAAa,2BAA6B,YAC5C,KAAK,qBAAuB,EAAa,qBAAuB,GAGlE,8BAA+B,CAC7B,MAAO,MAAK,2BAGd,wBAAyB,CACvB,MAAO,MAAK,sBArBT,EAAM,mCAwBb,EAAK,iBACH,+BACA,EAAK,oCAhCC",
+  "names": []
+}

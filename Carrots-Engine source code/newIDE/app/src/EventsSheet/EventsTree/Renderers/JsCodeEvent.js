@@ -18,6 +18,10 @@ import { type ParameterFieldInterface } from '../../ParameterFields/ParameterFie
 import { Trans } from '@lingui/macro';
 import ChevronArrowTop from '../../../UI/CustomSvgIcons/ChevronArrowTop';
 import ChevronArrowBottom from '../../../UI/CustomSvgIcons/ChevronArrowBottom';
+import {
+  extractTranspiledJavaScriptCode,
+  isTypeScriptStoredCode,
+} from '../../../CodeEditor/TypeScriptEventCode';
 const gd: libGDevelop = global.gd;
 
 const fontFamily = '"Lucida Console", Monaco, monospace';
@@ -81,20 +85,53 @@ export default class JsCodeEvent extends React.Component<
   _input: ?any;
   _inlineCodeBeforeChanges: ?string;
 
-  onFocus = () => {
+  _supportsNativeTypeScriptStorage = (jsCodeEvent: any): boolean =>
+    typeof jsCodeEvent.getCodeLanguage === 'function' &&
+    typeof jsCodeEvent.setCodeLanguage === 'function' &&
+    typeof jsCodeEvent.getTranspiledCode === 'function' &&
+    typeof jsCodeEvent.setTranspiledCode === 'function';
+
+  _getJavaScriptInlineCode = (): string => {
     const jsCodeEvent = gd.asJsCodeEvent(this.props.event);
-    this._inlineCodeBeforeChanges = jsCodeEvent.getInlineCode();
+    const inlineCode = jsCodeEvent.getInlineCode();
+
+    if (
+      this._supportsNativeTypeScriptStorage(jsCodeEvent) &&
+      jsCodeEvent.getCodeLanguage() === 'typescript'
+    ) {
+      const transpiledCode = jsCodeEvent.getTranspiledCode();
+      return transpiledCode || inlineCode;
+    }
+
+    if (isTypeScriptStoredCode(inlineCode)) {
+      return extractTranspiledJavaScriptCode(inlineCode);
+    }
+
+    return inlineCode;
+  };
+
+  onFocus = () => {
+    this._inlineCodeBeforeChanges = this._getJavaScriptInlineCode();
   };
 
   onBlur = () => {
-    const jsCodeEvent = gd.asJsCodeEvent(this.props.event);
-    const inlineCodeAfterChanges = jsCodeEvent.getInlineCode();
+    const inlineCodeAfterChanges = this._getJavaScriptInlineCode();
     if (this._inlineCodeBeforeChanges !== inlineCodeAfterChanges)
       this.props.onEndEditingEvent();
   };
 
   onChange = (newValue: string) => {
     const jsCodeEvent = gd.asJsCodeEvent(this.props.event);
+
+    if (this._supportsNativeTypeScriptStorage(jsCodeEvent)) {
+      if (jsCodeEvent.getCodeLanguage() !== 'javascript') {
+        jsCodeEvent.setCodeLanguage('javascript');
+      }
+      if (jsCodeEvent.getTranspiledCode()) {
+        jsCodeEvent.setTranspiledCode('');
+      }
+    }
+
     jsCodeEvent.setInlineCode(newValue);
   };
 
@@ -269,7 +306,7 @@ export default class JsCodeEvent extends React.Component<
           >
             {functionStart}
             <CodeEditor
-              value={jsCodeEvent.getInlineCode()}
+              value={this._getJavaScriptInlineCode()}
               onChange={this.onChange}
               width={contentRect.bounds.width - 5}
               height={this._getCodeEditorHeight()}

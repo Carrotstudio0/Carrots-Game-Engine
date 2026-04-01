@@ -153,6 +153,53 @@ async function getBrowserSWPreviewFile(path) {
   }
 }
 
+const createNoStoreHeaders = contentType => ({
+  'Content-Type': contentType,
+  // Prevent caching to ensure latest version is always served
+  'Cache-Control': 'no-store, no-cache, must-revalidate',
+  Pragma: 'no-cache',
+  Expires: '0',
+  // CORS headers for cross-origin requests if needed
+  'Access-Control-Allow-Origin': '*',
+});
+
+const isWebManifestPath = relativePath =>
+  /\/manifest\.webmanifest$/i.test(relativePath);
+
+const createFallbackManifestResponse = () => {
+  const fallbackManifest = {
+    short_name: 'Preview',
+    name: 'GDevelop Preview',
+    start_url: './index.html',
+    display: 'standalone',
+    theme_color: '#000000',
+    background_color: '#000000',
+    icons: [],
+  };
+
+  return new Response(JSON.stringify(fallbackManifest), {
+    status: 200,
+    headers: createNoStoreHeaders('application/manifest+json; charset=utf-8'),
+  });
+};
+
+const tryGetManifestFallbackResponse = async relativePath => {
+  const manifestJsonPath = relativePath.replace(
+    /manifest\.webmanifest$/i,
+    'manifest.json'
+  );
+  const manifestJsonRecord = await getBrowserSWPreviewFile(manifestJsonPath);
+
+  if (manifestJsonRecord) {
+    return new Response(manifestJsonRecord.bytes, {
+      status: 200,
+      headers: createNoStoreHeaders('application/manifest+json; charset=utf-8'),
+    });
+  }
+
+  return createFallbackManifestResponse();
+};
+
 /**
  * Handles fetch events for browser SW preview files served from IndexedDB.
  */
@@ -170,6 +217,14 @@ self.addEventListener('fetch', event => {
           const fileRecord = await getBrowserSWPreviewFile(relativePath);
 
           if (!fileRecord) {
+            if (isWebManifestPath(relativePath)) {
+              console.info(
+                '[ServiceWorker] Web manifest missing in IndexedDB, serving fallback for:',
+                relativePath
+              );
+              return await tryGetManifestFallbackResponse(relativePath);
+            }
+
             console.warn(
               '[ServiceWorker] File not found in IndexedDB:',
               relativePath
@@ -188,16 +243,9 @@ self.addEventListener('fetch', event => {
           // Return the file with appropriate headers
           return new Response(fileRecord.bytes, {
             status: 200,
-            headers: {
-              'Content-Type':
-                fileRecord.contentType || 'application/octet-stream',
-              // Prevent caching to ensure latest version is always served
-              'Cache-Control': 'no-store, no-cache, must-revalidate',
-              Pragma: 'no-cache',
-              Expires: '0',
-              // CORS headers for cross-origin requests if needed
-              'Access-Control-Allow-Origin': '*',
-            },
+            headers: createNoStoreHeaders(
+              fileRecord.contentType || 'application/octet-stream'
+            ),
           });
         } catch (error) {
           console.error(
@@ -300,9 +348,23 @@ if (workbox) {
     })
   );
 
+  // Local editor assets like the transparent background checkerboard should
+  // keep working even if the dev server briefly reconnects.
+  workbox.routing.registerRoute(
+    /\/(?:res|JsPlatform|CppPlatform|extensions)\/.*\.(?:png|gif|jpg|jpeg|svg)(\?.*)?$/,
+    workbox.strategies.cacheFirst({
+      cacheName: 'gdevelop-local-resources-cache',
+      plugins: [
+        new workbox.expiration.Plugin({
+          maxEntries: 150,
+        }),
+      ],
+    })
+  );
+
   // TODO: this should be useless?
   workbox.routing.registerRoute(
-    /\.(?:png|gif|jpg|jpeg)$/,
+    /\.(?:png|gif|jpg|jpeg|svg)(\?.*)?$/,
     workbox.strategies.networkFirst({
       cacheName: 'images',
       plugins: [
@@ -312,6 +374,15 @@ if (workbox) {
       ],
     })
   );
+
+  workbox.routing.setCatchHandler(async ({ event }) => {
+    const cachedResponse = await caches.match(event.request);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+
+    return Response.error();
+  });
 } else {
   console.log(
     '[ServiceWorker] Workbox could not be loaded - no offline support'

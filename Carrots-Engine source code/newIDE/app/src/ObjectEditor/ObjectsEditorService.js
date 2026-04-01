@@ -10,6 +10,7 @@ import ObjectPropertiesEditor from './Editors/ObjectPropertiesEditor';
 import CustomObjectPropertiesEditor from './Editors/CustomObjectPropertiesEditor';
 import Cube3DEditor from './Editors/Cube3DEditor';
 import Model3DEditor from './Editors/Model3DEditor';
+import Model3DAnimationEditor from './Editors/Model3DAnimationEditor';
 import SpineEditor from './Editors/SpineEditor';
 import SimpleTileMapEditor from './Editors/SimpleTileMapEditor';
 
@@ -140,6 +141,7 @@ const ObjectsEditorService = {
     },
     'Scene3D::Model3DObject': {
       component: Model3DEditor,
+      animationComponent: Model3DAnimationEditor,
       createNewObject: (
         objectConfiguration: gdObjectConfiguration
       ): gdObjectConfiguration =>

@@ -7,9 +7,9 @@ const ToolbarSeparator = (): React.MixedElement => {
   return (
     <span
       style={{
-        height: 32,
-        marginLeft: 3,
-        marginRight: 3,
+        height: 24,
+        marginLeft: 2,
+        marginRight: 2,
         borderLeftStyle: 'solid',
         borderLeftWidth: 1,
         borderColor: theme.toolbar.separatorColor,

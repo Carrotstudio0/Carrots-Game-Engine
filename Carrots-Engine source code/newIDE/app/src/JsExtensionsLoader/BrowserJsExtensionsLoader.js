@@ -204,6 +204,13 @@ const jsExtensions = [
     objectsRenderingServiceModules: {},
   },
   {
+    name: 'CinematicTimeline',
+    // $FlowFixMe[incompatible-type] - this path is ignored for Flow.
+    // $FlowFixMe[cannot-resolve-module]
+    extensionModule: require('GDJS-for-web-app-only/Runtime/Extensions/CinematicTimeline/JsExtension.js'),
+    objectsRenderingServiceModules: {},
+  },
+  {
     name: 'Screenshot',
     // $FlowFixMe[incompatible-type] - this path is ignored for Flow.
     // $FlowFixMe[cannot-resolve-module]

@@ -11,8 +11,8 @@ export const onOpenWithPicker = (): Promise<?FileMetadata> => {
     title: 'Open a project',
     properties: ['openFile'],
     message:
-      'If you want to open your GDevelop 4 project, be sure to save it as a .json file',
-    filters: [{ name: 'GDevelop 5 project', extensions: ['json'] }],
+      'If you want to open a legacy project, be sure to save it as a .json file',
+    filters: [{ name: 'Carrots project', extensions: ['json'] }],
     // $FlowFixMe[incompatible-type]
   }).then(filePath => (filePath ? { fileIdentifier: filePath } : null));
 };

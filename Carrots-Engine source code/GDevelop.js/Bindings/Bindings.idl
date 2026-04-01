@@ -4333,6 +4333,10 @@ interface JsCodeEvent {
 
     [Const, Ref] DOMString GetInlineCode();
     void SetInlineCode([Const] DOMString type);
+    [Const, Ref] DOMString GetCodeLanguage();
+    void SetCodeLanguage([Const] DOMString language);
+    [Const, Ref] DOMString GetTranspiledCode();
+    void SetTranspiledCode([Const] DOMString code);
     [Const, Ref] DOMString GetParameterObjects();
     void SetParameterObjects([Const] DOMString type);
     boolean IsEventsSheetExpanded();

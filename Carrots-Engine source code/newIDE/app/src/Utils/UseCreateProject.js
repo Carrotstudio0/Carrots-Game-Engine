@@ -37,6 +37,7 @@ import {
 } from './GDevelopServices/Asset';
 import { getDefaultRegisterGameProperties } from './UseGameAndBuildsManager';
 import { TutorialContext } from '../Tutorial/TutorialContext';
+import { setProjectScriptingMode } from './ScriptingMode';
 
 export type CreateProjectResult = {|
   createdProject: gdProject | null,
@@ -131,6 +132,9 @@ const useCreateProject = ({
     project.setVersion('1.0.0');
     project.getAuthorIds().clear();
     project.setAuthor('');
+    // Default project branding is fully customizable and disabled by default.
+    project.getLoadingScreen().showGDevelopLogoDuringLoadingScreen(false);
+    project.getWatermark().showGDevelopWatermark(false);
     if (newProjectSetup.width && newProjectSetup.height) {
       project.setGameResolutionSize(
         newProjectSetup.width,
@@ -145,6 +149,9 @@ const useCreateProject = ({
     }
     if (newProjectSetup.projectName) {
       project.setName(newProjectSetup.projectName || 'New game');
+    }
+    if (newProjectSetup.scriptingMode) {
+      setProjectScriptingMode(project, newProjectSetup.scriptingMode);
     }
   };
 

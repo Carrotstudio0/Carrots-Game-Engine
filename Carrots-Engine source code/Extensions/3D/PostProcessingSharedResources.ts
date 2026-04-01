@@ -43,29 +43,29 @@ namespace gdjs {
     [key in Scene3DPostProcessingQualityMode]: Scene3DPostProcessingQualityProfile;
   } = {
     low: {
-      captureScale: 0.5,
-      ssaoSamples: 4,
-      ssrSteps: 10,
-      fogSteps: 14,
-      dofSamples: 4,
-      dofBlurScale: 0.65,
-    },
-    medium: {
-      // Medium defaults to half-resolution to keep effects usable on mid-range GPUs.
-      captureScale: 0.5,
-      ssaoSamples: 4,
+      captureScale: 0.67,
+      ssaoSamples: 6,
       ssrSteps: 14,
       fogSteps: 20,
       dofSamples: 4,
-      dofBlurScale: 0.85,
+      dofBlurScale: 0.75,
     },
-    high: {
-      captureScale: 0.75,
+    medium: {
+      // Medium prioritizes image stability while keeping good performance.
+      captureScale: 0.85,
       ssaoSamples: 8,
       ssrSteps: 24,
-      fogSteps: 34,
+      fogSteps: 32,
+      dofSamples: 6,
+      dofBlurScale: 0.95,
+    },
+    high: {
+      captureScale: 1,
+      ssaoSamples: 12,
+      ssrSteps: 32,
+      fogSteps: 48,
       dofSamples: 8,
-      dofBlurScale: 1.05,
+      dofBlurScale: 1.1,
     },
   };
   const qualityRank: Record<Scene3DPostProcessingQualityMode, number> = {
@@ -175,15 +175,15 @@ namespace gdjs {
       previousViewport: new THREE.Vector4(),
       previousScissor: new THREE.Vector4(),
       lastCaptureTimeFromStartMs: -1,
-      qualityMode: 'medium',
+      qualityMode: 'high',
       hasStackController: false,
       stackEnabled: true,
       lastPassOrderSignature: '',
       effectQualityOverrides: {},
-      adaptiveQualityEnabled: true,
+      adaptiveQualityEnabled: false,
       adaptiveTargetFps: 60,
       adaptiveTargetFrameMs: 1000 / 60,
-      adaptiveQualityMode: 'medium',
+      adaptiveQualityMode: 'high',
       adaptiveFrameTimeAverageMs: -1,
       lastFrameTimeFromStartMs: -1,
       lastAdaptiveQualityChangeTimeFromStartMs: -1,
@@ -248,7 +248,7 @@ namespace gdjs {
     state.stackEnabled = enabled;
     state.qualityMode = normalizeQualityMode(qualityMode);
     state.adaptiveQualityEnabled =
-      adaptiveQualityEnabled === undefined ? true : !!adaptiveQualityEnabled;
+      adaptiveQualityEnabled === undefined ? false : !!adaptiveQualityEnabled;
     state.adaptiveTargetFps = clampAdaptiveTargetFps(
       adaptiveTargetFps === undefined ? state.adaptiveTargetFps : adaptiveTargetFps
     );
@@ -305,13 +305,13 @@ namespace gdjs {
 
     state.hasStackController = false;
     state.stackEnabled = true;
-    state.qualityMode = 'medium';
+    state.qualityMode = 'high';
     state.lastPassOrderSignature = '';
     state.effectQualityOverrides = {};
-    state.adaptiveQualityEnabled = true;
+    state.adaptiveQualityEnabled = false;
     state.adaptiveTargetFps = 60;
     state.adaptiveTargetFrameMs = 1000 / 60;
-    state.adaptiveQualityMode = 'medium';
+    state.adaptiveQualityMode = 'high';
     state.adaptiveFrameTimeAverageMs = -1;
     state.lastFrameTimeFromStartMs = -1;
     state.lastAdaptiveQualityChangeTimeFromStartMs = -1;
@@ -397,9 +397,9 @@ namespace gdjs {
         state.lastAdaptiveQualityChangeTimeFromStartMs < 0
           ? Number.POSITIVE_INFINITY
           : timeFromStartMs - state.lastAdaptiveQualityChangeTimeFromStartMs;
-      const canSwitchQuality = timeSinceLastSwitchMs >= 600;
-      const shouldDecreaseQuality = averageFrameTimeMs > targetFrameMs * 1.18;
-      const shouldIncreaseQuality = averageFrameTimeMs < targetFrameMs * 0.82;
+      const canSwitchQuality = timeSinceLastSwitchMs >= 1400;
+      const shouldDecreaseQuality = averageFrameTimeMs > targetFrameMs * 1.24;
+      const shouldIncreaseQuality = averageFrameTimeMs < targetFrameMs * 0.76;
 
       if (shouldDecreaseQuality && canSwitchQuality) {
         const nextMode = getNextLowerQualityMode(state.adaptiveQualityMode);
@@ -419,7 +419,7 @@ namespace gdjs {
 
       const frameBudgetRatio = targetFrameMs / Math.max(1, averageFrameTimeMs);
       state.adaptiveCaptureScaleMultiplier = gdjs.evtTools.common.clamp(
-        0.7,
+        0.85,
         1,
         frameBudgetRatio
       );
@@ -461,7 +461,7 @@ namespace gdjs {
   ): Scene3DPostProcessingQualityProfile {
     const state = getOrCreateSharedState(target);
     if (!state) {
-      return qualityProfiles.medium;
+      return qualityProfiles.high;
     }
     return qualityProfiles[getEffectiveScene3DQualityMode(state)];
   };
@@ -482,7 +482,7 @@ namespace gdjs {
 
     const quality = getScene3DPostProcessingQualityProfile(target);
     const captureScale = gdjs.evtTools.common.clamp(
-      0.35,
+      0.6,
       1,
       quality.captureScale * state.adaptiveCaptureScaleMultiplier
     );

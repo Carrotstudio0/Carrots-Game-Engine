@@ -22,6 +22,7 @@ import {
   type ShowAlertFunction,
   type ShowConfirmFunction,
 } from '../../UI/Alert/AlertContext';
+import { findDefaultFolder } from './LocalPathFinder';
 
 const fs = optionalRequire('fs-extra');
 const path = optionalRequire('path');
@@ -260,9 +261,7 @@ export const generateOnChooseSaveProjectAsLocation = ({
           closeDialog();
           resolve(null);
         }}
-        nameSuggestion={
-          fileMetadata ? `${project.getName()} - Copy` : project.getName()
-        }
+        nameSuggestion={fileMetadata ? `${project.getName()} - Copy` : 'carrots'}
         mainActionLabel={<Trans>Continue</Trans>}
         displayOptionToGenerateNewProjectUuid={
           displayOptionToGenerateNewProjectUuid
@@ -280,15 +279,23 @@ export const generateOnChooseSaveProjectAsLocation = ({
   let defaultPath = fileMetadata ? fileMetadata.fileIdentifier : '';
   // $FlowFixMe[incompatible-use]
   const { name } = options;
-  if (path && defaultPath && name) {
-    const safeFilename = name.replace(/[<>:"/\\|?*]/g, '_');
-    defaultPath = path.join(path.dirname(defaultPath), `${safeFilename}.json`);
+  if (path && name) {
+    const safeFilename = name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'carrots';
+    if (defaultPath) {
+      defaultPath = path.join(path.dirname(defaultPath), `${safeFilename}.json`);
+    } else {
+      const defaultFolder =
+        remote && remote.app ? findDefaultFolder(remote.app) : '';
+      defaultPath = defaultFolder
+        ? path.join(defaultFolder, `${safeFilename}.json`)
+        : `${safeFilename}.json`;
+    }
   }
 
   const browserWindow = remote.getCurrentWindow();
   const saveDialogOptions = {
     defaultPath,
-    filters: [{ name: 'GDevelop 5 project', extensions: ['json'] }],
+    filters: [{ name: 'Carrots project', extensions: ['json'] }],
   };
 
   if (!dialog) {
@@ -406,7 +413,7 @@ export const getProjectLocation = ({
     : '';
   const projectFileName = projectName
     ? cleanUpProjectFileName(projectName) + '.json'
-    : 'game.json';
+    : 'carrots.json';
   return {
     fileIdentifier: path.join(outputPath, projectFileName),
   };
@@ -458,8 +465,8 @@ const isTryingToSaveInForbiddenPath = (filePath: string): boolean => {
   // executable is running, prevent this, as it will be deleted when the app is updated.
   const exePath = remote.app.getPath('exe');
   if (!exePath) return false; // This should not happen, but let's be safe.
-  const gdevelopDirectory = path.dirname(exePath);
-  return filePath.startsWith(gdevelopDirectory);
+  const applicationDirectory = path.dirname(exePath);
+  return filePath.startsWith(applicationDirectory);
 };
 
 export const canFileMetadataBeSafelySaved = async (

@@ -4,7 +4,6 @@ import { Trans } from '@lingui/macro';
 import * as React from 'react';
 import LocalFileSystem from '../LocalFileSystem';
 import optionalRequire from '../../../Utils/OptionalRequire';
-import { findGDJS } from '../../../GameEngineFinder/LocalGDJSFinder';
 import LocalNetworkPreviewDialog from './LocalNetworkPreviewDialog';
 import assignIn from 'lodash/assignIn';
 import {
@@ -22,12 +21,147 @@ import {
 import Window from '../../../Utils/Window';
 import { getIDEVersionWithHash } from '../../../Version';
 import { setEmbeddedGameFramePreviewLocation } from '../../../EmbeddedGame/EmbeddedGameFrame';
+const localGDJSFinder = require('../../../GameEngineFinder/LocalGDJSFinder');
 const electron = optionalRequire('electron');
 const path = optionalRequire('path');
+const fs = optionalRequire('fs');
 const ipcRenderer = electron ? electron.ipcRenderer : null;
 const gd: libGDevelop = global.gd;
 
+const resolveFindGDJS = (): (() => Promise<{|gdjsRoot: string|}>) => {
+  if (typeof localGDJSFinder === 'function') {
+    return localGDJSFinder;
+  }
+  if (localGDJSFinder && typeof localGDJSFinder.findGDJS === 'function') {
+    return localGDJSFinder.findGDJS;
+  }
+  if (
+    localGDJSFinder &&
+    localGDJSFinder.default &&
+    typeof localGDJSFinder.default === 'function'
+  ) {
+    return localGDJSFinder.default;
+  }
+  if (
+    localGDJSFinder &&
+    localGDJSFinder.default &&
+    typeof localGDJSFinder.default.findGDJS === 'function'
+  ) {
+    return localGDJSFinder.default.findGDJS;
+  }
+  throw new Error('Unable to resolve LocalGDJSFinder.findGDJS.');
+};
+
 let nextPreviewId = 1;
+
+const ensureMultithreadingManagerScriptTag = (
+  htmlContent: string
+): string => {
+  if (/multithreadingmanager\.js/i.test(htmlContent)) return htmlContent;
+
+  const runtimeGameScriptTagRegex =
+    /<script\b[^>]*\bsrc=(["'])([^"']*runtimegame\.js[^"']*)\1[^>]*>\s*<\/script>/i;
+  const runtimeGameScriptTagMatch = htmlContent.match(runtimeGameScriptTagRegex);
+  if (!runtimeGameScriptTagMatch) return htmlContent;
+
+  const runtimeGameScriptSrc = runtimeGameScriptTagMatch[2];
+  const multithreadingManagerScriptSrc = runtimeGameScriptSrc.replace(
+    /runtimegame\.js/i,
+    'multithreadingmanager.js'
+  );
+  const multithreadingManagerScriptTag = `<script src="${multithreadingManagerScriptSrc}" crossorigin="anonymous"></script>\n`;
+
+  return htmlContent.replace(
+    runtimeGameScriptTagRegex,
+    `${multithreadingManagerScriptTag}${runtimeGameScriptTagMatch[0]}`
+  );
+};
+
+const removeNonJavaScriptScriptTags = (htmlContent: string): string =>
+  htmlContent.replace(
+    /<script\b[^>]*\bsrc=(["'])([^"']+)\1[^>]*>\s*<\/script>\s*/gi,
+    (scriptTag, _quote, scriptSrc) =>
+      /\.m?js(?:[?#].*)?$/i.test(scriptSrc) ? scriptTag : ''
+  );
+
+const ensureMultithreadingManagerRuntimeFile = ({
+  outputDir,
+  gdjsRoot,
+}: {
+  outputDir: string,
+  gdjsRoot: ?string,
+}): boolean => {
+  if (!fs || !path) return false;
+
+  const previewMultithreadingManagerPath = path.join(
+    outputDir,
+    'multithreadingmanager.js'
+  );
+
+  if (fs.existsSync(previewMultithreadingManagerPath)) {
+    return true;
+  }
+
+  if (!gdjsRoot) {
+    return false;
+  }
+
+  const sourceMultithreadingManagerPath = path.join(
+    gdjsRoot,
+    'Runtime',
+    'multithreadingmanager.js'
+  );
+
+  if (!fs.existsSync(sourceMultithreadingManagerPath)) {
+    return false;
+  }
+
+  fs.copyFileSync(
+    sourceMultithreadingManagerPath,
+    previewMultithreadingManagerPath
+  );
+  return true;
+};
+
+const patchPreviewRuntimeScripts = (
+  outputDir: string,
+  gdjsRoot: ?string
+): void => {
+  if (!fs || !path) return;
+
+  const previewIndexHtmlPath = path.join(outputDir, 'index.html');
+  try {
+    if (!fs.existsSync(previewIndexHtmlPath)) {
+      return;
+    }
+
+    const htmlContent = fs.readFileSync(previewIndexHtmlPath, 'utf8');
+    const hasMultithreadingManagerRuntimeFile = ensureMultithreadingManagerRuntimeFile(
+      {
+        outputDir,
+        gdjsRoot,
+      }
+    );
+    const withoutInvalidScriptTags = removeNonJavaScriptScriptTags(htmlContent);
+    const patchedHtmlContent = hasMultithreadingManagerRuntimeFile
+      ? ensureMultithreadingManagerScriptTag(withoutInvalidScriptTags)
+      : withoutInvalidScriptTags;
+
+    if (patchedHtmlContent === htmlContent) {
+      return;
+    }
+
+    fs.writeFileSync(previewIndexHtmlPath, patchedHtmlContent, 'utf8');
+    console.info(
+      `[LocalPreviewLauncher] Patched runtime scripts in ${previewIndexHtmlPath}.`
+    );
+  } catch (error) {
+    console.warn(
+      '[LocalPreviewLauncher] Failed to patch preview runtime scripts.',
+      error
+    );
+  }
+};
 
 type State = {|
   networkPreviewDialogOpen: boolean,
@@ -58,6 +192,7 @@ const prepareExporter = async ({
   exporter: gdjsExporter,
   gdjsRoot: string,
 |}> => {
+  const findGDJS = resolveFindGDJS();
   const { gdjsRoot } = await findGDJS();
   console.info('GDJS found in ', gdjsRoot);
 
@@ -381,6 +516,7 @@ export default class LocalPreviewLauncher extends React.Component<
     }
 
     exporter.exportProjectForPixiPreview(previewExportOptions);
+    patchPreviewRuntimeScripts(outputDir, gdjsRoot);
 
     if (shouldHotReload) {
       const projectDataElement = new gd.SerializerElement();

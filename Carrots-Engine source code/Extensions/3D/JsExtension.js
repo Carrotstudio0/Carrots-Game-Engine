@@ -1137,9 +1137,7 @@ module.exports = {
           behaviorContent.addChild('forceLevel').setDoubleValue(-1);
         }
         if (!behaviorContent.hasChild('modelSwitchCooldownMs')) {
-          behaviorContent
-            .addChild('modelSwitchCooldownMs')
-            .setDoubleValue(250);
+          behaviorContent.addChild('modelSwitchCooldownMs').setDoubleValue(250);
         }
         if (!behaviorContent.hasChild('useBoundingRadius')) {
           behaviorContent.addChild('useBoundingRadius').setBoolValue(true);
@@ -1241,11 +1239,15 @@ module.exports = {
           return true;
         }
         if (propertyName === 'lod1ModelResource') {
-          behaviorContent.getChild('lod1ModelResource').setStringValue(newValue);
+          behaviorContent
+            .getChild('lod1ModelResource')
+            .setStringValue(newValue);
           return true;
         }
         if (propertyName === 'lod2ModelResource') {
-          behaviorContent.getChild('lod2ModelResource').setStringValue(newValue);
+          behaviorContent
+            .getChild('lod2ModelResource')
+            .setStringValue(newValue);
           return true;
         }
         if (propertyName === 'forceLevel') {
@@ -1402,14 +1404,18 @@ module.exports = {
           .setAdvanced(true);
         behaviorProperties
           .getOrCreate('lod1ModelResource')
-          .setValue(behaviorContent.getChild('lod1ModelResource').getStringValue())
+          .setValue(
+            behaviorContent.getChild('lod1ModelResource').getStringValue()
+          )
           .setType('string')
           .setLabel(_('LOD1 model resource'))
           .setGroup(_('Model swap'))
           .setAdvanced(true);
         behaviorProperties
           .getOrCreate('lod2ModelResource')
-          .setValue(behaviorContent.getChild('lod2ModelResource').getStringValue())
+          .setValue(
+            behaviorContent.getChild('lod2ModelResource').getStringValue()
+          )
           .setType('string')
           .setLabel(_('LOD2 model resource'))
           .setGroup(_('Model swap'))
@@ -1440,7 +1446,10 @@ module.exports = {
         behaviorProperties
           .getOrCreate('distanceScale')
           .setValue(
-            behaviorContent.getChild('distanceScale').getDoubleValue().toString()
+            behaviorContent
+              .getChild('distanceScale')
+              .getDoubleValue()
+              .toString()
           )
           .setType('number')
           .setLabel(_('Distance scale'))
@@ -1543,10 +1552,7 @@ module.exports = {
         )
         .addParameter('object', _('Object'), '', false)
         .addParameter('behavior', _('Behavior'), 'LOD')
-        .useStandardParameters(
-          'number',
-          gd.ParameterOptions.makeNewOptions()
-        )
+        .useStandardParameters('number', gd.ParameterOptions.makeNewOptions())
         .setFunctionName('getCurrentLevel');
 
       lod
@@ -2468,19 +2474,760 @@ module.exports = {
         .setFunctionName('hasAnimationEnded');
 
       object
+        .addExpressionAndConditionAndAction(
+          'number',
+          'AnimatorStateIndex',
+          _('Animator state (by number)'),
+          _('the current 3D animator state index'),
+          _('the current 3D animator state index'),
+          _('3D animator'),
+          'res/actions/animation24.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .useStandardParameters(
+          'number',
+          gd.ParameterOptions.makeNewOptions().setDescription(_('State index'))
+        )
+        .markAsSimple()
+        .setFunctionName('setAnimationIndex')
+        .setGetter('getAnimationIndex');
+
+      object
+        .addExpressionAndCondition(
+          'number',
+          'AnimatorStateCount',
+          _('Animator state count'),
+          _('the number of states available in the 3D animator'),
+          _('the number of 3D animator states'),
+          _('3D animator'),
+          'res/actions/animation24.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .useStandardParameters(
+          'number',
+          gd.ParameterOptions.makeNewOptions().setDescription(_('State count'))
+        )
+        .setFunctionName('getAnimationCount');
+
+      object
+        .addExpressionAndConditionAndAction(
+          'string',
+          'AnimatorStateName',
+          _('Animator state (by name)'),
+          _('the current 3D animator state name'),
+          _('the current 3D animator state name'),
+          _('3D animator'),
+          'res/actions/animation24.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .useStandardParameters(
+          'objectAnimationName',
+          gd.ParameterOptions.makeNewOptions().setDescription(_('State name'))
+        )
+        .markAsSimple()
+        .setFunctionName('setAnimationName')
+        .setGetter('getAnimationName');
+
+      object
+        .addScopedCondition(
+          'AnimatorStateIs',
+          _('Animator state is'),
+          _('Check if the 3D animator is currently playing a given state.'),
+          _('Animator state of _PARAM0_ is _PARAM1_'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('State name'), '', false)
+        .setFunctionName('isCurrentAnimationName');
+
+      object
+        .addScopedAction(
+          'PauseAnimator',
+          _('Pause animator'),
+          _('Pause the 3D animator on this object.'),
+          _('Pause animator of _PARAM0_'),
+          _('3D animator'),
+          'res/actions/animation24.png',
+          'res/actions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('pauseAnimation');
+
+      object
+        .addScopedAction(
+          'ResumeAnimator',
+          _('Resume animator'),
+          _('Resume the 3D animator on this object.'),
+          _('Resume animator of _PARAM0_'),
+          _('3D animator'),
+          'res/actions/animation24.png',
+          'res/actions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('resumeAnimation');
+
+      object
+        .addExpressionAndConditionAndAction(
+          'number',
+          'AnimatorSpeedScale',
+          _('Animator speed scale'),
+          _('the current 3D animator speed scale'),
+          _('the current 3D animator speed scale'),
+          _('3D animator'),
+          'res/actions/animation24.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .useStandardParameters(
+          'number',
+          gd.ParameterOptions.makeNewOptions().setDescription(_('Speed scale'))
+        )
+        .setFunctionName('setAnimationSpeedScale')
+        .setGetter('getAnimationSpeedScale');
+
+      object
+        .addScopedCondition(
+          'IsAnimatorPaused',
+          _('Animator paused'),
+          _('Check if the 3D animator is paused.'),
+          _('Animator of _PARAM0_ is paused'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('isAnimationPaused');
+
+      object
+        .addScopedCondition(
+          'HasAnimatorEnded',
+          _('Animator finished'),
+          _('Check if the current 3D animator state has finished.'),
+          _('Animator of _PARAM0_ is finished'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('hasAnimationEnded');
+
+      object
+        .addExpressionAndConditionAndAction(
+          'number',
+          'AnimatorCrossfadeDuration',
+          _('Animator crossfade duration'),
+          _('the default crossfade duration of the 3D animator'),
+          _('the default crossfade duration of the 3D animator'),
+          _('3D animator'),
+          'res/actions/animation24.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .useStandardParameters(
+          'number',
+          gd.ParameterOptions.makeNewOptions().setDescription(
+            _('Crossfade duration (in seconds)')
+          )
+        )
+        .setFunctionName('setCrossfadeDuration')
+        .setGetter('getCrossfadeDuration');
+
+      object
+        .addExpressionAndConditionAndAction(
+          'number',
+          'AnimatorNumberParameterValue',
+          _('Animator number parameter'),
+          _('the value of a numeric 3D animator parameter'),
+          _('the value of a numeric 3D animator parameter'),
+          _('3D animator'),
+          'res/actions/animation24.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Parameter name'), '', false)
+        .useStandardParameters(
+          'number',
+          gd.ParameterOptions.makeNewOptions().setDescription(_('Value'))
+        )
+        .setFunctionName('setAnimatorNumberParameter')
+        .setGetter('getAnimatorNumberParameter');
+
+      object
         .addScopedAction(
           'SetCrossfadeDuration',
           _('Set crossfade duration'),
           _('Set the crossfade duration when switching to a new animation.'),
           _('Set crossfade duration of _PARAM0_ to _PARAM1_ seconds'),
-          _('Animations and images'),
+          _('3D animator'),
           'res/conditions/animation24.png',
           'res/conditions/animation.png'
         )
         .addParameter('object', _('3D model'), 'Model3DObject', false)
         .addParameter('number', _('Crossfade duration (in seconds)'), '', false)
         .setFunctionName('setCrossfadeDuration');
+
+      object
+        .addScopedAction(
+          'SetAnimatorNumberParameter',
+          _('Set animator number parameter'),
+          _('Set a float or integer animator parameter by name.'),
+          _('Set animator number parameter _PARAM1_ of _PARAM0_ to _PARAM2_'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Parameter name'), '', false)
+        .addParameter('number', _('Value'), '', false)
+        .setFunctionName('setAnimatorNumberParameter');
+
+      object
+        .addScopedAction(
+          'SetAnimatorBooleanParameter',
+          _('Set animator boolean parameter'),
+          _('Set a boolean animator parameter by name.'),
+          _('Set animator boolean parameter _PARAM1_ of _PARAM0_ to _PARAM2_'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Parameter name'), '', false)
+        .addParameter('yesorno', _('Value'))
+        .setFunctionName('setAnimatorBooleanParameter');
+
+      object
+        .addScopedAction(
+          'TriggerAnimatorParameter',
+          _('Trigger animator parameter'),
+          _('Arm a trigger animator parameter by name.'),
+          _('Trigger animator parameter _PARAM1_ of _PARAM0_'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Trigger parameter name'), '', false)
+        .setFunctionName('triggerAnimatorParameter');
+
+      object
+        .addScopedAction(
+          'ResetAnimatorTrigger',
+          _('Reset animator trigger'),
+          _('Reset a trigger animator parameter by name.'),
+          _('Reset animator trigger _PARAM1_ of _PARAM0_'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Trigger parameter name'), '', false)
+        .setFunctionName('resetAnimatorTrigger');
+
+      object
+        .addScopedCondition(
+          'AnimatorBooleanParameter',
+          _('Animator boolean parameter is true'),
+          _('Check if an animator boolean parameter is true.'),
+          _('Animator boolean parameter _PARAM1_ of _PARAM0_ is true'),
+          _('3D animator'),
+          'res/conditions/animation24.png',
+          'res/conditions/animation.png'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Parameter name'), '', false)
+        .setFunctionName('isAnimatorBooleanParameterTrue');
+
+      object
+        .addScopedAction(
+          'ConfigureIKChain',
+          _('Configure IK chain'),
+          _('Create or update an IK chain for this model using bone names.'),
+          _(
+            'Configure IK chain _PARAM1_ on _PARAM0_ (effector: _PARAM2_, target: _PARAM3_)'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('string', _('Effector bone name'), '', false)
+        .addParameter('string', _('Target bone name (optional)'), '', false)
+        .addParameter(
+          'string',
+          _(
+            'Link bones (optional, comma-separated from near effector to upper/root)'
+          ),
+          '',
+          false
+        )
+        .addParameter('number', _('Iterations (1-32)'), '', false)
+        .addParameter('number', _('Blend factor (0-1)'), '', false)
+        .addParameter('number', _('Min angle per step (degrees)'), '', false)
+        .addParameter('number', _('Max angle per step (degrees)'), '', false)
+        .setFunctionName('configureIKChain');
+
+      object
+        .addScopedAction(
+          'SetIKTargetPosition',
+          _('Set IK target position'),
+          _('Set IK target in world coordinates for a chain.'),
+          _(
+            'Set IK target position of chain _PARAM1_ on _PARAM0_ to _PARAM2_; _PARAM3_; _PARAM4_'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('number', _('Target X'), '', false)
+        .addParameter('number', _('Target Y'), '', false)
+        .addParameter('number', _('Target Z'), '', false)
+        .setFunctionName('setIKTargetPosition');
+
+      object
+        .addScopedAction(
+          'SetIKTargetBone',
+          _('Set IK target bone'),
+          _('Use another bone as IK target for a chain.'),
+          _('Set IK target bone of chain _PARAM1_ on _PARAM0_ to _PARAM2_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('string', _('Target bone name'), '', false)
+        .setFunctionName('setIKTargetBone');
+
+      object
+        .addScopedAction(
+          'SetIKEnabled',
+          _('Enable/disable IK chain'),
+          _('Enable or disable one IK chain.'),
+          _('Set IK chain _PARAM1_ on _PARAM0_ to _PARAM2_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('yesorno', _('Enabled'))
+        .setFunctionName('setIKEnabled');
+
+      object
+        .addScopedAction(
+          'SetIKIterationCount',
+          _('Set IK iteration count'),
+          _('Set IK solving iterations for a chain.'),
+          _('Set IK iterations of chain _PARAM1_ on _PARAM0_ to _PARAM2_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('number', _('Iterations (1-32)'), '', false)
+        .setFunctionName('setIKIterationCount');
+
+      object
+        .addScopedAction(
+          'SetIKBlendFactor',
+          _('Set IK blend factor'),
+          _('Set IK blend factor for a chain.'),
+          _('Set IK blend factor of chain _PARAM1_ on _PARAM0_ to _PARAM2_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('number', _('Blend factor (0-1)'), '', false)
+        .setFunctionName('setIKBlendFactor');
+
+      object
+        .addScopedAction(
+          'SetIKAngleLimits',
+          _('Set IK angle limits'),
+          _('Set minimum and maximum IK step angles for a chain.'),
+          _(
+            'Set IK angle limits of chain _PARAM1_ on _PARAM0_ to min _PARAM2_ and max _PARAM3_'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('number', _('Min angle (degrees)'), '', false)
+        .addParameter('number', _('Max angle (degrees)'), '', false)
+        .setFunctionName('setIKAngleLimits');
+
+      object
+        .addScopedAction(
+          'SetIKTargetTolerance',
+          _('Set IK target tolerance'),
+          _(
+            'Set the convergence tolerance of one IK chain (smaller value = more precise, potentially more expensive).'
+          ),
+          _(
+            'Set IK target tolerance of chain _PARAM1_ on _PARAM0_ to _PARAM2_'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('number', _('Tolerance (world units)'), '', false)
+        .setFunctionName('setIKTargetTolerance');
+
+      object
+        .addScopedAction(
+          'SetIKLinkAngleLimits',
+          _('Set IK link angle limits'),
+          _('Set per-axis angle constraints for one IK link bone.'),
+          _(
+            'Set IK link limits of _PARAM2_ in chain _PARAM1_ on _PARAM0_ (X: _PARAM3_/_PARAM4_, Y: _PARAM5_/_PARAM6_, Z: _PARAM7_/_PARAM8_)'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('string', _('Link bone name'), '', false)
+        .addParameter('number', _('Min X (degrees)'), '', false)
+        .addParameter('number', _('Max X (degrees)'), '', false)
+        .addParameter('number', _('Min Y (degrees)'), '', false)
+        .addParameter('number', _('Max Y (degrees)'), '', false)
+        .addParameter('number', _('Min Z (degrees)'), '', false)
+        .addParameter('number', _('Max Z (degrees)'), '', false)
+        .setFunctionName('setIKLinkAngleLimits');
+
+      object
+        .addScopedAction(
+          'ClearIKLinkAngleLimits',
+          _('Clear IK link angle limits'),
+          _('Remove per-axis angle constraints for one IK link bone.'),
+          _('Clear IK link limits of _PARAM2_ in chain _PARAM1_ on _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .addParameter('string', _('Link bone name'), '', false)
+        .setFunctionName('clearIKLinkAngleLimits');
+
+      object
+        .addScopedAction(
+          'ClearIKLinkConstraints',
+          _('Clear IK link constraints'),
+          _('Remove all link constraints from one IK chain.'),
+          _('Clear IK link constraints of chain _PARAM1_ on _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .setFunctionName('clearIKLinkConstraints');
+
+      object
+        .addScopedAction(
+          'RemoveIKChain',
+          _('Remove IK chain'),
+          _('Remove one IK chain from this model.'),
+          _('Remove IK chain _PARAM1_ from _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .setFunctionName('removeIKChain');
+
+      object
+        .addScopedAction(
+          'ClearIKChains',
+          _('Clear IK chains'),
+          _('Remove all IK chains from this model.'),
+          _('Clear all IK chains from _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('clearIKChains');
+
+      object
+        .addScopedCondition(
+          'HasIKChain',
+          _('IK chain exists'),
+          _('Check whether an IK chain exists on this model.'),
+          _('IK chain _PARAM1_ exists on _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .setFunctionName('hasIKChain');
+
+      object
+        .addExpressionAndCondition(
+          'number',
+          'IKChainCount',
+          _('IK chain count'),
+          _('the number of configured IK chains'),
+          _('the number of IK chains'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .useStandardParameters('number', gd.ParameterOptions.makeNewOptions())
+        .setFunctionName('getIKChainCount');
+
+      object
+        .addScopedAction(
+          'SetIKGizmosEnabled',
+          _('Enable IK gizmos'),
+          _(
+            'Show or hide runtime IK gizmos (target handles and chain lines) for this model.'
+          ),
+          _('Set IK gizmos on _PARAM0_ to _PARAM1_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('yesorno', _('Enabled'))
+        .setFunctionName('setIKGizmosEnabled');
+
+      object
+        .addScopedCondition(
+          'AreIKGizmosEnabled',
+          _('IK gizmos enabled'),
+          _('Check whether runtime IK gizmos are enabled on this model.'),
+          _('IK gizmos are enabled on _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('areIKGizmosEnabled');
+
+      object
+        .addScopedAction(
+          'SaveIKPose',
+          _('Save IK pose'),
+          _(
+            'Save current local transforms of the model bones as a named IK pose.'
+          ),
+          _('Save current IK pose of _PARAM0_ as _PARAM1_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Pose name'), '', false)
+        .setFunctionName('saveIKPose');
+
+      object
+        .addScopedAction(
+          'ApplyIKPose',
+          _('Apply IK pose'),
+          _('Apply a previously saved IK pose to this model.'),
+          _('Apply IK pose _PARAM1_ on _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Pose name'), '', false)
+        .setFunctionName('applyIKPose');
+
+      object
+        .addScopedAction(
+          'RemoveIKPose',
+          _('Remove IK pose'),
+          _('Remove one saved IK pose from this model.'),
+          _('Remove IK pose _PARAM1_ from _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Pose name'), '', false)
+        .setFunctionName('removeIKPose');
+
+      object
+        .addScopedAction(
+          'ClearIKPoses',
+          _('Clear IK poses'),
+          _('Remove all saved IK poses from this model.'),
+          _('Clear all IK poses from _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('clearIKPoses');
+
+      object
+        .addScopedCondition(
+          'HasIKPose',
+          _('IK pose exists'),
+          _('Check whether a saved IK pose exists on this model.'),
+          _('IK pose _PARAM1_ exists on _PARAM0_'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Pose name'), '', false)
+        .setFunctionName('hasIKPose');
+
+      object
+        .addExpressionAndCondition(
+          'number',
+          'IKPoseCount',
+          _('IK pose count'),
+          _('the number of saved IK poses'),
+          _('the number of IK poses'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .useStandardParameters('number', gd.ParameterOptions.makeNewOptions())
+        .setFunctionName('getIKPoseCount');
+
+      object
+        .addScopedAction(
+          'PinIKTargetToCurrentEffector',
+          _('Pin IK target to current effector'),
+          _(
+            'Set one IK chain target to the current effector position (useful to freeze the current solved pose).'
+          ),
+          _('Pin IK target of chain _PARAM1_ on _PARAM0_ to current effector'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('Chain name'), '', false)
+        .setFunctionName('pinIKTargetToCurrentEffector');
+
+      object
+        .addScopedAction(
+          'PinAllIKTargetsToCurrentEffectors',
+          _('Pin all IK targets'),
+          _(
+            'Set all IK chain targets to their current effectors (useful to keep the current full-body result).'
+          ),
+          _('Pin all IK targets on _PARAM0_ to current effectors'),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('pinAllIKTargetsToCurrentEffectors');
+
+      object
+        .addScopedAction(
+          'ImportIKChainsFromJSON',
+          _('Import IK chains from JSON'),
+          _(
+            'Import IK chains from JSON text previously generated by "IK chains as JSON".'
+          ),
+          _(
+            'Import IK chains on _PARAM0_ from JSON _PARAM1_ (clear existing: _PARAM2_)'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('IK chains JSON text'), '', false)
+        .addParameter('yesorno', _('Clear existing chains first'))
+        .setFunctionName('importIKChainsFromJSON');
+
+      object
+        .addStrExpression(
+          'IKChainsAsJSON',
+          _('IK chains as JSON'),
+          _(
+            'Return all configured IK chains as JSON text, for long-term saving using Storage or file system actions.'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('exportIKChainsToJSON');
+
+      object
+        .addScopedAction(
+          'ImportIKPosesFromJSON',
+          _('Import IK poses from JSON'),
+          _(
+            'Import IK poses from JSON text previously generated by "IK poses as JSON".'
+          ),
+          _(
+            'Import IK poses on _PARAM0_ from JSON _PARAM1_ (clear existing: _PARAM2_)'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .addParameter('string', _('IK poses JSON text'), '', false)
+        .addParameter('yesorno', _('Clear existing poses first'))
+        .setFunctionName('importIKPosesFromJSON');
+
+      object
+        .addStrExpression(
+          'IKPosesAsJSON',
+          _('IK poses as JSON'),
+          _(
+            'Return all saved IK poses as JSON text, for long-term saving using Storage or file system actions.'
+          ),
+          _('Inverse kinematics'),
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('3D model'), 'Model3DObject', false)
+        .setFunctionName('exportIKPosesToJSON');
     }
+
+    const parse3DMaterialType = (materialTypeValue) => {
+      const normalizedValue = (materialTypeValue || '')
+        .toString()
+        .toLowerCase();
+      if (normalizedValue === 'basic') return 'Basic';
+      if (normalizedValue === 'standardwithoutmetalness')
+        return 'StandardWithoutMetalness';
+      if (normalizedValue === 'matte') return 'Matte';
+      if (normalizedValue === 'standard') return 'Standard';
+      if (normalizedValue === 'glossy') return 'Glossy';
+      if (normalizedValue === 'metallic') return 'Metallic';
+      return null;
+    };
+
+    const normalize3DMaterialType = (materialTypeValue) =>
+      parse3DMaterialType(materialTypeValue) || 'Standard';
+
+    const add3DMaterialChoices = (propertyDescriptor) =>
+      propertyDescriptor
+        .addChoice('Standard', _('Standard PBR (balanced)'))
+        .addChoice('Matte', _('Matte (soft highlights)'))
+        .addChoice('Glossy', _('Glossy (strong highlights)'))
+        .addChoice('Metallic', _('Metallic (reflective metal)'))
+        .addChoice(
+          'StandardWithoutMetalness',
+          _('Standard (legacy without metalness)')
+        )
+        .addChoice('Basic', _('Basic (no lighting, no shadows)'));
 
     const Cube3DObject = new gd.ObjectJsImplementation();
     Cube3DObject.updateProperty = function (propertyName, newValue) {
@@ -2510,16 +3257,10 @@ module.exports = {
         return false;
       }
       if (propertyName === 'materialType') {
-        const normalizedValue = newValue.toLowerCase();
-        if (normalizedValue === 'basic') {
-          objectContent.materialType = 'Basic';
-          return true;
-        }
-        if (normalizedValue === 'standardwithoutmetalness') {
-          objectContent.materialType = 'StandardWithoutMetalness';
-          return true;
-        }
-        return false;
+        const parsedMaterialType = parse3DMaterialType(newValue);
+        if (!parsedMaterialType) return false;
+        objectContent.materialType = parsedMaterialType;
+        return true;
       }
       if (
         propertyName === 'frontFaceResourceName' ||
@@ -2550,7 +3291,7 @@ module.exports = {
         propertyName === 'isCastingShadow' ||
         propertyName === 'isReceivingShadow'
       ) {
-        objectContent[propertyName] = newValue === '1';
+        objectContent[propertyName] = newValue === '1' || newValue === 'true';
         return true;
       }
 
@@ -2772,13 +3513,10 @@ module.exports = {
 
       objectProperties
         .getOrCreate('materialType')
-        .setValue(objectContent.materialType || 'StandardWithoutMetalness')
-        .setType('choice')
-        .addChoice('Basic', _('Basic (no lighting, no shadows)'))
-        .addChoice(
-          'StandardWithoutMetalness',
-          _('Standard (without metalness)')
-        )
+        .setValue(normalize3DMaterialType(objectContent.materialType))
+        .setType('choice');
+
+      add3DMaterialChoices(objectProperties.getOrCreate('materialType'))
         .setLabel(_('Material type'))
         .setGroup(_('Lighting'));
 
@@ -2823,7 +3561,7 @@ module.exports = {
       rightFaceResourceRepeat: false,
       topFaceResourceRepeat: false,
       bottomFaceResourceRepeat: false,
-      materialType: 'StandardWithoutMetalness',
+      materialType: 'Standard',
       tint: '255;255;255',
       isCastingShadow: true,
       isReceivingShadow: true,
@@ -3329,6 +4067,449 @@ module.exports = {
       .getCodeExtraInformation()
       .setFunctionName('setColor');
 
+    const createSimplePrimitive3DObject = ({
+      defaultWidth,
+      defaultHeight,
+      defaultDepth,
+      defaultColor,
+      defaultMaterialType,
+      defaultCastShadow,
+      defaultReceiveShadow,
+    }) => {
+      const objectConfiguration = new gd.ObjectJsImplementation();
+
+      objectConfiguration.updateProperty = function (propertyName, newValue) {
+        const objectContent = this.content;
+
+        if (
+          propertyName === 'width' ||
+          propertyName === 'height' ||
+          propertyName === 'depth'
+        ) {
+          objectContent[propertyName] = parseFloat(newValue);
+          return true;
+        }
+
+        if (propertyName === 'color') {
+          objectContent.color = newValue;
+          return true;
+        }
+
+        if (propertyName === 'materialType') {
+          const parsedMaterialType = parse3DMaterialType(newValue);
+          if (!parsedMaterialType) return false;
+          objectContent.materialType = parsedMaterialType;
+          return true;
+        }
+
+        if (
+          propertyName === 'isCastingShadow' ||
+          propertyName === 'isReceivingShadow'
+        ) {
+          objectContent[propertyName] = newValue === '1' || newValue === 'true';
+          return true;
+        }
+
+        return false;
+      };
+
+      objectConfiguration.getProperties = function () {
+        const objectProperties = new gd.MapStringPropertyDescriptor();
+        const objectContent = this.content;
+
+        objectProperties
+          .getOrCreate('width')
+          .setValue((objectContent.width || 0).toString())
+          .setType('number')
+          .setLabel(_('Width'))
+          .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+          .setGroup(_('Default size'));
+
+        objectProperties
+          .getOrCreate('height')
+          .setValue((objectContent.height || 0).toString())
+          .setType('number')
+          .setLabel(_('Height'))
+          .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+          .setGroup(_('Default size'));
+
+        objectProperties
+          .getOrCreate('depth')
+          .setValue((objectContent.depth || 0).toString())
+          .setType('number')
+          .setLabel(_('Depth'))
+          .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+          .setGroup(_('Default size'));
+
+        objectProperties
+          .getOrCreate('color')
+          .setValue(objectContent.color || '255;255;255')
+          .setType('Color')
+          .setLabel(_('Color'))
+          .setGroup(_('Visual'));
+
+        objectProperties
+          .getOrCreate('materialType')
+          .setValue(normalize3DMaterialType(objectContent.materialType))
+          .setType('choice');
+
+        add3DMaterialChoices(objectProperties.getOrCreate('materialType'))
+          .setLabel(_('Material type'))
+          .setGroup(_('Lighting'));
+
+        objectProperties
+          .getOrCreate('isCastingShadow')
+          .setValue(objectContent.isCastingShadow ? 'true' : 'false')
+          .setType('boolean')
+          .setLabel(_('Shadow casting'))
+          .setGroup(_('Lighting'));
+
+        objectProperties
+          .getOrCreate('isReceivingShadow')
+          .setValue(objectContent.isReceivingShadow ? 'true' : 'false')
+          .setType('boolean')
+          .setLabel(_('Shadow receiving'))
+          .setGroup(_('Lighting'));
+
+        return objectProperties;
+      };
+
+      objectConfiguration.content = {
+        width: defaultWidth,
+        height: defaultHeight,
+        depth: defaultDepth,
+        color: defaultColor,
+        materialType: defaultMaterialType,
+        isCastingShadow: defaultCastShadow,
+        isReceivingShadow: defaultReceiveShadow,
+      };
+
+      objectConfiguration.updateInitialInstanceProperty = function (
+        instance,
+        propertyName,
+        newValue
+      ) {
+        return false;
+      };
+
+      objectConfiguration.getInitialInstanceProperties = function (instance) {
+        return new gd.MapStringPropertyDescriptor();
+      };
+
+      return objectConfiguration;
+    };
+
+    extension
+      .addObject(
+        'Sphere3DObject',
+        _('3D Ball'),
+        _('A smooth 3D sphere primitive with color and lighting settings.'),
+        'JsPlatform/Extensions/3d_box.svg',
+        createSimplePrimitive3DObject({
+          defaultWidth: 100,
+          defaultHeight: 100,
+          defaultDepth: 100,
+          defaultColor: '255;255;255',
+          defaultMaterialType: 'Standard',
+          defaultCastShadow: true,
+          defaultReceiveShadow: true,
+        })
+      )
+      .setCategory('General')
+      .addDefaultBehavior('ResizableCapability::ResizableBehavior')
+      .addDefaultBehavior('ScalableCapability::ScalableBehavior')
+      .addDefaultBehavior('FlippableCapability::FlippableBehavior')
+      .addDefaultBehavior('Scene3D::Base3DBehavior')
+      .addDefaultBehavior('Scene3D::LOD')
+      .markAsRenderedIn3D()
+      .setIncludeFile('Extensions/3D/A_RuntimeObject3D.js')
+      .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
+      .addIncludeFile('Extensions/3D/Primitive3DRuntimeObjects.js');
+
+    extension
+      .addObject(
+        'Plane3DObject',
+        _('3D Plane'),
+        _('A flat 3D plane primitive that is ideal for floors and grounds.'),
+        'JsPlatform/Extensions/3d_box.svg',
+        createSimplePrimitive3DObject({
+          defaultWidth: 300,
+          defaultHeight: 300,
+          defaultDepth: 1,
+          defaultColor: '255;255;255',
+          defaultMaterialType: 'Standard',
+          defaultCastShadow: true,
+          defaultReceiveShadow: true,
+        })
+      )
+      .setCategory('General')
+      .addDefaultBehavior('ResizableCapability::ResizableBehavior')
+      .addDefaultBehavior('ScalableCapability::ScalableBehavior')
+      .addDefaultBehavior('FlippableCapability::FlippableBehavior')
+      .addDefaultBehavior('Scene3D::Base3DBehavior')
+      .addDefaultBehavior('Scene3D::LOD')
+      .markAsRenderedIn3D()
+      .setIncludeFile('Extensions/3D/A_RuntimeObject3D.js')
+      .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
+      .addIncludeFile('Extensions/3D/Primitive3DRuntimeObjects.js');
+
+    extension
+      .addObject(
+        'Capsule3DObject',
+        _('3D Capsule'),
+        _('A capsule primitive useful for characters and rounded collisions.'),
+        'JsPlatform/Extensions/3d_box.svg',
+        createSimplePrimitive3DObject({
+          defaultWidth: 80,
+          defaultHeight: 160,
+          defaultDepth: 80,
+          defaultColor: '255;255;255',
+          defaultMaterialType: 'Standard',
+          defaultCastShadow: true,
+          defaultReceiveShadow: true,
+        })
+      )
+      .setCategory('General')
+      .addDefaultBehavior('ResizableCapability::ResizableBehavior')
+      .addDefaultBehavior('ScalableCapability::ScalableBehavior')
+      .addDefaultBehavior('FlippableCapability::FlippableBehavior')
+      .addDefaultBehavior('Scene3D::Base3DBehavior')
+      .addDefaultBehavior('Scene3D::LOD')
+      .markAsRenderedIn3D()
+      .setIncludeFile('Extensions/3D/A_RuntimeObject3D.js')
+      .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
+      .addIncludeFile('Extensions/3D/Primitive3DRuntimeObjects.js');
+
+    const SpotLightObject = new gd.ObjectJsImplementation();
+    SpotLightObject.updateProperty = function (propertyName, newValue) {
+      const objectContent = this.content;
+      if (
+        propertyName === 'width' ||
+        propertyName === 'height' ||
+        propertyName === 'depth' ||
+        propertyName === 'intensity' ||
+        propertyName === 'distance' ||
+        propertyName === 'angle' ||
+        propertyName === 'penumbra' ||
+        propertyName === 'decay' ||
+        propertyName === 'shadowBias' ||
+        propertyName === 'shadowNormalBias' ||
+        propertyName === 'shadowRadius' ||
+        propertyName === 'shadowNear' ||
+        propertyName === 'shadowFar'
+      ) {
+        objectContent[propertyName] = parseFloat(newValue);
+        return true;
+      }
+      if (propertyName === 'color') {
+        objectContent.color = newValue;
+        return true;
+      }
+      if (propertyName === 'shadowQuality') {
+        const normalizedValue = newValue.toLowerCase();
+        if (
+          normalizedValue === 'low' ||
+          normalizedValue === 'medium' ||
+          normalizedValue === 'high'
+        ) {
+          objectContent.shadowQuality = normalizedValue;
+          return true;
+        }
+        return false;
+      }
+      if (
+        propertyName === 'enabled' ||
+        propertyName === 'castShadow' ||
+        propertyName === 'guardrailsEnabled'
+      ) {
+        objectContent[propertyName] = newValue === '1' || newValue === 'true';
+        return true;
+      }
+      return false;
+    };
+    SpotLightObject.getProperties = function () {
+      const objectProperties = new gd.MapStringPropertyDescriptor();
+      const objectContent = this.content;
+
+      objectProperties
+        .getOrCreate('enabled')
+        .setValue(objectContent.enabled ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Enabled'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('color')
+        .setValue(objectContent.color || '255;255;255')
+        .setType('Color')
+        .setLabel(_('Color'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('intensity')
+        .setValue((objectContent.intensity || 1).toString())
+        .setType('number')
+        .setLabel(_('Intensity'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('distance')
+        .setValue((objectContent.distance || 600).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Distance'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('angle')
+        .setValue((objectContent.angle || 45).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getDegreeAngle())
+        .setLabel(_('Cone angle'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('penumbra')
+        .setValue((objectContent.penumbra || 0.1).toString())
+        .setType('number')
+        .setLabel(_('Penumbra'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('decay')
+        .setValue((objectContent.decay || 2).toString())
+        .setType('number')
+        .setLabel(_('Decay'))
+        .setGroup(_('Light'));
+
+      objectProperties
+        .getOrCreate('castShadow')
+        .setValue(objectContent.castShadow ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Cast shadow'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowQuality')
+        .setValue(objectContent.shadowQuality || 'medium')
+        .setType('choice')
+        .addChoice('low', _('Low quality'))
+        .addChoice('medium', _('Medium quality'))
+        .addChoice('high', _('High quality'))
+        .setLabel(_('Shadow quality'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowBias')
+        .setValue((objectContent.shadowBias || 0.001).toString())
+        .setType('number')
+        .setLabel(_('Shadow bias'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowNormalBias')
+        .setValue((objectContent.shadowNormalBias || 0.02).toString())
+        .setType('number')
+        .setLabel(_('Shadow normal bias'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowRadius')
+        .setValue((objectContent.shadowRadius || 1.5).toString())
+        .setType('number')
+        .setLabel(_('Shadow softness'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowNear')
+        .setValue((objectContent.shadowNear || 1).toString())
+        .setType('number')
+        .setLabel(_('Shadow near'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowFar')
+        .setValue((objectContent.shadowFar || 2000).toString())
+        .setType('number')
+        .setLabel(_('Shadow far'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('guardrailsEnabled')
+        .setValue(objectContent.guardrailsEnabled ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Guardrails'))
+        .setDescription(
+          _(
+            'Limit active spot lights automatically to keep performance stable.'
+          )
+        )
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+
+      objectProperties
+        .getOrCreate('width')
+        .setValue((objectContent.width || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo width'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('height')
+        .setValue((objectContent.height || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo height'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('depth')
+        .setValue((objectContent.depth || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo depth'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+
+      return objectProperties;
+    };
+    SpotLightObject.content = {
+      width: 64,
+      height: 64,
+      depth: 64,
+      enabled: true,
+      color: '255;255;255',
+      intensity: 1.2,
+      distance: 600,
+      angle: 45,
+      penumbra: 0.1,
+      decay: 2,
+      castShadow: true,
+      shadowQuality: 'medium',
+      shadowBias: 0.001,
+      shadowNormalBias: 0.02,
+      shadowRadius: 1.5,
+      shadowNear: 1,
+      shadowFar: 2000,
+      guardrailsEnabled: true,
+    };
+    SpotLightObject.updateInitialInstanceProperty = function (
+      instance,
+      propertyName,
+      newValue
+    ) {
+      return false;
+    };
+    SpotLightObject.getInitialInstanceProperties = function (instance) {
+      return new gd.MapStringPropertyDescriptor();
+    };
+
+    extension
+      .addObject(
+        'SpotLightObject',
+        _('3D Spot Light'),
+        _('A 3D spotlight object with transform gizmos and runtime lighting.'),
+        'JsPlatform/Extensions/3d_box.svg',
+        SpotLightObject
+      )
+      .setCategory('General')
+      .addDefaultBehavior('ResizableCapability::ResizableBehavior')
+      .addDefaultBehavior('ScalableCapability::ScalableBehavior')
+      .addDefaultBehavior('FlippableCapability::FlippableBehavior')
+      .addDefaultBehavior('Scene3D::Base3DBehavior')
+      .markAsRenderedIn3D()
+      .setIncludeFile('Extensions/3D/A_RuntimeObject3D.js')
+      .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
+      .addIncludeFile('Extensions/3D/SpotLightRuntimeObject.js');
+
     extension
       .addExpressionAndConditionAndAction(
         'number',
@@ -3526,6 +4707,95 @@ module.exports = {
       .setGetter('gdjs.scene3d.camera.getFov')
       .setIncludeFile('Extensions/3D/Scene3DTools.js');
 
+    extension
+      .addAction(
+        'UpdateThirdPersonCameraRigFromObject',
+        _('Update third-person camera rig'),
+        _(
+          'Orbit the camera around an object and smoothly look at it. Useful for third-person controls.'
+        ),
+        _('Update third-person camera around _PARAM1_'),
+        _('Layers and cameras'),
+        'res/conditions/3d_box.svg',
+        'res/conditions/3d_box.svg'
+      )
+      .addCodeOnlyParameter('currentScene', '')
+      .addParameter('objectPtr', _('Object to follow'), '')
+      .addParameter('number', _('Distance'))
+      .addParameter('number', _('Yaw (degrees)'))
+      .addParameter('number', _('Pitch (degrees)'))
+      .addParameter(
+        'expression',
+        _('Look delta yaw (degrees, optional)'),
+        '',
+        true
+      )
+      .setDefaultValue('0')
+      .addParameter(
+        'expression',
+        _('Look delta pitch (degrees, optional)'),
+        '',
+        true
+      )
+      .setDefaultValue('0')
+      .addParameter('expression', _('Focus height offset (optional)'), '', true)
+      .setDefaultValue('32')
+      .addParameter('layer', _('Layer'), '', true)
+      .setDefaultValue('""')
+      .addParameter('expression', _('Camera number (default : 0)'), '', true)
+      .setDefaultValue('0')
+      .addParameter('expression', _('Min pitch (optional)'), '', true)
+      .setDefaultValue('-75')
+      .addParameter('expression', _('Max pitch (optional)'), '', true)
+      .setDefaultValue('80')
+      .addParameter(
+        'expression',
+        _('Position responsiveness (optional)'),
+        '',
+        true
+      )
+      .setDefaultValue('14')
+      .addParameter(
+        'expression',
+        _('Rotation responsiveness (optional)'),
+        '',
+        true
+      )
+      .setDefaultValue('18')
+      .addParameter(
+        'expression',
+        _('Distance responsiveness (optional)'),
+        '',
+        true
+      )
+      .setDefaultValue('12')
+      .markAsAdvanced()
+      .setFunctionName(
+        'gdjs.scene3d.camera.updateThirdPersonCameraRigFromObject'
+      )
+      .setIncludeFile('Extensions/3D/Scene3DTools.js');
+
+    extension
+      .addAction(
+        'RemoveThirdPersonCameraRig',
+        _('Reset third-person camera rig'),
+        _(
+          'Reset the cached third-person camera rig for this camera. Useful when switching targets or camera modes.'
+        ),
+        _('Reset third-person camera rig for layer _PARAM1_'),
+        _('Layers and cameras'),
+        'res/conditions/3d_box.svg',
+        'res/conditions/3d_box.svg'
+      )
+      .addCodeOnlyParameter('currentScene', '')
+      .addParameter('layer', _('Layer'), '', true)
+      .setDefaultValue('""')
+      .addParameter('expression', _('Camera number (default : 0)'), '', true)
+      .setDefaultValue('0')
+      .markAsAdvanced()
+      .setFunctionName('gdjs.scene3d.camera.removeThirdPersonCameraRig')
+      .setIncludeFile('Extensions/3D/Scene3DTools.js');
+
     {
       const effect = extension
         .addEffect('LinearFog')
@@ -3626,9 +4896,7 @@ module.exports = {
         .setValue('0.75')
         .setLabel(_('Realtime weight'))
         .setDescription(
-          _(
-            'Weight of realtime lighting contribution in hybrid mode (0 to 1).'
-          )
+          _('Weight of realtime lighting contribution in hybrid mode (0 to 1).')
         )
         .setType('number')
         .setAdvanced(true);
@@ -3653,9 +4921,7 @@ module.exports = {
         .getOrCreate('probeIntensity')
         .setValue('0.35')
         .setLabel(_('Probe intensity'))
-        .setDescription(
-          _('Intensity of probe-based indirect fill lighting.')
-        )
+        .setDescription(_('Intensity of probe-based indirect fill lighting.'))
         .setType('number')
         .setGroup(_('Probes'));
       properties
@@ -3705,9 +4971,7 @@ module.exports = {
         .addChoice('stylized', _('Stylized'))
         .setLabel(_('Attenuation model'))
         .setDescription(
-          _(
-            'Controls default falloff style used by point and spot lights.'
-          )
+          _('Controls default falloff style used by point and spot lights.')
         )
         .setType('choice')
         .setGroup(_('Attenuation'));
@@ -3728,9 +4992,7 @@ module.exports = {
         .setValue('1')
         .setLabel(_('Decay scale'))
         .setDescription(
-          _(
-            'Global decay multiplier for local-light attenuation (point/spot).'
-          )
+          _('Global decay multiplier for local-light attenuation (point/spot).')
         )
         .setType('number')
         .setGroup(_('Attenuation'))
@@ -4642,6 +5904,137 @@ module.exports = {
     }
     {
       const effect = extension
+        .addEffect('Sky')
+        .setFullName(_('Sky'))
+        .setDescription(
+          _(
+            'Display a physically based sky with a natural sun and soft procedural clouds.'
+          )
+        )
+        .markAsNotWorkingForObjects()
+        .markAsOnlyWorkingFor3D()
+        .addIncludeFile('Extensions/3D/Sky.js');
+      const properties = effect.getProperties();
+      properties
+        .getOrCreate('skyTintColor')
+        .setValue('255;254;250')
+        .setLabel(_('Sky tint'))
+        .setType('color')
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('sunColor')
+        .setValue('255;250;235')
+        .setLabel(_('Sun color'))
+        .setType('color')
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('sunIntensity')
+        .setValue('1.35')
+        .setLabel(_('Sun intensity'))
+        .setType('number')
+        .setDescription(_('Strength multiplier for the sun disk.'))
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('sunElevation')
+        .setValue('70')
+        .setLabel(_('Sun elevation'))
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getDegreeAngle())
+        .setDescription(_('Sun height in degrees. 60+ gives a noon-like sun.'))
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('sunAzimuth')
+        .setValue('82')
+        .setLabel(_('Sun azimuth'))
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getDegreeAngle())
+        .setDescription(_('Sun horizontal direction in degrees.'))
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('exposure')
+        .setValue('0.68')
+        .setLabel(_('Exposure'))
+        .setType('number')
+        .setDescription(
+          _('Global brightness after atmospheric scattering (0 to 2).')
+        )
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('turbidity')
+        .setValue('4.2')
+        .setLabel(_('Turbidity'))
+        .setType('number')
+        .setDescription(
+          _(
+            'Amount of haze in the atmosphere (0 to 20). Higher values produce a milkier sky.'
+          )
+        )
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('rayleigh')
+        .setValue('1.35')
+        .setLabel(_('Rayleigh'))
+        .setType('number')
+        .setDescription(_('Strength of blue atmospheric scattering (0 to 6).'))
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('mieCoefficient')
+        .setValue('0.009')
+        .setLabel(_('Mie coefficient'))
+        .setType('number')
+        .setDescription(_('Aerosol density for sun glow and haze (0 to 0.1).'))
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('mieDirectionalG')
+        .setValue('0.92')
+        .setLabel(_('Mie directional G'))
+        .setType('number')
+        .setDescription(_('Forward scattering directionality (0 to 0.999).'))
+        .setGroup(_('Lighting'));
+      properties
+        .getOrCreate('cloudColor')
+        .setValue('244;246;250')
+        .setLabel(_('Cloud color'))
+        .setType('color')
+        .setGroup(_('Clouds'));
+      properties
+        .getOrCreate('cloudCoverage')
+        .setValue('0.44')
+        .setLabel(_('Cloud coverage'))
+        .setType('number')
+        .setDescription(_('Cloud amount from 0 (clear) to 1 (overcast).'))
+        .setGroup(_('Clouds'));
+      properties
+        .getOrCreate('cloudOpacity')
+        .setValue('0.46')
+        .setLabel(_('Cloud opacity'))
+        .setType('number')
+        .setDescription(_('Cloud opacity from 0 to 1.'))
+        .setGroup(_('Clouds'));
+      properties
+        .getOrCreate('cloudScale')
+        .setValue('1.35')
+        .setLabel(_('Cloud scale'))
+        .setType('number')
+        .setDescription(_('Cloud texture scale (0.1 to 8).'))
+        .setGroup(_('Clouds'));
+      properties
+        .getOrCreate('cloudSoftness')
+        .setValue('0.2')
+        .setLabel(_('Cloud softness'))
+        .setType('number')
+        .setDescription(_('Softness of cloud edges from 0 to 1.'))
+        .setGroup(_('Clouds'));
+      properties
+        .getOrCreate('cloudSpeed')
+        .setValue('0')
+        .setLabel(_('Cloud speed'))
+        .setType('number')
+        .setDescription(_('Cloud movement speed. 0 keeps clouds stable.'))
+        .setGroup(_('Clouds'));
+    }
+    {
+      const effect = extension
         .addEffect('Skybox')
         .setFullName(_('Skybox'))
         .setDescription(
@@ -4791,13 +6184,13 @@ module.exports = {
         .setType('boolean');
       properties
         .getOrCreate('qualityMode')
-        .setValue('medium')
+        .setValue('high')
         .setLabel(_('Quality mode'))
         .setType('string')
         .setDescription(_('Use: low, medium, or high.'));
       properties
         .getOrCreate('adaptiveQuality')
-        .setValue('true')
+        .setValue('false')
         .setLabel(_('Adaptive quality'))
         .setType('boolean')
         .setDescription(
@@ -4847,7 +6240,7 @@ module.exports = {
         .setDescription(_('Between 0 and 1'));
       properties
         .getOrCreate('qualityMode')
-        .setValue('medium')
+        .setValue('high')
         .setLabel(_('Quality mode'))
         .setType('string')
         .setDescription(_('Use: low, medium, or high.'));
@@ -4897,7 +6290,7 @@ module.exports = {
         );
       properties
         .getOrCreate('qualityMode')
-        .setValue('medium')
+        .setValue('high')
         .setLabel(_('Quality mode'))
         .setType('string')
         .setDescription(_('Use: low, medium, or high.'));
@@ -5041,7 +6434,7 @@ module.exports = {
         );
       properties
         .getOrCreate('qualityMode')
-        .setValue('medium')
+        .setValue('high')
         .setLabel(_('Quality mode'))
         .setType('string')
         .setDescription(_('Use: low, medium, or high.'));
@@ -5091,7 +6484,7 @@ module.exports = {
         .setDescription(_('Maximum distance for volumetric ray marching.'));
       properties
         .getOrCreate('qualityMode')
-        .setValue('medium')
+        .setValue('high')
         .setLabel(_('Quality mode'))
         .setType('string')
         .setDescription(_('Use: low, medium, or high.'));
@@ -5147,7 +6540,7 @@ module.exports = {
         );
       properties
         .getOrCreate('qualityMode')
-        .setValue('medium')
+        .setValue('high')
         .setLabel(_('Quality mode'))
         .setType('string')
         .setDescription(_('Use: low, medium, or high.'));
@@ -5283,6 +6676,102 @@ module.exports = {
       });
       transparentMaterial = newTransparentMaterial;
       return newTransparentMaterial;
+    };
+
+    const get3DMaterialProfile = (materialType) => {
+      if (materialType === 'Matte') {
+        return { roughness: 0.94, metalness: 0.01, envMapIntensity: 0.85 };
+      }
+      if (materialType === 'Standard') {
+        return { roughness: 0.56, metalness: 0.08, envMapIntensity: 1.05 };
+      }
+      if (materialType === 'Glossy') {
+        return { roughness: 0.2, metalness: 0.16, envMapIntensity: 1.25 };
+      }
+      if (materialType === 'Metallic') {
+        return { roughness: 0.24, metalness: 0.9, envMapIntensity: 1.35 };
+      }
+      return { roughness: 0.78, metalness: 0, envMapIntensity: 1 };
+    };
+
+    const apply3DMaterialProfile = (materialType, material) => {
+      if (!material || materialType === 'Basic') return;
+      if (
+        material.roughness === undefined ||
+        material.metalness === undefined
+      ) {
+        return;
+      }
+
+      const profile = get3DMaterialProfile(materialType);
+      material.roughness = profile.roughness;
+      material.metalness = profile.metalness;
+      if (material.envMapIntensity !== undefined) {
+        material.envMapIntensity = profile.envMapIntensity;
+      }
+      material.needsUpdate = true;
+    };
+
+    const create3DMaterial = ({ materialType, color, side, vertexColors }) => {
+      if (materialType === 'Basic') {
+        return new THREE.MeshBasicMaterial({
+          color,
+          side,
+          vertexColors,
+        });
+      }
+      const profile = get3DMaterialProfile(materialType);
+      return new THREE.MeshStandardMaterial({
+        color,
+        side,
+        vertexColors,
+        roughness: profile.roughness,
+        metalness: profile.metalness,
+        envMapIntensity: profile.envMapIntensity,
+      });
+    };
+
+    const normalize3DMaterialType = (materialTypeValue) => {
+      const normalizedValue = (materialTypeValue || '')
+        .toString()
+        .toLowerCase();
+      if (normalizedValue === 'basic') return 'Basic';
+      if (normalizedValue === 'standardwithoutmetalness')
+        return 'StandardWithoutMetalness';
+      if (normalizedValue === 'matte') return 'Matte';
+      if (normalizedValue === 'standard') return 'Standard';
+      if (normalizedValue === 'glossy') return 'Glossy';
+      if (normalizedValue === 'metallic') return 'Metallic';
+      return 'Standard';
+    };
+
+    const normalizeModel3DMaterialType = (materialTypeValue) => {
+      const normalizedValue = (materialTypeValue || '')
+        .toString()
+        .toLowerCase();
+      if (normalizedValue === 'keeporiginal') return 'KeepOriginal';
+      return normalize3DMaterialType(materialTypeValue);
+    };
+
+    const convertToBasicPreviewMaterial = (material) => {
+      const basicMaterial = new THREE.MeshBasicMaterial();
+      basicMaterial.name = material.name || '';
+      if (material.color) {
+        basicMaterial.color = material.color;
+      }
+      if (material.map) {
+        basicMaterial.map = material.map;
+      }
+      if (material.transparent !== undefined) {
+        basicMaterial.transparent = material.transparent;
+      }
+      if (material.opacity !== undefined) {
+        basicMaterial.opacity = material.opacity;
+      }
+      if (material.side !== undefined) {
+        basicMaterial.side = material.side;
+      }
+      return basicMaterial;
     };
 
     class RenderedCube3DObject2DInstance extends RenderedInstance {
@@ -5517,6 +7006,7 @@ module.exports = {
       _facesOrientation = 'Y';
       _backFaceUpThroughWhichAxisRotation = 'X';
       _shouldUseTransparentTexture = false;
+      _materialType = 'Standard';
       _tint = '';
 
       constructor(
@@ -5560,13 +7050,30 @@ module.exports = {
             return getTransparentMaterial();
           }
 
-          return await this._pixiResourcesLoader.getThreeMaterial(
+          const faceResourceName = this._faceResourceNames[faceIndex];
+          if (!faceResourceName) {
+            return create3DMaterial({
+              materialType: this._materialType,
+              color: 0xffffff,
+              side: THREE.FrontSide,
+              vertexColors: true,
+            });
+          }
+
+          const baseMaterial = await this._pixiResourcesLoader.getThreeMaterial(
             project,
-            this._faceResourceNames[faceIndex],
+            faceResourceName,
             {
               useTransparentTexture: this._shouldUseTransparentTexture,
+              forceBasicMaterial: this._materialType === 'Basic',
             }
           );
+          if (this._materialType === 'Basic') {
+            return baseMaterial;
+          }
+          const material = baseMaterial.clone();
+          apply3DMaterialProfile(this._materialType, material);
+          return material;
         };
 
         const materials = await Promise.all([
@@ -5651,6 +7158,13 @@ module.exports = {
           object.content.enableTextureTransparency || false;
         if (this._shouldUseTransparentTexture !== shouldUseTransparentTexture) {
           this._shouldUseTransparentTexture = shouldUseTransparentTexture;
+          materialsDirty = true;
+        }
+        const materialType = normalize3DMaterialType(
+          object.content.materialType
+        );
+        if (this._materialType !== materialType) {
+          this._materialType = materialType;
           materialsDirty = true;
         }
         const tint = object.content.tint || '255;255;255';
@@ -6018,6 +7532,705 @@ module.exports = {
       RenderedCube3DObject3DInstance
     );
 
+    class RenderedSimplePrimitive3DObject2DInstance extends RenderedInstance {
+      _defaultWidth = 100;
+      _defaultHeight = 100;
+      _defaultDepth = 100;
+      _drawAsCircle = false;
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        pixiResourcesLoader,
+        drawAsCircle
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          pixiResourcesLoader
+        );
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 100;
+        this._defaultHeight = object.content.height || 100;
+        this._defaultDepth = object.content.depth || 100;
+        this._drawAsCircle = drawAsCircle;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+      }
+
+      static getThumbnail(_project, _resourcesLoader, _objectConfiguration) {
+        return 'JsPlatform/Extensions/3d_box.svg';
+      }
+
+      update() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        this._pixiObject.clear();
+        this._pixiObject.beginFill(0x999999, 0.22);
+        this._pixiObject.lineStyle(1, 0xffd900, 0.6);
+        if (this._drawAsCircle) {
+          const radius = Math.max(width, height) / 2;
+          this._pixiObject.drawCircle(0, 0, radius);
+        } else {
+          this._pixiObject.drawRect(-width / 2, -height / 2, width, height);
+        }
+        this._pixiObject.endFill();
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    class RenderedSimplePrimitive3DObject3DInstance extends Rendered3DInstance {
+      _defaultWidth = 100;
+      _defaultHeight = 100;
+      _defaultDepth = 100;
+      _materialType = 'Standard';
+      _color = '255;255;255';
+      _isCastingShadow = true;
+      _isReceivingShadow = true;
+      _drawAsCircle2D = false;
+      _doubleSidedMaterial = false;
+      _geometryFactory = () => new THREE.BoxGeometry(1, 1, 1);
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        threeGroup,
+        pixiResourcesLoader,
+        geometryFactory,
+        drawAsCircle2D,
+        doubleSidedMaterial
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          threeGroup,
+          pixiResourcesLoader
+        );
+        this._drawAsCircle2D = drawAsCircle2D;
+        this._doubleSidedMaterial = doubleSidedMaterial;
+        this._geometryFactory = geometryFactory;
+
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 100;
+        this._defaultHeight = object.content.height || 100;
+        this._defaultDepth = object.content.depth || 100;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+
+        this._threeObject = new THREE.Mesh(
+          this._geometryFactory(),
+          this._createThreeMaterial()
+        );
+        this._threeGroup.add(this._threeObject);
+      }
+
+      _createThreeMaterial() {
+        const color = gdjs.rgbOrHexStringToNumber(this._color || '255;255;255');
+        const side = this._doubleSidedMaterial
+          ? THREE.DoubleSide
+          : THREE.FrontSide;
+        return create3DMaterial({
+          materialType: this._materialType,
+          color,
+          side,
+          vertexColors: false,
+        });
+      }
+
+      _updateThreeMaterial(content) {
+        const nextMaterialType = normalize3DMaterialType(content.materialType);
+        const nextColor = content.color || '255;255;255';
+        const materialTypeChanged = nextMaterialType !== this._materialType;
+
+        this._materialType = nextMaterialType;
+        this._color = nextColor;
+
+        if (materialTypeChanged) {
+          const oldMaterial = this._threeObject.material;
+          this._threeObject.material = this._createThreeMaterial();
+          if (Array.isArray(oldMaterial)) {
+            oldMaterial.forEach((material) => material.dispose());
+          } else if (oldMaterial) {
+            oldMaterial.dispose();
+          }
+        }
+
+        const color = gdjs.rgbOrHexStringToNumber(this._color);
+        if (this._threeObject.material && this._threeObject.material.color) {
+          this._threeObject.material.color.setHex(color);
+        }
+      }
+
+      updatePixiObject() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        this._pixiObject.clear();
+        this._pixiObject.beginFill(0x999999, 0.22);
+        this._pixiObject.lineStyle(1, 0xffd900, 0.6);
+        if (this._drawAsCircle2D) {
+          const radius = Math.max(width, height) / 2;
+          this._pixiObject.drawCircle(0, 0, radius);
+        } else {
+          this._pixiObject.drawRect(-width / 2, -height / 2, width, height);
+        }
+        this._pixiObject.endFill();
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      updateThreeObject() {
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        const content = object.content || {};
+
+        this._defaultWidth = content.width || this._defaultWidth;
+        this._defaultHeight = content.height || this._defaultHeight;
+        this._defaultDepth = content.depth || this._defaultDepth;
+
+        this._updateThreeMaterial(content);
+
+        this._isCastingShadow =
+          content.isCastingShadow === undefined
+            ? true
+            : !!content.isCastingShadow;
+        this._isReceivingShadow =
+          content.isReceivingShadow === undefined
+            ? true
+            : !!content.isReceivingShadow;
+        this._threeObject.castShadow = this._isCastingShadow;
+        this._threeObject.receiveShadow = this._isReceivingShadow;
+
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const depth = this.getDepth();
+        this._threeObject.position.set(
+          this._instance.getX() + width / 2,
+          this._instance.getY() + height / 2,
+          this._instance.getZ() + depth / 2
+        );
+        this._threeObject.rotation.set(
+          (this._instance.getRotationX() * Math.PI) / 180,
+          (this._instance.getRotationY() * Math.PI) / 180,
+          (this._instance.getAngle() * Math.PI) / 180
+        );
+        this._threeObject.scale.set(
+          width * (this._instance.isFlippedX() ? -1 : 1),
+          height * (this._instance.isFlippedY() ? -1 : 1),
+          depth * (this._instance.isFlippedZ() ? -1 : 1)
+        );
+      }
+
+      update() {
+        this.updatePixiObject();
+        this.updateThreeObject();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    class RenderedSphere3DObject2DInstance extends RenderedSimplePrimitive3DObject2DInstance {
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          pixiResourcesLoader,
+          true
+        );
+      }
+
+      static getThumbnail(_project, _resourcesLoader, _objectConfiguration) {
+        return 'JsPlatform/Extensions/3d_box.svg';
+      }
+    }
+
+    class RenderedPlane3DObject2DInstance extends RenderedSimplePrimitive3DObject2DInstance {
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          pixiResourcesLoader,
+          false
+        );
+      }
+
+      static getThumbnail(_project, _resourcesLoader, _objectConfiguration) {
+        return 'JsPlatform/Extensions/3d_box.svg';
+      }
+    }
+
+    class RenderedCapsule3DObject2DInstance extends RenderedSimplePrimitive3DObject2DInstance {
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          pixiResourcesLoader,
+          true
+        );
+      }
+
+      static getThumbnail(_project, _resourcesLoader, _objectConfiguration) {
+        return 'JsPlatform/Extensions/3d_box.svg';
+      }
+    }
+
+    class RenderedSphere3DObject3DInstance extends RenderedSimplePrimitive3DObject3DInstance {
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        threeGroup,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          threeGroup,
+          pixiResourcesLoader,
+          () => new THREE.SphereGeometry(0.5, 24, 16),
+          true,
+          false
+        );
+      }
+    }
+
+    class RenderedPlane3DObject3DInstance extends RenderedSimplePrimitive3DObject3DInstance {
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        threeGroup,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          threeGroup,
+          pixiResourcesLoader,
+          () => new THREE.PlaneGeometry(1, 1, 1, 1),
+          false,
+          true
+        );
+      }
+    }
+
+    class RenderedCapsule3DObject3DInstance extends RenderedSimplePrimitive3DObject3DInstance {
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        threeGroup,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          threeGroup,
+          pixiResourcesLoader,
+          () => new THREE.CapsuleGeometry(0.5, 1, 8, 16),
+          true,
+          false
+        );
+      }
+    }
+
+    objectsRenderingService.registerInstanceRenderer(
+      'Scene3D::Sphere3DObject',
+      RenderedSphere3DObject2DInstance
+    );
+    objectsRenderingService.registerInstance3DRenderer(
+      'Scene3D::Sphere3DObject',
+      RenderedSphere3DObject3DInstance
+    );
+    objectsRenderingService.registerInstanceRenderer(
+      'Scene3D::Plane3DObject',
+      RenderedPlane3DObject2DInstance
+    );
+    objectsRenderingService.registerInstance3DRenderer(
+      'Scene3D::Plane3DObject',
+      RenderedPlane3DObject3DInstance
+    );
+    objectsRenderingService.registerInstanceRenderer(
+      'Scene3D::Capsule3DObject',
+      RenderedCapsule3DObject2DInstance
+    );
+    objectsRenderingService.registerInstance3DRenderer(
+      'Scene3D::Capsule3DObject',
+      RenderedCapsule3DObject3DInstance
+    );
+
+    class RenderedSpotLightObject2DInstance extends RenderedInstance {
+      _defaultWidth = 24;
+      _defaultHeight = 24;
+      _defaultDepth = 24;
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          pixiResourcesLoader
+        );
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 24;
+        this._defaultHeight = object.content.height || 24;
+        this._defaultDepth = object.content.depth || 24;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+      }
+
+      static getThumbnail(_project, _resourcesLoader, _objectConfiguration) {
+        return 'JsPlatform/Extensions/3d_box.svg';
+      }
+
+      update() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const halfW = width / 2;
+        const halfH = height / 2;
+        this._pixiObject.clear();
+        this._pixiObject.lineStyle(2, 0xffec9e, 1);
+        this._pixiObject.beginFill(0xffec9e, 0.25);
+        this._pixiObject.drawCircle(0, 0, Math.max(8, Math.min(halfW, halfH)));
+        this._pixiObject.endFill();
+        this._pixiObject.lineStyle(1, 0xffec9e, 0.75);
+        this._pixiObject.moveTo(0, 0);
+        this._pixiObject.lineTo(0, -Math.max(20, height));
+        this._pixiObject.moveTo(-halfW * 0.55, -halfH * 0.8);
+        this._pixiObject.lineTo(0, -Math.max(20, height));
+        this._pixiObject.moveTo(halfW * 0.55, -halfH * 0.8);
+        this._pixiObject.lineTo(0, -Math.max(20, height));
+
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    class RenderedSpotLightObject3DInstance extends Rendered3DInstance {
+      _defaultWidth = 24;
+      _defaultHeight = 24;
+      _defaultDepth = 24;
+      /** @type {THREE.Mesh | null} */
+      _gizmoCoreMesh = null;
+      /** @type {THREE.Mesh | null} */
+      _gizmoConeMesh = null;
+      /** @type {THREE.Line | null} */
+      _gizmoDirectionLine = null;
+      /** @type {THREE.Mesh | null} */
+      _selectionProxyMesh = null;
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        threeGroup,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          threeGroup,
+          pixiResourcesLoader
+        );
+
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 24;
+        this._defaultHeight = object.content.height || 24;
+        this._defaultDepth = object.content.depth || 24;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+
+        const gizmoGroup = new THREE.Group();
+        gizmoGroup.rotation.order = 'ZYX';
+        this._threeObject = gizmoGroup;
+
+        this._gizmoCoreMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.12, 16, 12),
+          new THREE.MeshBasicMaterial({
+            color: 0xffec9e,
+            transparent: true,
+            opacity: 0.9,
+          })
+        );
+        this._gizmoConeMesh = new THREE.Mesh(
+          new THREE.ConeGeometry(1, 1, 24, 1, true),
+          new THREE.MeshBasicMaterial({
+            color: 0xffec9e,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.75,
+          })
+        );
+        if (this._gizmoConeMesh) {
+          this._gizmoConeMesh.rotation.x = -Math.PI / 2;
+          this._gizmoConeMesh.position.z = -0.5;
+        }
+
+        const directionLineGeometry = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 0, 0),
+          new THREE.Vector3(0, 0, -1),
+        ]);
+        this._gizmoDirectionLine = new THREE.Line(
+          directionLineGeometry,
+          new THREE.LineBasicMaterial({
+            color: 0xffec9e,
+            transparent: true,
+            opacity: 0.85,
+          })
+        );
+        this._selectionProxyMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.5, 12, 10),
+          new THREE.MeshBasicMaterial({
+            transparent: true,
+            opacity: 0.01,
+            depthWrite: false,
+          })
+        );
+
+        if (this._gizmoCoreMesh) {
+          gizmoGroup.add(this._gizmoCoreMesh);
+        }
+        if (this._gizmoConeMesh) {
+          gizmoGroup.add(this._gizmoConeMesh);
+        }
+        if (this._gizmoDirectionLine) {
+          gizmoGroup.add(this._gizmoDirectionLine);
+        }
+        if (this._selectionProxyMesh) {
+          gizmoGroup.add(this._selectionProxyMesh);
+        }
+        this._threeGroup.add(gizmoGroup);
+      }
+
+      updatePixiObject() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const halfW = width / 2;
+        const halfH = height / 2;
+        this._pixiObject.clear();
+        this._pixiObject.lineStyle(2, 0xffec9e, 1);
+        this._pixiObject.beginFill(0xffec9e, 0.25);
+        this._pixiObject.drawCircle(0, 0, Math.max(8, Math.min(halfW, halfH)));
+        this._pixiObject.endFill();
+        this._pixiObject.lineStyle(1, 0xffec9e, 0.75);
+        this._pixiObject.moveTo(0, 0);
+        this._pixiObject.lineTo(0, -Math.max(20, height));
+        this._pixiObject.moveTo(-halfW * 0.55, -halfH * 0.8);
+        this._pixiObject.lineTo(0, -Math.max(20, height));
+        this._pixiObject.moveTo(halfW * 0.55, -halfH * 0.8);
+        this._pixiObject.lineTo(0, -Math.max(20, height));
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      updateThreeObject() {
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        const content = object.content || {};
+
+        this._defaultWidth = content.width || this._defaultWidth;
+        this._defaultHeight = content.height || this._defaultHeight;
+        this._defaultDepth = content.depth || this._defaultDepth;
+
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const depth = this.getDepth();
+        this._threeObject.position.set(
+          this._instance.getX() + width / 2,
+          this._instance.getY() + height / 2,
+          this._instance.getZ() + depth / 2
+        );
+        this._threeObject.rotation.set(
+          (this._instance.getRotationX() * Math.PI) / 180,
+          (this._instance.getRotationY() * Math.PI) / 180,
+          (this._instance.getAngle() * Math.PI) / 180
+        );
+
+        const gizmoCoreMesh = this._gizmoCoreMesh;
+        const gizmoConeMesh = this._gizmoConeMesh;
+        const gizmoDirectionLine = this._gizmoDirectionLine;
+        const selectionProxyMesh = this._selectionProxyMesh;
+        if (
+          !gizmoCoreMesh ||
+          !gizmoConeMesh ||
+          !gizmoDirectionLine ||
+          !selectionProxyMesh
+        ) {
+          return;
+        }
+
+        const color = gdjs.rgbOrHexStringToNumber(
+          content.color || '255;255;255'
+        );
+        const coreMaterial = /** @type {any} */ (gizmoCoreMesh.material);
+        const coneMaterial = /** @type {any} */ (gizmoConeMesh.material);
+        const directionLineMaterial = /** @type {any} */ (
+          gizmoDirectionLine.material
+        );
+        if (coreMaterial && coreMaterial.color) {
+          coreMaterial.color.setHex(color);
+        }
+        if (coneMaterial && coneMaterial.color) {
+          coneMaterial.color.setHex(color);
+        }
+        if (directionLineMaterial && directionLineMaterial.color) {
+          directionLineMaterial.color.setHex(color);
+        }
+
+        const coneAngleRad = Math.max(
+          0.05,
+          ((content.angle !== undefined ? content.angle : 45) * Math.PI) / 180
+        );
+        const lightDistance =
+          content.distance !== undefined ? Math.max(0, content.distance) : 600;
+        const gizmoLength = Math.max(24, Math.min(220, lightDistance * 0.2));
+        const gizmoRadius = Math.max(10, Math.tan(coneAngleRad) * gizmoLength);
+        gizmoConeMesh.scale.set(gizmoRadius, gizmoRadius, gizmoLength);
+        gizmoDirectionLine.scale.set(1, 1, gizmoLength);
+
+        const proxyScale = Math.max(
+          28,
+          Math.min(220, Math.max(width, height, depth))
+        );
+        selectionProxyMesh.scale.set(proxyScale, proxyScale, proxyScale);
+      }
+
+      update() {
+        this.updatePixiObject();
+        this.updateThreeObject();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    objectsRenderingService.registerInstanceRenderer(
+      'Scene3D::SpotLightObject',
+      RenderedSpotLightObject2DInstance
+    );
+    objectsRenderingService.registerInstance3DRenderer(
+      'Scene3D::SpotLightObject',
+      RenderedSpotLightObject3DInstance
+    );
+
     const epsilon = 1 / (1 << 16);
 
     class Model3DRendered2DInstance extends RenderedInstance {
@@ -6332,6 +8545,7 @@ module.exports = {
 
       /** @type {THREE.Object3D | null} */
       _clonedModel3D = null;
+      _materialType = 'Standard';
 
       constructor(
         project,
@@ -6396,6 +8610,50 @@ module.exports = {
 
       getCenterPoint() {
         return this._centerPoint || this._modelOriginPoint;
+      }
+
+      _applyMaterialTypeOnModel() {
+        if (!this._clonedModel3D || this._materialType === 'KeepOriginal') {
+          return;
+        }
+
+        const remapMaterial = (sourceMaterial) => {
+          if (this._materialType === 'Basic') {
+            return convertToBasicPreviewMaterial(sourceMaterial);
+          }
+
+          const clonedMaterial = sourceMaterial.clone();
+          apply3DMaterialProfile(this._materialType, clonedMaterial);
+          return clonedMaterial;
+        };
+
+        this._clonedModel3D.traverse((node) => {
+          const mesh = /** @type {THREE.Mesh} */ (node);
+          if (!mesh.material) {
+            return;
+          }
+
+          if (Array.isArray(mesh.material)) {
+            for (let index = 0; index < mesh.material.length; index++) {
+              mesh.material[index] = remapMaterial(mesh.material[index]);
+            }
+          } else {
+            mesh.material = remapMaterial(mesh.material);
+          }
+        });
+      }
+
+      _reloadModel(modelResourceName) {
+        this._pixiResourcesLoader
+          .get3DModel(this._project, modelResourceName)
+          .then((model3d) => {
+            if (this._wasDestroyed) return;
+            this._clonedModel3D = THREE_ADDONS.SkeletonUtils.clone(
+              model3d.scene
+            );
+            this._applyMaterialTypeOnModel();
+            this._updateDefaultTransformation();
+          });
       }
 
       _updateDefaultTransformation() {
@@ -6602,19 +8860,22 @@ module.exports = {
         if (defaultTransformationDirty) this._updateDefaultTransformation();
 
         const modelResourceName = object.getModelResourceName();
+        let modelNeedsReload = false;
         if (this._modelResourceName !== modelResourceName) {
           this._modelResourceName = modelResourceName;
+          modelNeedsReload = true;
+        }
 
-          this._pixiResourcesLoader
-            .get3DModel(this._project, modelResourceName)
-            .then((model3d) => {
-              if (this._wasDestroyed) return;
-              this._clonedModel3D = THREE_ADDONS.SkeletonUtils.clone(
-                model3d.scene
-              );
+        const materialType = normalizeModel3DMaterialType(
+          object.getMaterialType()
+        );
+        if (this._materialType !== materialType) {
+          this._materialType = materialType;
+          modelNeedsReload = true;
+        }
 
-              this._updateDefaultTransformation();
-            });
+        if (modelNeedsReload) {
+          this._reloadModel(modelResourceName);
         }
 
         this._updateThreeObjectPosition();

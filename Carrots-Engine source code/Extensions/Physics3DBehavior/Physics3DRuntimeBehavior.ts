@@ -7,6 +7,22 @@ namespace Jolt {
 }
 
 const epsilon = 1 / (1 << 16);
+const physicsSnapshotStride = 7;
+const physicsSnapshotPositionXOffset = 0;
+const physicsSnapshotPositionYOffset = 1;
+const physicsSnapshotPositionZOffset = 2;
+const physicsSnapshotRotationXOffset = 3;
+const physicsSnapshotRotationYOffset = 4;
+const physicsSnapshotRotationZOffset = 5;
+const physicsSnapshotRotationWOffset = 6;
+const physicsSnapshotWorkerHandlerName =
+  'GDJS::Physics3D::prepareSnapshotChunk::v1';
+const physicsSnapshotWorkerChunkSize = 256;
+const physicsSnapshotWorkerPreparationEnabled = false;
+const physicsSnapshotObjectSyncEnabled = false;
+const physicsSnapshotPipelineEnabled =
+  physicsSnapshotWorkerPreparationEnabled || physicsSnapshotObjectSyncEnabled;
+let hasRegisteredPhysicsSnapshotWorkerHandler = false;
 
 namespace gdjs {
   const loadJolt = async () => {
@@ -136,6 +152,208 @@ namespace gdjs {
     state: 'Active' | 'Limp' | 'Stiff' | 'Frozen';
   }
 
+  export type Physics3DRenderSnapshot = {
+    version: integer;
+    bodyCount: integer;
+    stride: integer;
+    transforms: Float32Array;
+  };
+
+  type Physics3DSnapshotWorkerPayload = {
+    snapshotVersion: integer;
+    startSlot: integer;
+    slotCount: integer;
+    stride: integer;
+    worldScale: float;
+    chunkBuffer: ArrayBuffer;
+  };
+
+  type Physics3DSnapshotWorkerResult = {
+    snapshotVersion: integer;
+    startSlot: integer;
+    slotCount: integer;
+    stride: integer;
+    worldScale: float;
+    chunkBuffer: ArrayBuffer;
+  };
+
+  const isPhysics3DSnapshotWorkerResult = (
+    value: unknown
+  ): value is Physics3DSnapshotWorkerResult => {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+
+    const result = value as {
+      snapshotVersion?: unknown;
+      startSlot?: unknown;
+      slotCount?: unknown;
+      stride?: unknown;
+      worldScale?: unknown;
+      chunkBuffer?: unknown;
+    };
+    return (
+      typeof result.snapshotVersion === 'number' &&
+      typeof result.startSlot === 'number' &&
+      typeof result.slotCount === 'number' &&
+      typeof result.stride === 'number' &&
+      typeof result.worldScale === 'number' &&
+      result.chunkBuffer instanceof ArrayBuffer
+    );
+  };
+
+  const ensurePhysicsSnapshotWorkerHandlerRegistered = (): void => {
+    if (hasRegisteredPhysicsSnapshotWorkerHandler) {
+      return;
+    }
+    if (
+      typeof gdjs.registerWorkerTaskHandler !== 'function' ||
+      typeof gdjs.hasWorkerTaskHandler !== 'function'
+    ) {
+      return;
+    }
+
+    if (!gdjs.hasWorkerTaskHandler(physicsSnapshotWorkerHandlerName)) {
+      gdjs.registerWorkerTaskHandler(
+        physicsSnapshotWorkerHandlerName,
+        function (payload: unknown) {
+          const physicsSnapshotStride = 7;
+          const physicsSnapshotPositionXOffset = 0;
+          const physicsSnapshotPositionYOffset = 1;
+          const physicsSnapshotPositionZOffset = 2;
+          const physicsSnapshotRotationXOffset = 3;
+          const physicsSnapshotRotationYOffset = 4;
+          const physicsSnapshotRotationZOffset = 5;
+          const physicsSnapshotRotationWOffset = 6;
+          const epsilon = 1 / (1 << 16);
+
+          const workerPayload =
+            payload && typeof payload === 'object'
+              ? (payload as {
+                  snapshotVersion?: unknown;
+                  startSlot?: unknown;
+                  slotCount?: unknown;
+                  stride?: unknown;
+                  worldScale?: unknown;
+                  chunkBuffer?: unknown;
+                })
+              : null;
+          if (!workerPayload) {
+            throw new Error('Invalid physics snapshot worker payload.');
+          }
+
+          const snapshotVersion =
+            typeof workerPayload.snapshotVersion === 'number'
+              ? Math.floor(workerPayload.snapshotVersion)
+              : 0;
+          const startSlot =
+            typeof workerPayload.startSlot === 'number'
+              ? Math.max(0, Math.floor(workerPayload.startSlot))
+              : 0;
+          const slotCount =
+            typeof workerPayload.slotCount === 'number'
+              ? Math.max(0, Math.floor(workerPayload.slotCount))
+              : 0;
+          const stride =
+            typeof workerPayload.stride === 'number'
+              ? Math.floor(workerPayload.stride)
+              : physicsSnapshotStride;
+          const worldScale =
+            typeof workerPayload.worldScale === 'number' &&
+            Number.isFinite(workerPayload.worldScale)
+              ? workerPayload.worldScale
+              : 1;
+          if (
+            stride !== physicsSnapshotStride ||
+            !(workerPayload.chunkBuffer instanceof ArrayBuffer)
+          ) {
+            throw new Error('Malformed physics snapshot worker chunk payload.');
+          }
+
+          const transforms = new Float32Array(workerPayload.chunkBuffer);
+          const requiredLength = slotCount * stride;
+          if (requiredLength > transforms.length) {
+            throw new Error('Physics snapshot chunk payload is truncated.');
+          }
+
+          for (let slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+            const offset = slotIndex * stride;
+            const worldX =
+              transforms[offset + physicsSnapshotPositionXOffset] * worldScale;
+            const worldY =
+              transforms[offset + physicsSnapshotPositionYOffset] * worldScale;
+            const worldZ =
+              transforms[offset + physicsSnapshotPositionZOffset] * worldScale;
+            let qx = transforms[offset + physicsSnapshotRotationXOffset];
+            let qy = transforms[offset + physicsSnapshotRotationYOffset];
+            let qz = transforms[offset + physicsSnapshotRotationZOffset];
+            let qw = transforms[offset + physicsSnapshotRotationWOffset];
+
+            if (
+              !Number.isFinite(worldX) ||
+              !Number.isFinite(worldY) ||
+              !Number.isFinite(worldZ)
+            ) {
+              transforms[offset + physicsSnapshotPositionXOffset] = 0;
+              transforms[offset + physicsSnapshotPositionYOffset] = 0;
+              transforms[offset + physicsSnapshotPositionZOffset] = 0;
+            } else {
+              transforms[offset + physicsSnapshotPositionXOffset] = worldX;
+              transforms[offset + physicsSnapshotPositionYOffset] = worldY;
+              transforms[offset + physicsSnapshotPositionZOffset] = worldZ;
+            }
+
+            if (
+              !Number.isFinite(qx) ||
+              !Number.isFinite(qy) ||
+              !Number.isFinite(qz) ||
+              !Number.isFinite(qw)
+            ) {
+              qx = 0;
+              qy = 0;
+              qz = 0;
+              qw = 1;
+            } else {
+              const length = Math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+              if (length > epsilon) {
+                const inverseLength = 1 / length;
+                qx *= inverseLength;
+                qy *= inverseLength;
+                qz *= inverseLength;
+                qw *= inverseLength;
+              } else {
+                qx = 0;
+                qy = 0;
+                qz = 0;
+                qw = 1;
+              }
+            }
+
+            transforms[offset + physicsSnapshotRotationXOffset] = qx;
+            transforms[offset + physicsSnapshotRotationYOffset] = qy;
+            transforms[offset + physicsSnapshotRotationZOffset] = qz;
+            transforms[offset + physicsSnapshotRotationWOffset] = qw;
+          }
+
+          return {
+            __gdjsTransferableWorkerTaskResult: true,
+            value: {
+              snapshotVersion,
+              startSlot,
+              slotCount,
+              stride,
+              worldScale,
+              chunkBuffer: transforms.buffer,
+            },
+            transferables: [transforms.buffer],
+          };
+        }
+      );
+    }
+
+    hasRegisteredPhysicsSnapshotWorkerHandler = true;
+  };
+
   /** @category Behaviors > Physics 3D */
   export class Physics3DSharedData {
     gravityX: float;
@@ -161,6 +379,42 @@ namespace gdjs {
      * on behavior activation (onActivate) and on behavior deactivation (onDeActivate).
      */
     _registeredBehaviors: Set<Physics3DRuntimeBehavior>;
+    private _snapshotBehaviorByIndex: Array<Physics3DRuntimeBehavior | null> =
+      [];
+    private _snapshotIndexByBehavior = new Map<
+      Physics3DRuntimeBehavior,
+      integer
+    >();
+    private _snapshotFreeIndices: integer[] = [];
+    private _snapshotReadBuffer = new Float32Array(0);
+    private _snapshotWriteBuffer = new Float32Array(0);
+    private _snapshotBodyCount: integer = 0;
+    private _snapshotVersion: integer = 0;
+    private _readOnlyRenderSnapshot: gdjs.Physics3DRenderSnapshot = {
+      version: 0,
+      bodyCount: 0,
+      stride: physicsSnapshotStride,
+      transforms: this._snapshotReadBuffer,
+    };
+    private _snapshotPreparedByWorkerQueue: gdjs.WorkerTaskQueue | null = null;
+    private _snapshotPreparedInFlightVersion: integer = 0;
+    private _snapshotPreparedRemainingChunkCount: integer = 0;
+    private _snapshotPreparedChunkCount: integer = 0;
+    private _snapshotPreparedReadBuffer = new Float32Array(0);
+    private _snapshotPreparedVersion: integer = 0;
+    private _snapshotPreparedBodyCount: integer = 0;
+    private _snapshotPreparedReadOnlyRenderSnapshot: gdjs.Physics3DRenderSnapshot =
+      {
+        version: 0,
+        bodyCount: 0,
+        stride: physicsSnapshotStride,
+        transforms: this._snapshotPreparedReadBuffer,
+      };
+
+    private _fixedTimeStep: float = 1 / 60;
+    private _maxSubSteps: integer = 3;
+    private _maxAccumulatedDeltaTime: float = 1 / 8;
+    private _fixedStepAccumulator: float = 0;
 
     private _physics3DHooks: Array<gdjs.Physics3DRuntimeBehavior.Physics3DHook> =
       [];
@@ -356,6 +610,28 @@ namespace gdjs {
       this.gravityZ = sharedData.gravityZ;
       this.worldScale = sharedData.worldScale;
       this.worldInvScale = 1 / this.worldScale;
+      if (physicsSnapshotWorkerPreparationEnabled) {
+        ensurePhysicsSnapshotWorkerHandlerRegistered();
+
+        const runtimeScene = instanceContainer.getScene();
+        if (
+          runtimeScene &&
+          runtimeScene.createWorkerTaskQueue &&
+          typeof gdjs.hasWorkerTaskHandler === 'function' &&
+          gdjs.hasWorkerTaskHandler(physicsSnapshotWorkerHandlerName)
+        ) {
+          this._snapshotPreparedByWorkerQueue = runtimeScene.createWorkerTaskQueue(
+            {
+              name: 'physics3d-snapshot-prep',
+              maxConcurrentTasks: 1,
+              autoStart: true,
+              workerRole: 'physics',
+              priority: 'high',
+              allowMainThreadFallback: true,
+            }
+          );
+        }
+      }
 
       // Initialize Jolt
       const settings = new Jolt.JoltSettings();
@@ -500,11 +776,356 @@ namespace gdjs {
         );
     }
 
+    private _ensureSnapshotCapacity(slotCount: integer): void {
+      const requiredLength = slotCount * physicsSnapshotStride;
+      if (requiredLength <= this._snapshotReadBuffer.length) {
+        return;
+      }
+
+      const nextLength = Math.max(
+        requiredLength,
+        Math.max(32, this._snapshotReadBuffer.length * 2)
+      );
+
+      const nextReadBuffer = new Float32Array(nextLength);
+      nextReadBuffer.set(this._snapshotReadBuffer);
+      this._snapshotReadBuffer = nextReadBuffer;
+
+      const nextWriteBuffer = new Float32Array(nextLength);
+      nextWriteBuffer.set(this._snapshotWriteBuffer);
+      this._snapshotWriteBuffer = nextWriteBuffer;
+
+      this._readOnlyRenderSnapshot.transforms = this._snapshotReadBuffer;
+    }
+
+    private _ensurePreparedSnapshotCapacity(slotCount: integer): void {
+      const requiredLength = slotCount * physicsSnapshotStride;
+      if (requiredLength <= this._snapshotPreparedReadBuffer.length) {
+        return;
+      }
+
+      const nextLength = Math.max(
+        requiredLength,
+        Math.max(32, this._snapshotPreparedReadBuffer.length * 2)
+      );
+      const nextPreparedBuffer = new Float32Array(nextLength);
+      nextPreparedBuffer.set(this._snapshotPreparedReadBuffer);
+      this._snapshotPreparedReadBuffer = nextPreparedBuffer;
+      this._snapshotPreparedReadOnlyRenderSnapshot.transforms =
+        this._snapshotPreparedReadBuffer;
+    }
+
+    private _applyPreparedSnapshotWorkerChunk(
+      workerResult: Physics3DSnapshotWorkerResult
+    ): void {
+      if (
+        workerResult.stride !== physicsSnapshotStride ||
+        workerResult.slotCount <= 0 ||
+        workerResult.startSlot < 0
+      ) {
+        return;
+      }
+
+      const chunkTransforms = new Float32Array(workerResult.chunkBuffer);
+      const expectedLength = workerResult.slotCount * workerResult.stride;
+      if (chunkTransforms.length < expectedLength) {
+        return;
+      }
+
+      this._ensurePreparedSnapshotCapacity(
+        workerResult.startSlot + workerResult.slotCount
+      );
+      this._snapshotPreparedReadBuffer.set(
+        chunkTransforms.subarray(0, expectedLength),
+        workerResult.startSlot * physicsSnapshotStride
+      );
+    }
+
+    private _schedulePreparedSnapshotProcessing(snapshotVersion: integer): void {
+      if (
+        !this._snapshotPreparedByWorkerQueue ||
+        this._snapshotPreparedInFlightVersion !== 0 ||
+        snapshotVersion <= this._snapshotPreparedVersion
+      ) {
+        return;
+      }
+
+      const slotCount = this._snapshotBehaviorByIndex.length;
+      if (slotCount <= 0) {
+        this._snapshotPreparedVersion = snapshotVersion;
+        this._snapshotPreparedBodyCount = 0;
+        this._snapshotPreparedReadOnlyRenderSnapshot.version = snapshotVersion;
+        this._snapshotPreparedReadOnlyRenderSnapshot.bodyCount = 0;
+        return;
+      }
+
+      this._snapshotPreparedInFlightVersion = snapshotVersion;
+      this._snapshotPreparedChunkCount = Math.ceil(
+        slotCount / physicsSnapshotWorkerChunkSize
+      );
+      this._snapshotPreparedRemainingChunkCount = this._snapshotPreparedChunkCount;
+
+      for (
+        let startSlot = 0;
+        startSlot < slotCount;
+        startSlot += physicsSnapshotWorkerChunkSize
+      ) {
+        const chunkSlotCount = Math.min(
+          physicsSnapshotWorkerChunkSize,
+          slotCount - startSlot
+        );
+        const chunkStartOffset = startSlot * physicsSnapshotStride;
+        const chunkEndOffset =
+          chunkStartOffset + chunkSlotCount * physicsSnapshotStride;
+        const chunkTransforms = new Float32Array(
+          chunkSlotCount * physicsSnapshotStride
+        );
+        chunkTransforms.set(
+          this._snapshotReadBuffer.subarray(chunkStartOffset, chunkEndOffset)
+        );
+
+        const queuedTask = this._snapshotPreparedByWorkerQueue.enqueue<Physics3DSnapshotWorkerResult>(
+          physicsSnapshotWorkerHandlerName,
+          {
+            snapshotVersion,
+            startSlot,
+            slotCount: chunkSlotCount,
+            stride: physicsSnapshotStride,
+            worldScale: this.worldScale,
+            chunkBuffer: chunkTransforms.buffer,
+          } as Physics3DSnapshotWorkerPayload,
+          {
+            transferables: [chunkTransforms.buffer],
+            workerRole: 'physics',
+            priority: 'high',
+          }
+        );
+
+        queuedTask.promise.then(
+          (result) => {
+            if (
+              this._snapshotPreparedInFlightVersion !== snapshotVersion ||
+              !isPhysics3DSnapshotWorkerResult(result) ||
+              result.snapshotVersion !== snapshotVersion
+            ) {
+              this._snapshotPreparedRemainingChunkCount = Math.max(
+                0,
+                this._snapshotPreparedRemainingChunkCount - 1
+              );
+              return;
+            }
+
+            this._applyPreparedSnapshotWorkerChunk(result);
+            this._snapshotPreparedRemainingChunkCount = Math.max(
+              0,
+              this._snapshotPreparedRemainingChunkCount - 1
+            );
+            if (this._snapshotPreparedRemainingChunkCount === 0) {
+              this._snapshotPreparedInFlightVersion = 0;
+              this._snapshotPreparedVersion = snapshotVersion;
+              this._snapshotPreparedBodyCount = this._snapshotBodyCount;
+              this._snapshotPreparedReadOnlyRenderSnapshot.version =
+                snapshotVersion;
+              this._snapshotPreparedReadOnlyRenderSnapshot.bodyCount =
+                this._snapshotPreparedBodyCount;
+              this._snapshotPreparedReadOnlyRenderSnapshot.transforms =
+                this._snapshotPreparedReadBuffer;
+
+              if (this._snapshotPreparedVersion < this._snapshotVersion) {
+                this._schedulePreparedSnapshotProcessing(this._snapshotVersion);
+              }
+            }
+          },
+          (_error) => {
+            this._snapshotPreparedRemainingChunkCount = Math.max(
+              0,
+              this._snapshotPreparedRemainingChunkCount - 1
+            );
+            if (this._snapshotPreparedRemainingChunkCount === 0) {
+              this._snapshotPreparedInFlightVersion = 0;
+              if (this._snapshotPreparedVersion < this._snapshotVersion) {
+                this._schedulePreparedSnapshotProcessing(this._snapshotVersion);
+              }
+            }
+          }
+        );
+      }
+    }
+
+    private _registerBehaviorSnapshotSlot(
+      physicsBehavior: gdjs.Physics3DRuntimeBehavior
+    ): void {
+      if (!physicsSnapshotPipelineEnabled) {
+        return;
+      }
+      if (this._snapshotIndexByBehavior.has(physicsBehavior)) {
+        return;
+      }
+
+      let snapshotSlotIndex = this._snapshotFreeIndices.pop();
+      if (snapshotSlotIndex === undefined) {
+        snapshotSlotIndex = this._snapshotBehaviorByIndex.length;
+        this._snapshotBehaviorByIndex.push(null);
+      }
+
+      this._snapshotBehaviorByIndex[snapshotSlotIndex] = physicsBehavior;
+      this._snapshotIndexByBehavior.set(physicsBehavior, snapshotSlotIndex);
+      this._snapshotBodyCount++;
+      this._ensureSnapshotCapacity(this._snapshotBehaviorByIndex.length);
+      const snapshotOffset = snapshotSlotIndex * physicsSnapshotStride;
+      physicsBehavior._capturePhysicsSnapshotToBuffer(
+        this._snapshotReadBuffer,
+        snapshotOffset
+      );
+      physicsBehavior._capturePhysicsSnapshotToBuffer(
+        this._snapshotWriteBuffer,
+        snapshotOffset
+      );
+    }
+
+    private _unregisterBehaviorSnapshotSlot(
+      physicsBehavior: gdjs.Physics3DRuntimeBehavior
+    ): void {
+      if (!physicsSnapshotPipelineEnabled) {
+        return;
+      }
+      const snapshotSlotIndex =
+        this._snapshotIndexByBehavior.get(physicsBehavior);
+      if (snapshotSlotIndex === undefined) {
+        return;
+      }
+
+      this._snapshotIndexByBehavior.delete(physicsBehavior);
+      if (this._snapshotBehaviorByIndex[snapshotSlotIndex]) {
+        this._snapshotBehaviorByIndex[snapshotSlotIndex] = null;
+        this._snapshotFreeIndices.push(snapshotSlotIndex);
+        this._snapshotBodyCount = Math.max(0, this._snapshotBodyCount - 1);
+      }
+    }
+
+    private _capturePhysicsSnapshotToWriteBuffer(): void {
+      const snapshotWriteBuffer = this._snapshotWriteBuffer;
+
+      for (
+        let snapshotSlotIndex = 0;
+        snapshotSlotIndex < this._snapshotBehaviorByIndex.length;
+        snapshotSlotIndex++
+      ) {
+        const behavior = this._snapshotBehaviorByIndex[snapshotSlotIndex];
+        if (!behavior) {
+          continue;
+        }
+
+        behavior._capturePhysicsSnapshotToBuffer(
+          snapshotWriteBuffer,
+          snapshotSlotIndex * physicsSnapshotStride
+        );
+      }
+    }
+
+    private _swapPhysicsSnapshotBuffers(): void {
+      const previousReadBuffer = this._snapshotReadBuffer;
+      this._snapshotReadBuffer = this._snapshotWriteBuffer;
+      this._snapshotWriteBuffer = previousReadBuffer;
+
+      this._snapshotVersion++;
+      this._readOnlyRenderSnapshot.version = this._snapshotVersion;
+      this._readOnlyRenderSnapshot.bodyCount = this._snapshotBodyCount;
+      this._readOnlyRenderSnapshot.transforms = this._snapshotReadBuffer;
+    }
+
+    private _applyReadSnapshotToObjects(): void {
+      const snapshotReadBuffer = this._snapshotReadBuffer;
+
+      for (
+        let snapshotSlotIndex = 0;
+        snapshotSlotIndex < this._snapshotBehaviorByIndex.length;
+        snapshotSlotIndex++
+      ) {
+        const behavior = this._snapshotBehaviorByIndex[snapshotSlotIndex];
+        if (!behavior) {
+          continue;
+        }
+
+        behavior._applyPhysicsSnapshotFromBuffer(
+          snapshotReadBuffer,
+          snapshotSlotIndex * physicsSnapshotStride
+        );
+      }
+    }
+
+    applyLatestSnapshotToBehavior(
+      physicsBehavior: gdjs.Physics3DRuntimeBehavior
+    ): boolean {
+      if (!physicsSnapshotObjectSyncEnabled) {
+        return false;
+      }
+      const snapshotSlotIndex =
+        this._snapshotIndexByBehavior.get(physicsBehavior);
+      if (snapshotSlotIndex === undefined) {
+        return false;
+      }
+
+      physicsBehavior._applyPhysicsSnapshotFromBuffer(
+        this._snapshotReadBuffer,
+        snapshotSlotIndex * physicsSnapshotStride
+      );
+      return true;
+    }
+
+    getReadOnlyRenderSnapshot(): gdjs.Physics3DRenderSnapshot {
+      return this._readOnlyRenderSnapshot;
+    }
+
+    getReadOnlyPreparedRenderSnapshot():
+      | gdjs.Physics3DRenderSnapshot
+      | null {
+      if (
+        this._snapshotPreparedVersion <= 0 ||
+        this._snapshotPreparedVersion < this._snapshotVersion
+      ) {
+        return null;
+      }
+      return this._snapshotPreparedReadOnlyRenderSnapshot;
+    }
+
+    clearRegisteredBehaviorsAndSnapshots(): void {
+      this._registeredBehaviors.clear();
+      this._snapshotBehaviorByIndex.length = 0;
+      this._snapshotIndexByBehavior.clear();
+      this._snapshotFreeIndices.length = 0;
+      this._snapshotBodyCount = 0;
+      this._snapshotVersion = 0;
+      this._snapshotReadBuffer = new Float32Array(0);
+      this._snapshotWriteBuffer = new Float32Array(0);
+      this._snapshotPreparedInFlightVersion = 0;
+      this._snapshotPreparedRemainingChunkCount = 0;
+      this._snapshotPreparedChunkCount = 0;
+      this._snapshotPreparedVersion = 0;
+      this._snapshotPreparedBodyCount = 0;
+      this._snapshotPreparedReadBuffer = new Float32Array(0);
+      this._snapshotPreparedReadOnlyRenderSnapshot.version = 0;
+      this._snapshotPreparedReadOnlyRenderSnapshot.bodyCount = 0;
+      this._snapshotPreparedReadOnlyRenderSnapshot.transforms =
+        this._snapshotPreparedReadBuffer;
+      this._readOnlyRenderSnapshot.version = 0;
+      this._readOnlyRenderSnapshot.bodyCount = 0;
+      this._readOnlyRenderSnapshot.transforms = this._snapshotReadBuffer;
+      this._fixedStepAccumulator = 0;
+      if (this._snapshotPreparedByWorkerQueue) {
+        this._snapshotPreparedByWorkerQueue.dispose();
+        this._snapshotPreparedByWorkerQueue = null;
+      }
+    }
+
     /**
      * Add a physics object to the list of existing object.
      */
     addToBehaviorsList(physicsBehavior: gdjs.Physics3DRuntimeBehavior): void {
       this._registeredBehaviors.add(physicsBehavior);
+      if (physicsSnapshotPipelineEnabled) {
+        this._registerBehaviorSnapshotSlot(physicsBehavior);
+      }
     }
 
     /**
@@ -514,6 +1135,9 @@ namespace gdjs {
       physicsBehavior: gdjs.Physics3DRuntimeBehavior
     ): void {
       this._registeredBehaviors.delete(physicsBehavior);
+      if (physicsSnapshotPipelineEnabled) {
+        this._unregisterBehaviorSnapshotSlot(physicsBehavior);
+      }
     }
 
     /**
@@ -861,14 +1485,47 @@ namespace gdjs {
         physics3DHook.doBeforePhysicsStep(deltaTime);
       }
 
-      const numSteps = deltaTime > 1.0 / 55.0 ? 2 : 1;
-      this.jolt.Step(deltaTime, numSteps);
-      this._updateJointFeedbackAndBreaks(deltaTime);
-      this.stepped = true;
+      const clampedDeltaTime = Math.max(
+        0,
+        Math.min(deltaTime, this._maxAccumulatedDeltaTime)
+      );
+      this._fixedStepAccumulator = Math.min(
+        this._fixedStepAccumulator + clampedDeltaTime,
+        this._maxAccumulatedDeltaTime
+      );
 
-      // It's important that updateBodyFromObject and updateObjectFromBody are
-      // called at the same time because other behavior may move the object in
-      // their doStepPreEvents.
+      let fixedSubStepCount = Math.floor(
+        this._fixedStepAccumulator / this._fixedTimeStep
+      );
+      fixedSubStepCount = Math.min(this._maxSubSteps, fixedSubStepCount);
+
+      if (fixedSubStepCount > 0) {
+        const fixedSimulationDeltaTime = this._fixedTimeStep * fixedSubStepCount;
+        this.jolt.Step(fixedSimulationDeltaTime, fixedSubStepCount);
+        this._updateJointFeedbackAndBreaks(fixedSimulationDeltaTime);
+        this._fixedStepAccumulator = Math.max(
+          0,
+          this._fixedStepAccumulator - fixedSimulationDeltaTime
+        );
+      } else if (clampedDeltaTime > epsilon) {
+        // Adaptive fallback keeps controls responsive on high-refresh displays
+        // when not enough time was accumulated for a full fixed step yet.
+        this.jolt.Step(clampedDeltaTime, 1);
+        this._updateJointFeedbackAndBreaks(clampedDeltaTime);
+        this._fixedStepAccumulator = 0;
+      }
+      this.stepped = true;
+      if (physicsSnapshotPipelineEnabled) {
+        this._capturePhysicsSnapshotToWriteBuffer();
+        this._swapPhysicsSnapshotBuffers();
+        if (physicsSnapshotWorkerPreparationEnabled) {
+          this._schedulePreparedSnapshotProcessing(this._snapshotVersion);
+        }
+      }
+      if (physicsSnapshotObjectSyncEnabled) {
+        this._applyReadSnapshotToObjects();
+        return;
+      }
       for (const physicsBehavior of this._registeredBehaviors) {
         physicsBehavior.updateObjectFromBody();
       }
@@ -909,6 +1566,7 @@ namespace gdjs {
       }
       physics3DSharedData.joints = {};
       physics3DSharedData._jointStates = {};
+      physics3DSharedData.clearRegisteredBehaviorsAndSnapshots();
       Jolt.destroy(physics3DSharedData.contactListener);
       Jolt.destroy(physics3DSharedData._tempVec3);
       Jolt.destroy(physics3DSharedData._tempRVec3);
@@ -931,6 +1589,17 @@ namespace gdjs {
     fixedRotation: boolean;
     _shape: string;
     private meshShapeResourceName: string;
+    private meshColliderMode: string;
+    private meshColliderMaxTrianglesPerSubMesh: integer;
+    private meshColliderMaxTrianglesPerLeaf: integer;
+    private meshColliderActiveEdgeCosThresholdAngle: float;
+    private meshColliderBuildQuality: string;
+    private meshColliderMaxConvexHullPoints: integer;
+    private meshColliderSamplesPerMesh: integer;
+    private meshColliderMaxConvexRadius: float;
+    private meshColliderMaxErrorConvexRadius: float;
+    private meshColliderHullTolerance: float;
+    private showCollider: boolean;
     private shapeOrientation: string;
     private shapeDimensionA: float;
     private shapeDimensionB: float;
@@ -985,6 +1654,9 @@ namespace gdjs {
     private _jointEditorPreviewAnchorMesh: THREE.Mesh | null;
     private _jointEditorPreviewSourceMesh: THREE.Mesh | null;
     private _jointEditorPreviewTargetMesh: THREE.Mesh | null;
+    private _colliderPreviewGroup: THREE.Group | null;
+    private _colliderPreviewObject: THREE.Object3D | null;
+    private _colliderPreviewSignature: string;
     shapeScale: number = 1;
 
     /**
@@ -1045,6 +1717,8 @@ namespace gdjs {
     _objectOldWidth: float = 0;
     _objectOldHeight: float = 0;
     _objectOldDepth: float = 0;
+    private _physicsEulerZYX = new THREE.Euler(0, 0, 0, 'ZYX');
+    private _physicsSnapshotFallbackQuaternion = new THREE.Quaternion();
     private _lastRaycastResult: Physics3DRaycastResult =
       makeNewPhysics3DRaycastResult();
     /**
@@ -1072,6 +1746,45 @@ namespace gdjs {
       this.fixedRotation = behaviorData.fixedRotation;
       this._shape = behaviorData.shape;
       this.meshShapeResourceName = behaviorData.meshShapeResourceName || '';
+      this.meshColliderMode = this._normalizeMeshColliderMode(
+        behaviorData.meshColliderMode || 'Auto'
+      );
+      this.meshColliderMaxTrianglesPerSubMesh = Math.max(
+        0,
+        behaviorData.meshColliderMaxTrianglesPerSubMesh || 0
+      );
+      this.meshColliderMaxTrianglesPerLeaf = Math.max(
+        0,
+        behaviorData.meshColliderMaxTrianglesPerLeaf || 0
+      );
+      this.meshColliderActiveEdgeCosThresholdAngle =
+        behaviorData.meshColliderActiveEdgeCosThresholdAngle === undefined
+          ? 2
+          : behaviorData.meshColliderActiveEdgeCosThresholdAngle;
+      this.meshColliderBuildQuality = this._normalizeMeshColliderBuildQuality(
+        behaviorData.meshColliderBuildQuality || 'Auto'
+      );
+      this.meshColliderMaxConvexHullPoints = Math.max(
+        16,
+        behaviorData.meshColliderMaxConvexHullPoints || 1024
+      );
+      this.meshColliderSamplesPerMesh = Math.max(
+        8,
+        behaviorData.meshColliderSamplesPerMesh || 128
+      );
+      this.meshColliderMaxConvexRadius = Math.max(
+        0,
+        behaviorData.meshColliderMaxConvexRadius || 0
+      );
+      this.meshColliderMaxErrorConvexRadius = Math.max(
+        0,
+        behaviorData.meshColliderMaxErrorConvexRadius || 0
+      );
+      this.meshColliderHullTolerance = Math.max(
+        0,
+        behaviorData.meshColliderHullTolerance || 0
+      );
+      this.showCollider = !!behaviorData.showCollider;
       this.shapeOrientation =
         behaviorData.shape === 'Box' ? 'Z' : behaviorData.shapeOrientation;
       this.shapeDimensionA = behaviorData.shapeDimensionA;
@@ -1165,6 +1878,9 @@ namespace gdjs {
       this._jointEditorPreviewAnchorMesh = null;
       this._jointEditorPreviewSourceMesh = null;
       this._jointEditorPreviewTargetMesh = null;
+      this._colliderPreviewGroup = null;
+      this._colliderPreviewObject = null;
+      this._colliderPreviewSignature = '';
       this._sharedData = Physics3DSharedData.getSharedData(
         instanceContainer.getScene(),
         behaviorData.name
@@ -1327,6 +2043,53 @@ namespace gdjs {
           behaviorData.jointEditorPreviewSize
         );
       }
+      if (behaviorData.showCollider !== undefined) {
+        this.setShowCollider(!!behaviorData.showCollider);
+      }
+      if (behaviorData.meshColliderMode !== undefined) {
+        this.setMeshColliderMode(behaviorData.meshColliderMode);
+      }
+      if (behaviorData.meshColliderMaxTrianglesPerSubMesh !== undefined) {
+        this.setMeshColliderMaxTrianglesPerSubMesh(
+          behaviorData.meshColliderMaxTrianglesPerSubMesh
+        );
+      }
+      if (behaviorData.meshColliderMaxTrianglesPerLeaf !== undefined) {
+        this.setMeshColliderMaxTrianglesPerLeaf(
+          behaviorData.meshColliderMaxTrianglesPerLeaf
+        );
+      }
+      if (behaviorData.meshColliderActiveEdgeCosThresholdAngle !== undefined) {
+        this.setMeshColliderActiveEdgeCosThresholdAngle(
+          behaviorData.meshColliderActiveEdgeCosThresholdAngle
+        );
+      }
+      if (behaviorData.meshColliderBuildQuality !== undefined) {
+        this.setMeshColliderBuildQuality(behaviorData.meshColliderBuildQuality);
+      }
+      if (behaviorData.meshColliderMaxConvexHullPoints !== undefined) {
+        this.setMeshColliderMaxConvexHullPoints(
+          behaviorData.meshColliderMaxConvexHullPoints
+        );
+      }
+      if (behaviorData.meshColliderSamplesPerMesh !== undefined) {
+        this.setMeshColliderSamplesPerMesh(
+          behaviorData.meshColliderSamplesPerMesh
+        );
+      }
+      if (behaviorData.meshColliderMaxConvexRadius !== undefined) {
+        this.setMeshColliderMaxConvexRadius(
+          behaviorData.meshColliderMaxConvexRadius
+        );
+      }
+      if (behaviorData.meshColliderMaxErrorConvexRadius !== undefined) {
+        this.setMeshColliderMaxErrorConvexRadius(
+          behaviorData.meshColliderMaxErrorConvexRadius
+        );
+      }
+      if (behaviorData.meshColliderHullTolerance !== undefined) {
+        this.setMeshColliderHullTolerance(behaviorData.meshColliderHullTolerance);
+      }
 
       // TODO: make these properties updatable.
       if (behaviorData.layers !== undefined) {
@@ -1485,6 +2248,7 @@ namespace gdjs {
 
     override onDeActivate() {
       this._sharedData.removeFromBehaviorsList(this);
+      this._disposeColliderPreview();
       this._destroyBody();
     }
 
@@ -1495,6 +2259,7 @@ namespace gdjs {
     override onDestroy() {
       this._destroyedDuringFrameLogic = true;
       this._disposeJointEditorPreview();
+      this._disposeColliderPreview();
       this._clearJointEditorOwnedJoint();
       this._sharedData.removeBodyFromAllRagdollGroups(this);
       this.onDeActivate();
@@ -1503,6 +2268,7 @@ namespace gdjs {
     _destroyBody() {
       this._preferredJointTargetsByObjectName = {};
       this._disposeJointEditorPreview();
+      this._disposeColliderPreview();
       this._clearJointEditorOwnedJoint();
       // Remove all joints associated with this body before destroying it
       if (this._body !== null) {
@@ -1558,6 +2324,98 @@ namespace gdjs {
       return shape;
     }
 
+    private _normalizeMeshColliderMode(mode: string): string {
+      const normalizedMode = (mode || '').toLowerCase();
+      if (normalizedMode === 'triangles') {
+        return 'Triangles';
+      }
+      if (normalizedMode === 'convexhull') {
+        return 'ConvexHull';
+      }
+      if (normalizedMode === 'boundingbox') {
+        return 'BoundingBox';
+      }
+      return 'Auto';
+    }
+
+    private _normalizeMeshColliderBuildQuality(buildQuality: string): string {
+      const normalizedBuildQuality = (buildQuality || '').toLowerCase();
+      if (normalizedBuildQuality === 'favorbuildspeed') {
+        return 'FavorBuildSpeed';
+      }
+      if (normalizedBuildQuality === 'favorruntimeperformance') {
+        return 'FavorRuntimePerformance';
+      }
+      return 'Auto';
+    }
+
+    private _getEffectiveMeshColliderMode():
+      | 'Triangles'
+      | 'ConvexHull'
+      | 'BoundingBox' {
+      if (this.meshColliderMode === 'BoundingBox') {
+        return 'BoundingBox';
+      }
+      if (this.meshColliderMode === 'ConvexHull') {
+        return 'ConvexHull';
+      }
+      if (this.meshColliderMode === 'Triangles') {
+        return this.isStatic() ? 'Triangles' : 'ConvexHull';
+      }
+      return this.isStatic() ? 'Triangles' : 'ConvexHull';
+    }
+
+    private _getMeshBuildQuality():
+      | Jolt.MeshShapeSettings_EBuildQuality
+      | null {
+      if (this.meshColliderBuildQuality === 'FavorBuildSpeed') {
+        return Jolt.MeshShapeSettings_EBuildQuality_FavorBuildSpeed;
+      }
+      if (this.meshColliderBuildQuality === 'FavorRuntimePerformance') {
+        return Jolt.MeshShapeSettings_EBuildQuality_FavorRuntimePerformance;
+      }
+      return null;
+    }
+
+    private _applyMeshShapeSettings(
+      meshShapeSettings: Jolt.MeshShapeSettings
+    ): void {
+      if (this.meshColliderMaxTrianglesPerLeaf > 0) {
+        meshShapeSettings.mMaxTrianglesPerLeaf =
+          this.meshColliderMaxTrianglesPerLeaf;
+      }
+      if (
+        this.meshColliderActiveEdgeCosThresholdAngle >= -1 &&
+        this.meshColliderActiveEdgeCosThresholdAngle <= 1
+      ) {
+        meshShapeSettings.mActiveEdgeCosThresholdAngle =
+          this.meshColliderActiveEdgeCosThresholdAngle;
+      }
+      const buildQuality = this._getMeshBuildQuality();
+      if (buildQuality !== null) {
+        meshShapeSettings.mBuildQuality = buildQuality;
+      }
+      meshShapeSettings.Sanitize();
+    }
+
+    private _applyConvexHullShapeSettings(
+      convexHullShapeSettings: Jolt.ConvexHullShapeSettings
+    ): void {
+      const worldInvScale = this._sharedData.worldInvScale;
+      if (this.meshColliderMaxConvexRadius > 0) {
+        convexHullShapeSettings.mMaxConvexRadius =
+          this.meshColliderMaxConvexRadius * worldInvScale;
+      }
+      if (this.meshColliderMaxErrorConvexRadius > 0) {
+        convexHullShapeSettings.mMaxErrorConvexRadius =
+          this.meshColliderMaxErrorConvexRadius * worldInvScale;
+      }
+      if (this.meshColliderHullTolerance > 0) {
+        convexHullShapeSettings.mHullTolerance =
+          this.meshColliderHullTolerance * worldInvScale;
+      }
+    }
+
     private _createNewShapeSettingsWithoutMassCenterOffset(): Jolt.RotatedTranslatedShapeSettings {
       let width = this.owner3D.getWidth() * this._sharedData.worldInvScale;
       let height = this.owner3D.getHeight() * this._sharedData.worldInvScale;
@@ -1580,45 +2438,60 @@ namespace gdjs {
 
       const onePixel = this._sharedData.worldInvScale;
 
-      let shapeSettings: Jolt.ShapeSettings;
+      let shapeSettings: Jolt.ShapeSettings | null = null;
       /** This is fine only because no other Quat is used locally. */
-      let quat: Jolt.Quat;
+      let quat: Jolt.Quat = this.getQuat(0, 0, 0, 1);
       if (
         this._shape === 'Mesh' &&
-        this.bodyType === 'Static' &&
-        isModel3D(this.owner)
+        this._getEffectiveMeshColliderMode() !== 'BoundingBox'
       ) {
-        const meshShapeSettings: Array<Jolt.MeshShapeSettings> =
-          gdjs.staticArray(
-            Physics3DRuntimeBehavior.prototype
-              ._createNewShapeSettingsWithoutMassCenterOffset
-          );
-        this.getMeshShapeSettings(
-          this.owner,
-          width,
-          height,
-          depth,
-          meshShapeSettings
-        );
-        if (meshShapeSettings.length === 1) {
-          shapeSettings = meshShapeSettings[0];
-        } else {
-          const compoundShapeSettings = new Jolt.StaticCompoundShapeSettings();
-          for (let index = 0; index < meshShapeSettings.length; index++) {
-            compoundShapeSettings.AddShapeShapeSettings(
-              this.getVec3(0, 0, 0),
-              this.getQuat(0, 0, 0, 1),
-              meshShapeSettings[index],
-              index
+        const meshColliderMode = this._getEffectiveMeshColliderMode();
+        const meshWidth = width > 0 ? width : onePixel;
+        const meshHeight = height > 0 ? height : onePixel;
+        const meshDepth = depth > 0 ? depth : onePixel;
+        this._shapeHalfWidth = meshWidth / 2;
+        this._shapeHalfHeight = meshHeight / 2;
+        this._shapeHalfDepth = meshDepth / 2;
+
+        if (meshColliderMode === 'Triangles') {
+          const meshShapeSettings: Array<Jolt.MeshShapeSettings> =
+            gdjs.staticArray(
+              Physics3DRuntimeBehavior.prototype
+                ._createNewShapeSettingsWithoutMassCenterOffset
             );
+          this.getMeshShapeSettings(width, height, depth, meshShapeSettings);
+          for (let index = 0; index < meshShapeSettings.length; index++) {
+            this._applyMeshShapeSettings(meshShapeSettings[index]);
           }
-          shapeSettings = compoundShapeSettings;
+          if (meshShapeSettings.length === 1) {
+            shapeSettings = meshShapeSettings[0];
+          } else if (meshShapeSettings.length > 1) {
+            const compoundShapeSettings = new Jolt.StaticCompoundShapeSettings();
+            for (let index = 0; index < meshShapeSettings.length; index++) {
+              compoundShapeSettings.AddShapeShapeSettings(
+                this.getVec3(0, 0, 0),
+                this.getQuat(0, 0, 0, 1),
+                meshShapeSettings[index],
+                index
+              );
+            }
+            shapeSettings = compoundShapeSettings;
+          }
+          meshShapeSettings.length = 0;
+        } else if (meshColliderMode === 'ConvexHull') {
+          const convexHullShapeSettings =
+            this._createMeshConvexHullShapeSettings(width, height, depth);
+          if (convexHullShapeSettings) {
+            this._applyConvexHullShapeSettings(convexHullShapeSettings);
+            convexHullShapeSettings.mDensity = this.density;
+            shapeSettings = convexHullShapeSettings;
+          }
         }
-        meshShapeSettings.length = 0;
-        quat = this.getQuat(0, 0, 0, 1);
-      } else {
+      }
+
+      if (!shapeSettings) {
         let convexShapeSettings: Jolt.ConvexShapeSettings;
-        if (this._shape === 'Box') {
+        if (this._shape === 'Box' || this._shape === 'Mesh') {
           const boxWidth =
             shapeDimensionA > 0
               ? shapeDimensionA
@@ -1732,47 +2605,72 @@ namespace gdjs {
       );
     }
 
+    private _createMeshShapeSourceObject(
+      width: float,
+      height: float,
+      depth: float
+    ): THREE.Object3D | null {
+      if (isModel3D(this.owner)) {
+        const originalModel = this.owner
+          .getInstanceContainer()
+          .getGame()
+          .getModel3DManager()
+          .getModel(
+            this.meshShapeResourceName || this.owner._modelResourceName || ''
+          );
+
+        const modelInCube = new THREE.Group();
+        modelInCube.rotation.order = 'ZYX';
+        const root = THREE_ADDONS.SkeletonUtils.clone(originalModel.scene);
+        modelInCube.add(root);
+
+        const data = this.owner._data.content;
+        this.owner._renderer.stretchModelIntoUnitaryCube(
+          modelInCube,
+          data.rotationX,
+          data.rotationY,
+          data.rotationZ
+        );
+
+        const meshSource = new THREE.Group();
+        meshSource.rotation.order = 'ZYX';
+        meshSource.add(modelInCube);
+        const object = this.owner3D;
+        meshSource.scale.set(
+          object.isFlippedX() ? -width : width,
+          object.isFlippedY() ? -height : height,
+          object.isFlippedZ() ? -depth : depth
+        );
+        meshSource.updateMatrixWorld(true);
+        return meshSource;
+      }
+
+      const ownerRendererObject = this.owner3D.get3DRendererObject();
+      if (!ownerRendererObject) {
+        return null;
+      }
+      const meshSource = THREE_ADDONS.SkeletonUtils.clone(ownerRendererObject);
+      meshSource.updateMatrixWorld(true);
+      return meshSource;
+    }
+
     private getMeshShapeSettings(
-      model3DRuntimeObject: gdjs.Model3DRuntimeObject,
       width: float,
       height: float,
       depth: float,
       meshes: Array<Jolt.MeshShapeSettings>
     ): void {
-      const originalModel = this.owner
-        .getInstanceContainer()
-        .getGame()
-        .getModel3DManager()
-        .getModel(
-          this.meshShapeResourceName ||
-            model3DRuntimeObject._modelResourceName ||
-            ''
-        );
-
-      const modelInCube = new THREE.Group();
-      modelInCube.rotation.order = 'ZYX';
-      const root = THREE_ADDONS.SkeletonUtils.clone(originalModel.scene);
-      modelInCube.add(root);
-
-      const data = model3DRuntimeObject._data.content;
-      model3DRuntimeObject._renderer.stretchModelIntoUnitaryCube(
-        modelInCube,
-        data.rotationX,
-        data.rotationY,
-        data.rotationZ
+      const sourceObject = this._createMeshShapeSourceObject(
+        width,
+        height,
+        depth
       );
-
-      const threeObject = new THREE.Group();
-      threeObject.rotation.order = 'ZYX';
-      threeObject.add(modelInCube);
-      const object = this.owner3D;
-      threeObject.scale.set(
-        object.isFlippedX() ? -width : width,
-        object.isFlippedY() ? -height : height,
-        object.isFlippedZ() ? -depth : depth
-      );
-
-      threeObject.updateMatrixWorld();
+      if (!sourceObject) {
+        return;
+      }
+      sourceObject.position.set(0, 0, 0);
+      sourceObject.quaternion.set(0, 0, 0, 1);
+      sourceObject.updateMatrixWorld(true);
 
       // For indexed triangles
       const vector3 = new THREE.Vector3();
@@ -1788,15 +2686,22 @@ namespace gdjs {
       const b = new Jolt.Vec3();
       const c = new Jolt.Vec3();
 
-      threeObject.traverse((object3d) => {
+      sourceObject.traverse((object3d) => {
         const mesh = object3d as THREE.Mesh;
         if (!mesh.isMesh) {
           return;
         }
         const positionAttribute = mesh.geometry.getAttribute('position');
+        if (!positionAttribute) {
+          return;
+        }
         object3d.getWorldScale(vector3);
         const shouldTrianglesBeFlipped = vector3.x * vector3.y * vector3.z < 0;
         const index = mesh.geometry.getIndex();
+        const maxTrianglesPerSubMesh =
+          this.meshColliderMaxTrianglesPerSubMesh > 0
+            ? this.meshColliderMaxTrianglesPerSubMesh
+            : Number.MAX_SAFE_INTEGER;
         if (index) {
           vertexList.clear();
           for (let i = 0; i < positionAttribute.count; i++) {
@@ -1809,7 +2714,17 @@ namespace gdjs {
             vertexList.push_back(float3);
           }
           indexedTriangleList.clear();
-          for (let i = 0; i < index.count; i += 3) {
+          const indexedTriangleCount = Math.floor(index.count / 3);
+          const indexedTriangleStep = Math.max(
+            1,
+            Math.ceil(indexedTriangleCount / maxTrianglesPerSubMesh)
+          );
+          for (
+            let triangleIndex = 0;
+            triangleIndex < indexedTriangleCount;
+            triangleIndex += indexedTriangleStep
+          ) {
+            const i = triangleIndex * 3;
             indexedTriangle.set_mIdx(
               0,
               index.getX(shouldTrianglesBeFlipped ? i + 1 : i)
@@ -1833,7 +2748,17 @@ namespace gdjs {
           );
         } else {
           triangleList.clear();
-          for (let i = 0; i < positionAttribute.count; i += 3) {
+          const nonIndexedTriangleCount = Math.floor(positionAttribute.count / 3);
+          const nonIndexedTriangleStep = Math.max(
+            1,
+            Math.ceil(nonIndexedTriangleCount / maxTrianglesPerSubMesh)
+          );
+          for (
+            let triangleIndex = 0;
+            triangleIndex < nonIndexedTriangleCount;
+            triangleIndex += nonIndexedTriangleStep
+          ) {
+            const i = triangleIndex * 3;
             vector3.fromBufferAttribute(positionAttribute, i);
             object3d.localToWorld(vector3);
             a.Set(vector3.x, vector3.y, vector3.z);
@@ -1873,6 +2798,69 @@ namespace gdjs {
       Jolt.destroy(c);
     }
 
+    private _createMeshConvexHullShapeSettings(
+      width: float,
+      height: float,
+      depth: float
+    ): Jolt.ConvexHullShapeSettings | null {
+      const sourceObject = this._createMeshShapeSourceObject(
+        width,
+        height,
+        depth
+      );
+      if (!sourceObject) {
+        return null;
+      }
+      sourceObject.position.set(0, 0, 0);
+      sourceObject.quaternion.set(0, 0, 0, 1);
+      sourceObject.updateMatrixWorld(true);
+
+      const convexHullShapeSettings = new Jolt.ConvexHullShapeSettings();
+      const points = convexHullShapeSettings.mPoints;
+      const vector3 = new THREE.Vector3();
+      const point = new Jolt.Vec3();
+      const maxPoints = Math.max(16, this.meshColliderMaxConvexHullPoints);
+
+      let pushedPoints = 0;
+      sourceObject.traverse((object3d) => {
+        if (pushedPoints >= maxPoints) {
+          return;
+        }
+        const mesh = object3d as THREE.Mesh;
+        if (!mesh.isMesh) {
+          return;
+        }
+        const positionAttribute = mesh.geometry.getAttribute('position');
+        if (!positionAttribute || positionAttribute.count === 0) {
+          return;
+        }
+
+        const step = Math.max(
+          1,
+          Math.floor(positionAttribute.count / this.meshColliderSamplesPerMesh)
+        );
+        for (
+          let i = 0;
+          i < positionAttribute.count && pushedPoints < maxPoints;
+          i += step
+        ) {
+          vector3.fromBufferAttribute(positionAttribute, i);
+          object3d.localToWorld(vector3);
+          point.Set(vector3.x, vector3.y, vector3.z);
+          points.push_back(point);
+          pushedPoints++;
+        }
+      });
+      Jolt.destroy(point);
+
+      if (pushedPoints < 4) {
+        Jolt.destroy(convexHullShapeSettings);
+        return null;
+      }
+      this._applyConvexHullShapeSettings(convexHullShapeSettings);
+      return convexHullShapeSettings;
+    }
+
     private _getShapeOrientationQuat(): Jolt.Quat {
       if (this.shapeOrientation === 'X') {
         // Top on X axis.
@@ -1903,6 +2891,161 @@ namespace gdjs {
         this.shapeScale = shapeScale;
         this._needToRecreateShape = true;
       }
+    }
+
+    getMeshColliderMode(): string {
+      return this.meshColliderMode;
+    }
+
+    setMeshColliderMode(meshColliderMode: string): void {
+      const normalizedMode = this._normalizeMeshColliderMode(meshColliderMode);
+      if (this.meshColliderMode === normalizedMode) {
+        return;
+      }
+      this.meshColliderMode = normalizedMode;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderMaxTrianglesPerSubMesh(): integer {
+      return this.meshColliderMaxTrianglesPerSubMesh;
+    }
+
+    setMeshColliderMaxTrianglesPerSubMesh(maxTriangles: integer): void {
+      const normalizedMaxTriangles = Number.isFinite(maxTriangles)
+        ? Math.max(0, Math.round(maxTriangles))
+        : 0;
+      if (this.meshColliderMaxTrianglesPerSubMesh === normalizedMaxTriangles) {
+        return;
+      }
+      this.meshColliderMaxTrianglesPerSubMesh = normalizedMaxTriangles;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderMaxTrianglesPerLeaf(): integer {
+      return this.meshColliderMaxTrianglesPerLeaf;
+    }
+
+    setMeshColliderMaxTrianglesPerLeaf(maxTrianglesPerLeaf: integer): void {
+      const normalizedMaxTrianglesPerLeaf = Number.isFinite(maxTrianglesPerLeaf)
+        ? Math.max(0, Math.round(maxTrianglesPerLeaf))
+        : 0;
+      if (this.meshColliderMaxTrianglesPerLeaf === normalizedMaxTrianglesPerLeaf) {
+        return;
+      }
+      this.meshColliderMaxTrianglesPerLeaf = normalizedMaxTrianglesPerLeaf;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderActiveEdgeCosThresholdAngle(): float {
+      return this.meshColliderActiveEdgeCosThresholdAngle;
+    }
+
+    setMeshColliderActiveEdgeCosThresholdAngle(cosThresholdAngle: float): void {
+      // Values outside [-1, 1] disable this override and keep Jolt defaults.
+      const normalizedCosThresholdAngle = Number.isFinite(cosThresholdAngle)
+        ? cosThresholdAngle
+        : 2;
+      if (
+        this.meshColliderActiveEdgeCosThresholdAngle === normalizedCosThresholdAngle
+      ) {
+        return;
+      }
+      this.meshColliderActiveEdgeCosThresholdAngle = normalizedCosThresholdAngle;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderBuildQuality(): string {
+      return this.meshColliderBuildQuality;
+    }
+
+    setMeshColliderBuildQuality(meshColliderBuildQuality: string): void {
+      const normalizedBuildQuality = this._normalizeMeshColliderBuildQuality(
+        meshColliderBuildQuality
+      );
+      if (this.meshColliderBuildQuality === normalizedBuildQuality) {
+        return;
+      }
+      this.meshColliderBuildQuality = normalizedBuildQuality;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderMaxConvexHullPoints(): integer {
+      return this.meshColliderMaxConvexHullPoints;
+    }
+
+    setMeshColliderMaxConvexHullPoints(maxPoints: integer): void {
+      const normalizedMaxPoints = Number.isFinite(maxPoints)
+        ? Math.max(16, Math.round(maxPoints))
+        : 1024;
+      if (this.meshColliderMaxConvexHullPoints === normalizedMaxPoints) {
+        return;
+      }
+      this.meshColliderMaxConvexHullPoints = normalizedMaxPoints;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderSamplesPerMesh(): integer {
+      return this.meshColliderSamplesPerMesh;
+    }
+
+    setMeshColliderSamplesPerMesh(samplesPerMesh: integer): void {
+      const normalizedSamplesPerMesh = Number.isFinite(samplesPerMesh)
+        ? Math.max(8, Math.round(samplesPerMesh))
+        : 128;
+      if (this.meshColliderSamplesPerMesh === normalizedSamplesPerMesh) {
+        return;
+      }
+      this.meshColliderSamplesPerMesh = normalizedSamplesPerMesh;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderMaxConvexRadius(): float {
+      return this.meshColliderMaxConvexRadius;
+    }
+
+    setMeshColliderMaxConvexRadius(maxConvexRadius: float): void {
+      const normalizedMaxConvexRadius = Number.isFinite(maxConvexRadius)
+        ? Math.max(0, maxConvexRadius)
+        : 0;
+      if (this.meshColliderMaxConvexRadius === normalizedMaxConvexRadius) {
+        return;
+      }
+      this.meshColliderMaxConvexRadius = normalizedMaxConvexRadius;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderMaxErrorConvexRadius(): float {
+      return this.meshColliderMaxErrorConvexRadius;
+    }
+
+    setMeshColliderMaxErrorConvexRadius(maxErrorConvexRadius: float): void {
+      const normalizedMaxErrorConvexRadius = Number.isFinite(
+        maxErrorConvexRadius
+      )
+        ? Math.max(0, maxErrorConvexRadius)
+        : 0;
+      if (
+        this.meshColliderMaxErrorConvexRadius === normalizedMaxErrorConvexRadius
+      ) {
+        return;
+      }
+      this.meshColliderMaxErrorConvexRadius = normalizedMaxErrorConvexRadius;
+      this._needToRecreateShape = true;
+    }
+
+    getMeshColliderHullTolerance(): float {
+      return this.meshColliderHullTolerance;
+    }
+
+    setMeshColliderHullTolerance(hullTolerance: float): void {
+      const normalizedHullTolerance = Number.isFinite(hullTolerance)
+        ? Math.max(0, hullTolerance)
+        : 0;
+      if (this.meshColliderHullTolerance === normalizedHullTolerance) {
+        return;
+      }
+      this.meshColliderHullTolerance = normalizedHullTolerance;
+      this._needToRecreateShape = true;
     }
 
     getBody(): Jolt.Body {
@@ -1975,6 +3118,7 @@ namespace gdjs {
       // Reset world step to update next frame
       this._sharedData.stepped = false;
       this._syncJointEditorBinding();
+      this._updateColliderPreview();
     }
 
     onObjectHotReloaded() {
@@ -2048,9 +3192,127 @@ namespace gdjs {
     }
 
     updateObjectFromBody() {
-      this.bodyUpdater.updateObjectFromBody();
+      if (
+        !physicsSnapshotObjectSyncEnabled ||
+        !this._sharedData.applyLatestSnapshotToBehavior(this)
+      ) {
+        this.bodyUpdater.updateObjectFromBody();
+      }
+      this._cacheObjectTransform();
+    }
 
-      // Update cached transform.
+    _capturePhysicsSnapshotToBuffer(
+      snapshotBuffer: Float32Array,
+      snapshotOffset: integer
+    ): void {
+      const bodyUpdater = this.bodyUpdater;
+      if (
+        bodyUpdater.capturePhysicsSnapshot &&
+        bodyUpdater.capturePhysicsSnapshot(snapshotBuffer, snapshotOffset)
+      ) {
+        return;
+      }
+
+      const body = this._body;
+      if (body) {
+        const position = body.GetPosition();
+        const rotation = body.GetRotation();
+        this._writePhysicsSnapshotValues(
+          snapshotBuffer,
+          snapshotOffset,
+          position.GetX(),
+          position.GetY(),
+          position.GetZ(),
+          rotation.GetX(),
+          rotation.GetY(),
+          rotation.GetZ(),
+          rotation.GetW()
+        );
+        return;
+      }
+
+      const ownerRuntimeObjectAsAny = this.owner3D as any;
+      const ownerRendererObject =
+        ownerRuntimeObjectAsAny &&
+        ownerRuntimeObjectAsAny._renderer &&
+        ownerRuntimeObjectAsAny._renderer.get3DRendererObject
+          ? ownerRuntimeObjectAsAny._renderer.get3DRendererObject()
+          : null;
+      let ownerQuaternion:
+        | { x: number; y: number; z: number; w: number }
+        | THREE.Quaternion;
+      if (
+        ownerRendererObject &&
+        typeof (ownerRendererObject as any).quaternion === 'object'
+      ) {
+        ownerQuaternion = (ownerRendererObject as any).quaternion as THREE.Quaternion;
+      } else {
+        this._physicsEulerZYX.set(
+          gdjs.toRad(this.owner3D.getRotationX()),
+          gdjs.toRad(this.owner3D.getRotationY()),
+          gdjs.toRad(this.owner3D.getAngle())
+        );
+        this._physicsSnapshotFallbackQuaternion.setFromEuler(
+          this._physicsEulerZYX
+        );
+        ownerQuaternion = this._physicsSnapshotFallbackQuaternion;
+      }
+      this._writePhysicsSnapshotValues(
+        snapshotBuffer,
+        snapshotOffset,
+        this.owner3D.getCenterXInScene() * this._sharedData.worldInvScale,
+        this.owner3D.getCenterYInScene() * this._sharedData.worldInvScale,
+        this.owner3D.getCenterZInScene() * this._sharedData.worldInvScale,
+        ownerQuaternion.x,
+        ownerQuaternion.y,
+        ownerQuaternion.z,
+        ownerQuaternion.w
+      );
+    }
+
+    _applyPhysicsSnapshotFromBuffer(
+      snapshotBuffer: Float32Array,
+      snapshotOffset: integer
+    ): void {
+      const worldScale = this._sharedData.worldScale;
+      this._moveObjectToPhysicsPositionValues(
+        snapshotBuffer[snapshotOffset + physicsSnapshotPositionXOffset] *
+          worldScale,
+        snapshotBuffer[snapshotOffset + physicsSnapshotPositionYOffset] *
+          worldScale,
+        snapshotBuffer[snapshotOffset + physicsSnapshotPositionZOffset] *
+          worldScale
+      );
+      this._moveObjectToPhysicsRotationValues(
+        snapshotBuffer[snapshotOffset + physicsSnapshotRotationXOffset],
+        snapshotBuffer[snapshotOffset + physicsSnapshotRotationYOffset],
+        snapshotBuffer[snapshotOffset + physicsSnapshotRotationZOffset],
+        snapshotBuffer[snapshotOffset + physicsSnapshotRotationWOffset]
+      );
+      this._cacheObjectTransform();
+    }
+
+    _writePhysicsSnapshotValues(
+      snapshotBuffer: Float32Array,
+      snapshotOffset: integer,
+      x: float,
+      y: float,
+      z: float,
+      qx: float,
+      qy: float,
+      qz: float,
+      qw: float
+    ): void {
+      snapshotBuffer[snapshotOffset + physicsSnapshotPositionXOffset] = x;
+      snapshotBuffer[snapshotOffset + physicsSnapshotPositionYOffset] = y;
+      snapshotBuffer[snapshotOffset + physicsSnapshotPositionZOffset] = z;
+      snapshotBuffer[snapshotOffset + physicsSnapshotRotationXOffset] = qx;
+      snapshotBuffer[snapshotOffset + physicsSnapshotRotationYOffset] = qy;
+      snapshotBuffer[snapshotOffset + physicsSnapshotRotationZOffset] = qz;
+      snapshotBuffer[snapshotOffset + physicsSnapshotRotationWOffset] = qw;
+    }
+
+    private _cacheObjectTransform(): void {
       this._objectOldX = this.owner3D.getX();
       this._objectOldY = this.owner3D.getY();
       this._objectOldZ = this.owner3D.getZ();
@@ -2104,40 +3366,83 @@ namespace gdjs {
     }
 
     _getPhysicsRotation(result: Jolt.Quat): Jolt.Quat {
-      const threeObject = this.owner3D.get3DRendererObject();
+      const ownerRuntimeObjectAsAny = this.owner3D as any;
+      const threeObject =
+        ownerRuntimeObjectAsAny &&
+        ownerRuntimeObjectAsAny._renderer &&
+        ownerRuntimeObjectAsAny._renderer.get3DRendererObject
+          ? ownerRuntimeObjectAsAny._renderer.get3DRendererObject()
+          : null;
+      const ownerQuaternion =
+        threeObject && typeof (threeObject as any).quaternion === 'object'
+          ? ((threeObject as any).quaternion as THREE.Quaternion)
+          : this._physicsSnapshotFallbackQuaternion;
+      if (ownerQuaternion === this._physicsSnapshotFallbackQuaternion) {
+        this._physicsEulerZYX.set(
+          gdjs.toRad(this.owner3D.getRotationX()),
+          gdjs.toRad(this.owner3D.getRotationY()),
+          gdjs.toRad(this.owner3D.getAngle())
+        );
+        ownerQuaternion.setFromEuler(this._physicsEulerZYX);
+      }
       result.Set(
-        threeObject.quaternion.x,
-        threeObject.quaternion.y,
-        threeObject.quaternion.z,
-        threeObject.quaternion.w
+        ownerQuaternion.x,
+        ownerQuaternion.y,
+        ownerQuaternion.z,
+        ownerQuaternion.w
       );
       return result;
     }
 
     _moveObjectToPhysicsPosition(physicsPosition: Jolt.RVec3): void {
-      this.owner3D.setCenterXInScene(
-        physicsPosition.GetX() * this._sharedData.worldScale
-      );
-      this.owner3D.setCenterYInScene(
-        physicsPosition.GetY() * this._sharedData.worldScale
-      );
-      this.owner3D.setCenterZInScene(
+      this._moveObjectToPhysicsPositionValues(
+        physicsPosition.GetX() * this._sharedData.worldScale,
+        physicsPosition.GetY() * this._sharedData.worldScale,
         physicsPosition.GetZ() * this._sharedData.worldScale
       );
     }
 
+    _moveObjectToPhysicsPositionValues(
+      worldX: float,
+      worldY: float,
+      worldZ: float
+    ): void {
+      this.owner3D.setCenterXInScene(worldX);
+      this.owner3D.setCenterYInScene(worldY);
+      this.owner3D.setCenterZInScene(worldZ);
+    }
+
     _moveObjectToPhysicsRotation(physicsRotation: Jolt.Quat): void {
-      const threeObject = this.owner3D.get3DRendererObject();
-      threeObject.quaternion.x = physicsRotation.GetX();
-      threeObject.quaternion.y = physicsRotation.GetY();
-      threeObject.quaternion.z = physicsRotation.GetZ();
-      threeObject.quaternion.w = physicsRotation.GetW();
-      // TODO Avoid this instantiation
-      const euler = new THREE.Euler(0, 0, 0, 'ZYX');
-      euler.setFromQuaternion(threeObject.quaternion);
-      this.owner3D.setRotationX(gdjs.toDegrees(euler.x));
-      this.owner3D.setRotationY(gdjs.toDegrees(euler.y));
-      this.owner3D.setAngle(gdjs.toDegrees(euler.z));
+      this._moveObjectToPhysicsRotationValues(
+        physicsRotation.GetX(),
+        physicsRotation.GetY(),
+        physicsRotation.GetZ(),
+        physicsRotation.GetW()
+      );
+    }
+
+    _moveObjectToPhysicsRotationValues(
+      x: float,
+      y: float,
+      z: float,
+      w: float
+    ): void {
+      const ownerRuntimeObjectAsAny = this.owner3D as any;
+      const threeObject =
+        ownerRuntimeObjectAsAny &&
+        ownerRuntimeObjectAsAny._renderer &&
+        ownerRuntimeObjectAsAny._renderer.get3DRendererObject
+          ? ownerRuntimeObjectAsAny._renderer.get3DRendererObject()
+          : null;
+      const targetQuaternion =
+        threeObject && typeof (threeObject as any).quaternion === 'object'
+          ? ((threeObject as any).quaternion as THREE.Quaternion)
+          : this._physicsSnapshotFallbackQuaternion;
+      targetQuaternion.set(x, y, z, w);
+      this._physicsEulerZYX.setFromQuaternion(targetQuaternion);
+      this.owner3D.setRotationX(gdjs.toDegrees(this._physicsEulerZYX.x));
+      this.owner3D.setRotationY(gdjs.toDegrees(this._physicsEulerZYX.y));
+      this.owner3D.setAngle(gdjs.toDegrees(this._physicsEulerZYX.z));
     }
 
     getWorldScale(): float {
@@ -2246,6 +3551,23 @@ namespace gdjs {
       }
       this.fixedRotation = enable;
       this._needToRecreateBody = true;
+    }
+
+    isColliderVisible(): boolean {
+      return this.showCollider;
+    }
+
+    setShowCollider(showCollider: boolean): void {
+      const normalizedShowCollider = !!showCollider;
+      if (this.showCollider === normalizedShowCollider) {
+        return;
+      }
+      this.showCollider = normalizedShowCollider;
+      if (!this.showCollider) {
+        this._disposeColliderPreview();
+      } else {
+        this._rebuildColliderPreviewObject();
+      }
     }
 
     getDensity() {
@@ -3620,6 +4942,304 @@ namespace gdjs {
       this._jointEditorPreviewAnchorMesh = null;
       this._jointEditorPreviewSourceMesh = null;
       this._jointEditorPreviewTargetMesh = null;
+    }
+
+    private _getThreeShapeOrientationQuaternion(): THREE.Quaternion {
+      if (this.shapeOrientation === 'X') {
+        return new THREE.Quaternion(0, 0, Math.sqrt(2) / 2, -Math.sqrt(2) / 2);
+      } else if (this.shapeOrientation === 'Y') {
+        return new THREE.Quaternion(0, 0, 0, 1);
+      }
+      return new THREE.Quaternion(Math.sqrt(2) / 2, 0, 0, Math.sqrt(2) / 2);
+    }
+
+    private _createColliderPreviewObject(): THREE.Object3D | null {
+      const color = 0x2bb6ff;
+      const shapeScale = this.shapeScale;
+      const width = this.owner3D.getWidth();
+      const height = this.owner3D.getHeight();
+      const depth = this.owner3D.getDepth();
+
+      const previewRoot = new THREE.Group();
+      previewRoot.rotation.order = 'ZYX';
+      previewRoot.name = 'Physics3DColliderPreviewObject';
+      previewRoot.position.set(
+        this.shapeOffsetX * shapeScale,
+        this.shapeOffsetY * shapeScale,
+        this.shapeOffsetZ * shapeScale
+      );
+
+      if (this._shape === 'Mesh') {
+        const meshPreview = this._createMeshShapeSourceObject(width, height, depth);
+        if (!meshPreview) {
+          return null;
+        }
+        meshPreview.position.set(0, 0, 0);
+        meshPreview.quaternion.set(0, 0, 0, 1);
+        meshPreview.traverse((object3d) => {
+          const mesh = object3d as THREE.Mesh;
+          if (!mesh.isMesh) {
+            return;
+          }
+          if (mesh.geometry) {
+            mesh.geometry = mesh.geometry.clone();
+          }
+          const material = new THREE.MeshBasicMaterial({
+            color,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.45,
+            depthTest: false,
+          });
+          mesh.material = material;
+          mesh.frustumCulled = false;
+          mesh.renderOrder = 10020;
+        });
+        previewRoot.add(meshPreview);
+        return previewRoot;
+      }
+
+      const material = new THREE.MeshBasicMaterial({
+        color,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.8,
+        depthTest: false,
+      });
+
+      let geometry: THREE.BufferGeometry;
+      if (this._shape === 'Capsule') {
+        const radius =
+          this.shapeDimensionA > 0
+            ? this.shapeDimensionA * shapeScale
+            : width > 0
+              ? Math.sqrt(width * height) / 2
+              : 1;
+        const capsuleDepth =
+          this.shapeDimensionB > 0
+            ? this.shapeDimensionB * shapeScale
+            : depth > 0
+              ? depth
+              : 1;
+        const length = Math.max(0, capsuleDepth - radius * 2);
+        geometry = new THREE.CapsuleGeometry(radius, length, 8, 16);
+        previewRoot.quaternion.copy(this._getThreeShapeOrientationQuaternion());
+      } else if (this._shape === 'Cylinder') {
+        const radius =
+          this.shapeDimensionA > 0
+            ? this.shapeDimensionA * shapeScale
+            : width > 0
+              ? Math.sqrt(width * height) / 2
+              : 1;
+        const cylinderDepth =
+          this.shapeDimensionB > 0
+            ? this.shapeDimensionB * shapeScale
+            : depth > 0
+              ? depth
+              : 1;
+        geometry = new THREE.CylinderGeometry(radius, radius, cylinderDepth, 20);
+        previewRoot.quaternion.copy(this._getThreeShapeOrientationQuaternion());
+      } else if (this._shape === 'Sphere') {
+        const radius =
+          this.shapeDimensionA > 0
+            ? this.shapeDimensionA * shapeScale
+            : width > 0
+              ? Math.pow(width * height * depth, 1 / 3) / 2
+              : 1;
+        geometry = new THREE.SphereGeometry(radius, 20, 14);
+      } else {
+        const boxWidth =
+          this.shapeDimensionA > 0 ? this.shapeDimensionA * shapeScale : width;
+        const boxHeight =
+          this.shapeDimensionB > 0 ? this.shapeDimensionB * shapeScale : height;
+        const boxDepth =
+          this.shapeDimensionC > 0 ? this.shapeDimensionC * shapeScale : depth;
+        geometry = new THREE.BoxGeometry(
+          Math.max(1, boxWidth),
+          Math.max(1, boxHeight),
+          Math.max(1, boxDepth)
+        );
+      }
+
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.renderOrder = 10020;
+      mesh.frustumCulled = false;
+      previewRoot.add(mesh);
+      return previewRoot;
+    }
+
+    private _computeColliderPreviewSignature(): string {
+      return [
+        this.bodyType,
+        this._shape,
+        this.shapeScale,
+        this.shapeOrientation,
+        this.shapeDimensionA,
+        this.shapeDimensionB,
+        this.shapeDimensionC,
+        this.shapeOffsetX,
+        this.shapeOffsetY,
+        this.shapeOffsetZ,
+        this.meshShapeResourceName,
+        this.meshColliderMode,
+        this.meshColliderMaxTrianglesPerSubMesh,
+        this.meshColliderMaxTrianglesPerLeaf,
+        this.meshColliderActiveEdgeCosThresholdAngle,
+        this.meshColliderBuildQuality,
+        this.meshColliderMaxConvexHullPoints,
+        this.meshColliderSamplesPerMesh,
+        this.meshColliderMaxConvexRadius,
+        this.meshColliderMaxErrorConvexRadius,
+        this.meshColliderHullTolerance,
+        this.owner3D.getWidth(),
+        this.owner3D.getHeight(),
+        this.owner3D.getDepth(),
+      ].join('|');
+    }
+
+    private _ensureColliderPreview(scene: THREE.Scene): void {
+      if (this._colliderPreviewGroup) {
+        if (this._colliderPreviewGroup.parent !== scene) {
+          this._colliderPreviewGroup.parent?.remove(this._colliderPreviewGroup);
+          scene.add(this._colliderPreviewGroup);
+        }
+        return;
+      }
+
+      const group = new THREE.Group();
+      group.name = 'Physics3DColliderPreview';
+      scene.add(group);
+      this._colliderPreviewGroup = group;
+    }
+
+    private _rebuildColliderPreviewObject(): void {
+      if (!this._colliderPreviewGroup) {
+        return;
+      }
+      if (this._colliderPreviewObject) {
+        this._colliderPreviewObject.removeFromParent();
+        this._colliderPreviewObject.traverse((object3d) => {
+          const anyObject = object3d as any;
+          if (
+            anyObject.geometry &&
+            typeof anyObject.geometry.dispose === 'function'
+          ) {
+            anyObject.geometry.dispose();
+          }
+          if (anyObject.material) {
+            if (Array.isArray(anyObject.material)) {
+              for (const material of anyObject.material) {
+                if (material && typeof material.dispose === 'function') {
+                  material.dispose();
+                }
+              }
+            } else if (typeof anyObject.material.dispose === 'function') {
+              anyObject.material.dispose();
+            }
+          }
+        });
+      }
+
+      this._colliderPreviewObject = this._createColliderPreviewObject();
+      if (this._colliderPreviewObject) {
+        this._colliderPreviewGroup.add(this._colliderPreviewObject);
+      }
+    }
+
+    private _disposeColliderPreview(): void {
+      if (!this._colliderPreviewGroup) {
+        this._colliderPreviewSignature = '';
+        return;
+      }
+      this._colliderPreviewGroup.removeFromParent();
+      this._colliderPreviewGroup.traverse((object3d) => {
+        const anyObject = object3d as any;
+        if (
+          anyObject.geometry &&
+          typeof anyObject.geometry.dispose === 'function'
+        ) {
+          anyObject.geometry.dispose();
+        }
+        if (anyObject.material) {
+          if (Array.isArray(anyObject.material)) {
+            for (const material of anyObject.material) {
+              if (material && typeof material.dispose === 'function') {
+                material.dispose();
+              }
+            }
+          } else if (typeof anyObject.material.dispose === 'function') {
+            anyObject.material.dispose();
+          }
+        }
+      });
+      this._colliderPreviewGroup = null;
+      this._colliderPreviewObject = null;
+      this._colliderPreviewSignature = '';
+    }
+
+    private _updateColliderPreview(): void {
+      if (!this.showCollider || !this.activated()) {
+        this._disposeColliderPreview();
+        return;
+      }
+
+      const runtimeScene = this.owner.getRuntimeScene();
+      const layer = runtimeScene.getLayer(this.owner.getLayer());
+      const scene = layer.get3DRendererObject() as THREE.Scene | null;
+      if (!scene) {
+        this._disposeColliderPreview();
+        return;
+      }
+
+      this._ensureColliderPreview(scene);
+      if (!this._colliderPreviewGroup) {
+        return;
+      }
+
+      const signature = this._computeColliderPreviewSignature();
+      if (
+        signature !== this._colliderPreviewSignature ||
+        !this._colliderPreviewObject
+      ) {
+        this._colliderPreviewSignature = signature;
+        this._rebuildColliderPreviewObject();
+      }
+
+      if (!this._colliderPreviewObject) {
+        this._colliderPreviewGroup.visible = false;
+        return;
+      }
+
+      const threeObject = this.owner3D.get3DRendererObject();
+      if (!threeObject) {
+        this._colliderPreviewGroup.visible = false;
+        return;
+      }
+
+      // Use the physics body transform when available.
+      // This is the only reliable source for special updaters (like VehicleBodyUpdater),
+      // where the visual object transform can be offset from the rigid body center.
+      if (this._body) {
+        const physicsPosition = this._body.GetPosition();
+        const physicsRotation = this._body.GetRotation();
+        this._colliderPreviewGroup.position.set(
+          physicsPosition.GetX() * this._sharedData.worldScale,
+          physicsPosition.GetY() * this._sharedData.worldScale,
+          physicsPosition.GetZ() * this._sharedData.worldScale
+        );
+        this._colliderPreviewGroup.quaternion.set(
+          physicsRotation.GetX(),
+          physicsRotation.GetY(),
+          physicsRotation.GetZ(),
+          physicsRotation.GetW()
+        );
+      } else {
+        threeObject.updateMatrixWorld(true);
+        threeObject.getWorldPosition(this._colliderPreviewGroup.position);
+        threeObject.getWorldQuaternion(this._colliderPreviewGroup.quaternion);
+      }
+      this._colliderPreviewGroup.scale.set(1, 1, 1);
+      this._colliderPreviewGroup.visible = true;
     }
 
     private _updateJointEditorPreview(
@@ -6749,6 +8369,10 @@ namespace gdjs {
     export interface BodyUpdater {
       createAndAddBody(): Jolt.Body | null;
       updateObjectFromBody(): void;
+      capturePhysicsSnapshot?(
+        snapshotBuffer: Float32Array,
+        snapshotOffset: integer
+      ): boolean;
       updateBodyFromObject(): void;
       recreateShape(): void;
       destroyBody(): void;
@@ -6819,6 +8443,32 @@ namespace gdjs {
           behavior._moveObjectToPhysicsPosition(_body.GetPosition());
           behavior._moveObjectToPhysicsRotation(_body.GetRotation());
         }
+      }
+
+      capturePhysicsSnapshot(
+        snapshotBuffer: Float32Array,
+        snapshotOffset: integer
+      ): boolean {
+        const { behavior } = this;
+        const body = behavior._body;
+        if (body === null || !body.IsActive()) {
+          return false;
+        }
+
+        const bodyPosition = body.GetPosition();
+        const bodyRotation = body.GetRotation();
+        behavior._writePhysicsSnapshotValues(
+          snapshotBuffer,
+          snapshotOffset,
+          bodyPosition.GetX(),
+          bodyPosition.GetY(),
+          bodyPosition.GetZ(),
+          bodyRotation.GetX(),
+          bodyRotation.GetY(),
+          bodyRotation.GetZ(),
+          bodyRotation.GetW()
+        );
+        return true;
       }
 
       updateBodyFromObject() {

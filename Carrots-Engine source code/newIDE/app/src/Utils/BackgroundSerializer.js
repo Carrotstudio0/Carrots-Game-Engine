@@ -1,8 +1,6 @@
 // @flow
 
 import VersionMetadata from '../Version/VersionMetadata';
-// Import the worker (handled by worker-loader)
-import BackgroundSerializerWorker from './BackgroundSerializer.worker';
 
 const gd: libGDevelop = global.gd;
 
@@ -21,14 +19,16 @@ const log = (message: string) => {
   console.log(`[BackgroundSerializer] ${message}`);
 };
 
+const createBackgroundSerializerWorker = (): Worker =>
+  // $FlowFixMe[prop-missing]
+  new Worker(new URL('./BackgroundSerializer.worker.js', import.meta.url));
+
 const getOrCreateBackgroundSerializerWorker = (): Worker => {
   if (serializerWorker) {
     return serializerWorker;
   }
 
-  // $FlowFixMe[incompatible-type] - worker-loader types aren't recognized by Flow
-  // $FlowFixMe[invalid-constructor]
-  serializerWorker = new BackgroundSerializerWorker();
+  serializerWorker = createBackgroundSerializerWorker();
 
   // Set up message handler
   serializerWorker.onmessage = (event: MessageEvent) => {

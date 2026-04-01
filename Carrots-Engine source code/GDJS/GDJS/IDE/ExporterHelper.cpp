@@ -12,6 +12,7 @@
 #include <array>
 #include <fstream>
 #include <functional>
+#include <set>
 #include <sstream>
 #include <streambuf>
 #include <string>
@@ -99,6 +100,70 @@ static gd::String CleanProjectName(gd::String projectName) {
     partiallyCleanedProjectName = "Project";
 
   return partiallyCleanedProjectName;
+}
+
+constexpr const char kTypeScriptProjectScriptsExtensionName[] = "GDevelopEditor";
+constexpr const char kTypeScriptProjectScriptsPropertyName[] =
+    "typeScriptProjectScripts";
+
+static gd::String MakeSafeFileNamePart(const gd::String &value,
+                                       const gd::String &fallback) {
+  gd::String sanitized;
+  sanitized.reserve(value.Raw().size());
+
+  for (char character : value.Raw()) {
+    const bool isLowercaseLetter = character >= 'a' && character <= 'z';
+    const bool isUppercaseLetter = character >= 'A' && character <= 'Z';
+    const bool isDigit = character >= '0' && character <= '9';
+    if (isLowercaseLetter || isUppercaseLetter || isDigit ||
+        character == '-' || character == '_') {
+      sanitized += character;
+    } else {
+      sanitized += '-';
+    }
+  }
+
+  sanitized = sanitized.Trim("-");
+  if (sanitized.empty()) return fallback;
+  return sanitized;
+}
+
+static bool EndsWith(const std::string &value, const std::string &suffix) {
+  return value.size() >= suffix.size() &&
+         value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+static gd::String NormalizeTypeScriptModuleId(gd::String moduleId,
+                                              const gd::String &fallback) {
+  gd::String normalizedModuleId = moduleId.FindAndReplace("\\", "/").Trim();
+  while (normalizedModuleId.size() >= 2 &&
+         normalizedModuleId[0] == '.' &&
+         normalizedModuleId[1] == '/') {
+    normalizedModuleId = normalizedModuleId.substr(2);
+  }
+  if (normalizedModuleId.size() >= 1 && normalizedModuleId[0] == '/') {
+    normalizedModuleId = normalizedModuleId.substr(1);
+  }
+
+  if (normalizedModuleId.empty()) {
+    normalizedModuleId = fallback;
+  }
+
+  const std::string rawModuleId = normalizedModuleId.Raw();
+  if (!EndsWith(rawModuleId, ".ts") &&
+      !EndsWith(rawModuleId, ".tsx") &&
+      !EndsWith(rawModuleId, ".js") &&
+      !EndsWith(rawModuleId, ".jsx") &&
+      !EndsWith(rawModuleId, ".mjs") &&
+      !EndsWith(rawModuleId, ".cjs")) {
+    normalizedModuleId += ".ts";
+  }
+
+  return normalizedModuleId;
+}
+
+static gd::String AsJsonStringLiteral(const gd::String &value) {
+  return gd::Serializer::ToJSON(gd::SerializerElement(value));
 }
 
 ExporterHelper::ExporterHelper(gd::AbstractFileSystem &fileSystem,
@@ -283,6 +348,14 @@ bool ExporterHelper::ExportProjectForPixiPreview(
   }
   else {
     gd::LogStatus("Events code export is skipped");
+  }
+
+  if (options.shouldReloadLibraries || options.shouldClearExportFolder) {
+    if (!ExportTypeScriptProjectScripts(immutableProject,
+                                        codeOutputDir,
+                                        includesFiles)) {
+      return false;
+    }
   }
 
   if (options.shouldReloadProjectData || options.shouldClearExportFolder) {
@@ -1085,8 +1158,20 @@ bool ExporterHelper::CompleteIndexFile(
     gd::String additionalSpec) {
   if (additionalSpec.empty()) additionalSpec = "{}";
 
+  auto hasJavaScriptExtension = [](const gd::String &filename) {
+    const gd::String lowerCaseFilename = filename.LowerCase();
+    return (lowerCaseFilename.size() >= 3 &&
+            lowerCaseFilename.substr(lowerCaseFilename.size() - 3) == ".js") ||
+           (lowerCaseFilename.size() >= 4 &&
+            lowerCaseFilename.substr(lowerCaseFilename.size() - 4) == ".mjs");
+  };
+
   gd::String codeFilesIncludes;
   for (auto &include : includesFiles) {
+    if (!hasJavaScriptExtension(include)) {
+      continue;
+    }
+
     gd::String scriptSrc =
         GetExportedIncludeFilename(fs, gdjsRoot, include, nonRuntimeScriptsCacheBurst);
 
@@ -1147,6 +1232,7 @@ void ExporterHelper::AddLibsInclude(bool pixiRenderers,
   InsertUnique(includesFiles, "RuntimeCustomObjectLayer.js");
   InsertUnique(includesFiles, "timer.js");
   InsertUnique(includesFiles, "runtimewatermark.js");
+  InsertUnique(includesFiles, "multithreadingmanager.js");
   InsertUnique(includesFiles, "runtimegame.js");
   InsertUnique(includesFiles, "variable.js");
   InsertUnique(includesFiles, "variablescontainer.js");
@@ -1207,7 +1293,6 @@ void ExporterHelper::AddLibsInclude(bool pixiRenderers,
   if (pixiInThreeRenderers || isInGameEdition) {
     InsertUnique(includesFiles, "pixi-renderers/three.js");
     InsertUnique(includesFiles, "pixi-renderers/ThreeAddons.js");
-    InsertUnique(includesFiles, "pixi-renderers/draco/gltf/draco_decoder.wasm");
     InsertUnique(includesFiles,
                  "pixi-renderers/draco/gltf/draco_wasm_wrapper.js");
     // Extensions in JS may use it.
@@ -1311,6 +1396,1333 @@ bool ExporterHelper::ExportScenesEventsCode(
       return false;
     }
   }
+
+  return true;
+}
+
+bool ExporterHelper::ExportTypeScriptProjectScripts(
+    const gd::Project &project,
+    gd::String outputDir,
+    std::vector<gd::String> &includesFiles) {
+  const gd::String &serializedScripts =
+      project.GetExtensionProperties().GetValue(
+          kTypeScriptProjectScriptsExtensionName,
+          kTypeScriptProjectScriptsPropertyName);
+  if (serializedScripts.empty()) return true;
+
+  auto scriptsMetadataElement = gd::Serializer::FromJSON(serializedScripts);
+  if (!scriptsMetadataElement.HasChild("scripts")) return true;
+
+  auto &scriptsElement = scriptsMetadataElement.GetChild("scripts");
+  scriptsElement.ConsiderAsArray();
+
+  struct ProjectTypeScriptModule {
+    gd::String moduleId;
+    gd::String transpiledCode;
+    bool includeFirst = false;
+    gd::String contextKind;
+    gd::String sceneName;
+    gd::String objectName;
+    gd::String behaviorName;
+  };
+
+  std::vector<ProjectTypeScriptModule> modules;
+  std::vector<gd::String> firstModuleIds;
+  std::vector<gd::String> lastModuleIds;
+  std::set<gd::String> usedModuleIds;
+
+  const std::size_t scriptsCount = scriptsElement.GetChildrenCount();
+  for (std::size_t i = 0; i < scriptsCount; ++i) {
+    auto &scriptElement = scriptsElement.GetChild(i);
+    const gd::String transpiledCode =
+        scriptElement.HasChild("transpiledCode")
+            ? scriptElement.GetChild("transpiledCode").GetStringValue()
+            : "";
+    if (transpiledCode.empty()) continue;
+
+    const gd::String scriptId =
+        scriptElement.HasChild("id")
+            ? scriptElement.GetChild("id").GetStringValue()
+            : "";
+    const gd::String scriptName =
+        scriptElement.HasChild("name")
+            ? scriptElement.GetChild("name").GetStringValue()
+            : "";
+
+    const gd::String fallbackModuleId =
+        "script-" + MakeSafeFileNamePart(scriptId, gd::String::From(i));
+    const gd::String preferredModuleId =
+        scriptName.empty() ? fallbackModuleId : scriptName;
+    const gd::String normalizedModuleId =
+        NormalizeTypeScriptModuleId(preferredModuleId, fallbackModuleId);
+
+    gd::String uniqueModuleId = normalizedModuleId;
+    const std::size_t extensionPosition =
+        uniqueModuleId.Raw().find_last_of('.');
+    for (std::size_t duplicateIndex = 1;
+         usedModuleIds.count(uniqueModuleId) > 0;
+         duplicateIndex++) {
+      if (extensionPosition != std::string::npos) {
+        uniqueModuleId = normalizedModuleId.substr(0, extensionPosition) + "-" +
+                         gd::String::From(duplicateIndex) +
+                         normalizedModuleId.substr(extensionPosition);
+      } else {
+        uniqueModuleId =
+            normalizedModuleId + "-" + gd::String::From(duplicateIndex);
+      }
+    }
+    usedModuleIds.insert(uniqueModuleId);
+
+    const gd::String includePosition =
+        scriptElement.HasChild("includePosition")
+            ? scriptElement.GetChild("includePosition").GetStringValue()
+            : "last";
+    const bool includeFirst = includePosition == "first";
+
+    gd::String contextKind =
+        scriptElement.HasChild("contextKind")
+            ? scriptElement.GetChild("contextKind").GetStringValue()
+            : "project";
+    if (contextKind != "scene" && contextKind != "object" &&
+        contextKind != "behavior" && contextKind != "project") {
+      contextKind = "project";
+    }
+    const gd::String sceneName =
+        scriptElement.HasChild("sceneName")
+            ? scriptElement.GetChild("sceneName").GetStringValue()
+            : "";
+    const gd::String objectName =
+        scriptElement.HasChild("objectName")
+            ? scriptElement.GetChild("objectName").GetStringValue()
+            : "";
+    const gd::String behaviorName =
+        scriptElement.HasChild("behaviorName")
+            ? scriptElement.GetChild("behaviorName").GetStringValue()
+            : "";
+
+    modules.push_back({uniqueModuleId,
+                       transpiledCode,
+                       includeFirst,
+                       contextKind,
+                       sceneName,
+                       objectName,
+                       behaviorName});
+    if (includeFirst) {
+      firstModuleIds.push_back(uniqueModuleId);
+    } else {
+      lastModuleIds.push_back(uniqueModuleId);
+    }
+  }
+
+  if (modules.empty()) return true;
+
+  fs.MkDir(outputDir);
+  const gd::String runtimeFilePath = outputDir + "/project-ts-modules-runtime.js";
+  const gd::String definitionsFilePath =
+      outputDir + "/project-ts-modules-definitions.js";
+  const gd::String firstBootstrapFilePath =
+      outputDir + "/project-ts-modules-bootstrap-first.js";
+  const gd::String lastBootstrapFilePath =
+      outputDir + "/project-ts-modules-bootstrap-last.js";
+  const gd::String lifecycleFilePath =
+      outputDir + "/project-ts-modules-lifecycle.js";
+
+  const gd::String runtimeOutput = R"TSMODULES((function(globalObject) {
+  if (globalObject.__gdevelopTsModules) return;
+
+  var moduleSources = Object.create(null);
+  var cache = Object.create(null);
+  var externals = Object.create(null);
+  var externalAliases = Object.create(null);
+
+  var normalizePath = function(path) {
+    var parts = path.split('/');
+    var normalizedParts = [];
+    for (var i = 0; i < parts.length; i++) {
+      var part = parts[i];
+      if (!part || part === '.') continue;
+      if (part === '..') {
+        if (normalizedParts.length) normalizedParts.pop();
+        continue;
+      }
+      normalizedParts.push(part);
+    }
+    return normalizedParts.join('/');
+  };
+
+  var removeExtension = function(path) {
+    return path.replace(/\.(tsx?|jsx?|mjs|cjs)$/i, '');
+  };
+
+  var hasSource = function(moduleId) {
+    return Object.prototype.hasOwnProperty.call(moduleSources, moduleId);
+  };
+
+  var getGlobalValueByPath = function(path) {
+    if (!path || typeof path !== 'string') return undefined;
+    if (
+      path === 'globalThis' ||
+      path === 'window' ||
+      path === 'self' ||
+      path === 'global'
+    ) {
+      return globalObject;
+    }
+    var normalizedPath = path.replace(/\[(\d+)\]/g, '.$1');
+    var parts = normalizedPath.split('.');
+    var currentValue = globalObject;
+    for (var i = 0; i < parts.length; i++) {
+      var part = parts[i];
+      if (!part) continue;
+      if (currentValue === null || typeof currentValue === 'undefined') {
+        return undefined;
+      }
+      currentValue = currentValue[part];
+      if (typeof currentValue === 'undefined') {
+        return undefined;
+      }
+    }
+    return currentValue;
+  };
+
+  var tryResolveExternalFromGlobal = function(moduleName) {
+    if (!moduleName) return undefined;
+    var directGlobalValue = getGlobalValueByPath(moduleName);
+    if (typeof directGlobalValue !== 'undefined') {
+      return directGlobalValue;
+    }
+    if (Object.prototype.hasOwnProperty.call(externalAliases, moduleName)) {
+      var aliasedGlobalPath = externalAliases[moduleName];
+      return getGlobalValueByPath(aliasedGlobalPath);
+    }
+    return undefined;
+  };
+
+  var tryResolveExternalFromNodeRequire = function(moduleName) {
+    var nodeRequire = null;
+    if (typeof require === 'function') {
+      nodeRequire = require;
+    } else if (globalObject && typeof globalObject.require === 'function') {
+      nodeRequire = globalObject.require;
+    }
+    if (!nodeRequire) return undefined;
+    try {
+      return nodeRequire(moduleName);
+    } catch (error) {
+      return undefined;
+    }
+  };
+
+  var resolveExternalModule = function(moduleName) {
+    if (Object.prototype.hasOwnProperty.call(externals, moduleName)) {
+      return externals[moduleName];
+    }
+    var globalExternalValue = tryResolveExternalFromGlobal(moduleName);
+    if (typeof globalExternalValue !== 'undefined') {
+      externals[moduleName] = globalExternalValue;
+      return globalExternalValue;
+    }
+    var nodeExternalValue = tryResolveExternalFromNodeRequire(moduleName);
+    if (typeof nodeExternalValue !== 'undefined') {
+      externals[moduleName] = nodeExternalValue;
+      return nodeExternalValue;
+    }
+    return undefined;
+  };
+
+  var resolveModuleId = function(request, fromModuleId) {
+    var normalizedRequest = request.replace(/\\/g, '/');
+    var candidateIds = [];
+    var pushCandidate = function(candidateId) {
+      if (candidateId && candidateIds.indexOf(candidateId) === -1) {
+        candidateIds.push(candidateId);
+      }
+    };
+
+    if (normalizedRequest.charAt(0) === '.') {
+      var fromDirectory = '';
+      if (fromModuleId) {
+        var separatorIndex = fromModuleId.lastIndexOf('/');
+        fromDirectory = separatorIndex >= 0 ? fromModuleId.slice(0, separatorIndex + 1) : '';
+      }
+      var normalizedRelativeId = normalizePath(fromDirectory + normalizedRequest);
+      var normalizedWithoutExtension = removeExtension(normalizedRelativeId);
+      pushCandidate(normalizedRelativeId);
+      pushCandidate(normalizedWithoutExtension);
+      pushCandidate(normalizedWithoutExtension + '.ts');
+      pushCandidate(normalizedWithoutExtension + '.tsx');
+      pushCandidate(normalizedWithoutExtension + '.js');
+      pushCandidate(normalizedWithoutExtension + '/index.ts');
+      pushCandidate(normalizedWithoutExtension + '/index.tsx');
+      pushCandidate(normalizedWithoutExtension + '/index.js');
+    } else {
+      var normalizedAbsoluteId = normalizePath(normalizedRequest);
+      var normalizedAbsoluteWithoutExtension = removeExtension(normalizedAbsoluteId);
+      pushCandidate(normalizedAbsoluteId);
+      pushCandidate(normalizedAbsoluteWithoutExtension);
+      pushCandidate(normalizedAbsoluteWithoutExtension + '.ts');
+      pushCandidate(normalizedAbsoluteWithoutExtension + '.tsx');
+      pushCandidate(normalizedAbsoluteWithoutExtension + '.js');
+    }
+
+    for (var i = 0; i < candidateIds.length; i++) {
+      if (hasSource(candidateIds[i])) return candidateIds[i];
+    }
+
+    throw new Error(
+      '[TypeScript Modules] Cannot find module "' +
+        request +
+        '" from "' +
+        (fromModuleId || '<entry>') +
+        '".'
+    );
+  };
+
+  var requireModule = function(request, fromModuleId) {
+    var externalModule = resolveExternalModule(request);
+    if (typeof externalModule !== 'undefined') {
+      return externalModule;
+    }
+
+    var resolvedModuleId = resolveModuleId(request, fromModuleId);
+    if (Object.prototype.hasOwnProperty.call(cache, resolvedModuleId)) {
+      return cache[resolvedModuleId].exports;
+    }
+
+    var module = { exports: {} };
+    cache[resolvedModuleId] = module;
+    var localRequire = function(nextRequest) {
+      return requireModule(nextRequest, resolvedModuleId);
+    };
+    var moduleFactory = new Function(
+      'require',
+      'module',
+      'exports',
+      moduleSources[resolvedModuleId]
+    );
+    moduleFactory(localRequire, module, module.exports);
+    return module.exports;
+  };
+
+  var projectTests = [];
+  var sharedState = Object.create(null);
+  var scriptEventListeners = Object.create(null);
+
+  var getListenersForEvent = function(eventName, createIfMissing) {
+    if (!eventName || typeof eventName !== 'string') return [];
+    if (!Object.prototype.hasOwnProperty.call(scriptEventListeners, eventName)) {
+      if (!createIfMissing) return [];
+      scriptEventListeners[eventName] = [];
+    }
+    return scriptEventListeners[eventName];
+  };
+
+  var cloneArray = function(values) {
+    if (!values || !values.length) return [];
+    return values.slice();
+  };
+
+  var modulesApi = {
+    defineSource: function(moduleId, moduleSource) {
+      moduleSources[moduleId] = moduleSource;
+    },
+    setExternal: function(moduleName, moduleValue) {
+      if (!moduleName || typeof moduleName !== 'string') return;
+      if (typeof moduleValue === 'undefined') {
+        delete externals[moduleName];
+        return;
+      }
+      externals[moduleName] = moduleValue;
+    },
+    setExternalAlias: function(moduleName, globalPath) {
+      if (!moduleName || typeof moduleName !== 'string') return;
+      if (!globalPath || typeof globalPath !== 'string') return;
+      externalAliases[moduleName] = globalPath;
+      var resolvedValue = tryResolveExternalFromGlobal(moduleName);
+      if (typeof resolvedValue !== 'undefined') {
+        externals[moduleName] = resolvedValue;
+      }
+    },
+    hasExternal: function(moduleName) {
+      if (!moduleName || typeof moduleName !== 'string') return false;
+      if (Object.prototype.hasOwnProperty.call(externals, moduleName)) return true;
+      return typeof resolveExternalModule(moduleName) !== 'undefined';
+    },
+    getExternal: function(moduleName) {
+      if (!moduleName || typeof moduleName !== 'string') return undefined;
+      return resolveExternalModule(moduleName);
+    },
+    requireExternal: function(moduleName) {
+      if (!moduleName || typeof moduleName !== 'string') return undefined;
+      return resolveExternalModule(moduleName);
+    },
+    importExternal: function(moduleName) {
+      if (!moduleName || typeof moduleName !== 'string') {
+        return Promise.reject(
+          new Error(
+            '[TypeScript Modules] External module name must be a non-empty string.'
+          )
+        );
+      }
+      var resolvedExternal = resolveExternalModule(moduleName);
+      if (typeof resolvedExternal !== 'undefined') {
+        return Promise.resolve(resolvedExternal);
+      }
+      try {
+        var dynamicImportFactory = new Function(
+          'moduleName',
+          'return import(moduleName);'
+        );
+        return dynamicImportFactory(moduleName).then(function(importedModule) {
+          var moduleValue =
+            importedModule &&
+            typeof importedModule === 'object' &&
+            Object.prototype.hasOwnProperty.call(importedModule, 'default')
+              ? importedModule.default
+              : importedModule;
+          externals[moduleName] = moduleValue;
+          return moduleValue;
+        });
+      } catch (error) {
+        return Promise.reject(
+          new Error(
+            '[TypeScript Modules] Unable to import external module "' +
+              moduleName +
+              '".'
+          )
+        );
+      }
+    },
+    resolveGlobal: function(globalPath) {
+      return getGlobalValueByPath(globalPath);
+    },
+    bindDefaultExternals: function() {
+      modulesApi.setExternal('globalThis', globalObject);
+      modulesApi.setExternal('tsModules', modulesApi);
+      if (typeof globalObject.gdjs !== 'undefined') {
+        modulesApi.setExternal('gdjs', globalObject.gdjs);
+      }
+
+      modulesApi.setExternalAlias('three', 'THREE');
+      modulesApi.setExternalAlias('THREE', 'THREE');
+      modulesApi.setExternalAlias('pixi.js', 'PIXI');
+      modulesApi.setExternalAlias('pixi', 'PIXI');
+      modulesApi.setExternalAlias('PIXI', 'PIXI');
+      modulesApi.setExternalAlias('howler', 'Howler');
+      modulesApi.setExternalAlias('Howler', 'Howler');
+      modulesApi.setExternalAlias('Howl', 'Howl');
+      modulesApi.setExternalAlias('tone', 'Tone');
+      modulesApi.setExternalAlias('Tone', 'Tone');
+      modulesApi.setExternalAlias('babylonjs', 'BABYLON');
+      modulesApi.setExternalAlias('BABYLON', 'BABYLON');
+    },
+    listModuleIds: function() {
+      return Object.keys(moduleSources).sort();
+    },
+    callExport: function(moduleId, exportName) {
+      if (!moduleId || typeof moduleId !== 'string') {
+        throw new Error('[TypeScript Modules] moduleId must be a non-empty string.');
+      }
+      var moduleExports = modulesApi.require(moduleId);
+      var extraArgs = Array.prototype.slice.call(arguments, 2);
+      if (typeof exportName === 'undefined' || exportName === null || exportName === '') {
+        if (typeof moduleExports !== 'function') {
+          throw new Error(
+            '[TypeScript Modules] Module "' +
+              moduleId +
+              '" does not export a default callable function.'
+          );
+        }
+        return moduleExports.apply(moduleExports, extraArgs);
+      }
+      if (!moduleExports || typeof moduleExports[exportName] !== 'function') {
+        throw new Error(
+          '[TypeScript Modules] Module "' +
+            moduleId +
+            '" has no callable export "' +
+            exportName +
+            '".'
+        );
+      }
+      return moduleExports[exportName].apply(moduleExports, extraArgs);
+    },
+    hasSharedState: function(key) {
+      return (
+        !!key &&
+        typeof key === 'string' &&
+        Object.prototype.hasOwnProperty.call(sharedState, key)
+      );
+    },
+    setSharedState: function(key, value) {
+      if (!key || typeof key !== 'string') return;
+      sharedState[key] = value;
+    },
+    getSharedState: function(key, defaultValue) {
+      if (!key || typeof key !== 'string') return defaultValue;
+      if (!Object.prototype.hasOwnProperty.call(sharedState, key)) {
+        return defaultValue;
+      }
+      return sharedState[key];
+    },
+    deleteSharedState: function(key) {
+      if (!key || typeof key !== 'string') return false;
+      if (!Object.prototype.hasOwnProperty.call(sharedState, key)) return false;
+      delete sharedState[key];
+      return true;
+    },
+    patchSharedState: function(key, patchValue) {
+      if (!key || typeof key !== 'string') return undefined;
+      var currentValue = modulesApi.getSharedState(key, {});
+      if (
+        !currentValue ||
+        typeof currentValue !== 'object' ||
+        Array.isArray(currentValue)
+      ) {
+        currentValue = {};
+      }
+      var nextValue = Object.assign({}, currentValue, patchValue || {});
+      modulesApi.setSharedState(key, nextValue);
+      return nextValue;
+    },
+    clearSharedState: function() {
+      var keys = Object.keys(sharedState);
+      for (var i = 0; i < keys.length; i++) {
+        delete sharedState[keys[i]];
+      }
+    },
+    listSharedStateKeys: function() {
+      return Object.keys(sharedState).sort();
+    },
+    on: function(eventName, listener) {
+      if (!eventName || typeof eventName !== 'string') return function() {};
+      if (typeof listener !== 'function') return function() {};
+      var listeners = getListenersForEvent(eventName, true);
+      listeners.push(listener);
+      return function unsubscribe() {
+        modulesApi.off(eventName, listener);
+      };
+    },
+    once: function(eventName, listener) {
+      if (!eventName || typeof eventName !== 'string') return function() {};
+      if (typeof listener !== 'function') return function() {};
+      var onceWrapper = function(payload, metadata) {
+        modulesApi.off(eventName, onceWrapper);
+        return listener(payload, metadata);
+      };
+      onceWrapper.__originalListener = listener;
+      return modulesApi.on(eventName, onceWrapper);
+    },
+    off: function(eventName, listener) {
+      if (!eventName || typeof eventName !== 'string') return 0;
+      var listeners = getListenersForEvent(eventName, false);
+      if (!listeners.length) return 0;
+      if (typeof listener !== 'function') {
+        var removedCount = listeners.length;
+        listeners.length = 0;
+        return removedCount;
+      }
+      var removed = 0;
+      for (var i = listeners.length - 1; i >= 0; i--) {
+        var currentListener = listeners[i];
+        if (
+          currentListener === listener ||
+          currentListener.__originalListener === listener
+        ) {
+          listeners.splice(i, 1);
+          removed++;
+        }
+      }
+      return removed;
+    },
+    emit: function(eventName, payload) {
+      if (!eventName || typeof eventName !== 'string') return 0;
+      var listeners = cloneArray(getListenersForEvent(eventName, false));
+      if (!listeners.length) return 0;
+      var metadata = {
+        eventName: eventName,
+        timestamp: Date.now(),
+        listenersCount: listeners.length,
+      };
+      for (var i = 0; i < listeners.length; i++) {
+        try {
+          listeners[i](payload, metadata);
+        } catch (error) {
+          console.error(
+            '[TypeScript Modules] Listener error for event "' + eventName + '".',
+            error
+          );
+        }
+      }
+      return listeners.length;
+    },
+    clearEventListeners: function(eventName) {
+      if (!eventName || typeof eventName !== 'string') {
+        var allEvents = Object.keys(scriptEventListeners);
+        for (var i = 0; i < allEvents.length; i++) {
+          scriptEventListeners[allEvents[i]].length = 0;
+        }
+        return allEvents.length;
+      }
+      if (!Object.prototype.hasOwnProperty.call(scriptEventListeners, eventName)) {
+        return 0;
+      }
+      var listeners = scriptEventListeners[eventName];
+      var removedCount = listeners.length;
+      listeners.length = 0;
+      return removedCount;
+    },
+    listEventNames: function() {
+      return Object.keys(scriptEventListeners).sort();
+    },
+    evalJavaScript: function(code) {
+      return new Function(code)();
+    },
+    registerTest: function(testName, testFunction) {
+      projectTests.push({
+        name: testName || 'Unnamed test',
+        fn: testFunction,
+      });
+    },
+    clearTests: function() {
+      projectTests.length = 0;
+    },
+    runTests: function() {
+      var failures = [];
+      for (var i = 0; i < projectTests.length; i++) {
+        var testCase = projectTests[i];
+        try {
+          testCase.fn();
+        } catch (error) {
+          failures.push({
+            name: testCase.name,
+            message: error && error.message ? error.message : String(error),
+          });
+        }
+      }
+      return {
+        total: projectTests.length,
+        passed: projectTests.length - failures.length,
+        failed: failures.length,
+        failures: failures,
+      };
+    },
+    installGdjsBindings: function() {
+      if (!globalObject.gdjs) return;
+
+      if (!globalObject.gdjs.ts) globalObject.gdjs.ts = {};
+      globalObject.gdjs.ts.setExternalModule = function(moduleName, moduleValue) {
+        modulesApi.setExternal(moduleName, moduleValue);
+      };
+      globalObject.gdjs.ts.bridge = modulesApi;
+      globalObject.gdjs.ts.setExternalModuleAlias = function(
+        moduleName,
+        globalPath
+      ) {
+        modulesApi.setExternalAlias(moduleName, globalPath);
+      };
+      globalObject.gdjs.ts.requireExternalModule = function(moduleName) {
+        return modulesApi.requireExternal(moduleName);
+      };
+      globalObject.gdjs.ts.importExternalModule = function(moduleName) {
+        return modulesApi.importExternal(moduleName);
+      };
+      globalObject.gdjs.ts.resolveGlobal = function(globalPath) {
+        return modulesApi.resolveGlobal(globalPath);
+      };
+      globalObject.gdjs.ts.bindDefaultExternalModules = function() {
+        modulesApi.bindDefaultExternals();
+      };
+      globalObject.gdjs.ts.requireModule = function(moduleName) {
+        return modulesApi.require(moduleName);
+      };
+      globalObject.gdjs.ts.callScriptExport = function(moduleId, exportName) {
+        var extraArgs = Array.prototype.slice.call(arguments, 2);
+        return modulesApi.callExport.apply(
+          modulesApi,
+          [moduleId, exportName].concat(extraArgs)
+        );
+      };
+      globalObject.gdjs.ts.setSharedState = function(key, value) {
+        return modulesApi.setSharedState(key, value);
+      };
+      globalObject.gdjs.ts.getSharedState = function(key, defaultValue) {
+        return modulesApi.getSharedState(key, defaultValue);
+      };
+      globalObject.gdjs.ts.emit = function(eventName, payload) {
+        return modulesApi.emit(eventName, payload);
+      };
+      globalObject.gdjs.ts.on = function(eventName, listener) {
+        return modulesApi.on(eventName, listener);
+      };
+      globalObject.gdjs.ts.off = function(eventName, listener) {
+        return modulesApi.off(eventName, listener);
+      };
+      globalObject.gdjs.ts.registerProjectBehavior = function(
+        behaviorType,
+        behaviorConstructor
+      ) {
+        globalObject.gdjs.registerBehavior(behaviorType, behaviorConstructor);
+      };
+      globalObject.gdjs.ts.evalJavaScript = function(code) {
+        return modulesApi.evalJavaScript(code);
+      };
+      globalObject.gdjs.ts.test = function(testName, testFunction) {
+        modulesApi.registerTest(testName, testFunction);
+      };
+      globalObject.gdjs.ts.runTests = function() {
+        return modulesApi.runTests();
+      };
+      globalObject.gdjs.ts.clearTests = function() {
+        modulesApi.clearTests();
+      };
+      globalObject.registerProjectBehavior = function(behaviorType, behaviorConstructor) {
+        globalObject.gdjs.registerBehavior(behaviorType, behaviorConstructor);
+      };
+      globalObject.requireModule = function(moduleName) {
+        return modulesApi.require(moduleName);
+      };
+      globalObject.callScriptExport = function(moduleId, exportName) {
+        var extraArgs = Array.prototype.slice.call(arguments, 2);
+        return modulesApi.callExport.apply(
+          modulesApi,
+          [moduleId, exportName].concat(extraArgs)
+        );
+      };
+      globalObject.setScriptSharedState = function(key, value) {
+        return modulesApi.setSharedState(key, value);
+      };
+      globalObject.getScriptSharedState = function(key, defaultValue) {
+        return modulesApi.getSharedState(key, defaultValue);
+      };
+      globalObject.emitScriptEvent = function(eventName, payload) {
+        return modulesApi.emit(eventName, payload);
+      };
+      globalObject.onScriptEvent = function(eventName, listener) {
+        return modulesApi.on(eventName, listener);
+      };
+      globalObject.offScriptEvent = function(eventName, listener) {
+        return modulesApi.off(eventName, listener);
+      };
+      globalObject.requireExternalModule = function(moduleName) {
+        return modulesApi.requireExternal(moduleName);
+      };
+      globalObject.importExternalModule = function(moduleName) {
+        return modulesApi.importExternal(moduleName);
+      };
+      globalObject.liveRepl = function(code) {
+        return modulesApi.evalJavaScript(code);
+      };
+    },
+    require: function(moduleId) {
+      return requireModule(moduleId, '');
+    },
+  };
+  modulesApi.bindDefaultExternals();
+  globalObject.__gdevelopTsModules = modulesApi;
+  globalObject.tsModules = modulesApi;
+})(typeof globalThis !== 'undefined' ? globalThis : window);
+)TSMODULES";
+
+  gd::String definitionsOutput = R"TSMODULEDEFS((function(globalObject) {
+  var modules = globalObject.__gdevelopTsModules;
+  if (!modules) return;
+)TSMODULEDEFS";
+  for (const auto &module : modules) {
+    const gd::String sourceWithSourceUrl =
+        module.transpiledCode + "\n//# sourceURL=gdevelop-ts:///" +
+        module.moduleId;
+    definitionsOutput +=
+        "  modules.defineSource(" + AsJsonStringLiteral(module.moduleId) +
+        ", " + AsJsonStringLiteral(sourceWithSourceUrl) + ");\n";
+  }
+  definitionsOutput +=
+      "})(typeof globalThis !== 'undefined' ? globalThis : window);\n";
+
+  gd::String lifecycleOutput = R"TSMODULELIFE((function(globalObject) {
+  var modules = globalObject.__gdevelopTsModules;
+  var gdjs = globalObject.gdjs;
+  if (!modules || !gdjs) return;
+  modules.installGdjsBindings();
+
+  if (
+    globalObject.__gdevelopTsModulesLifecycleCallbacks &&
+    typeof gdjs._unregisterCallback === 'function'
+  ) {
+    for (
+      var callbackIndex = 0;
+      callbackIndex < globalObject.__gdevelopTsModulesLifecycleCallbacks.length;
+      callbackIndex++
+    ) {
+      gdjs._unregisterCallback(
+        globalObject.__gdevelopTsModulesLifecycleCallbacks[callbackIndex]
+      );
+    }
+  }
+
+  var lifecycleCallbacks = [];
+  globalObject.__gdevelopTsModulesLifecycleCallbacks = lifecycleCallbacks;
+
+  var moduleContexts = [
+)TSMODULELIFE";
+
+  for (const auto &module : modules) {
+    lifecycleOutput += "    {\n";
+    lifecycleOutput +=
+        "      moduleId: " + AsJsonStringLiteral(module.moduleId) + ",\n";
+    lifecycleOutput +=
+        "      contextKind: " + AsJsonStringLiteral(module.contextKind) + ",\n";
+    lifecycleOutput +=
+        "      sceneName: " + AsJsonStringLiteral(module.sceneName) + ",\n";
+    lifecycleOutput +=
+        "      objectName: " + AsJsonStringLiteral(module.objectName) + ",\n";
+    lifecycleOutput +=
+        "      behaviorName: " + AsJsonStringLiteral(module.behaviorName) + ",\n";
+    lifecycleOutput += "    },\n";
+  }
+
+  lifecycleOutput += R"TSMODULELIFE(  ];
+
+  var toIdentifier = function(value) {
+    var sanitized = String(value || '').replace(/[^A-Za-z0-9_$]/g, '_');
+    if (!sanitized) return 'ScriptTarget';
+    if (/^[0-9]/.test(sanitized)) return '_' + sanitized;
+    return sanitized;
+  };
+
+  var sceneMatches = function(expectedSceneName, runtimeSceneName) {
+    return !expectedSceneName || expectedSceneName === runtimeSceneName;
+  };
+
+  var createWeakSet = function() {
+    if (typeof WeakSet !== 'undefined') {
+      return new WeakSet();
+    }
+    return {
+      _items: [],
+      has: function(item) {
+        return this._items.indexOf(item) !== -1;
+      },
+      add: function(item) {
+        if (this._items.indexOf(item) === -1) {
+          this._items.push(item);
+        }
+      },
+      delete: function(item) {
+        var itemIndex = this._items.indexOf(item);
+        if (itemIndex !== -1) this._items.splice(itemIndex, 1);
+      },
+    };
+  };
+
+  var createWeakMap = function() {
+    if (typeof WeakMap !== 'undefined') {
+      return new WeakMap();
+    }
+    return {
+      _keys: [],
+      _values: [],
+      has: function(key) {
+        return this._keys.indexOf(key) !== -1;
+      },
+      get: function(key) {
+        var keyIndex = this._keys.indexOf(key);
+        return keyIndex === -1 ? undefined : this._values[keyIndex];
+      },
+      set: function(key, value) {
+        var keyIndex = this._keys.indexOf(key);
+        if (keyIndex === -1) {
+          this._keys.push(key);
+          this._values.push(value);
+        } else {
+          this._values[keyIndex] = value;
+        }
+      },
+      delete: function(key) {
+        var keyIndex = this._keys.indexOf(key);
+        if (keyIndex === -1) return;
+        this._keys.splice(keyIndex, 1);
+        this._values.splice(keyIndex, 1);
+      },
+    };
+  };
+
+  var safeCall = function(callback, args, details) {
+    if (typeof callback !== 'function') return;
+    try {
+      callback.apply(null, args);
+    } catch (error) {
+      console.error('[TypeScript Scripts] ' + details, error);
+    }
+  };
+
+  var getHook = function(moduleExports, names) {
+    if (!moduleExports) return null;
+
+    var holders = [moduleExports];
+    if (
+      moduleExports.default &&
+      holders.indexOf(moduleExports.default) === -1
+    ) {
+      holders.push(moduleExports.default);
+    }
+
+    for (var holderIndex = 0; holderIndex < holders.length; holderIndex++) {
+      var holder = holders[holderIndex];
+      if (!holder) continue;
+      for (var nameIndex = 0; nameIndex < names.length; nameIndex++) {
+        var hookName = names[nameIndex];
+        if (!hookName || typeof holder[hookName] !== 'function') continue;
+        return holder[hookName];
+      }
+    }
+
+    return null;
+  };
+
+  var getBehaviorSafely = function(runtimeObject, behaviorName) {
+    if (
+      !runtimeObject ||
+      !behaviorName ||
+      typeof runtimeObject.getBehavior !== 'function'
+    ) {
+      return null;
+    }
+    try {
+      return runtimeObject.getBehavior(behaviorName);
+    } catch (error) {
+      return null;
+    }
+  };
+
+  var getObjectsByName = function(runtimeScene, objectName) {
+    if (
+      !runtimeScene ||
+      !objectName ||
+      typeof runtimeScene.getObjects !== 'function'
+    ) {
+      return [];
+    }
+    return runtimeScene.getObjects(objectName) || [];
+  };
+
+  var ensureBehaviorState = function(
+    behaviorScript,
+    runtimeScene,
+    owner,
+    behavior
+  ) {
+    if (!behaviorScript || !behavior) return false;
+
+    var isActive =
+      typeof behavior.activated === 'function' ? !!behavior.activated() : true;
+    var behaviorState = behaviorScript.behaviorStates.get(behavior);
+    if (!behaviorState) {
+      behaviorState = { active: isActive };
+      behaviorScript.behaviorStates.set(behavior, behaviorState);
+      safeCall(
+        behaviorScript.hooks.onBehaviorCreated,
+        [runtimeScene, owner, behavior],
+        'onBehaviorCreated in ' + behaviorScript.moduleId
+      );
+      if (isActive) {
+        safeCall(
+          behaviorScript.hooks.onBehaviorActivate,
+          [runtimeScene, owner, behavior],
+          'onBehaviorActivate in ' + behaviorScript.moduleId
+        );
+      }
+      return isActive;
+    }
+
+    if (behaviorState.active !== isActive) {
+      safeCall(
+        isActive
+          ? behaviorScript.hooks.onBehaviorActivate
+          : behaviorScript.hooks.onBehaviorDeActivate,
+        [runtimeScene, owner, behavior],
+        (isActive ? 'onBehaviorActivate' : 'onBehaviorDeActivate') +
+          ' in ' +
+          behaviorScript.moduleId
+      );
+      behaviorState.active = isActive;
+    }
+
+    return isActive;
+  };
+
+  var sceneScripts = [];
+  var objectScripts = [];
+  var behaviorScripts = [];
+
+  for (
+    var moduleContextIndex = 0;
+    moduleContextIndex < moduleContexts.length;
+    moduleContextIndex++
+  ) {
+    var moduleContext = moduleContexts[moduleContextIndex];
+    var moduleExports = null;
+    try {
+      moduleExports = modules.require(moduleContext.moduleId);
+    } catch (error) {
+      console.error(
+        '[TypeScript Scripts] Unable to load module ' + moduleContext.moduleId,
+        error
+      );
+      continue;
+    }
+
+    var contextKind = moduleContext.contextKind || 'project';
+    var moduleId = moduleContext.moduleId || '';
+    var sceneName = moduleContext.sceneName || '';
+    var objectName = moduleContext.objectName || '';
+    var behaviorName = moduleContext.behaviorName || '';
+
+    if (contextKind === 'scene' || contextKind === 'project') {
+      var legacySceneStartHookName = 'on' + toIdentifier(sceneName) + 'SceneStart';
+      sceneScripts.push({
+        moduleId: moduleId,
+        sceneName: sceneName,
+        hooks: {
+          onSceneLoaded: getHook(moduleExports, [
+            'onSceneLoaded',
+            'onSceneStart',
+            'onReady',
+            legacySceneStartHookName,
+          ]),
+          onScenePreEvents: getHook(moduleExports, [
+            'onScenePreEvents',
+            'onSceneUpdate',
+            '_process',
+          ]),
+          onScenePostEvents: getHook(moduleExports, [
+            'onScenePostEvents',
+            'onSceneLateUpdate',
+            '_lateProcess',
+          ]),
+          onSceneUnloading: getHook(moduleExports, [
+            'onSceneUnloading',
+            'onSceneDispose',
+            'onDispose',
+          ]),
+          onSceneUnloaded: getHook(moduleExports, ['onSceneUnloaded']),
+        },
+      });
+      continue;
+    }
+
+    if (contextKind === 'object') {
+      var legacyObjectUpdateHookName =
+        'update' + toIdentifier(objectName) + 'Object';
+      objectScripts.push({
+        moduleId: moduleId,
+        sceneName: sceneName,
+        objectName: objectName,
+        objectStates: createWeakSet(),
+        hooks: {
+          onObjectCreated: getHook(moduleExports, [
+            'onObjectCreated',
+            'onCreated',
+          ]),
+          onObjectPreEvents: getHook(moduleExports, [
+            'onObjectPreEvents',
+            'onObjectUpdate',
+            'updateObject',
+            legacyObjectUpdateHookName,
+          ]),
+          onObjectPostEvents: getHook(moduleExports, [
+            'onObjectPostEvents',
+            'onObjectLateUpdate',
+          ]),
+          onObjectDestroyed: getHook(moduleExports, [
+            'onObjectDestroyed',
+            'onDestroy',
+          ]),
+        },
+      });
+      continue;
+    }
+
+    if (contextKind === 'behavior') {
+      var legacyBehaviorUpdateHookName =
+        'update' + toIdentifier(objectName) + toIdentifier(behaviorName) + 'Behavior';
+      behaviorScripts.push({
+        moduleId: moduleId,
+        sceneName: sceneName,
+        objectName: objectName,
+        behaviorName: behaviorName,
+        behaviorStates: createWeakMap(),
+        hooks: {
+          onBehaviorCreated: getHook(moduleExports, [
+            'onBehaviorCreated',
+            'onCreated',
+          ]),
+          onBehaviorActivate: getHook(moduleExports, [
+            'onBehaviorActivate',
+            'onActivate',
+          ]),
+          onBehaviorDeActivate: getHook(moduleExports, [
+            'onBehaviorDeActivate',
+            'onBehaviorDeactivate',
+            'onDeActivate',
+            'onDeactivate',
+          ]),
+          doStepPreEvents: getHook(moduleExports, [
+            'doStepPreEvents',
+            'onBehaviorPreEvents',
+            'onBehaviorUpdate',
+            legacyBehaviorUpdateHookName,
+          ]),
+          doStepPostEvents: getHook(moduleExports, [
+            'doStepPostEvents',
+            'onBehaviorPostEvents',
+            'onBehaviorLateUpdate',
+          ]),
+          onBehaviorDestroy: getHook(moduleExports, [
+            'onBehaviorDestroy',
+            'onDestroy',
+          ]),
+        },
+      });
+    }
+  }
+
+  var runSceneCallbacks = function(runtimeScene, hookName) {
+    var runtimeSceneName =
+      runtimeScene && typeof runtimeScene.getName === 'function'
+        ? runtimeScene.getName()
+        : '';
+    for (var i = 0; i < sceneScripts.length; i++) {
+      var sceneScript = sceneScripts[i];
+      if (!sceneMatches(sceneScript.sceneName, runtimeSceneName)) continue;
+      safeCall(
+        sceneScript.hooks[hookName],
+        [runtimeScene],
+        hookName + ' in ' + sceneScript.moduleId
+      );
+    }
+  };
+
+  var runObjectLifecycleCallbacks = function(runtimeScene, hookName) {
+    var runtimeSceneName =
+      runtimeScene && typeof runtimeScene.getName === 'function'
+        ? runtimeScene.getName()
+        : '';
+    for (var i = 0; i < objectScripts.length; i++) {
+      var objectScript = objectScripts[i];
+      if (!sceneMatches(objectScript.sceneName, runtimeSceneName)) continue;
+      var runtimeObjects = getObjectsByName(runtimeScene, objectScript.objectName);
+      for (var objectIndex = 0; objectIndex < runtimeObjects.length; objectIndex++) {
+        var runtimeObject = runtimeObjects[objectIndex];
+        if (!runtimeObject) continue;
+        if (!objectScript.objectStates.has(runtimeObject)) {
+          objectScript.objectStates.add(runtimeObject);
+          safeCall(
+            objectScript.hooks.onObjectCreated,
+            [runtimeScene, runtimeObject],
+            'onObjectCreated in ' + objectScript.moduleId
+          );
+        }
+      }
+      safeCall(
+        objectScript.hooks[hookName],
+        [runtimeScene, runtimeObjects],
+        hookName + ' in ' + objectScript.moduleId
+      );
+    }
+  };
+
+  var runBehaviorLifecycleCallbacks = function(runtimeScene, hookName) {
+    var runtimeSceneName =
+      runtimeScene && typeof runtimeScene.getName === 'function'
+        ? runtimeScene.getName()
+        : '';
+    for (var i = 0; i < behaviorScripts.length; i++) {
+      var behaviorScript = behaviorScripts[i];
+      if (!sceneMatches(behaviorScript.sceneName, runtimeSceneName)) continue;
+
+      var owners = getObjectsByName(runtimeScene, behaviorScript.objectName);
+      for (var ownerIndex = 0; ownerIndex < owners.length; ownerIndex++) {
+        var owner = owners[ownerIndex];
+        if (!owner) continue;
+        var behavior = getBehaviorSafely(owner, behaviorScript.behaviorName);
+        if (!behavior) continue;
+
+        var isActive = ensureBehaviorState(
+          behaviorScript,
+          runtimeScene,
+          owner,
+          behavior
+        );
+        if (!isActive) continue;
+        safeCall(
+          behaviorScript.hooks[hookName],
+          [runtimeScene, owner, behavior],
+          hookName + ' in ' + behaviorScript.moduleId
+        );
+      }
+    }
+  };
+
+  var runBehaviorDestroyCallbacksFromScene = function(runtimeScene) {
+    var runtimeSceneName =
+      runtimeScene && typeof runtimeScene.getName === 'function'
+        ? runtimeScene.getName()
+        : '';
+    for (var i = 0; i < behaviorScripts.length; i++) {
+      var behaviorScript = behaviorScripts[i];
+      if (!sceneMatches(behaviorScript.sceneName, runtimeSceneName)) continue;
+      var owners = getObjectsByName(runtimeScene, behaviorScript.objectName);
+      for (var ownerIndex = 0; ownerIndex < owners.length; ownerIndex++) {
+        var owner = owners[ownerIndex];
+        if (!owner) continue;
+        var behavior = getBehaviorSafely(owner, behaviorScript.behaviorName);
+        if (!behavior || !behaviorScript.behaviorStates.has(behavior)) continue;
+        safeCall(
+          behaviorScript.hooks.onBehaviorDestroy,
+          [runtimeScene, owner, behavior],
+          'onBehaviorDestroy in ' + behaviorScript.moduleId
+        );
+        behaviorScript.behaviorStates.delete(behavior);
+      }
+    }
+  };
+
+  var onRuntimeSceneLoaded = function(runtimeScene) {
+    runSceneCallbacks(runtimeScene, 'onSceneLoaded');
+  };
+  gdjs.registerRuntimeSceneLoadedCallback(onRuntimeSceneLoaded);
+  lifecycleCallbacks.push(onRuntimeSceneLoaded);
+
+  var onRuntimeScenePreEvents = function(runtimeScene) {
+    runSceneCallbacks(runtimeScene, 'onScenePreEvents');
+    runObjectLifecycleCallbacks(runtimeScene, 'onObjectPreEvents');
+    runBehaviorLifecycleCallbacks(runtimeScene, 'doStepPreEvents');
+  };
+  gdjs.registerRuntimeScenePreEventsCallback(onRuntimeScenePreEvents);
+  lifecycleCallbacks.push(onRuntimeScenePreEvents);
+
+  var onRuntimeScenePostEvents = function(runtimeScene) {
+    runSceneCallbacks(runtimeScene, 'onScenePostEvents');
+    runObjectLifecycleCallbacks(runtimeScene, 'onObjectPostEvents');
+    runBehaviorLifecycleCallbacks(runtimeScene, 'doStepPostEvents');
+  };
+  gdjs.registerRuntimeScenePostEventsCallback(onRuntimeScenePostEvents);
+  lifecycleCallbacks.push(onRuntimeScenePostEvents);
+
+  var onRuntimeSceneUnloading = function(runtimeScene) {
+    runSceneCallbacks(runtimeScene, 'onSceneUnloading');
+    runBehaviorDestroyCallbacksFromScene(runtimeScene);
+  };
+  gdjs.registerRuntimeSceneUnloadingCallback(onRuntimeSceneUnloading);
+  lifecycleCallbacks.push(onRuntimeSceneUnloading);
+
+  var onRuntimeSceneUnloaded = function(runtimeScene) {
+    runSceneCallbacks(runtimeScene, 'onSceneUnloaded');
+  };
+  gdjs.registerRuntimeSceneUnloadedCallback(onRuntimeSceneUnloaded);
+  lifecycleCallbacks.push(onRuntimeSceneUnloaded);
+
+  var onObjectDeletedFromScene = function(runtimeScene, runtimeObject) {
+    if (!runtimeObject || typeof runtimeObject.getName !== 'function') return;
+    var runtimeSceneName =
+      runtimeScene && typeof runtimeScene.getName === 'function'
+        ? runtimeScene.getName()
+        : '';
+    var objectName = runtimeObject.getName();
+
+    for (var i = 0; i < objectScripts.length; i++) {
+      var objectScript = objectScripts[i];
+      if (!sceneMatches(objectScript.sceneName, runtimeSceneName)) continue;
+      if (objectScript.objectName !== objectName) continue;
+      objectScript.objectStates.delete(runtimeObject);
+      safeCall(
+        objectScript.hooks.onObjectDestroyed,
+        [runtimeScene, runtimeObject],
+        'onObjectDestroyed in ' + objectScript.moduleId
+      );
+    }
+
+    for (var behaviorScriptIndex = 0; behaviorScriptIndex < behaviorScripts.length; behaviorScriptIndex++) {
+      var behaviorScript = behaviorScripts[behaviorScriptIndex];
+      if (!sceneMatches(behaviorScript.sceneName, runtimeSceneName)) continue;
+      if (behaviorScript.objectName !== objectName) continue;
+      var behavior = getBehaviorSafely(runtimeObject, behaviorScript.behaviorName);
+      if (!behavior || !behaviorScript.behaviorStates.has(behavior)) continue;
+      safeCall(
+        behaviorScript.hooks.onBehaviorDestroy,
+        [runtimeScene, runtimeObject, behavior],
+        'onBehaviorDestroy in ' + behaviorScript.moduleId
+      );
+      behaviorScript.behaviorStates.delete(behavior);
+    }
+  };
+  gdjs.registerObjectDeletedFromSceneCallback(onObjectDeletedFromScene);
+  lifecycleCallbacks.push(onObjectDeletedFromScene);
+})(typeof globalThis !== 'undefined' ? globalThis : window);
+)TSMODULELIFE";
+
+  auto buildBootstrapOutput = [](const std::vector<gd::String> &moduleIds) {
+    gd::String output = R"TSMODULEBOOT((function(globalObject) {
+  var modules = globalObject.__gdevelopTsModules;
+  if (!modules) return;
+  modules.installGdjsBindings();
+)TSMODULEBOOT";
+    for (const auto &moduleId : moduleIds) {
+      output += "  modules.require(" + AsJsonStringLiteral(moduleId) + ");\n";
+    }
+    output += "})(typeof globalThis !== 'undefined' ? globalThis : window);\n";
+    return output;
+  };
+
+  if (!fs.WriteToFile(runtimeFilePath, runtimeOutput)) {
+    lastError = _("Unable to write ") + runtimeFilePath;
+    return false;
+  }
+  if (!fs.WriteToFile(definitionsFilePath, definitionsOutput)) {
+    lastError = _("Unable to write ") + definitionsFilePath;
+    return false;
+  }
+  if (!fs.WriteToFile(lifecycleFilePath, lifecycleOutput)) {
+    lastError = _("Unable to write ") + lifecycleFilePath;
+    return false;
+  }
+  if (!firstModuleIds.empty() &&
+      !fs.WriteToFile(firstBootstrapFilePath,
+                      buildBootstrapOutput(firstModuleIds))) {
+    lastError = _("Unable to write ") + firstBootstrapFilePath;
+    return false;
+  }
+  if (!lastModuleIds.empty() &&
+      !fs.WriteToFile(lastBootstrapFilePath,
+                      buildBootstrapOutput(lastModuleIds))) {
+    lastError = _("Unable to write ") + lastBootstrapFilePath;
+    return false;
+  }
+
+  std::vector<gd::String> firstIncludesFiles;
+  firstIncludesFiles.push_back(runtimeFilePath);
+  firstIncludesFiles.push_back(definitionsFilePath);
+
+  std::vector<gd::String> lastIncludesFiles;
+  if (!firstModuleIds.empty()) {
+    lastIncludesFiles.push_back(firstBootstrapFilePath);
+  }
+  if (!lastModuleIds.empty()) {
+    lastIncludesFiles.push_back(lastBootstrapFilePath);
+  }
+  lastIncludesFiles.push_back(lifecycleFilePath);
+
+  std::vector<gd::String> reorderedIncludesFiles;
+  for (const auto &includeFile : firstIncludesFiles) {
+    InsertUnique(reorderedIncludesFiles, includeFile);
+  }
+  for (const auto &includeFile : includesFiles) {
+    InsertUnique(reorderedIncludesFiles, includeFile);
+  }
+  for (const auto &includeFile : lastIncludesFiles) {
+    InsertUnique(reorderedIncludesFiles, includeFile);
+  }
+  includesFiles = reorderedIncludesFiles;
 
   return true;
 }

@@ -136,6 +136,15 @@ bool Exporter::ExportWholePixiProject(const ExportOptions &options) {
       return false;
     }
 
+    if (!helper.ExportTypeScriptProjectScripts(exportedProject,
+                                               codeOutputDir,
+                                               includesFiles)) {
+      gd::LogError(
+          _("Error during exporting! Unable to export TypeScript scripts:\n") +
+          helper.GetLastError());
+      return false;
+    }
+
     //...and export it
     gd::SerializerElement noRuntimeGameOptions;
     std::vector<gd::InGameEditorResourceMetadata> noInGameEditorResources;

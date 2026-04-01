@@ -11,8 +11,9 @@
 }
 
 .gd-events-sheet .events-inspector-panel {
-  width: 320px;
-  min-width: 260px;
+  width: 360px;
+  min-width: 300px;
+  max-width: 420px;
   border-left: 1px solid var(--event-sheet-rst-line-background-color);
   background: linear-gradient(
       180deg,
@@ -27,10 +28,14 @@
     var(--event-sheet-event-tree-background-color);
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 10px;
+  padding: 12px;
+  box-sizing: border-box;
 }
 
 .gd-events-sheet .events-inspector-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   border: 1px solid
     color-mix(in srgb, var(--event-sheet-rst-line-background-color) 65%, transparent);
   border-radius: 10px;
@@ -39,12 +44,30 @@
     var(--event-sheet-rst-row-contents-background-color) 82%,
     transparent
   );
-  padding: 10px;
+  padding: 14px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  min-width: 0;
 }
 
 .gd-events-sheet .events-inspector-section + .events-inspector-section {
-  margin-top: 9px;
+  margin-top: 12px;
+}
+
+.gd-events-sheet .events-inspector-text-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gd-events-sheet .events-inspector-code-text,
+.gd-events-sheet .events-inspector-description,
+.gd-events-sheet .events-inspector-overview-value,
+.gd-events-sheet .events-inspector-variable-item,
+.gd-events-sheet .events-inspector-badge {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .gd-events-sheet .events-inspector-actions-row {
@@ -52,19 +75,22 @@
   gap: 6px;
   align-items: center;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .gd-events-sheet .events-inspector-badges {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 4px;
 }
 
 .gd-events-sheet .events-inspector-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
   border: 1px solid var(--event-sheet-rst-line-background-color);
   border-radius: 999px;
-  padding: 3px 8px;
+  padding: 4px 9px;
   font-size: 0.76em;
   line-height: 1.3;
   background: color-mix(
@@ -106,29 +132,37 @@
 
 .gd-events-sheet .events-inspector-variable-header {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 4px;
+  min-width: 0;
 }
 
 .gd-events-sheet .events-inspector-overview-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 6px;
+  display: grid;
+  grid-template-columns: minmax(84px, 108px) minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: start;
 }
 
 .gd-events-sheet .events-inspector-overview-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
+  display: contents;
+}
+
+.gd-events-sheet .events-inspector-overview-label {
+  min-width: 0;
+}
+
+.gd-events-sheet .events-inspector-overview-value {
+  text-align: right;
+  justify-self: end;
 }
 
 @media only screen and (max-width: 1280px) {
   .gd-events-sheet .events-inspector-panel {
-    width: 280px;
+    width: 320px;
+    min-width: 280px;
   }
 }
 

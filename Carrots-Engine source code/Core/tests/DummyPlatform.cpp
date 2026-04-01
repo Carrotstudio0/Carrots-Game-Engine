@@ -356,7 +356,7 @@ void SetupProjectWithDummyPlatform(gd::Project& project,
           "")
       .AddParameter("variableOrPropertyOrParameter", _("Variable"))
       .AddParameter("trueorfalse", _("Check if the value is"))
-      .SetDefaultValue("true")
+      .SetDefaultValue("True")
       // This parameter allows to keep the operand expression
       // when the editor switch between variable instructions.
       .AddCodeOnlyParameter("trueorfalse", "");
@@ -772,7 +772,7 @@ void SetupProjectWithDummyPlatform(gd::Project& project,
         .AddCodeOnlyParameter("currentScene", "")
         .AddParameter("sceneName", _("Name of the new scene"))
         .AddParameter("yesorno", _("Stop any other paused scenes?"))
-        .SetDefaultValue("true");
+        .SetDefaultValue("yes");
 
     extension
         ->AddExpressionAndConditionAndAction(

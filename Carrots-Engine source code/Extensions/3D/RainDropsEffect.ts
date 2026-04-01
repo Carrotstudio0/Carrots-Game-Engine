@@ -245,7 +245,7 @@ namespace gdjs {
             );
 
             this._qualityMode = normalizeRainQualityMode(
-              effectData.stringParameters.qualityMode || 'medium'
+              effectData.stringParameters.qualityMode || 'high'
             );
             this._time = 0;
             this._renderSize = new THREE.Vector2(1, 1);
