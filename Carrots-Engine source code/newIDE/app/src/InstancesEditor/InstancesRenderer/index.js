@@ -215,9 +215,11 @@ export default class InstancesRenderer {
     if (errorCode === gl.NO_ERROR) {
       return;
     }
-    layerRenderer.disableThreePlaneTextureInterop(
-      'WebGL error 0x' + errorCode.toString(16)
-    );
+    if (typeof layerRenderer.disableThreePlaneTextureInterop === 'function') {
+      layerRenderer.disableThreePlaneTextureInterop(
+        'WebGL error 0x' + errorCode.toString(16)
+      );
+    }
   }
 
   render(
@@ -281,6 +283,7 @@ export default class InstancesRenderer {
           onDownInstance: this.onDownInstance,
           onUpInstance: this.onUpInstance,
           pixiRenderer: pixiRenderer,
+          threeRenderer: threeRenderer,
           showObjectInstancesIn3D: this._showObjectInstancesIn3D,
         });
         this.pixiContainer.addChild(layerRenderer.getPixiContainer());
@@ -333,13 +336,18 @@ export default class InstancesRenderer {
           // Then, update the texture of the plane showing the PixiJS rendering,
           // so that the 2D rendering made by PixiJS can be shown in the 3D world.
           const pixiStartTime = performance.now();
-          const hasRenderedOnPixiTexture = layerRenderer.renderOnPixiRenderTexture(
+          const hasRenderedOnPixiTexture = !!layerRenderer.renderOnPixiRenderTexture(
             pixiRenderer
           );
+          const isThreePlaneTextureInteropEnabled =
+            typeof layerRenderer.isThreePlaneTextureInteropEnabled ===
+            'function'
+              ? !!layerRenderer.isThreePlaneTextureInteropEnabled()
+              : false;
           const hasBoundPixiTextureToThreePlane =
-            layerRenderer.isThreePlaneTextureInteropEnabled() &&
+            isThreePlaneTextureInteropEnabled &&
             hasRenderedOnPixiTexture &&
-            layerRenderer.updateThreePlaneTextureFromPixiRenderTexture(
+            !!layerRenderer.updateThreePlaneTextureFromPixiRenderTexture(
               // The renderers are needed to find the internal WebGL texture.
               threeRenderer,
               pixiRenderer
@@ -348,7 +356,7 @@ export default class InstancesRenderer {
           if (!hasBoundPixiTextureToThreePlane) {
             // Fallback: if texture interop failed, render this layer directly with PixiJS
             // to avoid a black frame while still keeping 3D objects rendered by Three.js.
-            pixiRenderer.render(layerContainer, { clear: false });
+            pixiRenderer.render({ container: layerContainer, clear: false });
           }
 
           increasePixiRenderingTime(
@@ -378,7 +386,7 @@ export default class InstancesRenderer {
         } else {
           // If for any reason a layer has no Three.js scene/camera, keep it visible with PixiJS.
           const time = performance.now();
-          pixiRenderer.render(layerContainer, { clear: false });
+          pixiRenderer.render({ container: layerContainer, clear: false });
           increasePixiRenderingTime(
             this._basicProfilingCounters,
             performance.now() - time

@@ -19,10 +19,25 @@ namespace gdjs {
     if (normalized === 'linear') {
       return 'Linear';
     }
-    return 'ACESFilmic';
+    if (normalized === 'agx') {
+      return 'AgX';
+    }
+    if (normalized === 'neutral') {
+      return 'Neutral';
+    }
+    return 'AgX';
   };
 
   const getToneMappingConstant = (mode: string): THREE.ToneMapping => {
+    if (mode === 'AgX' && typeof (THREE as any).AgXToneMapping === 'number') {
+      return (THREE as any).AgXToneMapping;
+    }
+    if (
+      mode === 'Neutral' &&
+      typeof (THREE as any).NeutralToneMapping === 'number'
+    ) {
+      return (THREE as any).NeutralToneMapping;
+    }
     if (mode === 'Reinhard') {
       return THREE.ReinhardToneMapping;
     }
@@ -55,7 +70,7 @@ namespace gdjs {
           constructor() {
             this._isEnabled = false;
             this._effectEnabled = true;
-            this._mode = 'ACESFilmic';
+            this._mode = 'AgX';
             this._exposure = 1.0;
             void effectData;
           }
@@ -63,37 +78,23 @@ namespace gdjs {
           private _getRenderer(
             target: EffectsTarget
           ): THREE.WebGLRenderer | null {
-            if (!(target instanceof gdjs.Layer)) {
-              return null;
-            }
-            return target
-              .getRuntimeScene()
-              .getGame()
-              .getRenderer()
-              .getThreeRenderer();
+            return gdjs.getThreeRendererFromEffectsTarget(target);
           }
 
           private _applyToneMapping(target: EffectsTarget): boolean {
             const renderer = this._getRenderer(target);
-            if (!renderer) {
-              return false;
-            }
-
             const mode = normalizeToneMappingMode(this._mode);
-            renderer.toneMapping = getToneMappingConstant(mode);
-            renderer.toneMappingExposure = Math.max(0, this._exposure);
-            renderer.outputColorSpace = THREE.SRGBColorSpace;
-            return true;
+            return gdjs.applyThreeRendererToneMapping(
+              renderer,
+              getToneMappingConstant(mode),
+              this._exposure
+            );
           }
 
           private _disableToneMapping(target: EffectsTarget): boolean {
-            const renderer = this._getRenderer(target);
-            if (!renderer) {
-              return false;
-            }
-
-            renderer.toneMapping = THREE.NoToneMapping;
-            return true;
+            return gdjs.disableThreeRendererToneMapping(
+              this._getRenderer(target)
+            );
           }
 
           isEnabled(target: EffectsTarget): boolean {

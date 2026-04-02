@@ -103,9 +103,44 @@ export const findGDJS = (
   // Get GDJS for this version. If you updated the version,
   // run `newIDE/web-app/scripts/deploy-GDJS-Runtime` script.
   const remoteGdjsRoot = `https://resources.gdevelop-app.com/GDJS-${getIDEVersionWithHash()}`;
-  const candidateRoots = Window.isDev()
-    ? ['http://localhost:5002', remoteGdjsRoot]
-    : [remoteGdjsRoot];
+  const localDevGdjsRoot = 'http://localhost:5002';
+  const sameOriginLocalGdjsRoot =
+    typeof window !== 'undefined' && window.location
+      ? `${window.location.origin}/__local_gdjs__`
+      : null;
+  if (!Window.isDev()) {
+    return tryFindGDJS([remoteGdjsRoot], fileSet);
+  }
 
-  return tryFindGDJS(candidateRoots, fileSet);
+  const devLocalRoots = [localDevGdjsRoot, sameOriginLocalGdjsRoot].filter(
+    Boolean
+  );
+
+  return tryFindGDJS(devLocalRoots, fileSet).catch(localError =>
+    tryFindGDJS([remoteGdjsRoot], fileSet).catch(remoteError => {
+      const guidance = [
+        `Unable to find GDJS for "${fileSet}" preview in local development.`,
+        `Tried local GDJS runtime roots (${devLocalRoots
+          .map(root => `"${root}"`)
+          .join(', ')}) and remote runtime "${remoteGdjsRoot}".`,
+        `Local error: ${localError.message}`,
+        `Remote error: ${remoteError.message}`,
+      ];
+
+      if (
+        /status:\s*403/i.test(remoteError.message) ||
+        /status:\s*404/i.test(remoteError.message)
+      ) {
+        guidance.push(
+          'This usually means the local editor is using a Git hash that is not published on the remote GDJS CDN yet.'
+        );
+      }
+
+      guidance.push(
+        'Start the editor with `npm run start:editor` so the local GDJS runtime server is available, or run `node scripts/watch-serve-GDJS-runtime.js` alongside the editor.'
+      );
+
+      throw new Error(guidance.join(' '));
+    })
+  );
 };

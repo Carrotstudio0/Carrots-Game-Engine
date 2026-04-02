@@ -36,6 +36,8 @@ const untransformedPaths = [
   // GDJS prebuilt files:
   'GDJS/Runtime/pixi-renderers/pixi.js',
   'GDJS/Runtime/pixi-renderers/three.js',
+  'GDJS/Runtime/pixi-renderers/three.webgpu.js',
+  'GDJS/Runtime/pixi-renderers/three.tsl.js',
   'GDJS/Runtime/pixi-renderers/ThreeAddons.js',
   'GDJS/Runtime/pixi-renderers/draco/gltf/draco_wasm_wrapper.js',
   'GDJS/Runtime/fontfaceobserver-font-manager/fontfaceobserver.js',

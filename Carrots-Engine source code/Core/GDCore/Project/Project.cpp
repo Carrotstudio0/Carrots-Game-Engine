@@ -62,6 +62,7 @@ Project::Project()
       pixelsRounding(false),
       adaptGameResolutionAtRuntime(true),
       sizeOnStartupMode("adaptWidth"),
+      renderingBackend("webgl"),
       antialiasingMode("MSAA"),
       upscalingMode("none"),
       fsrQuality("quality"),
@@ -725,6 +726,8 @@ void Project::UnserializeFrom(const SerializerElement& element) {
   SetAdaptGameResolutionAtRuntime(
       propElement.GetBoolAttribute("adaptGameResolutionAtRuntime", false));
   SetSizeOnStartupMode(propElement.GetStringAttribute("sizeOnStartupMode", ""));
+  SetRenderingBackend(propElement.GetStringAttribute("renderingBackend",
+                                                    "webgl"));
   SetAntialiasingMode(
       propElement.GetStringAttribute("antialiasingMode", "MSAA"));
   SetAntialisingEnabledOnMobile(
@@ -1128,6 +1131,7 @@ void Project::SerializeTo(SerializerElement& element) const {
   propElement.SetAttribute("adaptGameResolutionAtRuntime",
                            adaptGameResolutionAtRuntime);
   propElement.SetAttribute("sizeOnStartupMode", sizeOnStartupMode);
+  propElement.SetAttribute("renderingBackend", renderingBackend);
   propElement.SetAttribute("antialiasingMode", antialiasingMode);
   propElement.SetAttribute("antialisingEnabledOnMobile",
                            isAntialisingEnabledOnMobile);
@@ -1310,6 +1314,7 @@ void Project::Init(const gd::Project& game) {
   pixelsRounding = game.pixelsRounding;
   adaptGameResolutionAtRuntime = game.adaptGameResolutionAtRuntime;
   sizeOnStartupMode = game.sizeOnStartupMode;
+  renderingBackend = game.renderingBackend;
   antialiasingMode = game.antialiasingMode;
   upscalingMode = game.upscalingMode;
   fsrQuality = game.fsrQuality;

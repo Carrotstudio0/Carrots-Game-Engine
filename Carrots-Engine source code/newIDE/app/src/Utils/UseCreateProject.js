@@ -153,6 +153,12 @@ const useCreateProject = ({
     if (newProjectSetup.scriptingMode) {
       setProjectScriptingMode(project, newProjectSetup.scriptingMode);
     }
+    if (
+      newProjectSetup.renderingBackend &&
+      typeof project.setRenderingBackend === 'function'
+    ) {
+      project.setRenderingBackend(newProjectSetup.renderingBackend);
+    }
   };
 
   const createProject = React.useCallback(

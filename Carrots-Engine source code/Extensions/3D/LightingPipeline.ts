@@ -276,31 +276,10 @@ namespace gdjs {
     target: EffectsTarget,
     state: SceneLightingPipelineState
   ): void => {
-    const runtimeScene = target.getRuntimeScene ? target.getRuntimeScene() : null;
-    if (!runtimeScene || !runtimeScene.getGame) {
-      return;
-    }
-    const gameRenderer = runtimeScene.getGame().getRenderer();
-    if (!gameRenderer || !(gameRenderer as any).getThreeRenderer) {
-      return;
-    }
-    const threeRenderer = (gameRenderer as any).getThreeRenderer() as
-      | THREE.WebGLRenderer
-      | null;
-    if (!threeRenderer) {
-      return;
-    }
-    const rendererWithLightingMode = threeRenderer as THREE.WebGLRenderer & {
-      physicallyCorrectLights?: boolean;
-    };
-    if (
-      typeof rendererWithLightingMode.physicallyCorrectLights === 'boolean' &&
-      rendererWithLightingMode.physicallyCorrectLights !==
-        state.physicallyCorrectLights
-    ) {
-      rendererWithLightingMode.physicallyCorrectLights =
-        state.physicallyCorrectLights;
-    }
+    gdjs.setThreeRendererPhysicallyCorrectLights(
+      gdjs.getThreeRendererFromEffectsTarget(target),
+      state.physicallyCorrectLights
+    );
   };
 
   gdjs.PixiFiltersTools.registerFilterCreator(

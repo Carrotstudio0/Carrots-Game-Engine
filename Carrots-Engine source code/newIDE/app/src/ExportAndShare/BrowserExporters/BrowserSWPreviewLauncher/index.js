@@ -20,12 +20,125 @@ import { getIDEVersionWithHash } from '../../../Version';
 import {
   getBrowserSWPreviewBaseUrl,
   getBrowserSWPreviewRootUrl,
+  ensureBrowserSWPreviewSession,
 } from './BrowserSWPreviewIndexedDB';
 import { setEmbeddedGameFramePreviewLocation } from '../../../EmbeddedGame/EmbeddedGameFrame';
 import { immediatelyOpenNewPreviewWindow } from '../BrowserPreview/BrowserPreviewWindow';
+import { normalizePreviewError } from '../normalizePreviewError';
 const gd: libGDevelop = global.gd;
 
 let nextPreviewId = 1;
+const SERVICE_WORKER_READY_TIMEOUT_MS = 5000;
+const PREVIEW_RUNTIME_SUPPORT_FILES = [
+  {
+    sourceRelativePath: '/Runtime/pixi-renderers/three-tsl-tools.js',
+    outputRelativePath: '/pixi-renderers/three-tsl-tools.js',
+    injectScript: true,
+  },
+  {
+    sourceRelativePath: '/Runtime/pixi-renderers/three-tsl-scene-materials.js',
+    outputRelativePath: '/pixi-renderers/three-tsl-scene-materials.js',
+    injectScript: true,
+  },
+  {
+    sourceRelativePath: '/Runtime/pixi-renderers/draco/gltf/draco_wasm_wrapper.js',
+    outputRelativePath: '/pixi-renderers/draco/gltf/draco_wasm_wrapper.js',
+  },
+  {
+    sourceRelativePath: '/Runtime/pixi-renderers/draco/gltf/draco_decoder.wasm',
+    outputRelativePath: '/pixi-renderers/draco/gltf/draco_decoder.wasm',
+  },
+  {
+    sourceRelativePath: '/Runtime/pixi-renderers/draco/gltf/draco_decoder_gltf.wasm',
+    outputRelativePath: '/pixi-renderers/draco/gltf/draco_decoder_gltf.wasm',
+  },
+];
+
+const injectPreviewRuntimeSupportScripts = ({
+  browserSWFileSystem,
+  outputDir,
+  runtimeSupportFiles,
+}: {|
+  browserSWFileSystem: BrowserSWFileSystem,
+  outputDir: string,
+  runtimeSupportFiles: Array<{
+    outputRelativePath: string,
+    injectScript?: boolean,
+  }>,
+|}) => {
+  const indexHtmlPath = `${outputDir}/index.html`;
+  const currentIndexHtml = browserSWFileSystem.readFile(indexHtmlPath);
+  if (!currentIndexHtml) {
+    return;
+  }
+
+  const missingScriptTags = runtimeSupportFiles
+    .filter(runtimeSupportFile => runtimeSupportFile.injectScript)
+    .map(runtimeSupportFile => runtimeSupportFile.outputRelativePath)
+    .filter(scriptPath => !currentIndexHtml.includes(scriptPath))
+    .map(
+      scriptPath =>
+        `\t<script src="${scriptPath.replace(/^\//, '')}" crossorigin="anonymous"></script>`
+    );
+
+  if (!missingScriptTags.length) {
+    return;
+  }
+
+  const injection = `${missingScriptTags.join('\n')}\n`;
+  const patchedIndexHtml = currentIndexHtml.includes('</body>')
+    ? currentIndexHtml.replace('</body>', `${injection}</body>`)
+    : `${currentIndexHtml}\n${injection}`;
+  browserSWFileSystem.writeToFile(indexHtmlPath, patchedIndexHtml);
+};
+
+const ensureBrowserSWPreviewRuntimeSupportFiles = ({
+  browserSWFileSystem,
+  gdjsRoot,
+  outputDir,
+}: {|
+  browserSWFileSystem: BrowserSWFileSystem,
+  gdjsRoot: string,
+  outputDir: string,
+|}) => {
+  PREVIEW_RUNTIME_SUPPORT_FILES.forEach(runtimeSupportFile => {
+    browserSWFileSystem.copyFile(
+      `${gdjsRoot}${runtimeSupportFile.sourceRelativePath}`,
+      `${outputDir}${runtimeSupportFile.outputRelativePath}`
+    );
+  });
+
+  injectPreviewRuntimeSupportScripts({
+    browserSWFileSystem,
+    outputDir,
+    runtimeSupportFiles: PREVIEW_RUNTIME_SUPPORT_FILES,
+  });
+};
+
+const waitForBrowserSWPreviewServiceWorker = async (): Promise<void> => {
+  if (
+    typeof navigator === 'undefined' ||
+    !navigator.serviceWorker ||
+    navigator.serviceWorker.controller
+  ) {
+    return;
+  }
+
+  await Promise.race([
+    navigator.serviceWorker.ready.then(() => undefined),
+    new Promise((_, reject) =>
+      setTimeout(
+        () =>
+          reject(
+            new Error(
+              'The preview service worker did not become ready in time. Reload the editor and try again.'
+            )
+          ),
+        SERVICE_WORKER_READY_TIMEOUT_MS
+      )
+    ),
+  ]);
+};
 
 const prepareExporter = async ({
   isForInGameEdition,
@@ -35,7 +148,10 @@ const prepareExporter = async ({
   outputDir: string,
   exporter: gdjsExporter,
   browserSWFileSystem: BrowserSWFileSystem,
+  gdjsRoot: string,
 |}> => {
+  await waitForBrowserSWPreviewServiceWorker();
+  await ensureBrowserSWPreviewSession();
   const { gdjsRoot, filesContent } = await findGDJS('preview');
   console.info('[BrowserSWPreviewLauncher] GDJS found in', gdjsRoot);
 
@@ -65,6 +181,7 @@ const prepareExporter = async ({
     exporter,
     outputDir,
     browserSWFileSystem,
+    gdjsRoot,
   };
 };
 
@@ -143,7 +260,7 @@ export default class BrowserSWPreviewLauncher extends React.Component<
 
     try {
       await this.getPreviewDebuggerServer().startServer({
-        origin: new URL(getBrowserSWPreviewBaseUrl()).origin,
+        origin: new URL(getBrowserSWPreviewRootUrl()).origin,
       });
     } catch (err) {
       // Ignore any error when running the debugger server - the preview
@@ -159,6 +276,7 @@ export default class BrowserSWPreviewLauncher extends React.Component<
         exporter,
         outputDir,
         browserSWFileSystem,
+        gdjsRoot,
       } = await prepareExporter({
         isForInGameEdition: previewOptions.isForInGameEdition,
       });
@@ -282,6 +400,11 @@ export default class BrowserSWPreviewLauncher extends React.Component<
         `[BrowserSWPreviewLauncher] Exporting project for preview #${previewId}...`
       );
       exporter.exportProjectForPixiPreview(previewExportOptions);
+      ensureBrowserSWPreviewRuntimeSupportFiles({
+        browserSWFileSystem,
+        gdjsRoot,
+        outputDir,
+      });
 
       console.log(
         `[BrowserSWPreviewLauncher] Storing preview files in IndexedDB for preview #${previewId}...`
@@ -395,12 +518,16 @@ export default class BrowserSWPreviewLauncher extends React.Component<
         )}ms.`
       );
     } catch (error) {
+      const normalizedError = normalizePreviewError(
+        error,
+        'Unable to launch the browser preview.'
+      );
       console.error(
         `[BrowserSWPreviewLauncher] Error launching preview ${previewId}:`,
-        error
+        normalizedError
       );
       this.setState({
-        error,
+        error: normalizedError,
       });
     }
   };

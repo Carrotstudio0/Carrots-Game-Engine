@@ -98,6 +98,7 @@ namespace gdjs {
      * easily spotted if rendered on screen.
      */
     private _invalidTexture: PIXI.Texture;
+    private _invalidCanvas: HTMLCanvasElement;
 
     /**
      * Map associating a resource name to the loaded PixiJS texture.
@@ -134,6 +135,7 @@ namespace gdjs {
         invalidContext.fillStyle = '#ff00ff';
         invalidContext.fillRect(0, 0, invalidCanvas.width, invalidCanvas.height);
       }
+      this._invalidCanvas = invalidCanvas;
       this._invalidTexture = PIXI.Texture.from(invalidCanvas);
       this._loadedThreeTextures = new Hashtable();
     }
@@ -257,7 +259,7 @@ namespace gdjs {
       }
       const image = this._getImageSource(resourceName);
 
-      const threeTexture = new THREE.Texture(image);
+      const threeTexture = new THREE.Texture(image || this._invalidCanvas);
       threeTexture.magFilter = THREE.LinearFilter;
       threeTexture.minFilter = THREE.LinearFilter;
       threeTexture.wrapS = THREE.RepeatWrapping;
@@ -270,18 +272,19 @@ namespace gdjs {
       applyThreeTextureSettings(threeTexture, resource);
       this._loadedThreeTextures.put(resourceName, threeTexture);
 
+      if (!image) {
+        this._refreshThreeTextureWhenReady(resourceName, threeTexture);
+      }
+
       return threeTexture;
     }
 
-    private _getImageSource(resourceName: string): TexImageSource {
-      // Texture is not loaded, load it now from the PixiJS texture.
-      // TODO (3D) - optimization: don't load the PixiJS Texture if not used by PixiJS.
-      // TODO (3D) - optimization: Ideally we could even share the same WebGL texture.
-      const pixiTexture = this.getPIXITexture(resourceName);
-      const pixiRenderer = this._resourceLoader._runtimeGame
-        .getRenderer()
-        .getPIXIRenderer();
-      if (!pixiRenderer) throw new Error('No PIXI renderer was found.');
+    private _extractImageSource(
+      pixiTexture: PIXI.Texture | undefined
+    ): TexImageSource | null {
+      if (!pixiTexture || pixiTexture.destroyed || !isTextureUsable(pixiTexture)) {
+        return null;
+      }
 
       const pixiTextureWithCompat = pixiTexture as PIXI.Texture & {
         source?: { resource?: unknown };
@@ -297,18 +300,54 @@ namespace gdjs {
         (typeof ImageBitmap !== 'undefined' &&
           textureResource instanceof ImageBitmap)
           ? textureResource
-          : textureResource && textureResource.source;
+          : textureResource && (textureResource as any).source;
       const validImage =
         image instanceof HTMLImageElement ||
         image instanceof HTMLCanvasElement ||
         image instanceof HTMLVideoElement ||
         (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap);
-      if (!validImage) {
-        throw new Error(
-          `Can't load texture for resource "${resourceName}" as it's not an image source.`
-        );
+
+      return validImage ? (image as TexImageSource) : null;
+    }
+
+    private _refreshThreeTextureWhenReady(
+      resourceName: string,
+      threeTexture: THREE.Texture
+    ): void {
+      const resource = this._getImageResource(resourceName);
+      if (!resource) {
+        return;
       }
-      return image as TexImageSource;
+
+      this._loadTexture(resource)
+        .then(() => {
+          const refreshedImage = this._extractImageSource(
+            this.getPIXITexture(resourceName)
+          );
+          if (!refreshedImage) {
+            throw new Error(
+              `Texture for resource "${resourceName}" was loaded but no compatible image source was exposed.`
+            );
+          }
+
+          threeTexture.image = refreshedImage;
+          threeTexture.needsUpdate = true;
+          applyThreeTextureSettings(threeTexture, resource);
+        })
+        .catch((error) => {
+          logger.warn(
+            `Unable to refresh the Three.js texture for resource "${resourceName}".`,
+            error
+          );
+        });
+    }
+
+    private _getImageSource(resourceName: string): TexImageSource | null {
+      // Texture is not loaded, load it now from the PixiJS texture.
+      // TODO (3D) - optimization: don't load the PixiJS Texture if not used by PixiJS.
+      // TODO (3D) - optimization: Ideally we could even share the same WebGL texture.
+      const pixiTexture = this.getOrLoadPIXITexture(resourceName);
+      return this._extractImageSource(pixiTexture);
     }
 
     /**
@@ -344,14 +383,20 @@ namespace gdjs {
 
       const cubeTexture = new THREE.CubeTexture();
       // Faces on X axis need to be swapped.
-      cubeTexture.images[0] = this._getImageSource(xNegativeResourceName);
-      cubeTexture.images[1] = this._getImageSource(xPositiveResourceName);
+      cubeTexture.images[0] =
+        this._getImageSource(xNegativeResourceName) || this._invalidCanvas;
+      cubeTexture.images[1] =
+        this._getImageSource(xPositiveResourceName) || this._invalidCanvas;
       // Faces on Y keep the same order.
-      cubeTexture.images[2] = this._getImageSource(yPositiveResourceName);
-      cubeTexture.images[3] = this._getImageSource(yNegativeResourceName);
+      cubeTexture.images[2] =
+        this._getImageSource(yPositiveResourceName) || this._invalidCanvas;
+      cubeTexture.images[3] =
+        this._getImageSource(yNegativeResourceName) || this._invalidCanvas;
       // Faces on Z keep the same order.
-      cubeTexture.images[4] = this._getImageSource(zPositiveResourceName);
-      cubeTexture.images[5] = this._getImageSource(zNegativeResourceName);
+      cubeTexture.images[4] =
+        this._getImageSource(zPositiveResourceName) || this._invalidCanvas;
+      cubeTexture.images[5] =
+        this._getImageSource(zNegativeResourceName) || this._invalidCanvas;
       // The images also need to be mirrored horizontally by users.
 
       cubeTexture.magFilter = THREE.LinearFilter;
@@ -594,13 +639,13 @@ namespace gdjs {
       const key = `${imageResourceName}_${width}_${height}`;
       let particleTexture = this._scaledTextures.get(key);
       if (!particleTexture) {
-        const graphics = new PIXI.Graphics();
+        const container = new PIXI.Container();
         const sprite = new PIXI.Sprite(this.getPIXITexture(imageResourceName));
         sprite.width = width;
         sprite.height = height;
-        graphics.addChild(sprite);
-        particleTexture = pixiRenderer.generateTexture(graphics);
-        graphics.destroy();
+        container.addChild(sprite);
+        particleTexture = pixiRenderer.generateTexture(container);
+        container.destroy({ children: true });
 
         this._scaledTextures.set(key, particleTexture);
       }

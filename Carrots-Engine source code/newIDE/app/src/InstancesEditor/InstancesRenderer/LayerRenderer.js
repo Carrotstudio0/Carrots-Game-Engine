@@ -31,7 +31,23 @@ import {
   renderToRenderTexture,
   setTextureScaleMode,
 } from '../../Utils/PixiCompat/EditorPixiAdapter';
+import {
+  createStudioEnvironmentRenderTarget,
+  createStudioLightingRig,
+} from '../../Utils/ThreeRenderingQuality';
 const gd: libGDevelop = global.gd;
+
+const getPixiRendererWebGlContext = (pixiRenderer: any): any => {
+  if (!pixiRenderer) {
+    return null;
+  }
+
+  return (
+    pixiRenderer.gl ||
+    (pixiRenderer.context && pixiRenderer.context.gl) ||
+    null
+  );
+};
 
 export default class LayerRenderer {
   project: gdProject;
@@ -104,6 +120,9 @@ export default class LayerRenderer {
   _threePlaneMaterial: THREE.MeshBasicMaterial | null = null;
   // $FlowFixMe[value-as-type]
   _threePlaneMesh: THREE.Mesh | null = null;
+  // $FlowFixMe[value-as-type]
+  _threeEnvironmentRenderTarget: THREE.WebGLRenderTarget | null = null;
+  _threePlaneTextureInteropDisabledReason: string | null = null;
 
   _showObjectInstancesIn3D: boolean;
 
@@ -127,6 +146,7 @@ export default class LayerRenderer {
     onDownInstance,
     onUpInstance,
     pixiRenderer,
+    threeRenderer,
     showObjectInstancesIn3D,
   }: {
     project: gdProject,
@@ -151,6 +171,8 @@ export default class LayerRenderer {
     onUpInstance: (gdInitialInstance, number, number) => void,
     // $FlowFixMe[value-as-type]
     pixiRenderer: PIXI.Renderer,
+    // $FlowFixMe[value-as-type]
+    threeRenderer: THREE.WebGLRenderer | null,
     showObjectInstancesIn3D: boolean,
   }) {
     this.project = project;
@@ -259,7 +281,7 @@ export default class LayerRenderer {
 
     // TODO (3D) Should it handle preference changes without needing to reopen tabs?
     if (this._showObjectInstancesIn3D) {
-      this._setup3dRendering(pixiRenderer);
+      this._setup3dRendering(pixiRenderer, threeRenderer);
     }
   }
 
@@ -280,6 +302,37 @@ export default class LayerRenderer {
   // $FlowFixMe[value-as-type]
   getThreePlaneMesh(): THREE.Mesh | null {
     return this._threePlaneMesh;
+  }
+
+  isThreePlaneTextureInteropEnabled(): boolean {
+    return (
+      !this._threePlaneTextureInteropDisabledReason &&
+      !!this._renderTexture &&
+      !!this._threePlaneTexture &&
+      !!this._threePlaneMesh
+    );
+  }
+
+  getThreePlaneTextureInteropIssue(): string | null {
+    return this._threePlaneTextureInteropDisabledReason;
+  }
+
+  disableThreePlaneTextureInterop(reason: string): void {
+    const safeReason =
+      reason && reason.length > 0
+        ? reason
+        : 'Unknown Three.js/Pixi texture interop issue';
+    if (this._threePlaneTextureInteropDisabledReason === safeReason) {
+      return;
+    }
+
+    this._threePlaneTextureInteropDisabledReason = safeReason;
+    if (this._threePlaneMesh) {
+      this._threePlaneMesh.visible = false;
+    }
+    console.warn(
+      `[InstancesEditor] Disabled Three.js/Pixi texture interop for layer "${this.layer.getName()}": ${safeReason}`
+    );
   }
 
   getRendererOfInstance(
@@ -648,7 +701,10 @@ export default class LayerRenderer {
    * Create Three.js objects for 3D rendering of this layer.
    */
   // $FlowFixMe[value-as-type]
-  _setup3dRendering(pixiRenderer: PIXI.Renderer): void {
+  _setup3dRendering(
+    pixiRenderer: PIXI.Renderer,
+    threeRenderer: THREE.WebGLRenderer | null
+  ): void {
     if (this._threeScene || this._threeGroup || this._threeCamera) {
       throw new Error(
         'Tried to setup 3D rendering for a layer that is already set up.'
@@ -666,15 +722,20 @@ export default class LayerRenderer {
     this._threeGroup.rotation.order = 'ZYX';
     threeScene.add(this._threeGroup);
 
-    const light = new THREE.HemisphereLight();
-    light.color = new THREE.Color(1, 1, 1);
-    light.groundColor = new THREE.Color(0.25, 0.25, 0.25);
-    light.position.set(0, 0, 1);
-    const lightGroup = new THREE.Group();
-    lightGroup.rotation.order = 'ZYX';
-    lightGroup.rotation.x = Math.PI / 4;
-    lightGroup.add(light);
-    threeScene.add(lightGroup);
+    const lightingRig = createStudioLightingRig();
+    threeScene.add(lightingRig);
+    this._threeEnvironmentRenderTarget = threeRenderer
+      ? createStudioEnvironmentRenderTarget(threeRenderer)
+      : null;
+    if (this._threeEnvironmentRenderTarget) {
+      threeScene.environment = this._threeEnvironmentRenderTarget.texture;
+      const sceneWithEnvironment = ((threeScene: any): {
+        environmentIntensity?: number,
+      });
+      if (typeof sceneWithEnvironment.environmentIntensity === 'number') {
+        sceneWithEnvironment.environmentIntensity = 1.08;
+      }
+    }
 
     const threeCamera = new THREE.PerspectiveCamera(45, 1, 3, 2000);
     threeCamera.rotation.order = 'ZYX';
@@ -694,6 +755,7 @@ export default class LayerRenderer {
 
     // If we have both 2D and 3D objects to be rendered, create a render texture that PixiJS will use
     // to render, and that will be projected on a plane by Three.js
+    this._threePlaneTextureInteropDisabledReason = null;
     this._createPixiRenderTexture(pixiRenderer);
 
     // Create the texture to project on the plane.
@@ -747,6 +809,7 @@ export default class LayerRenderer {
     const threePlaneMaterial = new THREE.ShaderMaterial(
       noGammaCorrectionShader
     );
+    ((threePlaneMaterial: any): { toneMapped?: boolean }).toneMapped = false;
     this._threePlaneMaterial = threePlaneMaterial;
 
     // Finally, create the mesh shown in the scene.
@@ -766,6 +829,7 @@ export default class LayerRenderer {
   // $FlowFixMe[value-as-type]
   _createPixiRenderTexture(pixiRenderer: PIXI.Renderer | null): void {
     if (!pixiRenderer || pixiRenderer.type !== PIXI.RendererType.WEBGL) {
+      this.disableThreePlaneTextureInterop('Pixi renderer is not using WebGL');
       return;
     }
     if (this._renderTexture) {
@@ -796,8 +860,8 @@ export default class LayerRenderer {
    */
   // $FlowFixMe[value-as-type]
   renderOnPixiRenderTexture(pixiRenderer: PIXI.Renderer) {
-    if (!this._renderTexture) {
-      return;
+    if (!this.isThreePlaneTextureInteropEnabled() || !this._renderTexture) {
+      return false;
     }
     if (
       this._oldWidth !== pixiRenderer.screen.width ||
@@ -815,6 +879,7 @@ export default class LayerRenderer {
       clear: true,
       clearColor: [0, 0, 0, 0],
     });
+    return true;
   }
 
   /**
@@ -826,24 +891,58 @@ export default class LayerRenderer {
     threeRenderer: THREE.WebGLRenderer,
     // $FlowFixMe[value-as-type]
     pixiRenderer: PIXI.Renderer
-  ): void {
+  ): boolean {
+    if (!this.isThreePlaneTextureInteropEnabled()) {
+      return false;
+    }
     if (!this._threePlaneTexture || !this._renderTexture) {
-      return;
+      return false;
+    }
+
+    const threeContext =
+      threeRenderer && typeof threeRenderer.getContext === 'function'
+        ? threeRenderer.getContext()
+        : null;
+    const pixiContext = getPixiRendererWebGlContext(pixiRenderer);
+    if (!threeContext || !pixiContext || threeContext !== pixiContext) {
+      this.disableThreePlaneTextureInterop(
+        'Shared Three.js/Pixi WebGL context not available'
+      );
+      return false;
     }
 
     const glTexture = getSharedGlTextureForThree(
       pixiRenderer,
       this._renderTexture
     );
-    if (glTexture) {
-      // "Hack" into the Three.js renderer by getting the internal WebGL texture for the PixiJS plane,
-      // and set it so that it's the same as the WebGL texture for the PixiJS RenderTexture.
-      // This works because PixiJS and Three.js are using the same WebGL context.
-      const texture = threeRenderer.properties.get(this._threePlaneTexture);
-      if (texture) {
-        texture.__webglTexture = glTexture.texture || glTexture;
+    if (!glTexture) {
+      if (this._threePlaneMesh) {
+        this._threePlaneMesh.visible = false;
       }
+      return false;
     }
+
+    // "Hack" into the Three.js renderer by getting the internal WebGL texture for the PixiJS plane,
+    // and set it so that it's the same as the WebGL texture for the PixiJS RenderTexture.
+    // This works because PixiJS and Three.js are using the same WebGL context.
+    const texture =
+      threeRenderer &&
+      threeRenderer.properties &&
+      typeof threeRenderer.properties.get === 'function'
+        ? threeRenderer.properties.get(this._threePlaneTexture)
+        : null;
+    if (!texture) {
+      if (this._threePlaneMesh) {
+        this._threePlaneMesh.visible = false;
+      }
+      return false;
+    }
+
+    texture.__webglTexture = glTexture.texture || glTexture;
+    if (this._threePlaneMesh) {
+      this._threePlaneMesh.visible = true;
+    }
+    return true;
   }
 
   _updatePixiObjectsZOrder() {
@@ -917,6 +1016,35 @@ export default class LayerRenderer {
         delete this.renderedInstances[i];
       }
     }
+
+    if (this._threeScene && this._threePlaneMesh) {
+      this._threeScene.remove(this._threePlaneMesh);
+    }
+    if (this._threePlaneGeometry) {
+      this._threePlaneGeometry.dispose();
+      this._threePlaneGeometry = null;
+    }
+    if (this._threePlaneMaterial) {
+      this._threePlaneMaterial.dispose();
+      this._threePlaneMaterial = null;
+    }
+    if (this._threeEnvironmentRenderTarget) {
+      this._threeEnvironmentRenderTarget.dispose();
+      this._threeEnvironmentRenderTarget = null;
+    }
+    if (this._threePlaneTexture && this._threePlaneTexture.dispose) {
+      this._threePlaneTexture.dispose();
+      this._threePlaneTexture = null;
+    }
+    if (this._renderTexture) {
+      this._renderTexture.destroy(true);
+      this._renderTexture = null;
+    }
+    this._threePlaneMesh = null;
+    this._threeScene = null;
+    this._threeGroup = null;
+    this._threeCamera = null;
+    this._threePlaneTextureInteropDisabledReason = null;
 
     // Destroy the container
     this.pixiContainer.destroy();

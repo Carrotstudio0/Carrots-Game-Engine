@@ -18,10 +18,13 @@ export default class ProfilerBar {
     this._profilerBarContainer.alpha = 0.8;
     this._profilerBarContainer.hitArea = new PIXI.Rectangle(0, 0, 0, 0);
     this._profilerBarBackground = new PIXI.Graphics();
-    this._profilerBarText = new PIXI.Text('', {
-      fontSize: 12,
-      fill: 0xffffff,
-      align: 'left',
+    this._profilerBarText = new PIXI.Text({
+      text: '',
+      style: {
+        fontSize: 12,
+        fill: 0xffffff,
+        align: 'left',
+      },
     });
     this._profilerBarContainer.addChild(this._profilerBarBackground);
     this._profilerBarContainer.addChild(this._profilerBarText);

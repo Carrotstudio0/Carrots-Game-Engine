@@ -202,11 +202,7 @@ namespace gdjs {
               return;
             }
 
-            const threeRenderer = target
-              .getRuntimeScene()
-              .getGame()
-              .getRenderer()
-              .getThreeRenderer();
+            const threeRenderer = gdjs.getThreeRendererFromEffectsTarget(target);
             if (!threeRenderer) {
               return;
             }

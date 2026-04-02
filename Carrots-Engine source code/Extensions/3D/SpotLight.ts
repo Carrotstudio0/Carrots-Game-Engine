@@ -423,32 +423,11 @@ namespace gdjs {
               this._physicsBounceCastShadow && this._pipelineAllowsRealtimeShadows;
 
             if (pipelineState) {
-              const runtimeScene = target.getRuntimeScene
-                ? target.getRuntimeScene()
-                : null;
-              if (runtimeScene && runtimeScene.getGame) {
-                const gameRenderer = runtimeScene.getGame().getRenderer();
-                if (gameRenderer && (gameRenderer as any).getThreeRenderer) {
-                  const threeRenderer = (gameRenderer as any).getThreeRenderer() as
-                    | THREE.WebGLRenderer
-                    | null;
-                  if (threeRenderer) {
-                    const rendererWithLightingMode = threeRenderer as
-                      | (THREE.WebGLRenderer & {
-                          physicallyCorrectLights?: boolean;
-                        })
-                      | null;
-                    if (
-                      rendererWithLightingMode &&
-                      typeof rendererWithLightingMode.physicallyCorrectLights ===
-                        'boolean' &&
-                      pipelineState.physicallyCorrectLights !== undefined
-                    ) {
-                      rendererWithLightingMode.physicallyCorrectLights =
-                        !!pipelineState.physicallyCorrectLights;
-                    }
-                  }
-                }
+              if (pipelineState.physicallyCorrectLights !== undefined) {
+                gdjs.setThreeRendererPhysicallyCorrectLights(
+                  gdjs.getThreeRendererFromEffectsTarget(target),
+                  !!pipelineState.physicallyCorrectLights
+                );
               }
             }
           }
@@ -497,11 +476,7 @@ namespace gdjs {
             if (!runtimeScene || !runtimeScene.getGame) {
               return;
             }
-            const gameRenderer = runtimeScene.getGame().getRenderer();
-            if (!gameRenderer || !(gameRenderer as any).getThreeRenderer) {
-              return;
-            }
-            const threeRenderer = (gameRenderer as any).getThreeRenderer();
+            const threeRenderer = gdjs.getThreeRendererFromEffectsTarget(target);
             if (!threeRenderer || !threeRenderer.shadowMap) {
               return;
             }
@@ -523,17 +498,26 @@ namespace gdjs {
               return;
             }
 
-            threeRenderer.shadowMap.enabled = true;
-            threeRenderer.shadowMap.autoUpdate = true;
-            const preferredShadowType =
-              this._shadowRadius > 1
-                ? THREE.PCFShadowMap
-                : THREE.PCFSoftShadowMap;
+            const shadowMap = threeRenderer.shadowMap as typeof threeRenderer.shadowMap & {
+              autoUpdate?: boolean;
+            };
+            shadowMap.enabled = true;
+            shadowMap.autoUpdate = true;
+            const preferredShadowMapType = gdjs.getPreferredThreeShadowMapType(
+              threeRenderer,
+              'spot'
+            );
+            if (shadowMap.type !== preferredShadowMapType) {
+              shadowMap.type = preferredShadowMapType;
+            }
             if (
-              preferredShadowType === THREE.PCFShadowMap ||
-              threeRenderer.shadowMap.type !== THREE.PCFShadowMap
+              preferredShadowMapType === (THREE as any).VSMShadowMap &&
+              this._light
             ) {
-              threeRenderer.shadowMap.type = preferredShadowType;
+              this._light.shadow.blurSamples = Math.max(
+                8,
+                this._light.shadow.blurSamples
+              );
             }
           }
 

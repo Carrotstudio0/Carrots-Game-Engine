@@ -88,6 +88,7 @@ export type NewProjectSetup = {|
   saveAsLocation: ?SaveAsLocation,
   projectName?: string,
   scriptingMode?: ScriptingMode,
+  renderingBackend?: 'webgl' | 'webgpu',
   height?: number,
   width?: number,
   orientation?: 'landscape' | 'portrait' | 'default',
@@ -237,6 +238,9 @@ const NewProjectSetupDialog = ({
   const [scriptingMode, setScriptingMode] = React.useState<ScriptingMode>(
     'event-sheet'
   );
+  const [renderingBackend, setRenderingBackend] = React.useState<
+    'webgl' | 'webgpu'
+  >('webgl');
   const newProjectsDefaultFolder = app
     ? findEmptyPathInWorkspaceFolder(app, values.newProjectsDefaultFolder || '')
     : '';
@@ -467,6 +471,7 @@ const NewProjectSetupDialog = ({
         storageProvider: storageProviderForCreation,
         saveAsLocation: projectLocation,
         scriptingMode,
+        renderingBackend,
         height: selectedHeight,
         width: selectedWidth,
         orientation: selectedOrientation,
@@ -482,6 +487,7 @@ const NewProjectSetupDialog = ({
             storageProvider: storageProviderForCreation,
             saveAsLocation: projectLocation,
             scriptingMode,
+            renderingBackend,
             creationSource: 'default',
           },
           i18n,
@@ -495,6 +501,7 @@ const NewProjectSetupDialog = ({
             storageProvider: storageProviderForCreation,
             saveAsLocation,
             scriptingMode,
+            renderingBackend,
             creationSource: 'default',
           },
           i18n
@@ -513,6 +520,7 @@ const NewProjectSetupDialog = ({
       selectedWidth,
       selectedOrientation,
       scriptingMode,
+      renderingBackend,
       optimizeForPixelArt,
       selectedExampleShortHeader,
       selectedPrivateGameTemplateListingData,
@@ -775,6 +783,24 @@ const NewProjectSetupDialog = ({
                   <SelectOption
                     value="typescript"
                     label={t`TypeScript + Event Sheet (hybrid)`}
+                  />
+                </SelectField>
+                <SelectField
+                  fullWidth
+                  disabled={isLoading}
+                  floatingLabelText={<Trans>Rendering backend</Trans>}
+                  value={renderingBackend}
+                  onChange={(e, i, newValue: 'webgl' | 'webgpu') => {
+                    setRenderingBackend(newValue);
+                  }}
+                  helperMarkdownText={i18n._(
+                    t`WebGPU now runs 2D and 2D lighting directly. Scenes using 3D, 2D+3D, or FSR keep WebGPU presentation and use an isolated legacy WebGL composition path when needed.`
+                  )}
+                >
+                  <SelectOption value="webgl" label={t`WebGL (stable)`} />
+                  <SelectOption
+                    value="webgpu"
+                    label={t`WebGPU (hybrid legacy 3D composition when needed)`}
                   />
                 </SelectField>
                 <SelectField

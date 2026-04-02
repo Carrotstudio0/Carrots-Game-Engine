@@ -52,14 +52,7 @@ namespace gdjs {
           private _getThreeRenderer(
             target: EffectsTarget
           ): THREE.WebGLRenderer | null {
-            if (!(target instanceof gdjs.Layer)) {
-              return null;
-            }
-            return target
-              .getRuntimeScene()
-              .getGame()
-              .getRenderer()
-              .getThreeRenderer();
+            return gdjs.getThreeRendererFromEffectsTarget(target);
           }
 
           private _disposePmremResources(): void {

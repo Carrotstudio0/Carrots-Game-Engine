@@ -13,11 +13,11 @@ export default class Background {
   _checkeredBackground: PIXI.TilingSprite;
 
   constructor({ width, height, layout }: Props) {
-    this._checkeredBackground = new PIXI.TilingSprite(
-      createTextureFromResource('res/transparentback.png'),
+    this._checkeredBackground = new PIXI.TilingSprite({
+      texture: createTextureFromResource('res/transparentback.png'),
       width,
-      height
-    );
+      height,
+    });
     this._checkeredBackground.tint = 0x444444;
     this._checkeredBackground.visible = !layout;
   }

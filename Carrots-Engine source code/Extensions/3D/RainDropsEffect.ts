@@ -355,17 +355,14 @@ namespace gdjs {
             if (!(target instanceof gdjs.Layer)) {
               return;
             }
+            const runtimeScene = target.getRuntimeScene();
             if (!this._effectEnabled) {
               this.shaderPass.enabled = false;
               gdjs.clearScene3DPostProcessingEffectQualityMode(target, 'RAIN');
               return;
             }
 
-            const runtimeScene = target.getRuntimeScene();
-            const threeRenderer = runtimeScene
-              .getGame()
-              .getRenderer()
-              .getThreeRenderer();
+            const threeRenderer = gdjs.getThreeRendererFromEffectsTarget(target);
             if (!threeRenderer) {
               return;
             }

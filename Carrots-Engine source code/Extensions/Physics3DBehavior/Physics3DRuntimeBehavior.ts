@@ -396,7 +396,10 @@ namespace gdjs {
       stride: physicsSnapshotStride,
       transforms: this._snapshotReadBuffer,
     };
-    private _snapshotPreparedByWorkerQueue: gdjs.WorkerTaskQueue | null = null;
+    private _snapshotWorkerRuntimeScene: gdjs.RuntimeScene | null = null;
+    private _snapshotPreparedTaskHandles = new Set<
+      gdjs.WorkerTaskHandle<Physics3DSnapshotWorkerResult>
+    >();
     private _snapshotPreparedInFlightVersion: integer = 0;
     private _snapshotPreparedRemainingChunkCount: integer = 0;
     private _snapshotPreparedChunkCount: integer = 0;
@@ -616,20 +619,10 @@ namespace gdjs {
         const runtimeScene = instanceContainer.getScene();
         if (
           runtimeScene &&
-          runtimeScene.createWorkerTaskQueue &&
           typeof gdjs.hasWorkerTaskHandler === 'function' &&
           gdjs.hasWorkerTaskHandler(physicsSnapshotWorkerHandlerName)
         ) {
-          this._snapshotPreparedByWorkerQueue = runtimeScene.createWorkerTaskQueue(
-            {
-              name: 'physics3d-snapshot-prep',
-              maxConcurrentTasks: 1,
-              autoStart: true,
-              workerRole: 'physics',
-              priority: 'high',
-              allowMainThreadFallback: true,
-            }
-          );
+          this._snapshotWorkerRuntimeScene = runtimeScene;
         }
       }
 
@@ -843,7 +836,7 @@ namespace gdjs {
 
     private _schedulePreparedSnapshotProcessing(snapshotVersion: integer): void {
       if (
-        !this._snapshotPreparedByWorkerQueue ||
+        !this._snapshotWorkerRuntimeScene ||
         this._snapshotPreparedInFlightVersion !== 0 ||
         snapshotVersion <= this._snapshotPreparedVersion
       ) {
@@ -884,7 +877,8 @@ namespace gdjs {
           this._snapshotReadBuffer.subarray(chunkStartOffset, chunkEndOffset)
         );
 
-        const queuedTask = this._snapshotPreparedByWorkerQueue.enqueue<Physics3DSnapshotWorkerResult>(
+        const workerTaskHandle =
+          this._snapshotWorkerRuntimeScene.runInWorker<Physics3DSnapshotWorkerResult>(
           physicsSnapshotWorkerHandlerName,
           {
             snapshotVersion,
@@ -896,13 +890,14 @@ namespace gdjs {
           } as Physics3DSnapshotWorkerPayload,
           {
             transferables: [chunkTransforms.buffer],
-            workerRole: 'physics',
-            priority: 'high',
+            allowMainThreadFallback: true,
           }
         );
+        this._snapshotPreparedTaskHandles.add(workerTaskHandle);
 
-        queuedTask.promise.then(
+        workerTaskHandle.promise.then(
           (result) => {
+            this._snapshotPreparedTaskHandles.delete(workerTaskHandle);
             if (
               this._snapshotPreparedInFlightVersion !== snapshotVersion ||
               !isPhysics3DSnapshotWorkerResult(result) ||
@@ -937,6 +932,7 @@ namespace gdjs {
             }
           },
           (_error) => {
+            this._snapshotPreparedTaskHandles.delete(workerTaskHandle);
             this._snapshotPreparedRemainingChunkCount = Math.max(
               0,
               this._snapshotPreparedRemainingChunkCount - 1
@@ -1112,10 +1108,11 @@ namespace gdjs {
       this._readOnlyRenderSnapshot.bodyCount = 0;
       this._readOnlyRenderSnapshot.transforms = this._snapshotReadBuffer;
       this._fixedStepAccumulator = 0;
-      if (this._snapshotPreparedByWorkerQueue) {
-        this._snapshotPreparedByWorkerQueue.dispose();
-        this._snapshotPreparedByWorkerQueue = null;
-      }
+      this._snapshotPreparedTaskHandles.forEach((workerTaskHandle) =>
+        workerTaskHandle.cancel()
+      );
+      this._snapshotPreparedTaskHandles.clear();
+      this._snapshotWorkerRuntimeScene = null;
     }
 
     /**

@@ -143,6 +143,67 @@ namespace gdjs {
         isWebGLSupported: runtimeGame.getRenderer().isWebGLSupported(),
         hasPixiRenderer: !!runtimeGame.getRenderer().getPIXIRenderer(),
         hasThreeRenderer: !!runtimeGame.getRenderer().getThreeRenderer(),
+        requestedRenderingBackend: runtimeGame.getRenderingBackend(),
+        activeRenderingBackend:
+          typeof runtimeGame.getRenderer().getActiveRenderingBackend ===
+          'function'
+            ? runtimeGame.getRenderer().getActiveRenderingBackend()
+            : 'webgl',
+        renderingBackendFallbackIssue:
+          typeof runtimeGame.getRenderer().getRenderingBackendFallbackIssue ===
+          'function'
+            ? runtimeGame.getRenderer().getRenderingBackendFallbackIssue()
+            : null,
+        hybridRenderingIssue:
+          typeof runtimeGame.getRenderer().getHybridRenderingIssue ===
+          'function'
+            ? runtimeGame.getRenderer().getHybridRenderingIssue()
+            : null,
+        dedicatedThreeWebGpuIssue:
+          typeof runtimeGame.getRenderer().getDedicatedThreeWebGPUIssue ===
+          'function'
+            ? runtimeGame.getRenderer().getDedicatedThreeWebGPUIssue()
+            : null,
+        dedicatedThreeWebGpuAvailable:
+          typeof runtimeGame.getRenderer().hasDedicatedThreeWebGPURenderer ===
+          'function'
+            ? runtimeGame.getRenderer().hasDedicatedThreeWebGPURenderer()
+            : false,
+        dedicatedThreeWebGpuSceneActive:
+          typeof runtimeGame.getRenderer()
+            .shouldRenderRuntimeSceneWithDedicatedThreeWebGPU === 'function'
+            ? runtimeGame
+                .getRenderer()
+                .shouldRenderRuntimeSceneWithDedicatedThreeWebGPU(currentScene)
+            : false,
+        dedicatedThreeWebGpuSceneRequirementReason:
+          currentScene &&
+          typeof currentScene.getDedicatedThreeWebGPURequirementReason ===
+            'function'
+            ? currentScene.getDedicatedThreeWebGPURequirementReason()
+            : null,
+        threeWebGpuBundleAvailable:
+          typeof gdjs.hasThreeWebGpuBundleSupport === 'function'
+            ? gdjs.hasThreeWebGpuBundleSupport()
+            : false,
+        threeTslBundleAvailable:
+          typeof gdjs.hasThreeTslBundleSupport === 'function'
+            ? gdjs.hasThreeTslBundleSupport()
+            : false,
+        threeNodeMaterialsEnabled:
+          typeof gdjs.canUseThreeTslNodeMaterials === 'function'
+            ? gdjs.canUseThreeTslNodeMaterials(
+                runtimeGame.getRenderer().getThreeRenderer()
+              )
+            : false,
+        adaptiveGpuUpscalingEnabled:
+          typeof runtimeGame.isAdaptiveGpuUpscalingEnabled === 'function'
+            ? runtimeGame.isAdaptiveGpuUpscalingEnabled()
+            : false,
+        adaptiveGpuRenderingScale:
+          typeof runtimeGame.getAdaptiveGpuRenderingScale === 'function'
+            ? runtimeGame.getAdaptiveGpuRenderingScale()
+            : 1,
         resourcesTotalCount:
           runtimeGame.getGameData().resources.resources.length,
         antialiasingMode: runtimeGame.getAntialiasingMode(),

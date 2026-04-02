@@ -10,6 +10,8 @@ const isDev = process.env.NODE_ENV !== 'production';
 const electron = optionalRequire('electron');
 const serviceWorker =
   typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined;
+const getServiceWorkerUrl = () =>
+  `${PUBLIC_URL}/service-worker.js${isDev ? '?dev=1' : ''}`;
 
 const unregisterAllServiceWorkers = async () => {
   if (!serviceWorker || typeof serviceWorker.getRegistrations !== 'function') {
@@ -19,6 +21,27 @@ const unregisterAllServiceWorkers = async () => {
   await Promise.all(
     registrations.map(registration => registration.unregister())
   );
+};
+
+const clearServiceWorkerCaches = async () => {
+  if (typeof window === 'undefined' || !('caches' in window)) {
+    return;
+  }
+
+  const cacheNames = await caches.keys();
+  await Promise.all(cacheNames.map(cacheName => caches.delete(cacheName)));
+};
+
+const registerDevelopmentServiceWorker = async () => {
+  if (!serviceWorker) {
+    return;
+  }
+
+  await unregisterAllServiceWorkers();
+  await clearServiceWorkerCaches();
+
+  const registration = await serviceWorker.register(getServiceWorkerUrl());
+  await registration.update();
 };
 
 const handleServiceWorkerError = (context: string, error: any) => {
@@ -53,27 +76,20 @@ export function registerServiceWorker() {
   }
 
   // In local development, a stale service worker can keep serving old bundles
-  // and cause hard-to-debug startup failures. Disable it entirely.
+  // and cause hard-to-debug startup failures. Register a preview-only service
+  // worker that avoids Workbox caching but still serves Browser SW previews.
   if (isDev) {
-    serviceWorker.getRegistrations().then(registrations => {
-      registrations.forEach(registration => {
-        registration.unregister();
-      });
+    window.addEventListener('load', () => {
+      registerDevelopmentServiceWorker().catch(error =>
+        handleServiceWorkerError('development registration', error)
+      );
     });
-
-    if (typeof window !== 'undefined' && 'caches' in window) {
-      caches.keys().then(cacheNames => {
-        cacheNames.forEach(cacheName => {
-          caches.delete(cacheName);
-        });
-      });
-    }
 
     return;
   }
 
   window.addEventListener('load', () => {
-    const swUrl = `${PUBLIC_URL}/service-worker.js`;
+    const swUrl = getServiceWorkerUrl();
 
     serviceWorker
       .register(swUrl)

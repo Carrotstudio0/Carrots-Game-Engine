@@ -36,10 +36,13 @@ export default class HighlightedInstance {
     this.highlightRectangle.hitArea = new PIXI.Rectangle(0, 0, 0, 0);
 
     this.tooltipBackground = new PIXI.Graphics();
-    this.tooltipText = new PIXI.Text('', {
-      fontSize: 15,
-      fill: 0xffffff,
-      align: 'center',
+    this.tooltipText = new PIXI.Text({
+      text: '',
+      style: {
+        fontSize: 15,
+        fill: 0xffffff,
+        align: 'center',
+      },
     });
     this.highlightRectangle.addChild(this.tooltipBackground);
     this.highlightRectangle.addChild(this.tooltipText);

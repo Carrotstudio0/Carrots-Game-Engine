@@ -6,6 +6,57 @@
 namespace gdjs {
   const logger = new gdjs.Logger('RuntimeScene');
   const setupWarningLogger = new gdjs.Logger('RuntimeScene (setup warnings)');
+  const getSceneLegacyCompositionRequirementReason = (
+    sceneData: {
+      layers: Array<LayerData>;
+    }
+  ): string | null => {
+    for (const layerData of sceneData.layers) {
+      const requirementReason =
+        gdjs.getLayerSharedWebGLRendererRequirementReason(layerData);
+      if (requirementReason) {
+        return requirementReason;
+      }
+    }
+
+    return null;
+  };
+
+  const getSceneDedicatedThreeWebGpuRequirementReason = (
+    sceneData: {
+      layers: Array<LayerData>;
+    }
+  ): string | null => {
+    if (!sceneData.layers.length) {
+      return 'The scene has no layers to render with the dedicated Three.js/WebGPU 3D runtime.';
+    }
+
+    let hasAny3DLayer = false;
+
+    for (const layerData of sceneData.layers) {
+      const renderingType = layerData.renderingType || '';
+      const isPure3DLayer = renderingType === '3d';
+      const isPure2DOverlayLayer = renderingType === '2d' || layerData.isLightingLayer;
+
+      if (renderingType === '2d+3d' || renderingType === '') {
+        return `Layer "${layerData.name}" uses mixed 2D and 3D rendering, which is not yet supported by the dedicated Three.js/WebGPU 3D runtime.`;
+      }
+
+      if (isPure3DLayer) {
+        hasAny3DLayer = true;
+      } else if (isPure2DOverlayLayer) {
+        continue;
+      } else {
+        return `Layer "${layerData.name}" uses an unsupported rendering mode for the dedicated Three.js/WebGPU 3D runtime.`;
+      }
+    }
+
+    if (!hasAny3DLayer) {
+      return 'The scene does not contain any pure 3D layer to render with the dedicated Three.js/WebGPU runtime.';
+    }
+
+    return null;
+  };
 
   /**
    * A scene being played, containing instances of objects rendered on screen.
@@ -32,6 +83,8 @@ namespace gdjs {
     _requestedScene: string = '';
     _resourcesUnloading: 'at-scene-exit' | 'never' | 'inherit' = 'inherit';
     private _asyncTasksManager = new gdjs.AsyncTasksManager();
+    private _legacyCompositionRequirementReason: string | null = null;
+    private _dedicatedThreeWebGpuRequirementReason: string | null = null;
 
     /** True if loadFromScene was called and the scene is being played. */
     _isLoaded: boolean = false;
@@ -97,6 +150,10 @@ namespace gdjs {
     }
 
     addLayer(layerData: LayerData) {
+      if (!this._legacyCompositionRequirementReason) {
+        this._legacyCompositionRequirementReason =
+          gdjs.getLayerSharedWebGLRendererRequirementReason(layerData);
+      }
       const layer = new gdjs.Layer(layerData, this);
       this._layers.put(layerData.name, layer);
       this._orderedLayers.push(layer);
@@ -159,6 +216,10 @@ namespace gdjs {
       this._name = sceneData.name;
       this._resourcesUnloading = sceneData.resourcesUnloading || 'inherit';
       this.setBackgroundColor(sceneData.r, sceneData.v, sceneData.b);
+      this._legacyCompositionRequirementReason =
+        getSceneLegacyCompositionRequirementReason(sceneData);
+      this._dedicatedThreeWebGpuRequirementReason =
+        getSceneDedicatedThreeWebGpuRequirementReason(sceneData);
 
       //Load layers
       for (let i = 0, len = sceneData.layers.length; i < len; ++i) {
@@ -489,6 +550,32 @@ namespace gdjs {
       }
 
       this._renderer.render();
+    }
+
+    getLegacyCompositionRequirementReason(): string | null {
+      return this._legacyCompositionRequirementReason;
+    }
+
+    requiresLegacyComposition(): boolean {
+      return !!this._legacyCompositionRequirementReason;
+    }
+
+    getDedicatedThreeWebGPURequirementReason(): string | null {
+      if (this._dedicatedThreeWebGpuRequirementReason) {
+        return this._dedicatedThreeWebGpuRequirementReason;
+      }
+
+      const runtimeRequirementReason =
+        this._renderer &&
+        typeof (this._renderer as gdjs.RuntimeScenePixiRenderer & {
+          getDedicatedThreeWebGPURequirementReason?: () => string | null;
+        }).getDedicatedThreeWebGPURequirementReason === 'function'
+          ? (this._renderer as gdjs.RuntimeScenePixiRenderer & {
+              getDedicatedThreeWebGPURequirementReason?: () => string | null;
+            }).getDedicatedThreeWebGPURequirementReason!()
+          : null;
+
+      return runtimeRequirementReason;
     }
 
     /**

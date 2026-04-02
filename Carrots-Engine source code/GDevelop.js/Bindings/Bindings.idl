@@ -591,6 +591,8 @@ interface Project {
     [Const, Ref] DOMString GetAntialiasingMode();
     void SetAntialisingEnabledOnMobile(boolean pixelsRounding);
     boolean IsAntialisingEnabledOnMobile();
+    void SetRenderingBackend([Const] DOMString renderingBackend);
+    [Const, Ref] DOMString GetRenderingBackend();
     void SetUpscalingMode([Const] DOMString upscalingMode);
     [Const, Ref] DOMString GetUpscalingMode();
     void SetFsrQuality([Const] DOMString fsrQuality);

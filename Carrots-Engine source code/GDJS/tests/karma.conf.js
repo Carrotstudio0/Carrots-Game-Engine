@@ -63,6 +63,8 @@ module.exports = function (config) {
       './newIDE/app/resources/GDJS/Runtime/libs/rbush.js',
       './newIDE/app/resources/GDJS/Runtime/pixi-renderers/pixi.js',
       './newIDE/app/resources/GDJS/Runtime/pixi-renderers/three.js',
+      './newIDE/app/resources/GDJS/Runtime/pixi-renderers/three.webgpu.js',
+      './newIDE/app/resources/GDJS/Runtime/pixi-renderers/three.tsl.js',
       './newIDE/app/resources/GDJS/Runtime/pixi-renderers/*.js',
       './newIDE/app/resources/GDJS/Runtime/howler-sound-manager/howler.min.js',
       './newIDE/app/resources/GDJS/Runtime/howler-sound-manager/howler-sound-manager.js',

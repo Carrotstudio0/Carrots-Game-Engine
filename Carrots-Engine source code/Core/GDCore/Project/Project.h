@@ -406,6 +406,19 @@ class GD_CORE_API Project {
   }
 
   /**
+   * Return the rendering backend requested by the project ("webgl" or
+   * "webgpu").
+   */
+  const gd::String& GetRenderingBackend() const { return renderingBackend; }
+
+  /**
+   * Set the rendering backend requested by the project ("webgl" or "webgpu").
+   */
+  void SetRenderingBackend(const gd::String& renderingBackend_) {
+    renderingBackend = renderingBackend_;
+  }
+
+  /**
    * Return the upscaling mode used by the game ("none" or "fsr1").
    */
   const gd::String& GetUpscalingMode() const { return upscalingMode; }
@@ -1149,6 +1162,7 @@ class GD_CORE_API Project {
   gd::String
       sizeOnStartupMode;  ///< How to adapt the game size to the screen. Can be
                           ///< "adaptWidth", "adaptHeight" or empty
+  gd::String renderingBackend;
   gd::String antialiasingMode;
   gd::String upscalingMode;
   gd::String fsrQuality;

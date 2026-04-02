@@ -37,6 +37,133 @@ namespace gdjs {
     ScenePBREnvironmentState
   >();
 
+  const disposeMaterial = (
+    material: THREE.Material | THREE.Material[]
+  ): void => {
+    if (Array.isArray(material)) {
+      for (let i = 0; i < material.length; i++) {
+        material[i].dispose();
+      }
+      return;
+    }
+    material.dispose();
+  };
+
+  const disposeObjectResources = (object: THREE.Object3D): void => {
+    object.traverse(child => {
+      const childWithResources = child as THREE.Object3D & {
+        geometry?: THREE.BufferGeometry;
+        material?: THREE.Material | THREE.Material[];
+      };
+      if (childWithResources.geometry) {
+        childWithResources.geometry.dispose();
+      }
+      if (childWithResources.material) {
+        disposeMaterial(childWithResources.material);
+      }
+    });
+  };
+
+  const createStudioLightCard = (
+    width: number,
+    height: number,
+    color: THREE.Color,
+    position: THREE.Vector3,
+    lookAtTarget: THREE.Vector3
+  ): THREE.Mesh => {
+    const lightCard = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, height),
+      new THREE.MeshBasicMaterial({
+        color,
+        side: THREE.DoubleSide,
+      })
+    );
+    lightCard.position.copy(position);
+    lightCard.lookAt(lookAtTarget);
+    return lightCard;
+  };
+
+  const createStudioEnvironmentRenderTarget = (
+    renderer: THREE.WebGLRenderer,
+    backgroundColor: THREE.Color | null
+  ): THREE.WebGLRenderTarget => {
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    const environmentScene = new THREE.Scene();
+    const skyColor = backgroundColor
+      ? backgroundColor.clone()
+      : new THREE.Color(0xa6b8cf);
+    const shellColor = skyColor.clone().multiplyScalar(0.26);
+    const floorColor = skyColor
+      .clone()
+      .multiplyScalar(0.18)
+      .lerp(new THREE.Color(0x3c3530), 0.45);
+    environmentScene.background = skyColor.clone().multiplyScalar(0.95);
+
+    const environmentObjects: THREE.Object3D[] = [];
+    const addEnvironmentObject = (object: THREE.Object3D): void => {
+      environmentScene.add(object);
+      environmentObjects.push(object);
+    };
+
+    addEnvironmentObject(
+      new THREE.Mesh(
+        new THREE.SphereGeometry(20, 32, 16),
+        new THREE.MeshBasicMaterial({
+          color: shellColor,
+          side: THREE.BackSide,
+        })
+      )
+    );
+
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(13, 48),
+      new THREE.MeshBasicMaterial({
+        color: floorColor,
+        side: THREE.DoubleSide,
+      })
+    );
+    floor.position.y = -4.2;
+    floor.rotation.x = -Math.PI / 2;
+    addEnvironmentObject(floor);
+
+    addEnvironmentObject(
+      createStudioLightCard(
+        7.5,
+        7.5,
+        new THREE.Color(8.2, 7.7, 7.1),
+        new THREE.Vector3(5.5, 4.8, 7.5),
+        new THREE.Vector3(0, 0.5, 0)
+      )
+    );
+    addEnvironmentObject(
+      createStudioLightCard(
+        5.5,
+        5.5,
+        new THREE.Color(2.8, 3.4, 4.2),
+        new THREE.Vector3(-6.5, 2.6, 4.5),
+        new THREE.Vector3(0, 0.2, 0)
+      )
+    );
+    addEnvironmentObject(
+      createStudioLightCard(
+        6.5,
+        4.5,
+        new THREE.Color(1.8, 2.2, 2.8),
+        new THREE.Vector3(-3.8, 5.6, -7.6),
+        new THREE.Vector3(0, 0.4, 0)
+      )
+    );
+
+    try {
+      return pmremGenerator.fromScene(environmentScene, 0.04, 0.1, 60);
+    } finally {
+      for (let i = 0; i < environmentObjects.length; i++) {
+        disposeObjectResources(environmentObjects[i]);
+      }
+      pmremGenerator.dispose();
+    }
+  };
+
   /**
    * @category Behaviors > 3D
    */
@@ -326,15 +453,19 @@ namespace gdjs {
         return null;
       }
       const scene = layerRenderer.getThreeScene() as THREE.Scene;
-      const renderer = runtimeScene
-        .getGame()
-        .getRenderer()
-        .getThreeRenderer() as THREE.WebGLRenderer;
+      const renderer = gdjs.getThreeRendererFromRuntimeGame(
+        runtimeScene.getGame(),
+        runtimeScene
+      );
       if (!renderer) {
         return null;
       }
       const timeMs = runtimeScene.getTimeManager().getTimeFromStart();
-      return { scene, renderer, timeMs };
+      return {
+        scene,
+        renderer: renderer as THREE.WebGLRenderer,
+        timeMs,
+      };
     }
 
     private _getOrCreateEnvironmentState(
@@ -403,26 +534,17 @@ namespace gdjs {
           environmentRenderTarget =
             pmremGenerator.fromEquirectangular(backgroundTexture);
         } else {
-          const fallbackScene = new THREE.Scene();
-          fallbackScene.background =
+          environmentRenderTarget = createStudioEnvironmentRenderTarget(
+            renderer,
             background && (background as any).isColor
               ? (background as THREE.Color).clone()
-              : new THREE.Color(0.5, 0.5, 0.5);
-          environmentRenderTarget = pmremGenerator.fromScene(
-            fallbackScene,
-            0,
-            0.1,
-            100
+              : null
           );
         }
       } catch (error) {
-        const fallbackScene = new THREE.Scene();
-        fallbackScene.background = new THREE.Color(0.5, 0.5, 0.5);
-        environmentRenderTarget = pmremGenerator.fromScene(
-          fallbackScene,
-          0,
-          0.1,
-          100
+        environmentRenderTarget = createStudioEnvironmentRenderTarget(
+          renderer,
+          null
         );
       } finally {
         pmremGenerator.dispose();

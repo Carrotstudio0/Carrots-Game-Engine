@@ -40,6 +40,11 @@ namespace gdjs {
     shaderInjected: boolean;
   }
 
+  interface RimLightTslPatchedMeshState {
+    originalMaterial: THREE.Material | THREE.Material[];
+    patchedMaterial: THREE.Material | THREE.Material[];
+  }
+
   const rimLightShaderPatchKey = 'Scene3D_RimLight_Patch_v4';
   const rimLightShaderPatchToken = 'SCENE3D_RIM_LIGHT_PATCH';
   const rimMaterialScanIntervalFrames = 15;
@@ -69,6 +74,7 @@ namespace gdjs {
             RimLightPatchedMaterial,
             RimLightPatchedMaterialState
           >;
+          _tslPatchedMeshes: Map<THREE.Mesh, RimLightTslPatchedMeshState>;
           _cameraPosition: THREE.Vector3;
           _cameraMatrixWorld: THREE.Matrix4;
           _materialScanCounter: number;
@@ -122,11 +128,24 @@ namespace gdjs {
                 : !!effectData.booleanParameters.debugForceMaxRim;
 
             this._patchedMaterials = new Map();
+            this._tslPatchedMeshes = new Map();
             this._cameraPosition = new THREE.Vector3();
             this._cameraMatrixWorld = new THREE.Matrix4();
             this._materialScanCounter = rimMaterialScanIntervalFrames;
             this._warnedNoMaterials = false;
             this._warnedNoShaderInjection = false;
+          }
+
+          private _getRimLightParams() {
+            return {
+              colorHex: this._colorHex,
+              intensity: this._effectEnabled ? this._intensity : 0,
+              outerWrap: this._outerWrap,
+              power: this._power,
+              fresnel0: this._fresnel0,
+              shadowStrength: this._shadowStrength,
+              debugForceMaxRim: this._debugForceMaxRim,
+            };
           }
 
           private _isMaterialPatchable(
@@ -399,14 +418,91 @@ outgoingLight += rimColor * (rimIntensity * scene3dRimStrength);
               this._unpatchMaterial(material);
             }
             this._patchedMaterials.clear();
+            this._restoreAllTslPatchedMeshes();
           }
 
-          private _applyToSceneMaterials(scene: THREE.Scene): void {
+          private _restoreTslPatchedMesh(mesh: THREE.Mesh): void {
+            const patchState = this._tslPatchedMeshes.get(mesh);
+            if (!patchState) {
+              return;
+            }
+
+            mesh.material = patchState.originalMaterial;
+
+            const patchedMaterials = Array.isArray(patchState.patchedMaterial)
+              ? patchState.patchedMaterial
+              : [patchState.patchedMaterial];
+            for (const patchedMaterial of patchedMaterials) {
+              patchedMaterial.dispose();
+            }
+
+            this._tslPatchedMeshes.delete(mesh);
+          }
+
+          private _restoreAllTslPatchedMeshes(): void {
+            for (const mesh of Array.from(this._tslPatchedMeshes.keys())) {
+              this._restoreTslPatchedMesh(mesh);
+            }
+            this._tslPatchedMeshes.clear();
+          }
+
+          private _patchMeshWithTsl(
+            mesh: THREE.Mesh,
+            renderer: any
+          ): boolean {
+            if (this._tslPatchedMeshes.has(mesh) || !mesh.material) {
+              return this._tslPatchedMeshes.has(mesh);
+            }
+
+            const sourceMaterials = Array.isArray(mesh.material)
+              ? mesh.material
+              : [mesh.material];
+            const patchedMaterials: THREE.Material[] = [];
+
+            for (const sourceMaterial of sourceMaterials) {
+              const patchedMaterial = gdjs.createThreeTslRimLightMaterial(
+                renderer,
+                sourceMaterial,
+                this._getRimLightParams()
+              );
+
+              if (!patchedMaterial) {
+                for (const createdMaterial of patchedMaterials) {
+                  createdMaterial.dispose();
+                }
+                return false;
+              }
+
+              patchedMaterials.push(patchedMaterial);
+            }
+
+            const assignedMaterial = Array.isArray(mesh.material)
+              ? patchedMaterials
+              : patchedMaterials[0];
+
+            this._tslPatchedMeshes.set(mesh, {
+              originalMaterial: mesh.material,
+              patchedMaterial: assignedMaterial,
+            });
+            mesh.material = assignedMaterial;
+            return true;
+          }
+
+          private _applyToSceneMaterials(
+            scene: THREE.Scene,
+            renderer?: any
+          ): void {
             let encounteredMaterials = 0;
+            const canUseTsl = gdjs.supportsThreeTslSceneEffects(renderer || null);
 
             scene.traverse((object3D) => {
               const mesh = object3D as THREE.Mesh;
               if (!mesh || !mesh.isMesh || !mesh.material) {
+                return;
+              }
+
+              if (canUseTsl && this._patchMeshWithTsl(mesh, renderer)) {
+                encounteredMaterials++;
                 return;
               }
 
@@ -440,8 +536,25 @@ outgoingLight += rimColor * (rimIntensity * scene3dRimStrength);
               this._updateUniformState(patchState);
             }
 
+            const rimLightParams = this._getRimLightParams();
+            for (const patchState of this._tslPatchedMeshes.values()) {
+              const patchedMaterials = Array.isArray(patchState.patchedMaterial)
+                ? patchState.patchedMaterial
+                : [patchState.patchedMaterial];
+              for (const patchedMaterial of patchedMaterials) {
+                if (
+                  gdjs.updateThreeTslRimLightMaterial(
+                    patchedMaterial,
+                    rimLightParams
+                  )
+                ) {
+                  injectedMaterialCount++;
+                }
+              }
+            }
+
             if (
-              this._patchedMaterials.size > 0 &&
+              this._patchedMaterials.size + this._tslPatchedMeshes.size > 0 &&
               injectedMaterialCount === 0 &&
               !this._warnedNoShaderInjection
             ) {
@@ -475,7 +588,10 @@ outgoingLight += rimColor * (rimIntensity * scene3dRimStrength);
             this._materialScanCounter = rimMaterialScanIntervalFrames;
             this._warnedNoMaterials = false;
             this._warnedNoShaderInjection = false;
-            this._applyToSceneMaterials(scene);
+            this._applyToSceneMaterials(
+              scene,
+              gdjs.getThreeRendererFromEffectsTarget(target)
+            );
             this._isEnabled = true;
             return true;
           }
@@ -497,6 +613,10 @@ outgoingLight += rimColor * (rimIntensity * scene3dRimStrength);
             const layerRenderer = target.getRenderer();
             const threeScene = layerRenderer.getThreeScene();
             const threeCamera = layerRenderer.getThreeCamera();
+            const threeRenderer =
+              typeof (layerRenderer as any).getThreeRenderer === 'function'
+                ? (layerRenderer as any).getThreeRenderer()
+                : gdjs.getThreeRendererFromEffectsTarget(target);
 
             if (!threeScene || !threeCamera) {
               return;
@@ -507,7 +627,7 @@ outgoingLight += rimColor * (rimIntensity * scene3dRimStrength);
             this._cameraPosition.setFromMatrixPosition(threeCamera.matrixWorld);
 
             if (this._materialScanCounter >= rimMaterialScanIntervalFrames) {
-              this._applyToSceneMaterials(threeScene);
+              this._applyToSceneMaterials(threeScene, threeRenderer);
               this._materialScanCounter = 0;
             } else {
               this._materialScanCounter++;

@@ -182,8 +182,46 @@ namespace gdjs {
             return renderer.getThreeCamera();
           }
 
-          private _createSkyMesh(): void {
+          private _getSkyParameters() {
+            return {
+              turbidity: this._turbidity,
+              rayleigh: this._rayleigh,
+              mieCoefficient: this._mieCoefficient,
+              mieDirectionalG: this._mieDirectionalG,
+              sunIntensity: this._sunIntensity,
+              sunElevation: this._sunElevation,
+              sunAzimuth: this._sunAzimuth,
+              exposure: this._exposure,
+              skyTintColorHex: this._skyTintColorHex,
+              sunColorHex: this._sunColorHex,
+              cloudCoverage: this._cloudCoverage,
+              cloudOpacity: this._cloudOpacity,
+              cloudScale: this._cloudScale,
+              cloudSoftness: this._cloudSoftness,
+              cloudSpeed: this._cloudSpeed,
+              cloudColorHex: this._cloudColorHex,
+            };
+          }
+
+          private _createSkyMesh(target: EffectsTarget): void {
             if (this._skyMesh) return;
+
+            const threeRenderer = gdjs.getThreeRendererFromEffectsTarget(target);
+            const tslSkyMaterial =
+              gdjs.supportsThreeTslSceneEffects(threeRenderer)
+                ? gdjs.createThreeTslSkyMaterial()
+                : null;
+
+            if (tslSkyMaterial) {
+              this._skyMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(1, 32, 16),
+                tslSkyMaterial
+              );
+              this._skyMesh.frustumCulled = false;
+              this._skyMesh.renderOrder = -1000000;
+              this._updateUniforms();
+              return;
+            }
 
             const uniforms = {
               turbidity: { value: this._turbidity },
@@ -445,6 +483,15 @@ namespace gdjs {
           private _updateUniforms(): void {
             if (!this._skyMesh) return;
 
+            if (
+              gdjs.updateThreeTslSkyMaterial(
+                this._skyMesh.material as THREE.Material,
+                this._getSkyParameters()
+              )
+            ) {
+              return;
+            }
+
             const material = this._skyMesh.material as THREE.ShaderMaterial;
             material.uniforms.turbidity.value = this._turbidity;
             material.uniforms.rayleigh.value = this._rayleigh;
@@ -509,7 +556,7 @@ namespace gdjs {
               return false;
             }
 
-            this._createSkyMesh();
+            this._createSkyMesh(target);
             if (!this._skyMesh) {
               return false;
             }

@@ -45,7 +45,14 @@ export const create = (authentication: Authentication): React.Node => {
   // TODO: make a hook that allows this to change, so we can switch to S3
   // (and log this into Posthog).
   const canUseBrowserSW = isServiceWorkerSupported();
-  if (canUseBrowserSW) ensureBrowserSWPreviewSession();
+  if (canUseBrowserSW) {
+    ensureBrowserSWPreviewSession().catch(error => {
+      console.error(
+        '[BrowserApp] Failed to initialize the Browser SW preview session.',
+        error
+      );
+    });
+  }
 
   app = (
     <Providers

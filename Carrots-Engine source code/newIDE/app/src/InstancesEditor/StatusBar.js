@@ -24,10 +24,13 @@ export default class StatusBar {
     this._statusBarContainer.alpha = 0.8;
     this._statusBarContainer.hitArea = new PIXI.Rectangle(0, 0, 0, 0);
     this._statusBarBackground = new PIXI.Graphics();
-    this._statusBarText = new PIXI.Text('', {
-      fontSize: 15,
-      fill: 0xffffff,
-      align: 'left',
+    this._statusBarText = new PIXI.Text({
+      text: '',
+      style: {
+        fontSize: 15,
+        fill: 0xffffff,
+        align: 'left',
+      },
     });
     this._statusBarContainer.addChild(this._statusBarBackground);
     this._statusBarContainer.addChild(this._statusBarText);

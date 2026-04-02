@@ -3,6 +3,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import {
+  configureThreeRendererQuality,
+  createStudioEnvironmentRenderTarget,
+  createStudioLightingRig,
+} from '../../Utils/ThreeRenderingQuality';
 
 const isNativeMobileApp = false;
 
@@ -62,6 +67,7 @@ let renderer = null;
 let width = 256;
 let height = 256;
 let offscreenCanvas = null;
+let studioEnvironmentRenderTarget = null;
 
 const getFileExtension = path => {
   if (!path) return '';
@@ -70,13 +76,6 @@ const getFileExtension = path => {
   const extensionSeparatorIndex = withoutQuery.lastIndexOf('.');
   if (extensionSeparatorIndex === -1) return '';
   return withoutQuery.substring(extensionSeparatorIndex + 1).toLowerCase();
-};
-
-const enableLegacyLightsIfSupported = renderer => {
-  const rendererWithLegacyLights = renderer;
-  if ('useLegacyLights' in rendererWithLegacyLights) {
-    rendererWithLegacyLights.useLegacyLights = true;
-  }
 };
 
 // Set up the renderer when worker is initialized
@@ -92,7 +91,11 @@ const initRenderer = () => {
     alpha: true,
     stencil: true,
   });
-  enableLegacyLightsIfSupported(renderer);
+  configureThreeRendererQuality(renderer, {
+    toneMapping: 'AgX',
+    exposure: 1.03,
+  });
+  studioEnvironmentRenderTarget = createStudioEnvironmentRenderTarget(renderer);
 
   renderer.setSize(width, height, false);
 
@@ -107,16 +110,15 @@ const renderModel = async resourceUrl => {
   }
 
   const scene = new THREE.Scene();
-
-  const light = new THREE.HemisphereLight();
-  light.color = new THREE.Color(1, 1, 1);
-  light.groundColor = new THREE.Color(0.25, 0.25, 0.25);
-  light.position.set(0, 0, 1);
-  const lightGroup = new THREE.Group();
-  lightGroup.rotation.order = 'ZYX';
-  lightGroup.rotation.x = Math.PI / 4;
-  lightGroup.add(light);
-  scene.add(lightGroup);
+  const lightingRig = createStudioLightingRig();
+  scene.add(lightingRig);
+  if (studioEnvironmentRenderTarget) {
+    scene.environment = studioEnvironmentRenderTarget.texture;
+    const sceneWithEnvironment = scene;
+    if (typeof sceneWithEnvironment.environmentIntensity === 'number') {
+      sceneWithEnvironment.environmentIntensity = 1.12;
+    }
+  }
 
   // Load the model
   return new Promise((resolve, reject) => {

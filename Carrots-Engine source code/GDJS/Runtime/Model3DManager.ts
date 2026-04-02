@@ -27,6 +27,10 @@ namespace gdjs {
     return withoutQuery.substring(0, lastPathSeparatorIndex + 1);
   };
 
+  const getDracoDecoderPath = (): string => {
+    return './pixi-renderers/draco/gltf/';
+  };
+
   const toLoadedModel3D = (
     scene: THREE.Object3D,
     animations: THREE.AnimationClip[] = []
@@ -70,7 +74,7 @@ namespace gdjs {
 
       if (typeof THREE !== 'undefined') {
         this._dracoLoader = new THREE_ADDONS.DRACOLoader();
-        this._dracoLoader.setDecoderPath('./pixi-renderers/draco/gltf/');
+        this._dracoLoader.setDecoderPath(getDracoDecoderPath());
 
         /**
          * The invalid model is a box with magenta (#ff00ff) faces, to be

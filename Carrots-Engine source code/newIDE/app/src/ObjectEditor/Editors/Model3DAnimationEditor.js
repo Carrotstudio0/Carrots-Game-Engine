@@ -26,6 +26,11 @@ import { EmptyPlaceholder } from '../../UI/EmptyPlaceholder';
 import useAlertDialog from '../../UI/Alert/useAlertDialog';
 import GDevelopThemeContext from '../../UI/Theme/GDevelopThemeContext';
 import PixiResourcesLoader from '../../ObjectsRendering/PixiResourcesLoader';
+import {
+  configureThreeRendererQuality,
+  createStudioEnvironmentRenderTarget,
+  createStudioLightingRig,
+} from '../../Utils/ThreeRenderingQuality';
 import useForceUpdate from '../../Utils/UseForceUpdate';
 import { mapFor } from '../../Utils/MapFor';
 import { type EditorProps } from './EditorProps.flow';
@@ -1627,7 +1632,10 @@ const Model3DAnimationPreview = ({
       antialias: true,
       alpha: true,
     });
-    renderer.useLegacyLights = true;
+    configureThreeRendererQuality(renderer, {
+      toneMapping: 'AgX',
+      exposure: 1.02,
+    });
     renderer.setClearColor(0x000000, 0);
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.domElement.style.width = '100%';
@@ -1639,21 +1647,22 @@ const Model3DAnimationPreview = ({
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
     camera.position.set(2.45, 1.55, 3.25);
     camera.lookAt(0, 0.6, 0);
+    const environmentRenderTarget = createStudioEnvironmentRenderTarget(renderer);
+    if (environmentRenderTarget) {
+      scene.environment = environmentRenderTarget.texture;
+      const sceneWithEnvironment = ((scene: any): {
+        environmentIntensity?: number,
+      });
+      if (typeof sceneWithEnvironment.environmentIntensity === 'number') {
+        sceneWithEnvironment.environmentIntensity = 1.18;
+      }
+    }
 
     const previewPivot = new THREE.Group();
     scene.add(previewPivot);
 
-    const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x3d4651, 1.6);
-    hemisphereLight.position.set(0, 2, 0);
-    scene.add(hemisphereLight);
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.1);
-    directionalLight.position.set(3, 5, 4);
-    scene.add(directionalLight);
-
-    const backLight = new THREE.DirectionalLight(0xbfd8ff, 0.55);
-    backLight.position.set(-3, 3, -3);
-    scene.add(backLight);
+    const lightingRig = createStudioLightingRig();
+    scene.add(lightingRig);
 
     const gridHelper = new THREE.GridHelper(8, 24, 0xffffff, 0xffffff);
     setTransparentGridMaterial(gridHelper.material);
@@ -1722,6 +1731,9 @@ const Model3DAnimationPreview = ({
       sceneRef.current = null;
       cameraRef.current = null;
       rendererRef.current = null;
+      if (environmentRenderTarget) {
+        environmentRenderTarget.dispose();
+      }
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);

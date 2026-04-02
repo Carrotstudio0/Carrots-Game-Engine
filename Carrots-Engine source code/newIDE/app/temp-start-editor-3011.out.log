@@ -1,0 +1,30 @@
+
+> gdevelop-ide@0.1.0 start:editor
+> react-app-rewired --max-old-space-size=8192 start --stats-children
+
+Starting the development server...
+
+Compiled with warnings.
+
+Module not found: Error: Can't resolve 'perf_hooks' in 'C:\Users\Tech Shop\Desktop\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\node_modules\typescript\lib'
+
+Critical dependency: the request of a dependency is an expression
+
+Critical dependency: the request of a dependency is an expression
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m./node_modules/typescript/lib/typescript.js[39m[22m [1m[32m3811:17-38[39m[22m
+[1mModule [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'perf_hooks' in 'C:\Users\Tech Shop\Desktop\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\node_modules\typescript\lib'[39m[22m
+
+[1m[33mWARNING[39m[22m in [1m./node_modules/typescript/lib/typescript.js[39m[22m [1m[32m4059:16-38[39m[22m
+[1mCritical dependency: the request of a dependency is an expression[39m[22m
+
+[1m[33mWARNING[39m[22m in [1m./node_modules/typescript/lib/typescript.js[39m[22m [1m[32m7418:22-41[39m[22m
+[1mCritical dependency: the request of a dependency is an expression[39m[22m
+
+[1m[33m3 WARNINGS in child compilations (Use 'stats.children: true' resp. '--stats-children' for more details)[39m[22m
+[1m[31m1 ERROR in child compilations (Use 'stats.children: true' resp. '--stats-children' for more details)[39m[22m
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m6 warnings[39m[22m
+No issues found.

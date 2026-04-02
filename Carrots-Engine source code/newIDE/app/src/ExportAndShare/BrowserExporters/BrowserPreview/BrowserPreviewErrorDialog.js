@@ -6,15 +6,17 @@ import Dialog from '../../../UI/Dialog';
 import FlatButton from '../../../UI/FlatButton';
 import { Column, Line } from '../../../UI/Grid';
 import Text from '../../../UI/Text';
+import { normalizePreviewError } from '../normalizePreviewError';
 
 type Props = {|
-  error: Error,
+  error: any,
   onClose: () => void,
 |};
 
 export default class BrowserPreviewErrorDialog extends Component<Props> {
   render(): any {
-    const { error, onClose } = this.props;
+    const { onClose } = this.props;
+    const error = normalizePreviewError(this.props.error);
 
     return (
       <I18n>
@@ -43,10 +45,15 @@ export default class BrowserPreviewErrorDialog extends Component<Props> {
                   ) : (
                     <Trans>
                       The preview could not be launched because an error
-                      happened: {error.message}.
+                      happened.
                     </Trans>
                   )}
                 </Text>
+              </Column>
+            </Line>
+            <Line>
+              <Column noMargin>
+                <Text allowSelection>{error.message}</Text>
               </Column>
             </Line>
             <Line>

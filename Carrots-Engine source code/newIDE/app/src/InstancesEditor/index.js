@@ -48,6 +48,7 @@ import {
   getWheelStepZoomFactor,
 } from '../Utils/ZoomUtils';
 import Background from './Background';
+import { configureThreeRendererQuality } from '../Utils/ThreeRenderingQuality';
 import TileMapPaintingPreview, {
   updateSceneToTileMapTransformation,
 } from './TileMapPaintingPreview';
@@ -81,15 +82,6 @@ export const instancesEditorId = 'instances-editor-canvas';
 const styles = {
   canvasArea: { flex: 1, position: 'absolute', overflow: 'hidden' },
   dropCursor: { cursor: 'copy' },
-};
-
-const enableLegacyLightsIfSupported = (renderer: THREE.WebGLRenderer) => {
-  const rendererWithLegacyLights = ((renderer: any): {
-    useLegacyLights?: boolean,
-  });
-  if ('useLegacyLights' in rendererWithLegacyLights) {
-    rendererWithLegacyLights.useLegacyLights = true;
-  }
 };
 
 const DropTarget = makeDropTarget<{||}>(objectWithContextReactDndType);
@@ -302,7 +294,10 @@ export default class InstancesEditor extends Component<Props, State> {
           canvas: gameCanvas,
           stencil: true,
         });
-        enableLegacyLightsIfSupported(threeRenderer);
+        configureThreeRendererQuality(threeRenderer, {
+          toneMapping: 'AgX',
+          exposure: 1,
+        });
         threeRenderer.autoClear = false;
         threeRenderer.setSize(this.props.width, this.props.height);
 
@@ -314,7 +309,7 @@ export default class InstancesEditor extends Component<Props, State> {
         await pixiRenderer.init({
           width: initialWidth,
           height: initialHeight,
-          view: gameCanvas,
+          canvas: gameCanvas,
           context: threeRenderer.getContext(),
           clearBeforeRender: false,
           preserveDrawingBuffer: true,
@@ -334,7 +329,7 @@ export default class InstancesEditor extends Component<Props, State> {
         await pixiRenderer.init({
           width: initialWidth,
           height: initialHeight,
-          view: gameCanvas,
+          canvas: gameCanvas,
           // "preserveDrawingBuffer: true" is needed to avoid flickering and background issues on some mobile phones (see #585 #572 #566 #463)
           preserveDrawingBuffer: true,
           // Disable anti-aliasing (default) to avoid rendering issue (1px width line of extra pixels) when rendering pixel perfect tiled sprites.

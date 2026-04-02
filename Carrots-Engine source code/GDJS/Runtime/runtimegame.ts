@@ -23,6 +23,539 @@ namespace gdjs {
   const getGlobalResourceNames = (projectData: ProjectData): Array<string> =>
     projectData.usedResources.map((resource) => resource.name);
 
+  const normalizeRenderingBackend = (
+    renderingBackend: string | undefined
+  ): 'webgl' | 'webgpu' =>
+    renderingBackend === 'webgpu' ? 'webgpu' : 'webgl';
+
+  export const getLayerSharedWebGLRendererRequirementReason = (
+    layerData: LayerData
+  ): string | null => {
+    if (layerData.renderingType === '3d') {
+      return `Layer "${layerData.name}" uses 3D rendering, which currently requires the legacy Three.js/WebGL composition path.`;
+    }
+
+    if (layerData.renderingType === '2d+3d' || layerData.renderingType === '') {
+      return `Layer "${layerData.name}" uses mixed 2D and 3D rendering, which currently requires the legacy Three.js/WebGL composition path.`;
+    }
+
+    return null;
+  };
+
+  export const getProjectSharedWebGLRendererRequirementReason = (
+    projectData: ProjectData,
+    upscalingMode: 'none' | 'fsr1'
+  ): string | null => {
+    if (upscalingMode === 'fsr1') {
+      return 'FSR 1.0 currently requires the legacy Three.js/WebGL composition path.';
+    }
+
+    for (const layoutData of projectData.layouts) {
+      for (const layerData of layoutData.layers) {
+        const requirementReason =
+          getLayerSharedWebGLRendererRequirementReason(layerData);
+        if (requirementReason) {
+          return requirementReason;
+        }
+      }
+    }
+
+    return null;
+  };
+
+  const ensureThreeRuntimeHelpersAvailable = (): void => {
+    const gdjsAny = gdjs as any;
+
+    if (typeof gdjsAny.hasThreeWebGpuBundleSupport !== 'function') {
+      gdjsAny.hasThreeWebGpuBundleSupport = () =>
+        typeof THREE_WEBGPU !== 'undefined';
+    }
+
+    if (typeof gdjsAny.hasThreeTslBundleSupport !== 'function') {
+      gdjsAny.hasThreeTslBundleSupport = () => typeof THREE_TSL !== 'undefined';
+    }
+
+    if (typeof gdjsAny.canUseThreeTslNodeMaterials !== 'function') {
+      gdjsAny.canUseThreeTslNodeMaterials = (
+        renderer: gdjs.ThreeRendererCompat | null
+      ) =>
+        !!renderer &&
+        !!gdjsAny.hasThreeWebGpuBundleSupport() &&
+        !!gdjsAny.hasThreeTslBundleSupport() &&
+        !!(renderer as Record<string, unknown>).isWebGPURenderer;
+    }
+
+    if (typeof gdjsAny.supportsThreeTslSceneEffects !== 'function') {
+      gdjsAny.supportsThreeTslSceneEffects = (
+        renderer: gdjs.ThreeRendererCompat | null
+      ) =>
+        gdjsAny.canUseThreeTslNodeMaterials(renderer) &&
+        typeof (THREE_WEBGPU as any)?.NodeMaterial === 'function';
+    }
+
+    if (typeof gdjsAny.getPreferredThreeShadowMapType !== 'function') {
+      gdjsAny.getPreferredThreeShadowMapType = (
+        renderer: gdjs.ThreeRendererCompat | null,
+        lightKind: 'generic' | 'point' = 'generic'
+      ) => {
+        if (
+          lightKind !== 'point' &&
+          gdjsAny.supportsThreeTslSceneEffects(renderer) &&
+          typeof THREE.VSMShadowMap === 'number'
+        ) {
+          return THREE.VSMShadowMap;
+        }
+
+        return THREE.PCFShadowMap;
+      };
+    }
+
+    if (typeof gdjsAny.ensureThreeRendererOutputColorSpace !== 'function') {
+      gdjsAny.ensureThreeRendererOutputColorSpace = (
+        renderer: gdjs.ThreeRendererCompat | null
+      ) => {
+        if (!renderer) {
+          return;
+        }
+
+        const rendererWithCompat = renderer as Record<string, unknown>;
+        if ('outputColorSpace' in rendererWithCompat) {
+          rendererWithCompat.outputColorSpace = THREE.SRGBColorSpace;
+        } else if (
+          'outputEncoding' in rendererWithCompat &&
+          typeof (THREE as any).sRGBEncoding === 'number'
+        ) {
+          rendererWithCompat.outputEncoding = (THREE as any).sRGBEncoding;
+        }
+      };
+    }
+
+    if (typeof gdjsAny.applyThreeRendererToneMapping !== 'function') {
+      gdjsAny.applyThreeRendererToneMapping = (
+        renderer: gdjs.ThreeRendererCompat | null,
+        toneMapping: number,
+        exposure: number
+      ) => {
+        if (!renderer) {
+          return;
+        }
+
+        const rendererWithCompat = renderer as Record<string, unknown>;
+        rendererWithCompat.toneMapping = toneMapping;
+        rendererWithCompat.toneMappingExposure = exposure;
+      };
+    }
+
+    if (typeof gdjsAny.createThreeTslRimLightMaterial !== 'function') {
+      gdjsAny.createThreeTslRimLightMaterial = () => null;
+    }
+
+    if (typeof gdjsAny.updateThreeTslRimLightMaterial !== 'function') {
+      gdjsAny.updateThreeTslRimLightMaterial = () => false;
+    }
+
+    if (typeof gdjsAny.createThreeTslSkyMaterial !== 'function') {
+      gdjsAny.createThreeTslSkyMaterial = () => null;
+    }
+
+    if (typeof gdjsAny.updateThreeTslSkyMaterial !== 'function') {
+      gdjsAny.updateThreeTslSkyMaterial = () => false;
+    }
+  };
+
+  const fallbackWorkerTaskHandlers = new Map<
+    string,
+    { handler: gdjs.WorkerTaskHandler; version: integer }
+  >();
+
+  const ensureMultithreadingRuntimeAvailable = (): void => {
+    const gdjsAny = gdjs as any;
+
+    if (typeof gdjsAny.WorkerTaskCancelledError !== 'function') {
+      class RuntimeFallbackWorkerTaskCancelledError extends Error {
+        constructor(message = 'The worker task was cancelled.') {
+          super(message);
+          this.name = 'WorkerTaskCancelledError';
+        }
+      }
+
+      gdjsAny.WorkerTaskCancelledError = RuntimeFallbackWorkerTaskCancelledError;
+    }
+
+    if (typeof gdjsAny.WorkerTaskTimeoutError !== 'function') {
+      class RuntimeFallbackWorkerTaskTimeoutError extends Error {
+        constructor(message = 'The worker task timed out.') {
+          super(message);
+          this.name = 'WorkerTaskTimeoutError';
+        }
+      }
+
+      gdjsAny.WorkerTaskTimeoutError = RuntimeFallbackWorkerTaskTimeoutError;
+    }
+
+    if (typeof gdjsAny.registerWorkerTaskHandler !== 'function') {
+      gdjsAny.registerWorkerTaskHandler = (
+        handlerName: string,
+        handler: gdjs.WorkerTaskHandler
+      ) => {
+        const normalizedHandlerName = handlerName.trim();
+        if (!normalizedHandlerName) {
+          throw new Error(
+            'Worker task handlers must have a non-empty name.'
+          );
+        }
+
+        fallbackWorkerTaskHandlers.set(normalizedHandlerName, {
+          handler,
+          version:
+            (fallbackWorkerTaskHandlers.get(normalizedHandlerName)?.version ||
+              0) + 1,
+        });
+      };
+    }
+
+    if (typeof gdjsAny.unregisterWorkerTaskHandler !== 'function') {
+      gdjsAny.unregisterWorkerTaskHandler = (handlerName: string) =>
+        fallbackWorkerTaskHandlers.delete(handlerName);
+    }
+
+    if (typeof gdjsAny.hasWorkerTaskHandler !== 'function') {
+      gdjsAny.hasWorkerTaskHandler = (handlerName: string) =>
+        fallbackWorkerTaskHandlers.has(handlerName);
+    }
+
+    if (typeof gdjsAny.WorkerTaskHandle !== 'function') {
+      class RuntimeFallbackWorkerTaskHandle<T = unknown> {
+        id: string;
+        promise: Promise<T>;
+        _manager: any;
+        _status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' =
+          'queued';
+        _result: T | null = null;
+        _error: Error | null = null;
+        _resolve: (result: T) => void;
+        _reject: (error: Error) => void;
+
+        constructor(manager: any, id: string) {
+          this.id = id;
+          this._manager = manager;
+          this._resolve = () => {};
+          this._reject = () => {};
+          this.promise = new Promise<T>((resolve, reject) => {
+            this._resolve = resolve;
+            this._reject = reject;
+          });
+        }
+
+        cancel(): boolean {
+          return this._manager ? this._manager.cancelTask(this.id) : false;
+        }
+
+        getStatus() {
+          return this._status;
+        }
+
+        isFinished(): boolean {
+          return (
+            this._status === 'completed' ||
+            this._status === 'failed' ||
+            this._status === 'cancelled'
+          );
+        }
+
+        getResult(): T | null {
+          return this._result;
+        }
+
+        getError(): Error | null {
+          return this._error;
+        }
+
+        _markRunning(): void {
+          if (!this.isFinished()) {
+            this._status = 'running';
+          }
+        }
+
+        _markCompleted(result: T): void {
+          if (this.isFinished()) {
+            return;
+          }
+
+          this._status = 'completed';
+          this._result = result;
+          this._manager = null;
+          this._resolve(result);
+        }
+
+        _markFailed(error: Error): void {
+          if (this.isFinished()) {
+            return;
+          }
+
+          this._status =
+            error instanceof gdjsAny.WorkerTaskCancelledError
+              ? 'cancelled'
+              : 'failed';
+          this._error = error;
+          this._manager = null;
+          this._reject(error);
+        }
+      }
+
+      gdjsAny.WorkerTaskHandle = RuntimeFallbackWorkerTaskHandle;
+    }
+
+    if (typeof gdjsAny.WorkerTask !== 'function') {
+      class RuntimeFallbackWorkerTask<T = unknown> extends gdjs.AsyncTask {
+        _isSettled = false;
+        _result: T | null = null;
+        _error: Error | null = null;
+        _handle: any;
+
+        constructor(handle: any) {
+          super();
+          this._handle = handle;
+          handle.promise.then(
+            (result: T) => {
+              this._isSettled = true;
+              this._result = result;
+            },
+            (error: Error) => {
+              this._isSettled = true;
+              this._error = error;
+            }
+          );
+        }
+
+        update(): boolean {
+          return this._isSettled;
+        }
+
+        wasSuccessful(): boolean {
+          return this._isSettled && this._error === null;
+        }
+
+        getResult(): T | null {
+          return this._result;
+        }
+
+        getError(): Error | null {
+          return this._error;
+        }
+
+        getHandle(): any {
+          return this._handle;
+        }
+
+        cancel(): boolean {
+          return this._handle.cancel();
+        }
+
+        getNetworkSyncData() {
+          return null;
+        }
+
+        updateFromNetworkSyncData(_networkSyncData: any) {}
+      }
+
+      gdjsAny.WorkerTask = RuntimeFallbackWorkerTask;
+    }
+
+    if (typeof gdjsAny.MultithreadManager !== 'function') {
+      class RuntimeFallbackMultithreadManager {
+        _disposed = false;
+        _jobIndex = 0;
+        _runningJobs = new Map<
+          string,
+          {
+            handle: any;
+            timeoutId: number | null;
+          }
+        >();
+        _completedJobCount = 0;
+        _failedJobCount = 0;
+        _cancelledJobCount = 0;
+        _configuredWorkerCount: integer;
+
+        constructor(options?: gdjs.MultithreadManagerOptions) {
+          this._configuredWorkerCount =
+            typeof options?.workerCount === 'number' &&
+            isFinite(options.workerCount)
+              ? Math.max(1, Math.floor(options.workerCount))
+              : 1;
+        }
+
+        _throwIfDisposed(): void {
+          if (this._disposed) {
+            throw new Error('The multithread manager was already disposed.');
+          }
+        }
+
+        _createJobId(): string {
+          this._jobIndex += 1;
+          return 'worker-job-' + this._jobIndex;
+        }
+
+        runTask<T = unknown>(
+          handlerName: string,
+          payload: unknown,
+          options?: gdjs.WorkerTaskOptions
+        ): any {
+          this._throwIfDisposed();
+
+          const handlerDescriptor = fallbackWorkerTaskHandlers.get(handlerName);
+          if (!handlerDescriptor) {
+            throw new Error(
+              'No worker task handler is registered under "' +
+                handlerName +
+                '".'
+            );
+          }
+
+          const jobId = this._createJobId();
+          const handle = new gdjsAny.WorkerTaskHandle(this, jobId);
+          let timeoutId: number | null = null;
+          this._runningJobs.set(jobId, {
+            handle,
+            timeoutId,
+          });
+          handle._markRunning();
+
+          if (
+            typeof options?.timeoutMs === 'number' &&
+            isFinite(options.timeoutMs) &&
+            options.timeoutMs > 0
+          ) {
+            timeoutId = window.setTimeout(() => {
+              const runningJob = this._runningJobs.get(jobId);
+              if (!runningJob) {
+                return;
+              }
+
+              this._runningJobs.delete(jobId);
+              runningJob.handle._markFailed(
+                new gdjsAny.WorkerTaskTimeoutError(
+                  'The worker task "' + handlerName + '" timed out.'
+                )
+              );
+              this._failedJobCount++;
+            }, Math.max(1, Math.floor(options.timeoutMs)));
+
+            this._runningJobs.set(jobId, {
+              handle,
+              timeoutId,
+            });
+          }
+
+          Promise.resolve()
+            .then(() =>
+              handlerDescriptor.handler(payload, {
+                jobId,
+                handlerName,
+                isWorkerThread: false,
+              })
+            )
+            .then(
+              (result) => {
+                const runningJob = this._runningJobs.get(jobId);
+                if (!runningJob) {
+                  return;
+                }
+
+                if (runningJob.timeoutId !== null) {
+                  clearTimeout(runningJob.timeoutId);
+                }
+                this._runningJobs.delete(jobId);
+                runningJob.handle._markCompleted(result as T);
+                this._completedJobCount++;
+              },
+              (error: Error) => {
+                const runningJob = this._runningJobs.get(jobId);
+                if (!runningJob) {
+                  return;
+                }
+
+                if (runningJob.timeoutId !== null) {
+                  clearTimeout(runningJob.timeoutId);
+                }
+                this._runningJobs.delete(jobId);
+                runningJob.handle._markFailed(
+                  error instanceof Error ? error : new Error(String(error))
+                );
+                this._failedJobCount++;
+              }
+            );
+
+          return handle;
+        }
+
+        cancelTask(jobId: string): boolean {
+          const runningJob = this._runningJobs.get(jobId);
+          if (!runningJob) {
+            return false;
+          }
+
+          if (runningJob.timeoutId !== null) {
+            clearTimeout(runningJob.timeoutId);
+          }
+          this._runningJobs.delete(jobId);
+          runningJob.handle._markFailed(
+            new gdjsAny.WorkerTaskCancelledError(
+              'The worker task was cancelled.'
+            )
+          );
+          this._cancelledJobCount++;
+          return true;
+        }
+
+        getStats() {
+          return {
+            configuredWorkerCount: this._configuredWorkerCount,
+            activeWorkerCount: 0,
+            busyWorkerCount: 0,
+            queuedJobCount: 0,
+            runningJobCount: this._runningJobs.size,
+            completedJobCount: this._completedJobCount,
+            failedJobCount: this._failedJobCount,
+            cancelledJobCount: this._cancelledJobCount,
+            supportsWorkers: false,
+            isUsingWorkers: false,
+            registeredHandlerCount: fallbackWorkerTaskHandlers.size,
+          };
+        }
+
+        supportsWorkers(): boolean {
+          return false;
+        }
+
+        dispose(): void {
+          if (this._disposed) {
+            return;
+          }
+
+          const disposeError = new gdjsAny.WorkerTaskCancelledError(
+            'The multithread manager was disposed.'
+          );
+          for (const [jobId, runningJob] of this._runningJobs.entries()) {
+            if (runningJob.timeoutId !== null) {
+              clearTimeout(runningJob.timeoutId);
+            }
+            this._runningJobs.delete(jobId);
+            runningJob.handle._markFailed(disposeError);
+            this._cancelledJobCount++;
+          }
+          this._disposed = true;
+        }
+      }
+
+      gdjsAny.MultithreadManager = RuntimeFallbackMultithreadManager;
+      logger.warn(
+        'The multithreading runtime was unavailable during startup. A main-thread fallback was installed so the preview can continue to run.'
+      );
+    }
+  };
+
   let supportedCompressionMethods: ('cs:gzip' | 'cs:deflate')[] | null = null;
   const getSupportedCompressionMethods = (): ('cs:gzip' | 'cs:deflate')[] => {
     if (!!supportedCompressionMethods) {
@@ -218,6 +751,7 @@ namespace gdjs {
     _scaleMode: 'linear' | 'nearest';
     _pixelsRounding: boolean;
     _antialiasingMode: 'none' | 'MSAA';
+    _renderingBackend: 'webgl' | 'webgpu';
     _upscalingMode: 'none' | 'fsr1';
     _fsrQuality: 'ultra-quality' | 'quality' | 'balanced' | 'performance';
     _fsrSharpness: float;
@@ -225,6 +759,10 @@ namespace gdjs {
     _fsrRuntimeDisabledReason: string = '';
     _renderingWidth: integer = 0;
     _renderingHeight: integer = 0;
+    _adaptiveGpuUpscalingEnabled: boolean = true;
+    _adaptiveFsrQualityMultiplier: float = 1;
+    _smoothedRenderingFrameTime: float = 1000 / 60;
+    _adaptiveUpscalingCooldownFrames: integer = 0;
     _isAntialisingEnabledOnMobile: boolean;
     /**
      * Game loop management (see startGameLoop method)
@@ -355,6 +893,9 @@ namespace gdjs {
       this._scaleMode = data.properties.scaleMode || 'linear';
       this._pixelsRounding = this._data.properties.pixelsRounding;
       this._antialiasingMode = this._data.properties.antialiasingMode;
+      this._renderingBackend = normalizeRenderingBackend(
+        this._data.properties.renderingBackend
+      );
       this._upscalingMode =
         (this._data.properties.upscalingMode as
           | 'none'
@@ -375,6 +916,8 @@ namespace gdjs {
       this._updateRenderingSize();
       this._isAntialisingEnabledOnMobile =
         this._data.properties.antialisingEnabledOnMobile;
+      ensureThreeRuntimeHelpersAvailable();
+      ensureMultithreadingRuntimeAvailable();
 
       this._renderer = new gdjs.RuntimeGameRenderer(
         this,
@@ -426,6 +969,9 @@ namespace gdjs {
         projectData.layouts
       );
       this._refreshEmbeddedResourcesMappings();
+      this._renderingBackend = normalizeRenderingBackend(
+        this._data.properties.renderingBackend
+      );
       this._upscalingMode =
         (this._data.properties.upscalingMode as
           | 'none'
@@ -945,6 +1491,30 @@ namespace gdjs {
     }
 
     /**
+     * Return the rendering backend requested by the project ("webgl" or "webgpu").
+     */
+    getRenderingBackend(): 'webgl' | 'webgpu' {
+      return this._renderingBackend;
+    }
+
+    /**
+     * Return the reason why the current project still requires the shared WebGL renderer path.
+     */
+    getSharedWebGLRendererRequirementReason(): string | null {
+      return getProjectSharedWebGLRendererRequirementReason(
+        this._data,
+        this._upscalingMode
+      );
+    }
+
+    /**
+     * Return true if the current project still requires the shared WebGL renderer path.
+     */
+    requiresSharedWebGLRenderer(): boolean {
+      return !!this.getSharedWebGLRendererRequirementReason();
+    }
+
+    /**
      * Return the upscaling mode used by the game ("none" or "fsr1").
      */
     getUpscalingMode(): 'none' | 'fsr1' {
@@ -964,6 +1534,33 @@ namespace gdjs {
      */
     getFsrSharpness(): float {
       return this._fsrSharpness;
+    }
+
+    /**
+     * Return true if adaptive GPU upscaling can currently adjust the internal rendering size.
+     */
+    isAdaptiveGpuUpscalingEnabled(): boolean {
+      return this._adaptiveGpuUpscalingEnabled && this.isFsrEnabled();
+    }
+
+    /**
+     * Return the current internal rendering scale applied before upscaling.
+     * 1 means native internal resolution, values below 1 mean the GPU load is reduced.
+     */
+    getAdaptiveGpuRenderingScale(): float {
+      if (
+        this._gameResolutionWidth <= 0 ||
+        this._gameResolutionHeight <= 0 ||
+        this._renderingWidth <= 0 ||
+        this._renderingHeight <= 0
+      ) {
+        return 1;
+      }
+
+      return Math.min(
+        this._renderingWidth / this._gameResolutionWidth,
+        this._renderingHeight / this._gameResolutionHeight
+      );
     }
 
     /**
@@ -996,6 +1593,8 @@ namespace gdjs {
 
       this._fsrRuntimeDisabled = true;
       this._fsrRuntimeDisabledReason = reason || '';
+      this._adaptiveFsrQualityMultiplier = 1;
+      this._adaptiveUpscalingCooldownFrames = 0;
       const suffix = reason ? ` (${reason})` : '';
       console.warn(
         `FSR 1.0: Disabled for this session${suffix}. Falling back to native resolution.`
@@ -1346,6 +1945,7 @@ namespace gdjs {
             }
             const elapsedTime = accumulatedElapsedTime;
             accumulatedElapsedTime = 0;
+            this._updateAdaptiveGpuUpscaling(elapsedTime);
 
             // Manage resize events.
             if (this._notifyScenesForGameResolutionResize) {
@@ -1660,6 +2260,91 @@ namespace gdjs {
       );
     }
 
+    private _getAdaptiveUpscalingTargetFrameTime(): float {
+      if (this._maxFPS > 0) {
+        return 1000 / this._maxFPS;
+      }
+      return 1000 / 60;
+    }
+
+    private _getAdaptiveFsrMultiplierLimit(): float {
+      switch (this._fsrQuality) {
+        case 'ultra-quality':
+          return 1.2;
+        case 'quality':
+          return 1.3;
+        case 'balanced':
+          return 1.45;
+        case 'performance':
+          return 1.6;
+        default:
+          return 1.2;
+      }
+    }
+
+    private _updateAdaptiveGpuUpscaling(elapsedTime: float): void {
+      const targetFrameTime = this._getAdaptiveUpscalingTargetFrameTime();
+
+      if (!this.isAdaptiveGpuUpscalingEnabled() || this._displayedLoadingScreen) {
+        this._smoothedRenderingFrameTime = targetFrameTime;
+        if (this._adaptiveFsrQualityMultiplier !== 1) {
+          const previousRenderingWidth = this._renderingWidth;
+          const previousRenderingHeight = this._renderingHeight;
+          this._adaptiveFsrQualityMultiplier = 1;
+          this._adaptiveUpscalingCooldownFrames = 0;
+          this._updateRenderingSize();
+          if (
+            previousRenderingWidth !== this._renderingWidth ||
+            previousRenderingHeight !== this._renderingHeight
+          ) {
+            this._notifyScenesForGameResolutionResize = true;
+          }
+        }
+        return;
+      }
+
+      if (!Number.isFinite(elapsedTime) || elapsedTime <= 0) {
+        return;
+      }
+
+      const clampedElapsedTime = Math.max(1, Math.min(1000, elapsedTime));
+      this._smoothedRenderingFrameTime =
+        this._smoothedRenderingFrameTime * 0.92 + clampedElapsedTime * 0.08;
+
+      if (this._adaptiveUpscalingCooldownFrames > 0) {
+        this._adaptiveUpscalingCooldownFrames--;
+        return;
+      }
+
+      const maxMultiplier = this._getAdaptiveFsrMultiplierLimit();
+      let nextMultiplier = this._adaptiveFsrQualityMultiplier;
+      if (this._smoothedRenderingFrameTime > targetFrameTime * 1.15) {
+        nextMultiplier = Math.min(maxMultiplier, nextMultiplier + 0.08);
+      } else if (this._smoothedRenderingFrameTime < targetFrameTime * 0.82) {
+        nextMultiplier = Math.max(1, nextMultiplier - 0.04);
+      }
+
+      nextMultiplier = Math.round(nextMultiplier * 100) / 100;
+      if (nextMultiplier === this._adaptiveFsrQualityMultiplier) {
+        return;
+      }
+
+      const previousRenderingWidth = this._renderingWidth;
+      const previousRenderingHeight = this._renderingHeight;
+      const previousMultiplier = this._adaptiveFsrQualityMultiplier;
+      this._adaptiveFsrQualityMultiplier = nextMultiplier;
+      this._adaptiveUpscalingCooldownFrames =
+        nextMultiplier > previousMultiplier ? 18 : 12;
+      this._updateRenderingSize();
+
+      if (
+        previousRenderingWidth !== this._renderingWidth ||
+        previousRenderingHeight !== this._renderingHeight
+      ) {
+        this._notifyScenesForGameResolutionResize = true;
+      }
+    }
+
     private _getFsrQualityRatio(): float {
       switch (this._fsrQuality) {
         case 'ultra-quality':
@@ -1675,25 +2360,28 @@ namespace gdjs {
       }
     }
 
+    private _getEffectiveFsrQualityRatio(): float {
+      return this._getFsrQualityRatio() * this._adaptiveFsrQualityMultiplier;
+    }
+
     private _updateRenderingSize(): void {
       if (!this.isFsrEnabled()) {
+        this._adaptiveFsrQualityMultiplier = 1;
         this._renderingWidth = this._gameResolutionWidth;
         this._renderingHeight = this._gameResolutionHeight;
         return;
       }
 
-      // FSR requires WebGL2 for GLSL 3.0 ES shaders. If the renderer is already
-      // created and doesn't support WebGL2, fall back to native resolution.
-      const threeRenderer = this._renderer
-        ? this._renderer.getThreeRenderer()
-        : null;
-      if (threeRenderer && !threeRenderer.capabilities.isWebGL2) {
+      // FSR requires both Three/Pixi interop and WebGL2. If the renderer is
+      // already created and the prerequisites are not met, fall back to native resolution.
+      const fsrSupportIssue = this._renderer?.getFsrSupportIssue();
+      if (fsrSupportIssue) {
         if (!this._fsrRuntimeDisabled) {
           this._fsrRuntimeDisabled = true;
-          this._fsrRuntimeDisabledReason = 'WebGL2 not supported';
+          this._fsrRuntimeDisabledReason = fsrSupportIssue;
+          this._adaptiveFsrQualityMultiplier = 1;
           console.warn(
-            'FSR 1.0: WebGL2 is not supported on this device. ' +
-              'Falling back to standard rendering at native resolution.'
+            `FSR 1.0: ${fsrSupportIssue}. Falling back to standard rendering at native resolution.`
           );
         }
         this._renderingWidth = this._gameResolutionWidth;
@@ -1701,7 +2389,7 @@ namespace gdjs {
         return;
       }
 
-      const ratio = this._getFsrQualityRatio();
+      const ratio = this._getEffectiveFsrQualityRatio();
       const rawWidth = Math.max(
         2,
         Math.floor(this._gameResolutionWidth / ratio)

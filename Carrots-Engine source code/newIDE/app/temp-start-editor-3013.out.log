@@ -1,0 +1,6 @@
+
+> gdevelop-ide@0.1.0 start:editor
+> react-app-rewired --max-old-space-size=8192 start --stats-children
+
+Starting the development server...
+

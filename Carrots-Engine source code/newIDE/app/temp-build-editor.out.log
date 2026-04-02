@@ -1,0 +1,4 @@
+
+> gdevelop-ide@0.1.0 build:editor
+> react-app-rewired --max-old-space-size=8192 build --stats-children
+

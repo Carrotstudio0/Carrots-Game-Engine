@@ -196,7 +196,11 @@ class TileMapPaintingPreview {
     // $FlowFixMe[value-as-type]
     texture: PIXI.Texture,
   |}): any {
-    const sprite = new PIXI.TilingSprite(texture);
+    const sprite = new PIXI.TilingSprite({
+      texture,
+      width: 1,
+      height: 1,
+    });
     const workingPoint = [0, 0];
 
     sprite.tileScale.x =

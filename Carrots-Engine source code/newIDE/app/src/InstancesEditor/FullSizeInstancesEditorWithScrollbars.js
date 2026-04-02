@@ -49,6 +49,10 @@ const FullSizeInstancesEditorWithScrollbars = (props: Props): React.Node => {
   const showScrollbars = React.useRef<boolean>(false);
   const timeoutHidingScrollbarsId = React.useRef<?TimeoutID>(null);
   const isDragging = React.useRef<boolean>(false);
+  const activeXMouseMoveHandler = React.useRef<?((e: MouseEvent) => void)>(null);
+  const activeXMouseUpHandler = React.useRef<?((e: MouseEvent) => void)>(null);
+  const activeYMouseMoveHandler = React.useRef<?((e: MouseEvent) => void)>(null);
+  const activeYMouseUpHandler = React.useRef<?((e: MouseEvent) => void)>(null);
 
   const xValue = React.useRef<number>(0);
   const yValue = React.useRef<number>(0);
@@ -91,25 +95,34 @@ const FullSizeInstancesEditorWithScrollbars = (props: Props): React.Node => {
     hideScrollbarsAfterDelay();
   }, 500);
 
-  const showScrollbarsThrottled = throttle(
-    () => {
-      if (!showScrollbars.current) {
-        showScrollbars.current = true;
-        forceUpdate();
-      }
-      if (timeoutHidingScrollbarsId.current) {
-        clearTimeout(timeoutHidingScrollbarsId.current);
-        timeoutHidingScrollbarsId.current = null;
-      }
-    },
-    1000,
-    { leading: true, trailing: false }
+  const showScrollbarsThrottled = React.useMemo(
+    () =>
+      throttle(
+        () => {
+          if (!isMounted.current) return;
+
+          if (!showScrollbars.current) {
+            showScrollbars.current = true;
+            forceUpdate();
+          }
+          if (timeoutHidingScrollbarsId.current) {
+            clearTimeout(timeoutHidingScrollbarsId.current);
+            timeoutHidingScrollbarsId.current = null;
+          }
+        },
+        1000,
+        { leading: true, trailing: false }
+      ),
+    [forceUpdate, isMounted]
   );
 
-  const hideScrollbarsAfterDelayThrottled = throttle(
-    hideScrollbarsAfterDelay,
-    1000,
-    { leading: true, trailing: false }
+  const hideScrollbarsAfterDelayThrottled = React.useMemo(
+    () =>
+      throttle(hideScrollbarsAfterDelay, 1000, {
+        leading: true,
+        trailing: false,
+      }),
+    [hideScrollbarsAfterDelay]
   );
 
   const onMouseMoveOverInstanceEditor = React.useCallback(
@@ -258,6 +271,8 @@ const FullSizeInstancesEditorWithScrollbars = (props: Props): React.Node => {
 
       const mouseUpHandler = makeMouseUpXThumbHandler(mouseMoveHandler);
 
+      activeXMouseMoveHandler.current = mouseMoveHandler;
+      activeXMouseUpHandler.current = mouseUpHandler;
       document.addEventListener('mousemove', mouseMoveHandler);
       document.addEventListener('mouseup', mouseUpHandler);
     },
@@ -274,10 +289,47 @@ const FullSizeInstancesEditorWithScrollbars = (props: Props): React.Node => {
 
       const mouseUpHandler = makeMouseUpYThumbHandler(mouseMoveHandler);
 
+      activeYMouseMoveHandler.current = mouseMoveHandler;
+      activeYMouseUpHandler.current = mouseUpHandler;
       document.addEventListener('mousemove', mouseMoveHandler);
       document.addEventListener('mouseup', mouseUpHandler);
     },
     [makeMouseMoveYHandler, makeMouseUpYThumbHandler]
+  );
+
+  React.useEffect(
+    () => () => {
+      if (timeoutHidingScrollbarsId.current) {
+        clearTimeout(timeoutHidingScrollbarsId.current);
+        timeoutHidingScrollbarsId.current = null;
+      }
+
+      hideScrollbarsAfterDelayDebounced.cancel();
+      showScrollbarsThrottled.cancel();
+      hideScrollbarsAfterDelayThrottled.cancel();
+
+      if (activeXMouseMoveHandler.current) {
+        document.removeEventListener('mousemove', activeXMouseMoveHandler.current);
+        activeXMouseMoveHandler.current = null;
+      }
+      if (activeXMouseUpHandler.current) {
+        document.removeEventListener('mouseup', activeXMouseUpHandler.current);
+        activeXMouseUpHandler.current = null;
+      }
+      if (activeYMouseMoveHandler.current) {
+        document.removeEventListener('mousemove', activeYMouseMoveHandler.current);
+        activeYMouseMoveHandler.current = null;
+      }
+      if (activeYMouseUpHandler.current) {
+        document.removeEventListener('mouseup', activeYMouseUpHandler.current);
+        activeYMouseUpHandler.current = null;
+      }
+    },
+    [
+      hideScrollbarsAfterDelayDebounced,
+      hideScrollbarsAfterDelayThrottled,
+      showScrollbarsThrottled,
+    ]
   );
 
   // Add the mouse down events once on mount.
@@ -344,11 +396,11 @@ const FullSizeInstancesEditorWithScrollbars = (props: Props): React.Node => {
     ]
   );
 
-  const handleViewPositionChange = React.useCallback(
-    (viewPosition: ?ViewPosition) =>
+  const throttledViewPositionChangeHandler = React.useMemo(
+    () =>
       throttle(
-        () => {
-          if (!viewPosition) return;
+        (viewPosition: ?ViewPosition) => {
+          if (!isMounted.current || !viewPosition) return;
 
           setAndAdjust({
             newXValue: viewPosition.getViewX(),
@@ -357,10 +409,24 @@ const FullSizeInstancesEditorWithScrollbars = (props: Props): React.Node => {
             newHeight: viewPosition.getHeight(),
           });
         },
-        THROTTLE_TIME, // Throttle the updates after a scroll to avoid make lots of updates in a row that would kill CPU.
+        THROTTLE_TIME,
         { leading: false, trailing: true }
-      )(),
-    [setAndAdjust]
+      ),
+    [isMounted, setAndAdjust]
+  );
+
+  React.useEffect(
+    () => () => {
+      throttledViewPositionChangeHandler.cancel();
+    },
+    [throttledViewPositionChangeHandler]
+  );
+
+  const handleViewPositionChange = React.useCallback(
+    (viewPosition: ?ViewPosition) => {
+      throttledViewPositionChangeHandler(viewPosition);
+    },
+    [throttledViewPositionChangeHandler]
   );
 
   const onMouseEnterThumb = (event: MouseEvent) => {

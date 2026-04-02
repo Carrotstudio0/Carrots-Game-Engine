@@ -21,6 +21,7 @@ import { isNativeMobileApp } from '../../../Utils/Platform';
 import { getIDEVersionWithHash } from '../../../Version';
 import { setEmbeddedGameFramePreviewLocation } from '../../../EmbeddedGame/EmbeddedGameFrame';
 import { immediatelyOpenNewPreviewWindow } from '../BrowserPreview/BrowserPreviewWindow';
+import { normalizePreviewError } from '../normalizePreviewError';
 const gd: libGDevelop = global.gd;
 
 type State = {|
@@ -277,8 +278,16 @@ export default class BrowserS3PreviewLauncher extends React.Component<
         });
       }
     } catch (error) {
-      this.setState({
+      const normalizedError = normalizePreviewError(
         error,
+        'Unable to launch the browser preview.'
+      );
+      console.error(
+        '[BrowserS3PreviewLauncher] Error while launching preview:',
+        normalizedError
+      );
+      this.setState({
+        error: normalizedError,
       });
     }
   };

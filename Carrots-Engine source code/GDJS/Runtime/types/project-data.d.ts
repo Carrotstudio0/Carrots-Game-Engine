@@ -536,6 +536,7 @@ declare interface ProjectPropertiesData {
   projectFile: string;
   scaleMode: 'linear' | 'nearest';
   pixelsRounding: boolean;
+  renderingBackend?: 'webgl' | 'webgpu';
   antialiasingMode: 'none' | 'MSAA';
   antialisingEnabledOnMobile: boolean;
   upscalingMode?: 'none' | 'fsr1';

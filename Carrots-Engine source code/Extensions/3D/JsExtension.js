@@ -6144,7 +6144,9 @@ module.exports = {
         .setType('boolean');
       properties
         .getOrCreate('mode')
-        .setValue('ACESFilmic')
+        .setValue('AgX')
+        .addChoice('AgX', _('AgX'))
+        .addChoice('Neutral', _('Neutral'))
         .addChoice('ACESFilmic', _('ACES Filmic'))
         .addChoice('Reinhard', _('Reinhard'))
         .addChoice('Cineon', _('Cineon'))
@@ -6153,7 +6155,7 @@ module.exports = {
         .setType('choice')
         .setDescription(
           _(
-            'ACESFilmic for cinematic look, Reinhard for softer highlights, Cineon for film look, Linear for no tone mapping.'
+            'AgX for modern highlight rolloff, Neutral for cleaner color balance, ACES Filmic for cinematic response, Reinhard for softer highlights, Cineon for film look, Linear for no tone mapping.'
           )
         );
       properties

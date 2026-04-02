@@ -1,0 +1,19 @@
+
+> gdevelop-ide@0.1.0 start:editor
+> react-app-rewired --max-old-space-size=8192 start
+
+Starting the development server...
+
+Compiled successfully!
+
+You can now view gdevelop-ide in the browser.
+
+  Local:            http://localhost:3012
+  On Your Network:  http://192.168.1.6:3012
+
+Note that the development build is not optimized.
+To create a production build, use npm run build.
+
+[1m[31m1 ERROR in child compilations (Use 'stats.children: true' resp. '--stats-children' for more details)[39m[22m
+webpack compiled with [1m[31m1 error[39m[22m
+No issues found.

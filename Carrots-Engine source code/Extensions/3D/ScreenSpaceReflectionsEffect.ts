@@ -960,18 +960,15 @@ namespace gdjs {
               return;
             }
 
-            const runtimeScene = target.getRuntimeScene();
-            const threeRenderer = runtimeScene
-              .getGame()
-              .getRenderer()
-              .getThreeRenderer();
-            const layerRenderer = target.getRenderer();
-            const threeScene = layerRenderer.getThreeScene();
-            const threeCamera = layerRenderer.getThreeCamera();
-
-            if (!threeRenderer || !threeScene || !threeCamera) {
+            const renderContext = gdjs.getScene3DRenderContextForLayer(target);
+            if (!renderContext) {
               return;
             }
+            const {
+              renderer: threeRenderer,
+              scene: threeScene,
+              camera: threeCamera,
+            } = renderContext;
 
             this._adaptQuality(target);
             if (!gdjs.isScene3DPostProcessingEnabled(target)) {

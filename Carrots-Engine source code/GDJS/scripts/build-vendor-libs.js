@@ -22,6 +22,16 @@ const bundles = [
     globalName: 'THREE',
   },
   {
+    entry: path.join(__dirname, 'vendor', 'three-webgpu.entry.js'),
+    output: path.join(runtimePixiRenderersPath, 'three.webgpu.js'),
+    globalName: 'THREE_WEBGPU',
+  },
+  {
+    entry: path.join(__dirname, 'vendor', 'three-tsl.entry.js'),
+    output: path.join(runtimePixiRenderersPath, 'three.tsl.js'),
+    globalName: 'THREE_TSL',
+  },
+  {
     entry: path.join(__dirname, 'vendor', 'three-addons.entry.js'),
     output: path.join(runtimePixiRenderersPath, 'ThreeAddons.js'),
     globalName: 'THREE_ADDONS',

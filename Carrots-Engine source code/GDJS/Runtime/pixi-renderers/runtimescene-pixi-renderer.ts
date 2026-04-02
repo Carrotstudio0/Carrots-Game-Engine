@@ -13,6 +13,26 @@ namespace gdjs {
     }
   };
 
+  const updatePixiTextureSource = (texture: PIXI.Texture | null): void => {
+    if (!texture) {
+      return;
+    }
+
+    const textureWithCompat = texture as PIXI.Texture & {
+      source?: {
+        update?: () => void;
+      } | null;
+      baseTexture?: {
+        update?: () => void;
+      } | null;
+      update?: () => void;
+    };
+
+    textureWithCompat.source?.update?.();
+    textureWithCompat.baseTexture?.update?.();
+    textureWithCompat.update?.();
+  };
+
   /**
    * The renderer for a gdjs.RuntimeScene using Pixi.js.
    * @category Renderers > Scene
@@ -26,6 +46,9 @@ namespace gdjs {
     private _profilerText: PIXI.Text | null = null;
     private _showCursorAtNextRender: boolean = false;
     private _threeRenderer: THREE.WebGLRenderer | null = null;
+    private _hybridPresentationContainer: PIXI.Container | null = null;
+    private _hybridPresentationSprite: PIXI.Sprite | null = null;
+    private _hybridPresentationTexture: PIXI.Texture | null = null;
     private _layerRenderingMetrics: {
       rendered2DLayersCount: number;
       rendered3DLayersCount: number;
@@ -44,6 +67,7 @@ namespace gdjs {
     private _fsrLowResHeight: integer = 0;
     private _fsrOutputWidth: integer = 0;
     private _fsrOutputHeight: integer = 0;
+    private _dedicatedThreeWebGpuRequirementOverride: string | null = null;
 
     constructor(
       runtimeScene: gdjs.RuntimeScene,
@@ -57,13 +81,17 @@ namespace gdjs {
       this._pixiContainer.sortableChildren = true;
 
       this._threeRenderer = this._runtimeGameRenderer
-        ? this._runtimeGameRenderer.getThreeRenderer()
+        ? this._runtimeGameRenderer.getThreeRendererForRuntimeScene(
+            this._runtimeScene
+          )
         : null;
     }
 
     onGameResolutionResized() {
       const pixiRenderer = this._runtimeGameRenderer
-        ? this._runtimeGameRenderer.getPIXIRenderer()
+        ? this._runtimeGameRenderer.getPixiRendererForRuntimeScene(
+            this._runtimeScene
+          )
         : null;
       if (!pixiRenderer) {
         return;
@@ -81,26 +109,114 @@ namespace gdjs {
         runtimeLayer.getRenderer().onGameResolutionResized();
       }
 
+      this._synchronizeHybridPresentationSize();
       this._updateFsrResources();
     }
 
     onSceneUnloaded() {
       // TODO (3D): call the method with the same name on RuntimeLayers so they can dispose?
       this._disposeFsrResources();
+      this._disposeHybridPresentation();
+      this._dedicatedThreeWebGpuRequirementOverride = null;
     }
 
-    private _isFsrSupported(): boolean {
-      return !!this._threeRenderer && this._threeRenderer.capabilities.isWebGL2;
+    setDedicatedThreeWebGPURequirementOverride(reason: string | null): void {
+      const normalizedReason =
+        reason && reason.length > 0 ? reason : null;
+      this._dedicatedThreeWebGpuRequirementOverride = normalizedReason;
+    }
+
+    private _getDedicatedThreeWebGpuRuntimeRequirementReason(): string | null {
+      const hasAnyVisible3DContent = this._runtimeScene._orderedLayers.some(
+        (runtimeLayer) =>
+          runtimeLayer.isVisible() &&
+          !!runtimeLayer.getRenderer().getThreeScene() &&
+          !!runtimeLayer.getRenderer().getThreeCamera() &&
+          runtimeLayer.getRenderer().has3DObjects()
+      );
+      let hasRendered3DContent = false;
+      let saw2DOverlayContent = false;
+
+      for (const runtimeLayer of this._runtimeScene._orderedLayers) {
+        if (!runtimeLayer.isVisible()) {
+          continue;
+        }
+
+        const runtimeLayerRenderer = runtimeLayer.getRenderer();
+        const renderingType = runtimeLayer.getRenderingType();
+        const has3DContent =
+          !!runtimeLayerRenderer.getThreeScene() &&
+          !!runtimeLayerRenderer.getThreeCamera() &&
+          runtimeLayerRenderer.has3DObjects();
+        const has2DContent =
+          runtimeLayer.isLightingLayer() || runtimeLayerRenderer.has2DObjects();
+
+        if (
+          renderingType === gdjs.RuntimeLayerRenderingType.TWO_D_PLUS_THREE_D
+        ) {
+          return `Layer "${runtimeLayer.getName()}" actively mixes 2D and 3D rendering, which still requires the legacy layered composition path.`;
+        }
+
+        if (
+          renderingType === gdjs.RuntimeLayerRenderingType.THREE_D &&
+          runtimeLayerRenderer.hasPostProcessingPass()
+        ) {
+          return `Layer "${runtimeLayer.getName()}" uses 3D post-processing, which still requires the legacy Three.js/WebGL composition path.`;
+        }
+
+        if (
+          renderingType === gdjs.RuntimeLayerRenderingType.THREE_D &&
+          runtimeLayerRenderer.has2DObjects()
+        ) {
+          return `Layer "${runtimeLayer.getName()}" renders 2D display objects on a pure 3D layer, which still requires the legacy composition path.`;
+        }
+
+        if (has2DContent) {
+          if (hasAnyVisible3DContent && !hasRendered3DContent) {
+            return `Layer "${runtimeLayer.getName()}" renders 2D or lighting content before the scene's 3D content, which still requires a background composition path.`;
+          }
+          saw2DOverlayContent = true;
+        }
+
+        if (has3DContent) {
+          if (saw2DOverlayContent) {
+            return `Layer "${runtimeLayer.getName()}" renders 3D content after a 2D or lighting overlay layer, which still requires the legacy layered composition path.`;
+          }
+          hasRendered3DContent = true;
+        }
+      }
+
+      return null;
+    }
+
+    getDedicatedThreeWebGPURequirementReason(): string | null {
+      return (
+        this._dedicatedThreeWebGpuRequirementOverride ||
+        this._getDedicatedThreeWebGpuRuntimeRequirementReason()
+      );
+    }
+
+    private _getFsrSupportIssue(): string | null {
+      if (typeof THREE === 'undefined') {
+        return 'Three.js is not available';
+      }
+      if (this._runtimeGameRenderer) {
+        return this._runtimeGameRenderer.getFsrSupportIssue();
+      }
+      if (!this._threeRenderer) {
+        return 'Three.js is not available';
+      }
+      if (!this._threeRenderer.capabilities.isWebGL2) {
+        return 'WebGL2 not supported';
+      }
+      return null;
     }
 
     private _ensureFsrResources(runtimeGame?: gdjs.RuntimeGame): boolean {
       const game = runtimeGame || this._runtimeScene.getGame();
-      if (!this._isFsrSupported() || typeof THREE === 'undefined') {
-        game.disableFsrForSession(
-          typeof THREE === 'undefined'
-            ? 'Three.js is not available'
-            : 'WebGL2 not supported'
-        );
+      const fsrSupportIssue = this._getFsrSupportIssue();
+      if (fsrSupportIssue) {
+        game.disableFsrForSession(fsrSupportIssue);
         return false;
       }
       try {
@@ -265,15 +381,199 @@ namespace gdjs {
       this._fsrOutputHeight = 0;
     }
 
+    private _disposeHybridPresentation(): void {
+      this._hybridPresentationContainer?.destroy({
+        children: true,
+      });
+      this._hybridPresentationContainer = null;
+      this._hybridPresentationSprite = null;
+      this._hybridPresentationTexture = null;
+    }
+
+    private _isUsingHybridPresentation(): boolean {
+      return (
+        !!this._runtimeGameRenderer &&
+        this._runtimeGameRenderer.shouldRenderRuntimeSceneWithLegacyComposition(
+          this._runtimeScene
+        )
+      );
+    }
+
+    private _synchronizeHybridPresentationSize(): void {
+      if (!this._hybridPresentationSprite) {
+        return;
+      }
+
+      this._hybridPresentationSprite.width =
+        this._runtimeScene.getGame().getGameResolutionWidth();
+      this._hybridPresentationSprite.height =
+        this._runtimeScene.getGame().getGameResolutionHeight();
+    }
+
+    private _ensureHybridPresentationContainer(): PIXI.Container | null {
+      const runtimeGameRenderer = this._runtimeGameRenderer;
+      const legacyCanvas = runtimeGameRenderer?.getLegacyRenderingCanvas();
+      if (!runtimeGameRenderer || !legacyCanvas) {
+        return null;
+      }
+
+      if (
+        !this._hybridPresentationContainer ||
+        !this._hybridPresentationTexture ||
+        !this._hybridPresentationSprite
+      ) {
+        this._disposeHybridPresentation();
+
+        this._hybridPresentationTexture = PIXI.Texture.from({
+          resource: legacyCanvas,
+        });
+        this._hybridPresentationSprite = new PIXI.Sprite(
+          this._hybridPresentationTexture
+        );
+        this._hybridPresentationContainer = new PIXI.Container();
+        this._hybridPresentationContainer.addChild(this._hybridPresentationSprite);
+        this._synchronizeHybridPresentationSize();
+      }
+
+      return this._hybridPresentationContainer;
+    }
+
+    private _renderHybridPresentation(
+      pixiRenderer: PIXI.Renderer
+    ): void {
+      const hybridPresentationContainer =
+        this._ensureHybridPresentationContainer();
+      if (!hybridPresentationContainer || !this._hybridPresentationTexture) {
+        return;
+      }
+
+      updatePixiTextureSource(this._hybridPresentationTexture);
+      pixiRenderer.background.color = this._runtimeScene.getBackgroundColor();
+      pixiRenderer.background.alpha = 1;
+      pixiRenderer.render({
+        container: hybridPresentationContainer,
+        clear: this._runtimeScene.getClearCanvas(),
+      });
+    }
+
+    private _renderDedicatedThreeWebGpuScene(
+      presentationPixiRenderer: PIXI.Renderer,
+      threeRenderer: gdjs.ThreeRendererCompat
+    ): void {
+      const threeRendererWithCompat = threeRenderer as Record<string, any>;
+      const canRenderThreeScene =
+        !!threeRendererWithCompat &&
+        typeof threeRendererWithCompat.render === 'function';
+      if (!canRenderThreeScene) {
+        return;
+      }
+
+      this._layerRenderingMetrics.rendered2DLayersCount = 0;
+      this._layerRenderingMetrics.rendered3DLayersCount = 0;
+
+      if (
+        threeRendererWithCompat.info &&
+        typeof threeRendererWithCompat.info.reset === 'function'
+      ) {
+        threeRendererWithCompat.info.autoReset = false;
+        threeRendererWithCompat.info.reset();
+      }
+
+      gdjs.resetThreeRendererState(threeRenderer);
+      if (typeof threeRendererWithCompat.setRenderTarget === 'function') {
+        threeRendererWithCompat.setRenderTarget(null);
+      }
+      if (typeof threeRendererWithCompat.setClearColor === 'function') {
+        threeRendererWithCompat.setClearColor(this._runtimeScene.getBackgroundColor());
+      }
+      if (
+        this._runtimeScene.getClearCanvas() &&
+        typeof threeRendererWithCompat.clear === 'function'
+      ) {
+        threeRendererWithCompat.clear();
+      }
+
+      let hasRenderedThreeLayer = false;
+      for (let i = 0; i < this._runtimeScene._orderedLayers.length; ++i) {
+        const runtimeLayer = this._runtimeScene._orderedLayers[i];
+        if (!runtimeLayer.isVisible()) continue;
+
+        const runtimeLayerRenderer = runtimeLayer.getRenderer();
+        runtimeLayerRenderer.show2DRenderingPlane(false);
+
+        const threeScene = runtimeLayerRenderer.getThreeScene();
+        const threeCamera = runtimeLayerRenderer.getThreeCamera();
+        if (!threeScene || !threeCamera) {
+          continue;
+        }
+
+        if (threeScene.background) {
+          threeScene.background = null;
+        }
+        if (
+          hasRenderedThreeLayer &&
+          typeof threeRendererWithCompat.clearDepth === 'function'
+        ) {
+          threeRendererWithCompat.clearDepth();
+        }
+        threeRendererWithCompat.render(threeScene, threeCamera);
+        this._layerRenderingMetrics.rendered3DLayersCount++;
+        hasRenderedThreeLayer = true;
+      }
+
+      presentationPixiRenderer.background.alpha = 0;
+      presentationPixiRenderer.background.color = 0;
+      presentationPixiRenderer.render({
+        container: this._pixiContainer,
+        clear: this._runtimeScene.getClearCanvas(),
+      });
+
+      const debugContainer = this._runtimeScene
+        .getDebuggerRenderer()
+        .getRendererObject();
+      if (debugContainer) {
+        presentationPixiRenderer.render(debugContainer);
+      }
+    }
+
     render() {
       const runtimeGameRenderer = this._runtimeGameRenderer;
       if (!runtimeGameRenderer) return;
 
-      const pixiRenderer = runtimeGameRenderer.getPIXIRenderer();
-      if (!pixiRenderer) return;
+      const presentationPixiRenderer = runtimeGameRenderer.getPIXIRenderer();
+      const pixiRenderer = runtimeGameRenderer.getPixiRendererForRuntimeScene(
+        this._runtimeScene
+      );
+      if (!presentationPixiRenderer || !pixiRenderer) return;
 
       const runtimeGame = this._runtimeScene.getGame();
-      const threeRenderer = this._threeRenderer;
+      const threeRenderer = runtimeGameRenderer.getThreeRendererForRuntimeScene(
+        this._runtimeScene
+      );
+      this._threeRenderer = threeRenderer;
+      const shouldUseDedicatedThreeWebGpuPath =
+        runtimeGameRenderer.shouldRenderRuntimeSceneWithDedicatedThreeWebGPU(
+          this._runtimeScene
+        );
+      runtimeGameRenderer.setDedicatedThreeWebGPUCanvasVisible(
+        shouldUseDedicatedThreeWebGpuPath
+      );
+      if (shouldUseDedicatedThreeWebGpuPath && threeRenderer) {
+        this._disposeHybridPresentation();
+        this._disposeFsrResources();
+        this._renderDedicatedThreeWebGpuScene(
+          presentationPixiRenderer,
+          threeRenderer
+        );
+        return;
+      }
+
+      const isUsingHybridPresentation =
+        this._isUsingHybridPresentation() &&
+        pixiRenderer !== presentationPixiRenderer;
+      if (!isUsingHybridPresentation) {
+        this._disposeHybridPresentation();
+      }
       const fsrEnabled =
         runtimeGame.isFsrEnabled() && this._ensureFsrResources(runtimeGame);
       if (fsrEnabled) {
@@ -340,14 +640,21 @@ namespace gdjs {
                   resetPixiRendererState(pixiRenderer);
                 }
 
-                runtimeLayerRenderer.renderOnPixiRenderTexture(pixiRenderer);
-                runtimeLayerRenderer.updateThreePlaneTextureFromPixiRenderTexture(
-                  threeRenderer,
-                  pixiRenderer
+                const hasRenderedOnPixiTexture =
+                  runtimeLayerRenderer.renderOnPixiRenderTexture(pixiRenderer);
+                const hasBoundPixiTextureToThreePlane =
+                  !!hasRenderedOnPixiTexture &&
+                  runtimeLayerRenderer.updateThreePlaneTextureFromPixiRenderTexture(
+                    threeRenderer,
+                    pixiRenderer
+                  );
+                runtimeLayerRenderer.show2DRenderingPlane(
+                  !!hasBoundPixiTextureToThreePlane
                 );
-                runtimeLayerRenderer.show2DRenderingPlane(true);
-                this._layerRenderingMetrics.rendered2DLayersCount++;
-                lastRenderWas3D = false;
+                if (hasRenderedOnPixiTexture) {
+                  this._layerRenderingMetrics.rendered2DLayersCount++;
+                  lastRenderWas3D = false;
+                }
               } else {
                 runtimeLayerRenderer.show2DRenderingPlane(false);
               }
@@ -570,19 +877,27 @@ namespace gdjs {
                     // Do the rendering of the PixiJS objects of the layer on the render texture.
                     // Then, update the texture of the plane showing the PixiJS rendering,
                     // so that the 2D rendering made by PixiJS can be shown in the 3D world.
-                    runtimeLayerRenderer.renderOnPixiRenderTexture(pixiRenderer);
-                    runtimeLayerRenderer.updateThreePlaneTextureFromPixiRenderTexture(
-                      // The renderers are needed to find the internal WebGL texture.
-                      threeRenderer,
-                      pixiRenderer
+                    const hasRenderedOnPixiTexture =
+                      runtimeLayerRenderer.renderOnPixiRenderTexture(
+                        pixiRenderer
+                      );
+                    const hasBoundPixiTextureToThreePlane =
+                      !!hasRenderedOnPixiTexture &&
+                      runtimeLayerRenderer.updateThreePlaneTextureFromPixiRenderTexture(
+                        // The renderers are needed to find the internal WebGL texture.
+                        threeRenderer,
+                        pixiRenderer
+                      );
+                    if (hasRenderedOnPixiTexture) {
+                      this._layerRenderingMetrics.rendered2DLayersCount++;
+                      lastRenderWas3D = false;
+                    }
+                    runtimeLayerRenderer.show2DRenderingPlane(
+                      !!hasBoundPixiTextureToThreePlane
                     );
-                    this._layerRenderingMetrics.rendered2DLayersCount++;
-
-                    lastRenderWas3D = false;
+                  } else {
+                    runtimeLayerRenderer.show2DRenderingPlane(false);
                   }
-                  runtimeLayerRenderer.show2DRenderingPlane(
-                    layerHas2DObjectsToRender
-                  );
                 }
 
                 if (!lastRenderWas3D) {
@@ -677,6 +992,10 @@ namespace gdjs {
           clear: this._runtimeScene.getClearCanvas(),
         });
         this._layerRenderingMetrics.rendered2DLayersCount++;
+      }
+
+      if (isUsingHybridPresentation) {
+        this._renderHybridPresentation(presentationPixiRenderer);
       }
 
       // synchronize showing the cursor with rendering (useful to reduce
@@ -812,7 +1131,9 @@ namespace gdjs {
     /** @deprecated use `runtimeGame.getRenderer().getPIXIRenderer()` instead */
     getPIXIRenderer() {
       return this._runtimeGameRenderer
-        ? this._runtimeGameRenderer.getPIXIRenderer()
+        ? this._runtimeGameRenderer.getPixiRendererForRuntimeScene(
+            this._runtimeScene
+          )
         : null;
     }
 
