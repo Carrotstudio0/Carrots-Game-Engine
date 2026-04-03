@@ -264,9 +264,7 @@ const patchLegacyEventListeners = pixi => {
 };
 
 const patchLegacyRendererReset = pixi => {
-  const rendererPrototype =
-    (pixi.Renderer && pixi.Renderer.prototype) ||
-    (pixi.WebGLRenderer && pixi.WebGLRenderer.prototype);
+  const rendererPrototype = pixi.Renderer && pixi.Renderer.prototype;
 
   if (
     !rendererPrototype ||
@@ -339,10 +337,6 @@ export const applyPixiCompat = <TPixi: { [string]: any }>(pixi: TPixi): TPixi =>
   if (!pixi) return pixi;
 
   addIfMissing(pixi, 'filters', {});
-
-  if (!pixi.Renderer && pixi.WebGLRenderer) {
-    pixi.Renderer = pixi.WebGLRenderer;
-  }
 
   if (!pixi.BaseTexture && pixi.TextureSource) {
     pixi.BaseTexture = pixi.TextureSource;
@@ -456,10 +450,6 @@ export const applyPixiCompat = <TPixi: { [string]: any }>(pixi: TPixi): TPixi =>
         (Math.round((rgb[2] || 0) * 255) & 255)
       );
     };
-  }
-
-  if (!pixi.utils.isWebGLSupported && pixi.isWebGLSupported) {
-    pixi.utils.isWebGLSupported = pixi.isWebGLSupported;
   }
 
   if (!pixi.utils.createIndicesForQuads && pixi.createIndicesForQuads) {

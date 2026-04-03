@@ -240,12 +240,12 @@ namespace gdjs {
     // and then must be displayed on a plane in the 3D world:
     private _threePlaneTexture: THREE.Texture | null = null;
     private _threePlaneGeometry: THREE.PlaneGeometry | null = null;
-    private _threePlaneMaterial: THREE.ShaderMaterial | null = null;
+    private _threePlaneMaterial: THREE.MeshBasicMaterial | null = null;
     private _threePlaneMesh: THREE.Mesh | null = null;
     private _threePlaneMeshDebugOutline: THREE.LineSegments | null = null;
     private _threePlaneTextureInteropDisabledReason: string | null = null;
     private _renderingPixiRenderer: PIXI.Renderer | null = null;
-    private _renderingThreeRenderer: THREE.WebGLRenderer | null = null;
+    private _renderingThreeRenderer: gdjs.ThreeRendererCompat = null;
 
     /**
      * Pixi doesn't sort children with zIndex == 0.
@@ -367,7 +367,7 @@ namespace gdjs {
       return this._threeEffectComposer;
     }
 
-    getThreeRenderer(): THREE.WebGLRenderer | null {
+    getThreeRenderer(): gdjs.ThreeRendererCompat {
       return this._renderingThreeRenderer;
     }
 
@@ -411,95 +411,28 @@ namespace gdjs {
       );
     }
 
-    private _refreshRenderingRendererBindings(): void {
-      const runtimeScene = this._layer.getRuntimeScene();
-      const runtimeGameRenderer = runtimeScene.getGame().getRenderer();
-      this._renderingPixiRenderer =
-        runtimeGameRenderer.getPixiRendererForRuntimeScene(runtimeScene);
-      this._renderingThreeRenderer =
-        runtimeGameRenderer.getThreeRendererForRuntimeScene(runtimeScene);
-    }
-
-    private _canUseLegacyThreeEffectComposer(
-      threeRenderer: THREE.WebGLRenderer | null
-    ): boolean {
-      return (
-        gdjs.getThreeRendererBackendType(
-          threeRenderer as gdjs.ThreeRendererCompat
-        ) === 'webgl'
-      );
-    }
-
     private _ensureThreeEffectComposer(): boolean {
-      if (this._threeEffectComposer) {
-        return true;
-      }
-      if (!this._threeScene || !this._threeCamera) {
-        return false;
-      }
-
-      this._refreshRenderingRendererBindings();
-      const threeRenderer = this._renderingThreeRenderer;
-      if (!threeRenderer || !this._canUseLegacyThreeEffectComposer(threeRenderer)) {
-        return false;
-      }
-
-      const game = this._layer.getRuntimeScene().getGame();
-      // When adding more default passes, make sure to update
-      // `addPostProcessingPass` and `hasPostProcessingPass` formulas.
-      this._threeEffectComposer = new THREE_ADDONS.EffectComposer(
-        threeRenderer
-      );
-      this._threeEffectComposer.addPass(
-        new THREE_ADDONS.RenderPass(this._threeScene, this._threeCamera)
-      );
-      if (game.getAntialiasingMode() !== 'none') {
-        this._threeEffectComposer.addPass(new THREE_ADDONS.SMAAPass());
-      }
-      this._threeEffectComposer.addPass(new THREE_ADDONS.OutputPass());
-      return true;
+      return false;
     }
 
     addPostProcessingPass(pass: THREE_ADDONS.Pass) {
-      if (!this._threeEffectComposer) {
-        const runtimeSceneRenderer = this._layer.getRuntimeScene()
-          .getRenderer() as gdjs.RuntimeScenePixiRenderer & {
-          setDedicatedThreeWebGPURequirementOverride?: (
-            reason: string | null
-          ) => void;
-        };
-        if (
-          gdjs.getThreeRendererBackendType(
-            this._renderingThreeRenderer as gdjs.ThreeRendererCompat
-          ) === 'webgpu' &&
-          typeof runtimeSceneRenderer.setDedicatedThreeWebGPURequirementOverride ===
-            'function'
-        ) {
-          runtimeSceneRenderer.setDedicatedThreeWebGPURequirementOverride(
-            `Layer "${this._layer.getName()}" uses 3D post-processing, which still requires the legacy Three.js/WebGL composition path.`
-          );
-        }
-        if (!this._ensureThreeEffectComposer()) {
-          logger.warn(
-            `Skipped post-processing setup for layer "${this._layer.getName()}" because no compatible Three.js/WebGL composer is available.`
-          );
-          return;
-        }
+      const runtimeSceneRenderer = this._layer.getRuntimeScene()
+        .getRenderer() as gdjs.RuntimeScenePixiRenderer & {
+        setDedicatedThreeWebGPURequirementOverride?: (
+          reason: string | null
+        ) => void;
+      };
+      if (
+        typeof runtimeSceneRenderer.setDedicatedThreeWebGPURequirementOverride ===
+        'function'
+      ) {
+        runtimeSceneRenderer.setDedicatedThreeWebGPURequirementOverride(
+          `Layer "${this._layer.getName()}" uses 3D post-processing, which is disabled in the WebGPU-only runtime.`
+        );
       }
-      const game = this._layer.getRuntimeScene().getGame();
-      // TODO Keep the effects in the same order they are defined
-      // because the order matter for the final result.
-      // There is the same issue with 2D effects too.
-
-      // The composer contains:
-      // - RenderPass
-      // - inserted passes for effects
-      // - SMAAPass (optionally)
-      // - OutputPass
-      const index =
-        this._threeEffectComposer.passes.length -
-        (game.getAntialiasingMode() === 'none' ? 1 : 2);
-      this._threeEffectComposer.insertPass(pass, index);
+      logger.warn(
+        `Skipped post-processing setup for layer "${this._layer.getName()}" because legacy WebGL composition is disabled.`
+      );
     }
 
     removePostProcessingPass(pass: THREE_ADDONS.Pass) {
@@ -646,37 +579,12 @@ namespace gdjs {
             this._threePlaneTexture.magFilter = filter;
             this._threePlaneTexture.wrapS = THREE.ClampToEdgeWrapping;
             this._threePlaneTexture.wrapT = THREE.ClampToEdgeWrapping;
-            // This disable the gamma correction done by THREE as PIXI is already doing it.
-            const noGammaCorrectionShader: THREE.ShaderMaterialParameters = {
-              vertexShader: `
-                varying vec2 vUv;
-                void main() {
-                  vUv = uv;
-                  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-              `,
-              fragmentShader: `
-                uniform sampler2D map;
-                varying vec2 vUv;
-                void main() {
-                  vec4 texel = texture2D(map, vUv);
-                  gl_FragColor = texel;
-                }
-              `,
-              uniforms: {
-                map: { value: this._threePlaneTexture },
-              },
+            this._threePlaneMaterial = new THREE.MeshBasicMaterial({
+              map: this._threePlaneTexture,
               side: THREE.FrontSide,
               transparent: true,
-            };
-            this._threePlaneMaterial = new THREE.ShaderMaterial(
-              noGammaCorrectionShader
-            );
-            (
-              this._threePlaneMaterial as THREE.ShaderMaterial & {
-                toneMapped?: boolean;
-              }
-            ).toneMapped = false;
+            });
+            this._threePlaneMaterial.toneMapped = false;
             if (this._isLightingLayer) {
               this._threePlaneMaterial.blending = THREE.MultiplyBlending;
             }
@@ -1113,29 +1021,12 @@ namespace gdjs {
         // onScreenPosition = floor(780.75)
         // onScreenPosition = 780
 
-        if (
-          !!gdjs.getPixiRendererWebGLContext(
-            this._renderingPixiRenderer
-          )
-        ) {
-          // TODO Revert from `round` to `ceil` when the issue is fixed in Pixi.
-          // Since the upgrade to Pixi 7, sprites are rounded with `round`
-          // instead of `floor`.
-          // https://github.com/pixijs/pixijs/issues/9868
-          this._pixiContainer.position.x = Math.round(
-            this._pixiContainer.position.x
-          );
-          this._pixiContainer.position.y = Math.round(
-            this._pixiContainer.position.y
-          );
-        } else {
-          this._pixiContainer.position.x = Math.ceil(
-            this._pixiContainer.position.x
-          );
-          this._pixiContainer.position.y = Math.ceil(
-            this._pixiContainer.position.y
-          );
-        }
+        this._pixiContainer.position.x = Math.ceil(
+          this._pixiContainer.position.x
+        );
+        this._pixiContainer.position.y = Math.ceil(
+          this._pixiContainer.position.y
+        );
       }
     }
 
@@ -1468,101 +1359,14 @@ namespace gdjs {
      * as the PixiJS RenderTexture - so that the 2D rendering can be shown in the 3D world.
      */
     updateThreePlaneTextureFromPixiRenderTexture(
-      threeRenderer: THREE.WebGLRenderer,
+      threeRenderer: gdjs.ThreeRendererCompat,
       pixiRenderer: PIXI.Renderer
     ): boolean {
-      if (!this.isThreePlaneTextureInteropEnabled()) {
-        return false;
-      }
-      if (!this._threePlaneTexture || !this._renderTexture) {
-        return false;
-      }
-
-      const threePlaneTexture = this._threePlaneTexture as ThreeExternalTextureCompat;
-      if (
-        !gdjs.areThreeAndPixiRenderersSharingWebGLContext(
-          threeRenderer,
-          pixiRenderer
-        )
-      ) {
-        this.disableThreePlaneTextureInterop(
-          'Shared Three.js/Pixi WebGL context not available'
-        );
-        if (threePlaneTexture.isExternalTexture) {
-          if (threePlaneTexture.sourceTexture !== null) {
-            threePlaneTexture.sourceTexture = null;
-            threePlaneTexture.needsUpdate = true;
-          }
-        }
-        return false;
-      }
-
-      const renderTextureWithCompat = this._renderTexture as PIXI.RenderTexture & {
-        source?: unknown;
-        baseTexture?: {
-          _glTextures?: {
-            [contextUid: string]: {
-              texture?: WebGLTexture | null;
-            };
-          };
-        };
-      };
-
-      let webglTexture: WebGLTexture | null = null;
-      const pixiTextureSystem = (pixiRenderer as PIXI.Renderer & {
-        texture?: {
-          getGlSource?: (source: unknown) => { texture?: WebGLTexture | null };
-        };
-      }).texture;
-      if (
-        pixiTextureSystem &&
-        pixiTextureSystem.getGlSource &&
-        renderTextureWithCompat.source
-      ) {
-        const glSource = pixiTextureSystem.getGlSource(
-          renderTextureWithCompat.source
-        );
-        webglTexture = (glSource && glSource.texture) || null;
-      }
-
-      if (!webglTexture) {
-        const contextUid = (
-          pixiRenderer as PIXI.Renderer & {
-            CONTEXT_UID?: string | number;
-          }
-        ).CONTEXT_UID;
-        const legacyGlTextures =
-          renderTextureWithCompat.baseTexture &&
-          renderTextureWithCompat.baseTexture._glTextures;
-        if (legacyGlTextures && contextUid !== undefined) {
-          const legacyGlTexture = legacyGlTextures[String(contextUid)];
-          webglTexture = (legacyGlTexture && legacyGlTexture.texture) || null;
-        }
-      }
-
-      if (webglTexture) {
-        if (threePlaneTexture.isExternalTexture) {
-          if (threePlaneTexture.sourceTexture !== webglTexture) {
-            threePlaneTexture.sourceTexture = webglTexture;
-            threePlaneTexture.needsUpdate = true;
-          }
-          this.show2DRenderingPlane(true);
-          return true;
-        }
-
-        // "Hack" into the Three.js renderer by getting the internal WebGL texture for the PixiJS plane,
-        // and set it so that it's the same as the WebGL texture for the PixiJS RenderTexture.
-        // This fallback works because PixiJS and Three.js are using the same WebGL context.
-        const texture = threeRenderer.properties.get(
-          this._threePlaneTexture
-        ) as {
-          __webglTexture?: WebGLTexture | null;
-        };
-        texture.__webglTexture = webglTexture;
-        this.show2DRenderingPlane(true);
-        return true;
-      }
-      this.show2DRenderingPlane(false);
+      void threeRenderer;
+      void pixiRenderer;
+      this.disableThreePlaneTextureInterop(
+        '2D+3D layered texture interop is disabled in the WebGPU-only runtime.'
+      );
       return false;
     }
 

@@ -88,7 +88,7 @@ export type NewProjectSetup = {|
   saveAsLocation: ?SaveAsLocation,
   projectName?: string,
   scriptingMode?: ScriptingMode,
-  renderingBackend?: 'webgl' | 'webgpu',
+  renderingBackend?: 'webgpu',
   height?: number,
   width?: number,
   orientation?: 'landscape' | 'portrait' | 'default',
@@ -238,9 +238,9 @@ const NewProjectSetupDialog = ({
   const [scriptingMode, setScriptingMode] = React.useState<ScriptingMode>(
     'event-sheet'
   );
-  const [renderingBackend, setRenderingBackend] = React.useState<
-    'webgl' | 'webgpu'
-  >('webgl');
+  const [renderingBackend, setRenderingBackend] = React.useState<'webgpu'>(
+    'webgpu'
+  );
   const newProjectsDefaultFolder = app
     ? findEmptyPathInWorkspaceFolder(app, values.newProjectsDefaultFolder || '')
     : '';
@@ -790,17 +790,16 @@ const NewProjectSetupDialog = ({
                   disabled={isLoading}
                   floatingLabelText={<Trans>Rendering backend</Trans>}
                   value={renderingBackend}
-                  onChange={(e, i, newValue: 'webgl' | 'webgpu') => {
+                  onChange={(e, i, newValue: 'webgpu') => {
                     setRenderingBackend(newValue);
                   }}
                   helperMarkdownText={i18n._(
-                    t`WebGPU now runs 2D and 2D lighting directly. Scenes using 3D, 2D+3D, or FSR keep WebGPU presentation and use an isolated legacy WebGL composition path when needed.`
+                    t`WebGPU is the only supported rendering backend in this build.`
                   )}
                 >
-                  <SelectOption value="webgl" label={t`WebGL (stable)`} />
                   <SelectOption
                     value="webgpu"
-                    label={t`WebGPU (hybrid legacy 3D composition when needed)`}
+                    label={t`WebGPU`}
                   />
                 </SelectField>
                 <SelectField

@@ -27,7 +27,6 @@ import {
   getPixiGlobalPoint,
   getPixiMouseButton,
   getPixiOriginalEvent,
-  getSharedGlTextureForThree,
   renderToRenderTexture,
   setTextureScaleMode,
 } from '../../Utils/PixiCompat/EditorPixiAdapter';
@@ -36,18 +35,6 @@ import {
   createStudioLightingRig,
 } from '../../Utils/ThreeRenderingQuality';
 const gd: libGDevelop = global.gd;
-
-const getPixiRendererWebGlContext = (pixiRenderer: any): any => {
-  if (!pixiRenderer) {
-    return null;
-  }
-
-  return (
-    pixiRenderer.gl ||
-    (pixiRenderer.context && pixiRenderer.context.gl) ||
-    null
-  );
-};
 
 export default class LayerRenderer {
   project: gdProject;
@@ -121,7 +108,7 @@ export default class LayerRenderer {
   // $FlowFixMe[value-as-type]
   _threePlaneMesh: THREE.Mesh | null = null;
   // $FlowFixMe[value-as-type]
-  _threeEnvironmentRenderTarget: THREE.WebGLRenderTarget | null = null;
+  _threeEnvironmentRenderTarget: any = null;
   _threePlaneTextureInteropDisabledReason: string | null = null;
 
   _showObjectInstancesIn3D: boolean;
@@ -171,8 +158,7 @@ export default class LayerRenderer {
     onUpInstance: (gdInitialInstance, number, number) => void,
     // $FlowFixMe[value-as-type]
     pixiRenderer: PIXI.Renderer,
-    // $FlowFixMe[value-as-type]
-    threeRenderer: THREE.WebGLRenderer | null,
+    threeRenderer: any,
     showObjectInstancesIn3D: boolean,
   }) {
     this.project = project;
@@ -703,7 +689,7 @@ export default class LayerRenderer {
   // $FlowFixMe[value-as-type]
   _setup3dRendering(
     pixiRenderer: PIXI.Renderer,
-    threeRenderer: THREE.WebGLRenderer | null
+    threeRenderer: any
   ): void {
     if (this._threeScene || this._threeGroup || this._threeCamera) {
       throw new Error(
@@ -782,33 +768,12 @@ export default class LayerRenderer {
     // Create the plane that will show this texture.
     const threePlaneGeometry = new THREE.PlaneGeometry(1, 1);
     this._threePlaneGeometry = threePlaneGeometry;
-    // This disable the gamma correction done by THREE as PIXI is already doing it.
-    // $FlowFixMe[value-as-type]
-    const noGammaCorrectionShader: THREE.ShaderMaterialParameters = {
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D map;
-        varying vec2 vUv;
-        void main() {
-          vec4 texel = texture2D(map, vUv);
-          gl_FragColor = texel;
-        }
-      `,
-      uniforms: {
-        map: { value: this._threePlaneTexture },
-      },
+    const threePlaneMaterial = new THREE.MeshBasicMaterial({
+      map: this._threePlaneTexture,
       side: THREE.FrontSide,
       transparent: true,
-    };
-    const threePlaneMaterial = new THREE.ShaderMaterial(
-      noGammaCorrectionShader
-    );
+    });
+    // This disables tone mapping done by Three.js as Pixi already applies it.
     ((threePlaneMaterial: any): { toneMapped?: boolean }).toneMapped = false;
     this._threePlaneMaterial = threePlaneMaterial;
 
@@ -817,6 +782,12 @@ export default class LayerRenderer {
       threePlaneGeometry,
       threePlaneMaterial
     );
+    this.disableThreePlaneTextureInterop(
+      'Shared Three.js/Pixi WebGL texture interop is disabled in WebGPU-only mode'
+    );
+    if (this._threePlaneTextureInteropDisabledReason) {
+      threePlaneMesh.visible = false;
+    }
     threeScene.add(threePlaneMesh);
     this._threePlaneMesh = threePlaneMesh;
   }
@@ -828,8 +799,7 @@ export default class LayerRenderer {
    */
   // $FlowFixMe[value-as-type]
   _createPixiRenderTexture(pixiRenderer: PIXI.Renderer | null): void {
-    if (!pixiRenderer || pixiRenderer.type !== PIXI.RendererType.WEBGL) {
-      this.disableThreePlaneTextureInterop('Pixi renderer is not using WebGL');
+    if (!pixiRenderer) {
       return;
     }
     if (this._renderTexture) {
@@ -883,66 +853,18 @@ export default class LayerRenderer {
   }
 
   /**
-   * Set the texture of the 2D plane in the 3D world to be the same WebGL texture
-   * as the PixiJS RenderTexture - so that the 2D rendering can be shown in the 3D world.
+   * In WebGPU-only mode, Shared Three.js/Pixi texture interop is intentionally disabled.
    */
   updateThreePlaneTextureFromPixiRenderTexture(
-    // $FlowFixMe[value-as-type]
-    threeRenderer: THREE.WebGLRenderer,
-    // $FlowFixMe[value-as-type]
-    pixiRenderer: PIXI.Renderer
+    threeRenderer: any,
+    pixiRenderer: any
   ): boolean {
-    if (!this.isThreePlaneTextureInteropEnabled()) {
-      return false;
-    }
-    if (!this._threePlaneTexture || !this._renderTexture) {
-      return false;
-    }
-
-    const threeContext =
-      threeRenderer && typeof threeRenderer.getContext === 'function'
-        ? threeRenderer.getContext()
-        : null;
-    const pixiContext = getPixiRendererWebGlContext(pixiRenderer);
-    if (!threeContext || !pixiContext || threeContext !== pixiContext) {
-      this.disableThreePlaneTextureInterop(
-        'Shared Three.js/Pixi WebGL context not available'
-      );
-      return false;
-    }
-
-    const glTexture = getSharedGlTextureForThree(
-      pixiRenderer,
-      this._renderTexture
+    void threeRenderer;
+    void pixiRenderer;
+    this.disableThreePlaneTextureInterop(
+      'Shared Three.js/Pixi WebGL texture interop is disabled in WebGPU-only mode'
     );
-    if (!glTexture) {
-      if (this._threePlaneMesh) {
-        this._threePlaneMesh.visible = false;
-      }
-      return false;
-    }
-
-    // "Hack" into the Three.js renderer by getting the internal WebGL texture for the PixiJS plane,
-    // and set it so that it's the same as the WebGL texture for the PixiJS RenderTexture.
-    // This works because PixiJS and Three.js are using the same WebGL context.
-    const texture =
-      threeRenderer &&
-      threeRenderer.properties &&
-      typeof threeRenderer.properties.get === 'function'
-        ? threeRenderer.properties.get(this._threePlaneTexture)
-        : null;
-    if (!texture) {
-      if (this._threePlaneMesh) {
-        this._threePlaneMesh.visible = false;
-      }
-      return false;
-    }
-
-    texture.__webglTexture = glTexture.texture || glTexture;
-    if (this._threePlaneMesh) {
-      this._threePlaneMesh.visible = true;
-    }
-    return true;
+    return false;
   }
 
   _updatePixiObjectsZOrder() {

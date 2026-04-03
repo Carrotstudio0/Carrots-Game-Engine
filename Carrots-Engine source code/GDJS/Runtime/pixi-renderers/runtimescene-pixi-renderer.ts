@@ -45,7 +45,7 @@ namespace gdjs {
     private _pixiContainer: PIXI.Container;
     private _profilerText: PIXI.Text | null = null;
     private _showCursorAtNextRender: boolean = false;
-    private _threeRenderer: THREE.WebGLRenderer | null = null;
+    private _threeRenderer: gdjs.ThreeRendererCompat = null;
     private _hybridPresentationContainer: PIXI.Container | null = null;
     private _hybridPresentationSprite: PIXI.Sprite | null = null;
     private _hybridPresentationTexture: PIXI.Texture | null = null;
@@ -58,7 +58,7 @@ namespace gdjs {
     };
     private _backgroundColor: THREE.Color | null = null;
     private _fsrPass: gdjs.Fsr1Pass | null = null;
-    private _fsrLowResTarget: THREE.WebGLRenderTarget | null = null;
+    private _fsrLowResTarget: any | null = null;
     private _fsrCopyScene: THREE.Scene | null = null;
     private _fsrCopyCamera: THREE.OrthographicCamera | null = null;
     private _fsrCopyMesh: THREE.Mesh | null = null;
@@ -68,6 +68,7 @@ namespace gdjs {
     private _fsrOutputWidth: integer = 0;
     private _fsrOutputHeight: integer = 0;
     private _dedicatedThreeWebGpuRequirementOverride: string | null = null;
+    private _loggedWebGpuOnlyLegacyCompositionWarning: boolean = false;
 
     constructor(
       runtimeScene: gdjs.RuntimeScene,
@@ -118,6 +119,7 @@ namespace gdjs {
       this._disposeFsrResources();
       this._disposeHybridPresentation();
       this._dedicatedThreeWebGpuRequirementOverride = null;
+      this._loggedWebGpuOnlyLegacyCompositionWarning = false;
     }
 
     setDedicatedThreeWebGPURequirementOverride(reason: string | null): void {
@@ -154,21 +156,21 @@ namespace gdjs {
         if (
           renderingType === gdjs.RuntimeLayerRenderingType.TWO_D_PLUS_THREE_D
         ) {
-          return `Layer "${runtimeLayer.getName()}" actively mixes 2D and 3D rendering, which still requires the legacy layered composition path.`;
+          return `Layer "${runtimeLayer.getName()}" actively mixes 2D and 3D rendering, which is unsupported in WebGPU-only runtime.`;
         }
 
         if (
           renderingType === gdjs.RuntimeLayerRenderingType.THREE_D &&
           runtimeLayerRenderer.hasPostProcessingPass()
         ) {
-          return `Layer "${runtimeLayer.getName()}" uses 3D post-processing, which still requires the legacy Three.js/WebGL composition path.`;
+          return `Layer "${runtimeLayer.getName()}" uses 3D post-processing, which is unsupported in WebGPU-only runtime.`;
         }
 
         if (
           renderingType === gdjs.RuntimeLayerRenderingType.THREE_D &&
           runtimeLayerRenderer.has2DObjects()
         ) {
-          return `Layer "${runtimeLayer.getName()}" renders 2D display objects on a pure 3D layer, which still requires the legacy composition path.`;
+          return `Layer "${runtimeLayer.getName()}" renders 2D display objects on a pure 3D layer, which is unsupported in WebGPU-only runtime.`;
         }
 
         if (has2DContent) {
@@ -180,7 +182,7 @@ namespace gdjs {
 
         if (has3DContent) {
           if (saw2DOverlayContent) {
-            return `Layer "${runtimeLayer.getName()}" renders 3D content after a 2D or lighting overlay layer, which still requires the legacy layered composition path.`;
+            return `Layer "${runtimeLayer.getName()}" renders 3D content after a 2D or lighting overlay layer, which is unsupported in WebGPU-only runtime.`;
           }
           hasRendered3DContent = true;
         }
@@ -197,19 +199,7 @@ namespace gdjs {
     }
 
     private _getFsrSupportIssue(): string | null {
-      if (typeof THREE === 'undefined') {
-        return 'Three.js is not available';
-      }
-      if (this._runtimeGameRenderer) {
-        return this._runtimeGameRenderer.getFsrSupportIssue();
-      }
-      if (!this._threeRenderer) {
-        return 'Three.js is not available';
-      }
-      if (!this._threeRenderer.capabilities.isWebGL2) {
-        return 'WebGL2 not supported';
-      }
-      return null;
+      return 'FSR 1.0 is disabled in WebGPU-only runtime.';
     }
 
     private _ensureFsrResources(runtimeGame?: gdjs.RuntimeGame): boolean {
@@ -311,9 +301,10 @@ namespace gdjs {
     }
 
     private _renderTextureToLowResTarget(
-      threeRenderer: THREE.WebGLRenderer,
+      threeRenderer: gdjs.ThreeRendererCompat,
       texture: THREE.Texture
     ) {
+      const threeRendererWithCompat = threeRenderer as Record<string, any>;
       if (
         !this._fsrLowResTarget ||
         !this._fsrCopyScene ||
@@ -329,9 +320,9 @@ namespace gdjs {
       }
       // Post-processing passes may leave WebGL state altered (blending/depth/color masks),
       // so reset to a predictable state before blitting the composer output.
-      threeRenderer.resetState();
-      threeRenderer.setRenderTarget(this._fsrLowResTarget);
-      threeRenderer.render(this._fsrCopyScene, this._fsrCopyCamera);
+      threeRendererWithCompat.resetState?.();
+      threeRendererWithCompat.setRenderTarget?.(this._fsrLowResTarget);
+      threeRendererWithCompat.render?.(this._fsrCopyScene, this._fsrCopyCamera);
     }
 
     private _getComposerOutputTexture(
@@ -547,7 +538,7 @@ namespace gdjs {
       if (!presentationPixiRenderer || !pixiRenderer) return;
 
       const runtimeGame = this._runtimeScene.getGame();
-      const threeRenderer = runtimeGameRenderer.getThreeRendererForRuntimeScene(
+      let threeRenderer = runtimeGameRenderer.getThreeRendererForRuntimeScene(
         this._runtimeScene
       );
       this._threeRenderer = threeRenderer;
@@ -566,6 +557,18 @@ namespace gdjs {
           threeRenderer
         );
         return;
+      }
+
+      if (threeRenderer && !shouldUseDedicatedThreeWebGpuPath) {
+        this._disposeFsrResources();
+        const reason = this.getDedicatedThreeWebGPURequirementReason();
+        if (reason && !this._loggedWebGpuOnlyLegacyCompositionWarning) {
+          this._loggedWebGpuOnlyLegacyCompositionWarning = true;
+          console.warn(
+            `WebGPU-only runtime skipped legacy layered 3D composition for scene "${this._runtimeScene.getName()}": ${reason}`
+          );
+        }
+        threeRenderer = null;
       }
 
       const isUsingHybridPresentation =

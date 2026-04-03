@@ -524,6 +524,36 @@ const MainFrame = (props: Props): React.MixedElement => {
         return false;
       }
 
+      const renderingBackend =
+        typeof project.getRenderingBackend === 'function'
+          ? project.getRenderingBackend() || 'webgpu'
+          : 'webgpu';
+      if (renderingBackend !== 'webgpu') {
+        await showAlert({
+          title: t`WebGPU required`,
+          message:
+            actionType === 'preview'
+              ? t`This project is configured to use the legacy WebGL backend. Preview is blocked in WebGPU-only mode. Open Project Properties and switch Rendering Backend to WebGPU.`
+              : t`This project is configured to use the legacy WebGL backend. Export is blocked in WebGPU-only mode. Open Project Properties and switch Rendering Backend to WebGPU.`,
+        });
+        return true;
+      }
+
+      const upscalingMode =
+        typeof project.getUpscalingMode === 'function'
+          ? project.getUpscalingMode() || 'none'
+          : 'none';
+      if (upscalingMode === 'fsr1') {
+        await showAlert({
+          title: t`Unsupported upscaling mode`,
+          message:
+            actionType === 'preview'
+              ? t`AMD FSR 1.0 is disabled in WebGPU-only mode. Set Upscaling mode to None in Project Properties before launching a preview.`
+              : t`AMD FSR 1.0 is disabled in WebGPU-only mode. Set Upscaling mode to None in Project Properties before exporting.`,
+        });
+        return true;
+      }
+
       try {
         const validationErrors = scanProjectForValidationErrors(project);
         if (validationErrors.length > 0) {
@@ -551,7 +581,7 @@ const MainFrame = (props: Props): React.MixedElement => {
 
       return false;
     },
-    [showConfirmation, setDiagnosticReportDialogOpen]
+    [showAlert, showConfirmation, setDiagnosticReportDialogOpen]
   );
   const [previewState, setPreviewState] = React.useState(initialPreviewState);
   const commandPaletteRef = React.useRef((null: ?CommandPaletteInterface));

@@ -1,6 +1,7 @@
 /* eslint-env worker */
 // @flow
 import * as THREE from 'three';
+import { WebGPURenderer } from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import {
@@ -79,18 +80,29 @@ const getFileExtension = path => {
 };
 
 // Set up the renderer when worker is initialized
-const initRenderer = () => {
+const initRenderer = async () => {
+  if (
+    typeof navigator === 'undefined' ||
+    !navigator ||
+    typeof navigator.gpu === 'undefined'
+  ) {
+    throw new Error(
+      'WebGPU is unavailable in this environment. 3D resource previews cannot be rendered.'
+    );
+  }
+
   // $FlowFixMe[incompatible-type] - OffscreenCanvas is not in Flow types
   // $FlowFixMe[cannot-resolve-name]
   offscreenCanvas = new OffscreenCanvas(width, height);
 
-  // Create renderer with offscreen canvas
-  renderer = new THREE.WebGLRenderer({
+  // Create renderer with offscreen canvas.
+  renderer = new WebGPURenderer({
     canvas: offscreenCanvas,
     antialias: true,
     alpha: true,
     stencil: true,
   });
+  await renderer.init();
   configureThreeRendererQuality(renderer, {
     toneMapping: 'AgX',
     exposure: 1.03,
@@ -201,7 +213,11 @@ const renderModel = async resourceUrl => {
           ? offscreenCanvas.convertToBlob().then(blob => {
               return URL.createObjectURL(blob);
             })
-          : Promise.resolve(renderer.domElement.toDataURL());
+          : renderer && renderer.domElement && renderer.domElement.toDataURL
+          ? Promise.resolve(renderer.domElement.toDataURL())
+          : Promise.reject(
+              new Error('Unable to capture 3D preview image from WebGPU renderer.')
+            );
 
         resolve(screenshot);
       },
@@ -219,12 +235,12 @@ self.onmessage = async event => {
   const { type, resourceUrl } = event.data;
 
   try {
-    switch (type) {
-      case MESSAGE_TYPES.INIT:
-        const success = initRenderer();
-        // eslint-disable-next-line no-restricted-globals
-        self.postMessage({ type: MESSAGE_TYPES.INIT, success });
-        break;
+      switch (type) {
+        case MESSAGE_TYPES.INIT:
+          const success = await initRenderer();
+          // eslint-disable-next-line no-restricted-globals
+          self.postMessage({ type: MESSAGE_TYPES.INIT, success });
+          break;
 
       case MESSAGE_TYPES.RENDER_MODEL:
         if (!renderer) {
@@ -244,6 +260,12 @@ self.onmessage = async event => {
         console.warn('Unknown message type:', type);
     }
   } catch (error) {
+    if (type === MESSAGE_TYPES.INIT) {
+      // eslint-disable-next-line no-restricted-globals
+      self.postMessage({ type: MESSAGE_TYPES.INIT, success: false });
+      return;
+    }
+
     // eslint-disable-next-line no-restricted-globals
     self.postMessage({
       type: MESSAGE_TYPES.RENDER_ERROR,

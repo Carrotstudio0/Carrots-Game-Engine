@@ -33,6 +33,7 @@
     "check-types": "tsc",
     "build-vendor-libs": "node scripts/build-vendor-libs.js",
     "check-vendor-libs": "node scripts/build-vendor-libs.js --check",
+    "check-webgpu-only": "node ../scripts/check-webgpu-only.js",
     "build": "node scripts/build.js",
     "test": "cd tests && npm run test-benchmark",
     "format": "prettier --write \"Runtime/**/*.ts\" \"Runtime/**/*.tsx\" \"../Extensions/**/*.ts\" \"../Extensions/**/JsExtension.js\" \"../Extensions/**/*.spec.js\"",

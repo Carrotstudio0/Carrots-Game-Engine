@@ -62,7 +62,7 @@ Project::Project()
       pixelsRounding(false),
       adaptGameResolutionAtRuntime(true),
       sizeOnStartupMode("adaptWidth"),
-      renderingBackend("webgl"),
+      renderingBackend("webgpu"),
       antialiasingMode("MSAA"),
       upscalingMode("none"),
       fsrQuality("quality"),
@@ -727,7 +727,7 @@ void Project::UnserializeFrom(const SerializerElement& element) {
       propElement.GetBoolAttribute("adaptGameResolutionAtRuntime", false));
   SetSizeOnStartupMode(propElement.GetStringAttribute("sizeOnStartupMode", ""));
   SetRenderingBackend(propElement.GetStringAttribute("renderingBackend",
-                                                    "webgl"));
+                                                    "webgpu"));
   SetAntialiasingMode(
       propElement.GetStringAttribute("antialiasingMode", "MSAA"));
   SetAntialisingEnabledOnMobile(

@@ -45,7 +45,6 @@ describe('applyPixiCompat', () => {
 
   it('backfills the legacy Pixi namespace surface expected by old UMD plugins', () => {
     const removeFromCache = jest.fn();
-    const isWebGLSupported = jest.fn(() => true);
     const cache = createCache();
     const containerOn = jest.fn();
     const containerOff = jest.fn();
@@ -60,7 +59,7 @@ describe('applyPixiCompat', () => {
       },
     }));
     const pixi = {
-      WebGLRenderer: function WebGLRenderer() {},
+      Renderer: function Renderer() {},
       TextureSource: function TextureSource() {},
       Texture: {
         removeFromCache,
@@ -74,7 +73,6 @@ describe('applyPixiCompat', () => {
         NORMAL: 'normal',
       },
       Cache: cache,
-      isWebGLSupported,
     };
     pixi.Container.prototype.on = containerOn;
     pixi.Container.prototype.off = containerOff;
@@ -88,7 +86,6 @@ describe('applyPixiCompat', () => {
       },
     });
 
-    expect(compatPixi.Renderer).toBe(compatPixi.WebGLRenderer);
     expect(compatPixi.BaseTexture).toBe(compatPixi.TextureSource);
     expect(compatPixi.BaseTexture.removeFromCache).toBe(removeFromCache);
     expect(compatPixi.RENDERER_TYPE).toBe(compatPixi.RendererType);
@@ -105,7 +102,6 @@ describe('applyPixiCompat', () => {
     expect(compatPixi.utils.hex2string(0x00ffaa)).toBe('#00ffaa');
     expect(compatPixi.utils.string2hex('#0fa')).toBe(0x00ffaa);
     expect(compatPixi.utils.rgb2hex([1, 0.5, 0])).toBe(0xff8000);
-    expect(compatPixi.utils.isWebGLSupported).toBe(isWebGLSupported);
     expect(typeof compatPixi.Container.prototype.addEventListener).toBe('function');
     expect(typeof compatPixi.Container.prototype.removeEventListener).toBe('function');
     expect(texture).toEqual(expect.objectContaining({

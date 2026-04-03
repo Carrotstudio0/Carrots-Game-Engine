@@ -19,7 +19,7 @@ import Grid from './Grid';
 import WindowBorder from './WindowBorder';
 import WindowMask from './WindowMask';
 import * as PIXI from 'pixi.js';
-import * as THREE from 'three';
+import { WebGPURenderer } from 'three/webgpu';
 import FpsLimiter from './FpsLimiter';
 import { startPIXITicker, stopPIXITicker } from '../Utils/PIXITicker';
 import StatusBar from './StatusBar';
@@ -170,8 +170,7 @@ export default class InstancesEditor extends Component<Props, State> {
   canvasArea: ?HTMLDivElement;
   // $FlowFixMe[value-as-type]
   pixiRenderer: PIXI.Renderer;
-  // $FlowFixMe[value-as-type]
-  threeRenderer: THREE.WebGLRenderer | null = null;
+  threeRenderer: any = null;
   keyboardShortcuts: KeyboardShortcuts;
   pinchHandler: PinchHandler;
   canvasCursor: CanvasCursor;
@@ -288,57 +287,65 @@ export default class InstancesEditor extends Component<Props, State> {
     this._showObjectInstancesIn3D = this.props.showObjectInstancesIn3D;
 
     try {
+      if (
+        typeof navigator === 'undefined' ||
+        !navigator ||
+        typeof navigator.gpu === 'undefined'
+      ) {
+        throw new Error(
+          'WebGPU is unavailable in this browser. Instances editor cannot initialize.'
+        );
+      }
+
       // TODO (3D): Should it handle preference changes without needing to reopen tabs?
       if (this._showObjectInstancesIn3D) {
-        threeRenderer = new THREE.WebGLRenderer({
+        threeRenderer = new WebGPURenderer({
           canvas: gameCanvas,
           stencil: true,
+          antialias: false,
+          alpha: true,
         });
+        await threeRenderer.init();
         configureThreeRendererQuality(threeRenderer, {
           toneMapping: 'AgX',
           exposure: 1,
         });
         threeRenderer.autoClear = false;
         threeRenderer.setSize(this.props.width, this.props.height);
+      }
 
-        // Create a PixiJS renderer that use the same GL context as Three.js
-        // so that both can render to the canvas and even have PixiJS rendering
-        // reused in Three.js (by using a RenderTexture and the same internal WebGL texture).
-        pixiRenderer = new PIXI.WebGLRenderer();
-        // $FlowFixMe[prop-missing] - Pixi v8 requires async init.
-        await pixiRenderer.init({
-          width: initialWidth,
-          height: initialHeight,
-          canvas: gameCanvas,
-          context: threeRenderer.getContext(),
-          clearBeforeRender: false,
-          preserveDrawingBuffer: true,
-          antialias: false,
-          stencil: true,
-          backgroundAlpha: 0,
-          manageImports: false,
-          // It's the default value, but it's better to make it explicit.
-          // It allows instances composed of several pixi objects to detect hovering.
-          eventMode: 'auto',
-          // TODO (3D): add a setting for pixel ratio (`resolution: window.devicePixelRatio`)
-        });
-      } else {
-        // Create the renderer and setup the rendering area for scene editor.
-        pixiRenderer = new PIXI.WebGLRenderer();
-        // $FlowFixMe[prop-missing] - Pixi v8 requires async init.
-        await pixiRenderer.init({
-          width: initialWidth,
-          height: initialHeight,
-          canvas: gameCanvas,
-          // "preserveDrawingBuffer: true" is needed to avoid flickering and background issues on some mobile phones (see #585 #572 #566 #463)
-          preserveDrawingBuffer: true,
-          // Disable anti-aliasing (default) to avoid rendering issue (1px width line of extra pixels) when rendering pixel perfect tiled sprites.
-          antialias: false,
-          stencil: true,
-          clearBeforeRender: false,
-          backgroundAlpha: 0,
-          manageImports: false,
-        });
+      if (typeof PIXI.autoDetectRenderer !== 'function') {
+        throw new Error(
+          'PixiJS autoDetectRenderer is unavailable. WebGPU instances editor cannot initialize.'
+        );
+      }
+
+      // Create the renderer and setup the rendering area for scene editor.
+      pixiRenderer = await PIXI.autoDetectRenderer({
+        width: initialWidth,
+        height: initialHeight,
+        canvas: gameCanvas,
+        preference: 'webgpu',
+        // "preserveDrawingBuffer: true" is needed to avoid flickering and background issues on some mobile phones (see #585 #572 #566 #463)
+        preserveDrawingBuffer: true,
+        // Disable anti-aliasing (default) to avoid rendering issue (1px width line of extra pixels) when rendering pixel perfect tiled sprites.
+        antialias: false,
+        stencil: true,
+        clearBeforeRender: false,
+        backgroundAlpha: 0,
+        manageImports: false,
+        // It's the default value, but it's better to make it explicit.
+        // It allows instances composed of several pixi objects to detect hovering.
+        eventMode: 'auto',
+      });
+
+      if (
+        !PIXI.RendererType ||
+        pixiRenderer.type !== PIXI.RendererType.WEBGPU
+      ) {
+        throw new Error(
+          'Instances editor requires PixiJS WebGPU backend. No fallback backend is allowed.'
+        );
       }
 
       if (!pixiRenderer || this._unmounted || !this.canvasArea) {

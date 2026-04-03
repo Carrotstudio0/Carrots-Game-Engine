@@ -26,34 +26,30 @@ namespace gdjs {
   const normalizeRenderingBackend = (
     renderingBackend: string | undefined
   ): 'webgl' | 'webgpu' =>
-    renderingBackend === 'webgpu' ? 'webgpu' : 'webgl';
+    renderingBackend === 'webgl' ? 'webgl' : 'webgpu';
 
-  export const getLayerSharedWebGLRendererRequirementReason = (
+  export const getLayerWebGPUCompatibilityIssue = (
     layerData: LayerData
   ): string | null => {
-    if (layerData.renderingType === '3d') {
-      return `Layer "${layerData.name}" uses 3D rendering, which currently requires the legacy Three.js/WebGL composition path.`;
-    }
-
     if (layerData.renderingType === '2d+3d' || layerData.renderingType === '') {
-      return `Layer "${layerData.name}" uses mixed 2D and 3D rendering, which currently requires the legacy Three.js/WebGL composition path.`;
+      return `Layer "${layerData.name}" uses mixed 2D and 3D rendering, which is not supported by the WebGPU-only runtime.`;
     }
 
     return null;
   };
 
-  export const getProjectSharedWebGLRendererRequirementReason = (
+  export const getProjectWebGPUCompatibilityIssue = (
     projectData: ProjectData,
     upscalingMode: 'none' | 'fsr1'
   ): string | null => {
     if (upscalingMode === 'fsr1') {
-      return 'FSR 1.0 currently requires the legacy Three.js/WebGL composition path.';
+      return 'FSR 1.0 is disabled in the WebGPU-only runtime.';
     }
 
     for (const layoutData of projectData.layouts) {
       for (const layerData of layoutData.layers) {
         const requirementReason =
-          getLayerSharedWebGLRendererRequirementReason(layerData);
+          getLayerWebGPUCompatibilityIssue(layerData);
         if (requirementReason) {
           return requirementReason;
         }
@@ -817,6 +813,7 @@ namespace gdjs {
      */
     _captureManager: CaptureManager | null;
     _multithreadManager: gdjs.MultithreadManager;
+    _webGpuOnlyCompatibilityIssue: string | null = null;
 
     /** True if the RuntimeGame has been disposed and should not be used anymore. */
     _wasDisposed: boolean = false;
@@ -913,6 +910,13 @@ namespace gdjs {
           ? this._data.properties.fsrSharpness
           : 0.2;
       this._fsrSharpness = Math.max(0, Math.min(1, fsrSharpness));
+      this._webGpuOnlyCompatibilityIssue =
+        this._computeWebGPUOnlyCompatibilityIssue();
+      if (this._upscalingMode === 'fsr1') {
+        this._fsrRuntimeDisabled = true;
+        this._fsrRuntimeDisabledReason =
+          'FSR 1.0 is disabled in the WebGPU-only runtime.';
+      }
       this._updateRenderingSize();
       this._isAntialisingEnabledOnMobile =
         this._data.properties.antialisingEnabledOnMobile;
@@ -989,7 +993,28 @@ namespace gdjs {
           ? this._data.properties.fsrSharpness
           : 0.2;
       this._fsrSharpness = Math.max(0, Math.min(1, fsrSharpness));
+      this._webGpuOnlyCompatibilityIssue =
+        this._computeWebGPUOnlyCompatibilityIssue();
+      if (this._upscalingMode === 'fsr1') {
+        this._fsrRuntimeDisabled = true;
+        this._fsrRuntimeDisabledReason =
+          'FSR 1.0 is disabled in the WebGPU-only runtime.';
+      } else {
+        this._fsrRuntimeDisabled = false;
+        this._fsrRuntimeDisabledReason = '';
+      }
       this._updateRenderingSize();
+    }
+
+    private _computeWebGPUOnlyCompatibilityIssue(): string | null {
+      if (this._renderingBackend !== 'webgpu') {
+        return 'This project is configured with the legacy WebGL rendering backend. Change the project rendering backend to WebGPU before running previews, exports, or gameplay.';
+      }
+
+      return getProjectWebGPUCompatibilityIssue(
+        this._data,
+        this._upscalingMode
+      );
     }
 
     private _refreshEmbeddedResourcesMappings(): void {
@@ -1497,21 +1522,12 @@ namespace gdjs {
       return this._renderingBackend;
     }
 
-    /**
-     * Return the reason why the current project still requires the shared WebGL renderer path.
-     */
-    getSharedWebGLRendererRequirementReason(): string | null {
-      return getProjectSharedWebGLRendererRequirementReason(
-        this._data,
-        this._upscalingMode
-      );
+    getWebGPUOnlyCompatibilityIssue(): string | null {
+      return this._webGpuOnlyCompatibilityIssue;
     }
 
-    /**
-     * Return true if the current project still requires the shared WebGL renderer path.
-     */
-    requiresSharedWebGLRenderer(): boolean {
-      return !!this.getSharedWebGLRendererRequirementReason();
+    isWebGPUOnlyCompatible(): boolean {
+      return !this.getWebGPUOnlyCompatibilityIssue();
     }
 
     /**

@@ -5,6 +5,7 @@ import { Trans, t } from '@lingui/macro';
 import { type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils';
 import * as THREE from 'three';
+import { WebGPURenderer } from 'three/webgpu';
 import AlertMessage from '../../UI/AlertMessage';
 import Checkbox from '../../UI/Checkbox';
 import FlatButton from '../../UI/FlatButton';
@@ -1455,8 +1456,7 @@ const Model3DAnimationPreview = ({
   restartToken,
 }: Model3DAnimationPreviewProps): React.Node => {
   const containerRef = React.useRef<?HTMLDivElement>(null);
-  // $FlowFixMe[value-as-type]
-  const rendererRef = React.useRef<?THREE.WebGLRenderer>(null);
+  const rendererRef = React.useRef<?any>(null);
   // $FlowFixMe[value-as-type]
   const sceneRef = React.useRef<?THREE.Scene>(null);
   // $FlowFixMe[value-as-type]
@@ -1472,6 +1472,8 @@ const Model3DAnimationPreview = ({
   const [playbackSpeed, setPlaybackSpeed] = React.useState<number>(1);
   const [isPlaying, setIsPlaying] = React.useState(true);
   const [autoRotateEnabled, setAutoRotateEnabled] = React.useState(true);
+  const [previewInitializationError, setPreviewInitializationError] =
+    React.useState<?string>(null);
   const [localRestartToken, setLocalRestartToken] = React.useState<number>(0);
   const [currentAnimationIndex, setCurrentAnimationIndex] =
     React.useState<number>(
@@ -1627,52 +1629,9 @@ const Model3DAnimationPreview = ({
   React.useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-    });
-    configureThreeRendererQuality(renderer, {
-      toneMapping: 'AgX',
-      exposure: 1.02,
-    });
-    renderer.setClearColor(0x000000, 0);
-    renderer.setPixelRatio(window.devicePixelRatio || 1);
-    renderer.domElement.style.width = '100%';
-    renderer.domElement.style.height = '100%';
-    renderer.domElement.style.display = 'block';
-    container.appendChild(renderer.domElement);
-
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-    camera.position.set(2.45, 1.55, 3.25);
-    camera.lookAt(0, 0.6, 0);
-    const environmentRenderTarget = createStudioEnvironmentRenderTarget(renderer);
-    if (environmentRenderTarget) {
-      scene.environment = environmentRenderTarget.texture;
-      const sceneWithEnvironment = ((scene: any): {
-        environmentIntensity?: number,
-      });
-      if (typeof sceneWithEnvironment.environmentIntensity === 'number') {
-        sceneWithEnvironment.environmentIntensity = 1.18;
-      }
-    }
-
-    const previewPivot = new THREE.Group();
-    scene.add(previewPivot);
-
-    const lightingRig = createStudioLightingRig();
-    scene.add(lightingRig);
-
-    const gridHelper = new THREE.GridHelper(8, 24, 0xffffff, 0xffffff);
-    setTransparentGridMaterial(gridHelper.material);
-    gridHelper.position.y = -0.01;
-    scene.add(gridHelper);
-
-    rendererRef.current = renderer;
-    sceneRef.current = scene;
-    cameraRef.current = camera;
-    previewPivotRef.current = previewPivot;
+    let renderer = null;
+    let environmentRenderTarget = null;
+    let isDisposed = false;
 
     const updateSize = () => {
       if (!containerRef.current || !rendererRef.current || !cameraRef.current) {
@@ -1685,37 +1644,113 @@ const Model3DAnimationPreview = ({
       cameraRef.current.updateProjectionMatrix();
     };
 
-    updateSize();
+    const initializePreview = async () => {
+      if (
+        typeof navigator === 'undefined' ||
+        !navigator ||
+        typeof navigator.gpu === 'undefined'
+      ) {
+        throw new Error(
+          'WebGPU is unavailable in this browser. 3D animation preview cannot be displayed.'
+        );
+      }
 
-    if (window.ResizeObserver) {
-      const resizeObserver = new window.ResizeObserver(() => {
-        updateSize();
+      renderer = new WebGPURenderer({
+        antialias: true,
+        alpha: true,
       });
-      resizeObserver.observe(container);
-      resizeObserverRef.current = resizeObserver;
-    } else {
-      window.addEventListener('resize', updateSize);
-    }
+      await renderer.init();
+      if (isDisposed) {
+        renderer.dispose();
+        return;
+      }
 
-    const clock = new THREE.Clock();
-    const renderFrame = () => {
-      if (mixerRef.current && isPlayingRef.current) {
-        mixerRef.current.update(clock.getDelta() * playbackSpeedRef.current);
+      configureThreeRendererQuality(renderer, {
+        toneMapping: 'AgX',
+        exposure: 1.02,
+      });
+      renderer.setClearColor(0x000000, 0);
+      renderer.setPixelRatio(window.devicePixelRatio || 1);
+      renderer.domElement.style.width = '100%';
+      renderer.domElement.style.height = '100%';
+      renderer.domElement.style.display = 'block';
+      container.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+      camera.position.set(2.45, 1.55, 3.25);
+      camera.lookAt(0, 0.6, 0);
+      environmentRenderTarget = createStudioEnvironmentRenderTarget(renderer);
+      if (environmentRenderTarget) {
+        scene.environment = environmentRenderTarget.texture;
+        const sceneWithEnvironment = ((scene: any): {
+          environmentIntensity?: number,
+        });
+        if (typeof sceneWithEnvironment.environmentIntensity === 'number') {
+          sceneWithEnvironment.environmentIntensity = 1.18;
+        }
+      }
+
+      const previewPivot = new THREE.Group();
+      scene.add(previewPivot);
+
+      const lightingRig = createStudioLightingRig();
+      scene.add(lightingRig);
+
+      const gridHelper = new THREE.GridHelper(8, 24, 0xffffff, 0xffffff);
+      setTransparentGridMaterial(gridHelper.material);
+      gridHelper.position.y = -0.01;
+      scene.add(gridHelper);
+
+      rendererRef.current = renderer;
+      sceneRef.current = scene;
+      cameraRef.current = camera;
+      previewPivotRef.current = previewPivot;
+      setPreviewInitializationError(null);
+
+      updateSize();
+
+      if (window.ResizeObserver) {
+        const resizeObserver = new window.ResizeObserver(() => {
+          updateSize();
+        });
+        resizeObserver.observe(container);
+        resizeObserverRef.current = resizeObserver;
       } else {
-        clock.getDelta();
+        window.addEventListener('resize', updateSize);
       }
-      if (previewPivotRef.current && autoRotateEnabledRef.current) {
-        previewPivotRef.current.rotation.y += 0.008;
-      }
-      if (rendererRef.current && sceneRef.current && cameraRef.current) {
-        rendererRef.current.render(sceneRef.current, cameraRef.current);
-      }
-      frameRequestRef.current = requestAnimationFrame(renderFrame);
+
+      const clock = new THREE.Clock();
+      const renderFrame = () => {
+        if (mixerRef.current && isPlayingRef.current) {
+          mixerRef.current.update(clock.getDelta() * playbackSpeedRef.current);
+        } else {
+          clock.getDelta();
+        }
+        if (previewPivotRef.current && autoRotateEnabledRef.current) {
+          previewPivotRef.current.rotation.y += 0.008;
+        }
+        if (rendererRef.current && sceneRef.current && cameraRef.current) {
+          rendererRef.current.render(sceneRef.current, cameraRef.current);
+        }
+        frameRequestRef.current = requestAnimationFrame(renderFrame);
+      };
+
+      renderFrame();
     };
 
-    renderFrame();
+    initializePreview().catch(error => {
+      console.error('Unable to initialize 3D animation preview renderer:', error);
+      setPreviewInitializationError(
+        error && error.message
+          ? error.message
+          : 'WebGPU initialization failed for the 3D animation preview.'
+      );
+    });
 
     return () => {
+      isDisposed = true;
+
       if (frameRequestRef.current) {
         cancelAnimationFrame(frameRequestRef.current);
       }
@@ -1734,9 +1769,11 @@ const Model3DAnimationPreview = ({
       if (environmentRenderTarget) {
         environmentRenderTarget.dispose();
       }
-      renderer.dispose();
-      if (container.contains(renderer.domElement)) {
-        container.removeChild(renderer.domElement);
+      if (renderer) {
+        renderer.dispose();
+        if (renderer.domElement && container.contains(renderer.domElement)) {
+          container.removeChild(renderer.domElement);
+        }
       }
     };
   }, []);
@@ -1815,7 +1852,11 @@ const Model3DAnimationPreview = ({
     <>
       <div style={styles.previewViewport}>
         <div ref={containerRef} style={styles.previewCanvas} />
-        {!gltf && (
+        {previewInitializationError ? (
+          <div style={styles.previewOverlay}>
+            <AlertMessage kind="error">{previewInitializationError}</AlertMessage>
+          </div>
+        ) : !gltf && (
           <div style={styles.previewOverlay}>
             <PlaceholderLoader />
           </div>

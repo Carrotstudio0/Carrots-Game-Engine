@@ -1,17 +1,16 @@
 // @flow
-let isWebGLAvailable = null;
+let isWebGPUAvailable = null;
 
-export const isWebGLSupported = (): boolean => {
-  if (isWebGLAvailable !== null) return isWebGLAvailable;
+export const isWebGPUSupported = (): boolean => {
+  if (isWebGPUAvailable !== null) return isWebGPUAvailable;
   try {
-    const canvas = document.createElement('canvas');
-    isWebGLAvailable =
-      !!window.WebGLRenderingContext &&
-      !!(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'));
-
-    return isWebGLAvailable;
+    const hasWebGPU =
+      typeof navigator !== 'undefined' &&
+      !!((navigator: any).gpu);
+    isWebGPUAvailable = hasWebGPU;
+    return hasWebGPU;
   } catch (e) {
-    isWebGLAvailable = false;
+    isWebGPUAvailable = false;
     return false;
   }
 };

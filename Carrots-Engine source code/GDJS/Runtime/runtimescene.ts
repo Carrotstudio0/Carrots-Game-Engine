@@ -6,14 +6,13 @@
 namespace gdjs {
   const logger = new gdjs.Logger('RuntimeScene');
   const setupWarningLogger = new gdjs.Logger('RuntimeScene (setup warnings)');
-  const getSceneLegacyCompositionRequirementReason = (
+  const getSceneWebGPUCompatibilityIssue = (
     sceneData: {
       layers: Array<LayerData>;
     }
   ): string | null => {
     for (const layerData of sceneData.layers) {
-      const requirementReason =
-        gdjs.getLayerSharedWebGLRendererRequirementReason(layerData);
+      const requirementReason = gdjs.getLayerWebGPUCompatibilityIssue(layerData);
       if (requirementReason) {
         return requirementReason;
       }
@@ -83,7 +82,7 @@ namespace gdjs {
     _requestedScene: string = '';
     _resourcesUnloading: 'at-scene-exit' | 'never' | 'inherit' = 'inherit';
     private _asyncTasksManager = new gdjs.AsyncTasksManager();
-    private _legacyCompositionRequirementReason: string | null = null;
+    private _sceneWebGpuCompatibilityIssue: string | null = null;
     private _dedicatedThreeWebGpuRequirementReason: string | null = null;
 
     /** True if loadFromScene was called and the scene is being played. */
@@ -150,9 +149,9 @@ namespace gdjs {
     }
 
     addLayer(layerData: LayerData) {
-      if (!this._legacyCompositionRequirementReason) {
-        this._legacyCompositionRequirementReason =
-          gdjs.getLayerSharedWebGLRendererRequirementReason(layerData);
+      if (!this._sceneWebGpuCompatibilityIssue) {
+        this._sceneWebGpuCompatibilityIssue =
+          gdjs.getLayerWebGPUCompatibilityIssue(layerData);
       }
       const layer = new gdjs.Layer(layerData, this);
       this._layers.put(layerData.name, layer);
@@ -216,8 +215,8 @@ namespace gdjs {
       this._name = sceneData.name;
       this._resourcesUnloading = sceneData.resourcesUnloading || 'inherit';
       this.setBackgroundColor(sceneData.r, sceneData.v, sceneData.b);
-      this._legacyCompositionRequirementReason =
-        getSceneLegacyCompositionRequirementReason(sceneData);
+      this._sceneWebGpuCompatibilityIssue =
+        getSceneWebGPUCompatibilityIssue(sceneData);
       this._dedicatedThreeWebGpuRequirementReason =
         getSceneDedicatedThreeWebGpuRequirementReason(sceneData);
 
@@ -552,12 +551,8 @@ namespace gdjs {
       this._renderer.render();
     }
 
-    getLegacyCompositionRequirementReason(): string | null {
-      return this._legacyCompositionRequirementReason;
-    }
-
-    requiresLegacyComposition(): boolean {
-      return !!this._legacyCompositionRequirementReason;
+    getSceneWebGPUCompatibilityIssue(): string | null {
+      return this._sceneWebGpuCompatibilityIssue;
     }
 
     getDedicatedThreeWebGPURequirementReason(): string | null {

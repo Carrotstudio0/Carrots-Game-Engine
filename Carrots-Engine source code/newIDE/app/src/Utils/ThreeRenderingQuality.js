@@ -64,7 +64,7 @@ const createLightCard = (
 };
 
 export const configureThreeRendererQuality = (
-  renderer: THREE.WebGLRenderer,
+  renderer: any,
   options?: {|
     toneMapping?: 'AgX' | 'Neutral' | 'ACESFilmic',
     exposure?: number,
@@ -123,9 +123,9 @@ export const createStudioLightingRig = (): THREE.Group => {
 };
 
 export const createStudioEnvironmentRenderTarget = (
-  renderer: THREE.WebGLRenderer,
+  renderer: any,
   baseColor?: ?THREE.Color
-): THREE.WebGLRenderTarget | null => {
+): any => {
   if (!renderer) {
     return null;
   }

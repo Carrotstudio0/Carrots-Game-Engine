@@ -117,8 +117,8 @@ const loadPropertiesFromProject = (project: gdProject): ProjectProperties => {
     antialiasingMode: project.getAntialiasingMode(),
     renderingBackend:
       typeof project.getRenderingBackend === 'function'
-        ? project.getRenderingBackend() || 'webgl'
-        : 'webgl',
+        ? project.getRenderingBackend() || 'webgpu'
+        : 'webgpu',
     isAntialisingEnabledOnMobile: project.isAntialisingEnabledOnMobile(),
     upscalingMode:
       typeof project.getUpscalingMode === 'function'
@@ -175,9 +175,7 @@ function applyPropertiesToProject(
     pixelsRounding,
     sizeOnStartupMode,
     antialiasingMode,
-    renderingBackend,
     isAntialisingEnabledOnMobile,
-    upscalingMode,
     fsrQuality,
     fsrSharpness,
     minFPS,
@@ -214,11 +212,11 @@ function applyPropertiesToProject(
   project.setSizeOnStartupMode(sizeOnStartupMode);
   project.setAntialiasingMode(antialiasingMode);
   if (typeof project.setRenderingBackend === 'function') {
-    project.setRenderingBackend(renderingBackend);
+    project.setRenderingBackend('webgpu');
   }
   project.setAntialisingEnabledOnMobile(isAntialisingEnabledOnMobile);
   if (typeof project.setUpscalingMode === 'function') {
-    project.setUpscalingMode(upscalingMode);
+    project.setUpscalingMode('none');
   }
   if (typeof project.setFsrQuality === 'function') {
     project.setFsrQuality(fsrQuality);
@@ -266,6 +264,9 @@ const ProjectPropertiesDialog = (props: Props) => {
     () => loadPropertiesFromProject(project),
     [project]
   );
+  const hasLegacyWebGLRenderingBackend =
+    initialProperties.renderingBackend === 'webgl';
+  const hasLegacyFsrUpscaling = initialProperties.upscalingMode === 'fsr1';
   let [name, setName] = React.useState(initialProperties.name);
   let [description, setDescription] = React.useState(
     initialProperties.description
@@ -305,18 +306,10 @@ const ProjectPropertiesDialog = (props: Props) => {
   let [antialiasingMode, setAntialiasingMode] = React.useState(
     initialProperties.antialiasingMode
   );
-  let [renderingBackend, setRenderingBackend] = React.useState(
-    initialProperties.renderingBackend
-  );
-  let [upscalingMode, setUpscalingMode] = React.useState(
-    initialProperties.upscalingMode
-  );
-  let [fsrQuality, setFsrQuality] = React.useState(
-    initialProperties.fsrQuality
-  );
-  let [fsrSharpness, setFsrSharpness] = React.useState(
-    initialProperties.fsrSharpness
-  );
+  let [renderingBackend, setRenderingBackend] = React.useState('webgpu');
+  let [upscalingMode, setUpscalingMode] = React.useState('none');
+  const fsrQuality = initialProperties.fsrQuality;
+  const fsrSharpness = initialProperties.fsrSharpness;
   let [
     isAntialisingEnabledOnMobile,
     setAntialisingEnabledOnMobile,
@@ -910,80 +903,51 @@ const ProjectPropertiesDialog = (props: Props) => {
                   fullWidth
                   floatingLabelText={<Trans>Rendering backend</Trans>}
                   value={renderingBackend}
-                  onChange={(e, i, newRenderingBackend: string) => {
+                  onChange={(e, i, newRenderingBackend: 'webgpu') => {
                     if (newRenderingBackend === renderingBackend) {
                       return;
                     }
                     setRenderingBackend(newRenderingBackend);
                     notifyOfChange();
                   }}
-                  helperMarkdownText={i18n._(
-                    t`WebGPU now runs 2D and 2D lighting directly. Scenes using 3D, 2D+3D, or FSR keep WebGPU presentation and use an isolated legacy WebGL composition path when needed.`
-                  )}
+                  helperMarkdownText={
+                    hasLegacyWebGLRenderingBackend
+                      ? i18n._(
+                          t`This project was previously configured with legacy WebGL. Preview and export are blocked until you apply this dialog to migrate it to WebGPU.`
+                        )
+                      : i18n._(
+                          t`WebGPU is the required rendering backend in this build.`
+                        )
+                  }
                 >
-                  <SelectOption value="webgl" label={t`WebGL (stable)`} />
                   <SelectOption
                     value="webgpu"
-                    label={t`WebGPU (hybrid legacy 3D composition when needed)`}
+                    label={t`WebGPU (required)`}
                   />
                 </SelectField>
                 <SelectField
                   fullWidth
                   floatingLabelText={<Trans>Upscaling</Trans>}
                   value={upscalingMode}
-                  onChange={(e, i, newUpscalingMode: string) => {
+                  onChange={(e, i, newUpscalingMode: 'none') => {
                     if (newUpscalingMode === upscalingMode) {
                       return;
                     }
                     setUpscalingMode(newUpscalingMode);
                     notifyOfChange();
                   }}
+                  helperMarkdownText={
+                    hasLegacyFsrUpscaling
+                      ? i18n._(
+                          t`This project previously used AMD FSR 1.0. Apply this dialog to migrate upscaling to None, which is required in WebGPU-only mode.`
+                        )
+                      : i18n._(
+                          t`AMD FSR 1.0 is disabled in WebGPU-only mode.`
+                        )
+                  }
                 >
                   <SelectOption value="none" label={t`None`} />
-                  <SelectOption value="fsr1" label={t`AMD FSR 1.0`} />
                 </SelectField>
-                <SelectField
-                  fullWidth
-                  floatingLabelText={<Trans>FSR quality preset</Trans>}
-                  value={fsrQuality}
-                  disabled={upscalingMode !== 'fsr1'}
-                  onChange={(e, i, newFsrQuality: string) => {
-                    if (newFsrQuality === fsrQuality) {
-                      return;
-                    }
-                    setFsrQuality(newFsrQuality);
-                    notifyOfChange();
-                  }}
-                >
-                  <SelectOption
-                    value="ultra-quality"
-                    label={t`Ultra Quality`}
-                  />
-                  <SelectOption value="quality" label={t`Quality`} />
-                  <SelectOption value="balanced" label={t`Balanced`} />
-                  <SelectOption value="performance" label={t`Performance`} />
-                </SelectField>
-                <SemiControlledTextField
-                  floatingLabelText={
-                    <Trans>FSR sharpness (0 to 1, higher = sharper)</Trans>
-                  }
-                  fullWidth
-                  type="number"
-                  value={'' + fsrSharpness}
-                  disabled={upscalingMode !== 'fsr1'}
-                  onChange={value => {
-                    const parsed = parseFloat(value);
-                    const newSharpness = Math.max(
-                      0,
-                      Math.min(1, isNaN(parsed) ? 0 : parsed)
-                    );
-                    if (newSharpness === fsrSharpness) {
-                      return;
-                    }
-                    setFsrSharpness(newSharpness);
-                    notifyOfChange();
-                  }}
-                />
 
                 <Text size="block-title">
                   <Trans>Project files</Trans>

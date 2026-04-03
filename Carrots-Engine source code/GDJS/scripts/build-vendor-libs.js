@@ -67,7 +67,6 @@ const appendPixiCompatShim = (code) => {
   if (typeof PIXI === 'undefined' || !PIXI) return;
   var pixi = PIXI;
   if (!pixi.filters) pixi.filters = {};
-  if (!pixi.Renderer && pixi.WebGLRenderer) pixi.Renderer = pixi.WebGLRenderer;
   if (!pixi.BaseTexture && pixi.TextureSource) pixi.BaseTexture = pixi.TextureSource;
   if (pixi.BaseTexture && !pixi.BaseTexture.removeFromCache && pixi.Texture && pixi.Texture.removeFromCache) {
     pixi.BaseTexture.removeFromCache = pixi.Texture.removeFromCache;
@@ -153,9 +152,6 @@ const appendPixiCompatShim = (code) => {
         (Math.round((rgb[2] || 0) * 255) & 255)
       );
     };
-  }
-  if (!pixi.utils.isWebGLSupported && pixi.isWebGLSupported) {
-    pixi.utils.isWebGLSupported = pixi.isWebGLSupported;
   }
 })();
 `;

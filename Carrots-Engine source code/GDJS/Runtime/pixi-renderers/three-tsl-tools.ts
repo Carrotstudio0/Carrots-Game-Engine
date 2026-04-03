@@ -1,10 +1,9 @@
 namespace gdjs {
   type ThreeRendererLike =
-    | THREE.WebGLRenderer
+    | gdjs.ThreeRendererCompat
     | (Record<string, any> & {
         isWebGPURenderer?: boolean;
-      })
-    | null;
+      });
 
   export const hasThreeWebGpuBundleSupport = (): boolean => {
     return (

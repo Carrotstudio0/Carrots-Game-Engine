@@ -26,12 +26,7 @@ namespace gdjs {
       ? true
       : false;
 
-  export type WebGLContextCompat =
-    | WebGLRenderingContext
-    | WebGL2RenderingContext;
-
   export type ThreeRendererCompat =
-    | THREE.WebGLRenderer
     | (Record<string, any> & {
         isWebGPURenderer?: boolean;
         domElement?: HTMLCanvasElement;
@@ -68,23 +63,12 @@ namespace gdjs {
     | null;
 
   export type Scene3DRenderContext = {
-    renderer: THREE.WebGLRenderer;
+    renderer: Exclude<ThreeRendererCompat, null>;
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
   };
 
-  type PixiRendererWithWebGLContext = PIXI.Renderer & {
-    gl?: WebGLContextCompat | null;
-    context?: {
-      gl?: WebGLContextCompat | null;
-    };
-  };
-
-  type PixiWebGLRendererCompat = PIXI.Renderer & {
-    init: (options?: Record<string, unknown>) => Promise<void>;
-  };
-
-  type RenderingBackendType = 'webgl' | 'webgpu';
+  type RenderingBackendType = 'webgpu';
   type PixiRendererBackendType = RenderingBackendType | 'unknown';
   type PixiRendererTypeCompat = {
     WEBGL: number;
@@ -100,15 +84,14 @@ namespace gdjs {
 
   type RuntimeGameWithThreeRenderer = {
     getRenderer?: () => {
-      getThreeRenderer?: () => THREE.WebGLRenderer | null;
+      getThreeRenderer?: () => ThreeRendererCompat;
       getThreeRendererForRuntimeScene?: (
         runtimeScene?:
           | {
               getDedicatedThreeWebGPURequirementReason?: () => string | null;
-              getLegacyCompositionRequirementReason?: () => string | null;
             }
           | null
-      ) => THREE.WebGLRenderer | null;
+      ) => ThreeRendererCompat;
     } | null;
   };
 
@@ -118,14 +101,6 @@ namespace gdjs {
       | THREE.PerspectiveCamera
       | THREE.OrthographicCamera
       | null;
-  };
-
-  const createPixiWebGLRenderer = (): PixiWebGLRendererCompat => {
-    const pixiWithWebGLRenderer = PIXI as typeof PIXI & {
-      WebGLRenderer: new () => PixiWebGLRendererCompat;
-    };
-
-    return new pixiWithWebGLRenderer.WebGLRenderer();
   };
 
   const getPixiRendererBackendType = (
@@ -145,10 +120,6 @@ namespace gdjs {
       return 'webgpu';
     }
 
-    if (pixiRenderer.type === rendererType.WEBGL) {
-      return 'webgl';
-    }
-
     return 'unknown';
   };
 
@@ -166,20 +137,19 @@ namespace gdjs {
   };
 
   const createPixiRendererWithPreference = async (
-    preference: RenderingBackendType,
     options: Record<string, unknown>
   ): Promise<PIXI.Renderer> => {
     const pixiWithAutoDetect = PIXI as PixiAutoDetectCompat;
-    if (typeof pixiWithAutoDetect.autoDetectRenderer === 'function') {
-      return await pixiWithAutoDetect.autoDetectRenderer({
-        ...options,
-        preference,
-      });
+    if (typeof pixiWithAutoDetect.autoDetectRenderer !== 'function') {
+      throw new Error(
+        'PixiJS autoDetectRenderer is unavailable. WebGPU-only runtime cannot initialize.'
+      );
     }
 
-    const pixiRenderer = createPixiWebGLRenderer();
-    await pixiRenderer.init(options);
-    return pixiRenderer;
+    return await pixiWithAutoDetect.autoDetectRenderer({
+      ...options,
+      preference: 'webgpu',
+    });
   };
 
   const disablePixiAccessibilitySupport = (
@@ -201,44 +171,14 @@ namespace gdjs {
     }
   };
 
-  export const getPixiRendererWebGLContext = (
-    pixiRenderer: PIXI.Renderer | null
-  ): WebGLContextCompat | null => {
-    if (!pixiRenderer) {
-      return null;
-    }
-
-    const rendererWithContext = pixiRenderer as PixiRendererWithWebGLContext;
-    return rendererWithContext.gl || rendererWithContext.context?.gl || null;
-  };
-
-  export const areThreeAndPixiRenderersSharingWebGLContext = (
-    threeRenderer: ThreeRendererCompat,
-    pixiRenderer: PIXI.Renderer | null
-  ): boolean => {
-    if (!threeRenderer || !pixiRenderer) {
-      return false;
-    }
-
-    const threeRendererWithContext = threeRenderer as Record<string, any>;
-    const threeContext =
-      typeof threeRendererWithContext.getContext === 'function'
-        ? threeRendererWithContext.getContext()
-        : null;
-    const pixiContext = getPixiRendererWebGLContext(pixiRenderer);
-
-    return !!threeContext && !!pixiContext && threeContext === pixiContext;
-  };
-
   export const getThreeRendererFromRuntimeGame = (
     runtimeGame: gdjs.RuntimeGame | RuntimeGameWithThreeRenderer | null | undefined,
     runtimeScene?:
       | {
           getDedicatedThreeWebGPURequirementReason?: () => string | null;
-          getLegacyCompositionRequirementReason?: () => string | null;
         }
       | null
-  ): THREE.WebGLRenderer | null => {
+  ): ThreeRendererCompat => {
     if (!runtimeGame || typeof runtimeGame.getRenderer !== 'function') {
       return null;
     }
@@ -264,7 +204,7 @@ namespace gdjs {
 
   export const getThreeRendererFromEffectsTarget = (
     target: gdjs.EffectsTarget | null | undefined
-  ): THREE.WebGLRenderer | null => {
+  ): ThreeRendererCompat => {
     if (!target || typeof target.getRuntimeScene !== 'function') {
       return null;
     }
@@ -418,12 +358,14 @@ namespace gdjs {
 
   export const getThreeRendererBackendType = (
     renderer: ThreeRendererCompat
-  ): 'webgl' | 'webgpu' | 'unknown' => {
+  ): 'webgpu' | 'unknown' => {
     if (!renderer) {
       return 'unknown';
     }
 
-    return (renderer as Record<string, any>).isWebGPURenderer ? 'webgpu' : 'webgl';
+    return (renderer as Record<string, any>).isWebGPURenderer
+      ? 'webgpu'
+      : 'unknown';
   };
 
   /**
@@ -443,18 +385,16 @@ namespace gdjs {
     private _pointerLockReasons: Set<string> = new Set();
 
     _pixiRenderer: PIXI.Renderer | null = null;
-    private _threeRenderer: THREE.WebGLRenderer | null = null;
     private _dedicatedThreeWebGpuRenderer: ThreeRendererCompat = null;
     private _dedicatedThreeWebGpuCanvas: HTMLCanvasElement | null = null;
     private _dedicatedThreeWebGpuIssue: string | null = null;
-    private _legacyPixiRenderer: PIXI.Renderer | null = null;
-    private _legacyRenderingCanvas: HTMLCanvasElement | null = null;
     private _gameCanvas: HTMLCanvasElement | null = null;
     private _domElementsContainer: HTMLDivElement | null = null;
-    private _requestedRenderingBackend: RenderingBackendType = 'webgl';
-    private _activeRenderingBackend: RenderingBackendType = 'webgl';
+    private _requestedRenderingBackend: RenderingBackendType = 'webgpu';
+    private _activeRenderingBackend: RenderingBackendType = 'webgpu';
     private _renderingBackendFallbackIssue: string | null = null;
-    private _hybridRenderingIssue: string | null = null;
+    private _hybridRenderingIssue: string | null =
+      'Legacy layered composition is disabled in WebGPU-only runtime.';
 
     // Current width of the canvas (might be scaled down/up compared to renderer)
     _canvasWidth: float = 0;
@@ -546,112 +486,30 @@ namespace gdjs {
     }
 
     private async _initializeStandalonePixiRenderer(
-      gameCanvas: HTMLCanvasElement,
-      preference: RenderingBackendType
+      gameCanvas: HTMLCanvasElement
     ): Promise<void> {
       const pixiInitOptions = this._createPixiInitOptions(gameCanvas);
-      const webGpuWasSupported =
-        preference === 'webgpu' ? await isPixiWebGPUSupported() : false;
-      const pixiRenderer = await createPixiRendererWithPreference(
-        preference,
-        pixiInitOptions
-      );
+      const webGpuWasSupported = await isPixiWebGPUSupported();
+      if (!webGpuWasSupported) {
+        throw new Error(
+          'WebGPU is not available in this environment. WebGPU-only runtime cannot start.'
+        );
+      }
+      const pixiRenderer = await createPixiRendererWithPreference(pixiInitOptions);
 
       this._pixiRenderer = pixiRenderer;
-      this._threeRenderer = null;
 
       const detectedBackend = getPixiRendererBackendType(pixiRenderer);
-      if (detectedBackend === 'unknown') {
+      if (detectedBackend !== 'webgpu') {
         this._pixiRenderer.destroy();
         this._pixiRenderer = null;
         throw new Error(
-          'Only WebGL and WebGPU PixiJS renderer backends are supported by this runtime.'
+          'PixiJS did not initialize a WebGPU backend. WebGPU-only runtime cannot start.'
         );
       }
 
       this._activeRenderingBackend = detectedBackend;
-      if (preference === 'webgpu' && detectedBackend !== 'webgpu') {
-        this._renderingBackendFallbackIssue =
-          this._renderingBackendFallbackIssue ||
-          (webGpuWasSupported
-            ? 'PixiJS could not keep the WebGPU backend during initialization and fell back to WebGL.'
-            : 'WebGPU is not available in this environment. Falling back to WebGL.');
-      } else if (preference === 'webgl' && detectedBackend !== 'webgl') {
-        this._renderingBackendFallbackIssue =
-          this._renderingBackendFallbackIssue ||
-          'PixiJS could not initialize the requested WebGL backend.';
-      }
-    }
-
-    private async _createSharedWebGLRendererPair(
-      rendererCanvas: HTMLCanvasElement
-    ): Promise<{
-      pixiRenderer: PIXI.Renderer;
-      threeRenderer: THREE.WebGLRenderer;
-    }> {
-      const threeRenderer = new THREE.WebGLRenderer({
-        canvas: rendererCanvas,
-        antialias:
-          this._game.getAntialiasingMode() !== 'none' &&
-          (this._game.isAntialisingEnabledOnMobile() ||
-            !gdjs.evtTools.common.isMobile()),
-        stencil: true,
-        preserveDrawingBuffer: true, // Keep to true to allow screenshots.
-      });
-      threeRenderer.shadowMap.enabled = true;
-      threeRenderer.shadowMap.type = gdjs.getPreferredThreeShadowMapType(
-        threeRenderer,
-        'generic'
-      ) as any;
-      gdjs.ensureThreeRendererOutputColorSpace(threeRenderer);
-      gdjs.applyThreeRendererToneMapping(
-        threeRenderer,
-        typeof (THREE as any).AgXToneMapping === 'number'
-          ? (THREE as any).AgXToneMapping
-          : THREE.ACESFilmicToneMapping,
-        1
-      );
-      threeRenderer.autoClear = false;
-      threeRenderer.setPixelRatio(window.devicePixelRatio);
-      threeRenderer.setSize(
-        this._game.getGameResolutionWidth(),
-        this._game.getGameResolutionHeight()
-      );
-
-      // Create a PixiJS renderer that uses the same GL context as Three.js
-      // so that both can render to the same canvas and share render textures when needed.
-      const pixiRenderer = createPixiWebGLRenderer();
-      const pixiInitOptions: Record<string, unknown> & {
-        stencil: boolean;
-      } = {
-        ...this._createPixiInitOptions(rendererCanvas),
-        context: threeRenderer.getContext() as unknown as WebGL2RenderingContext,
-        clearBeforeRender: false,
-        // TODO (3D): add a setting for pixel ratio (`resolution: window.devicePixelRatio`)
-      };
-      // @ts-ignore - Pixi v8 requires async init. Reuse Three.js context.
-      await pixiRenderer.init(pixiInitOptions);
-
-      return { pixiRenderer, threeRenderer };
-    }
-
-    private async _initializeSharedWebGLRenderers(
-      gameCanvas: HTMLCanvasElement
-    ): Promise<void> {
-      const { pixiRenderer, threeRenderer } =
-        await this._createSharedWebGLRendererPair(gameCanvas);
-      this._pixiRenderer = pixiRenderer;
-      this._threeRenderer = threeRenderer;
-      this._activeRenderingBackend = 'webgl';
-    }
-
-    private async _initializeLegacyWebGLRenderers(): Promise<void> {
-      const legacyCanvas = document.createElement('canvas');
-      const { pixiRenderer, threeRenderer } =
-        await this._createSharedWebGLRendererPair(legacyCanvas);
-      this._legacyRenderingCanvas = legacyCanvas;
-      this._legacyPixiRenderer = pixiRenderer;
-      this._threeRenderer = threeRenderer;
+      this._renderingBackendFallbackIssue = null;
     }
 
     private _disposeDedicatedThreeWebGpuRenderer(): void {
@@ -775,10 +633,7 @@ namespace gdjs {
         this._dedicatedThreeWebGpuIssue =
           'Three.js WebGPU dedicated runtime failed to initialize.';
         this._disposeDedicatedThreeWebGpuRenderer();
-        console.warn(
-          'Three.js WebGPU: dedicated runtime initialization failed, falling back to the existing renderer paths.',
-          error
-        );
+        console.warn('Three.js WebGPU: dedicated runtime initialization failed.', error);
       }
     }
 
@@ -787,96 +642,57 @@ namespace gdjs {
     ): Promise<void> {
       this._throwIfDisposed();
 
-      this._requestedRenderingBackend = this._game.getRenderingBackend();
-      this._activeRenderingBackend = 'webgl';
+      this._requestedRenderingBackend = 'webgpu';
+      this._activeRenderingBackend = 'webgpu';
       this._renderingBackendFallbackIssue = null;
       this._hybridRenderingIssue = null;
       this._dedicatedThreeWebGpuIssue = null;
-      this._legacyPixiRenderer = null;
-      this._legacyRenderingCanvas = null;
 
-      const sharedWebGLRendererRequirementReason =
-        this._game.getSharedWebGLRendererRequirementReason();
-      const canInitializeLegacyThreeWebGLPath =
-        !!sharedWebGLRendererRequirementReason && typeof THREE !== 'undefined';
-      const shouldTryHybridWebGPUComposition =
-        this._requestedRenderingBackend === 'webgpu' &&
-        canInitializeLegacyThreeWebGLPath;
-
-      if (
-        sharedWebGLRendererRequirementReason &&
-        typeof THREE === 'undefined' &&
-        !this._renderingBackendFallbackIssue
-      ) {
-        this._renderingBackendFallbackIssue = `${sharedWebGLRendererRequirementReason} Three.js is not available in this runtime, so only the standalone Pixi renderer can be initialized.`;
-      }
-
-      if (shouldTryHybridWebGPUComposition) {
-        const webGpuWasSupported = await isPixiWebGPUSupported();
-        if (webGpuWasSupported) {
-          await this._initializeStandalonePixiRenderer(gameCanvas, 'webgpu');
-          const activeBackendAfterStandaloneInitialization =
-            this.getActiveRenderingBackend();
-          if (activeBackendAfterStandaloneInitialization === 'webgpu') {
-            await this._initializeLegacyWebGLRenderers();
-            this._hybridRenderingIssue = `${sharedWebGLRendererRequirementReason} Rendering will use isolated legacy Three.js/WebGL composition for affected scenes while presenting through WebGPU.`;
-          } else {
-            this._pixiRenderer?.destroy();
-            this._pixiRenderer = null;
-            this._renderingBackendFallbackIssue =
-              `${sharedWebGLRendererRequirementReason} PixiJS could not keep the WebGPU backend, so the runtime fell back to the shared WebGL renderer backend.`;
-            await this._initializeSharedWebGLRenderers(gameCanvas);
-          }
-        } else {
-          this._renderingBackendFallbackIssue =
-            `${sharedWebGLRendererRequirementReason} WebGPU is not available in this environment, so the runtime fell back to the shared WebGL renderer backend.`;
-          await this._initializeSharedWebGLRenderers(gameCanvas);
-        }
-      } else if (canInitializeLegacyThreeWebGLPath) {
-        await this._initializeSharedWebGLRenderers(gameCanvas);
-      } else {
-        const preferredBackend: RenderingBackendType =
-          this._requestedRenderingBackend === 'webgpu' &&
-          !sharedWebGLRendererRequirementReason
-            ? 'webgpu'
-            : 'webgl';
-        await this._initializeStandalonePixiRenderer(
-          gameCanvas,
-          preferredBackend
+      const projectRequestedBackend = this._game.getRenderingBackend();
+      if (projectRequestedBackend !== 'webgpu') {
+        throw new Error(
+          'This project is configured with the legacy WebGL rendering backend. Change the project rendering backend to WebGPU before running the game.'
         );
       }
+
+      if (
+        typeof navigator === 'undefined' ||
+        !(navigator as Navigator & { gpu?: GPU }).gpu
+      ) {
+        throw new Error(
+          'WebGPU is not available in this environment. This runtime does not provide a WebGL fallback.'
+        );
+      }
+
+      const webGpuOnlyCompatibilityIssue =
+        typeof this._game.getWebGPUOnlyCompatibilityIssue === 'function'
+          ? this._game.getWebGPUOnlyCompatibilityIssue()
+          : null;
+      if (webGpuOnlyCompatibilityIssue) {
+        throw new Error(webGpuOnlyCompatibilityIssue);
+      }
+
+      await this._initializeStandalonePixiRenderer(gameCanvas);
 
       if (!this._pixiRenderer) {
-        return;
+        throw new Error('PixiJS WebGPU renderer failed to initialize.');
       }
 
-      if (
-        this._requestedRenderingBackend !== this._activeRenderingBackend &&
-        this._renderingBackendFallbackIssue
-      ) {
-        console.warn(
-          `Rendering backend: ${this._renderingBackendFallbackIssue}`
+      await this._initializeDedicatedThreeWebGpuRenderer(gameCanvas);
+      if (!this._dedicatedThreeWebGpuRenderer) {
+        throw new Error(
+          this._dedicatedThreeWebGpuIssue ||
+            'Three.js WebGPU dedicated runtime failed to initialize.'
         );
-      }
-      if (this._hybridRenderingIssue) {
-        console.info(`Rendering backend: ${this._hybridRenderingIssue}`);
-      }
-
-      if (this.usesWebGPUBackend()) {
-        await this._initializeDedicatedThreeWebGpuRenderer(gameCanvas);
-      } else {
-        this._disposeDedicatedThreeWebGpuRenderer();
       }
 
       if (this._game.isFsrEnabled()) {
-        const fsrSupportIssue = this.getFsrSupportIssue();
-        if (fsrSupportIssue) {
-          this._game.disableFsrForSession(fsrSupportIssue);
-        }
+        this._game.disableFsrForSession(
+          'FSR 1.0 is disabled in the WebGPU-only runtime.'
+        );
       }
 
       disablePixiAccessibilitySupport(this._pixiRenderer);
-      disablePixiAccessibilitySupport(this._legacyPixiRenderer);
     }
 
     /**
@@ -1037,18 +853,6 @@ namespace gdjs {
           this._game.getGameResolutionHeight()
         );
 
-        if (this._threeRenderer) {
-          this._threeRenderer.setSize(
-            this._game.getGameResolutionWidth(),
-            this._game.getGameResolutionHeight()
-          );
-        }
-        if (this._legacyPixiRenderer) {
-          this._legacyPixiRenderer.resize(
-            this._game.getGameResolutionWidth(),
-            this._game.getGameResolutionHeight()
-          );
-        }
         if (
           this._dedicatedThreeWebGpuRenderer &&
           typeof (this._dedicatedThreeWebGpuRenderer as Record<string, any>)
@@ -1778,24 +1582,23 @@ namespace gdjs {
       return this._pixiRenderer;
     }
 
-    getLegacyPIXIWebGLRenderer(): PIXI.Renderer | null {
-      return this._legacyPixiRenderer;
+    getLegacyPixiRenderer(): PIXI.Renderer | null {
+      return null;
     }
 
     getLegacyRenderingCanvas(): HTMLCanvasElement | null {
-      return this._legacyRenderingCanvas;
+      return null;
     }
 
     /**
      * Get the Three.js renderer for the game - if any.
      */
-    getThreeRenderer(): THREE.WebGLRenderer | null {
-      return (this._dedicatedThreeWebGpuRenderer ||
-        this._threeRenderer) as THREE.WebGLRenderer | null;
+    getThreeRenderer(): ThreeRendererCompat {
+      return this._dedicatedThreeWebGpuRenderer;
     }
 
     hasThreeRenderer(): boolean {
-      return !!this._dedicatedThreeWebGpuRenderer || !!this._threeRenderer;
+      return !!this._dedicatedThreeWebGpuRenderer;
     }
 
     getRequestedRenderingBackend(): RenderingBackendType {
@@ -1827,12 +1630,7 @@ namespace gdjs {
     }
 
     usesHybridWebGPUComposition(): boolean {
-      return (
-        this.usesWebGPUBackend() &&
-        !!this._legacyPixiRenderer &&
-        !!this._legacyRenderingCanvas &&
-        !!this._threeRenderer
-      );
+      return false;
     }
 
     shouldRenderRuntimeSceneWithDedicatedThreeWebGPU(
@@ -1857,120 +1655,58 @@ namespace gdjs {
     shouldRenderRuntimeSceneWithLegacyComposition(
       runtimeScene:
         | {
-            getLegacyCompositionRequirementReason?: () => string | null;
             getDedicatedThreeWebGPURequirementReason?: () => string | null;
           }
         | null
         | undefined
     ): boolean {
-      if (this.shouldRenderRuntimeSceneWithDedicatedThreeWebGPU(runtimeScene)) {
-        return false;
-      }
-
-      if (!this.usesHybridWebGPUComposition()) {
-        return false;
-      }
-
-      if (this._game.isFsrEnabled()) {
-        return true;
-      }
-
-      return !!runtimeScene?.getLegacyCompositionRequirementReason?.();
+      return false;
     }
 
     getPixiRendererForRuntimeScene(
       runtimeScene:
         | {
-            getLegacyCompositionRequirementReason?: () => string | null;
             getDedicatedThreeWebGPURequirementReason?: () => string | null;
           }
         | null
         | undefined
     ): PIXI.Renderer | null {
-      if (
-        this.shouldRenderRuntimeSceneWithLegacyComposition(runtimeScene) &&
-        this._legacyPixiRenderer
-      ) {
-        return this._legacyPixiRenderer;
-      }
-
       return this._pixiRenderer;
     }
 
     getThreeRendererForRuntimeScene(
       runtimeScene:
         | {
-            getLegacyCompositionRequirementReason?: () => string | null;
             getDedicatedThreeWebGPURequirementReason?: () => string | null;
           }
         | null
         | undefined
-    ): THREE.WebGLRenderer | null {
+    ): ThreeRendererCompat {
       if (this.shouldRenderRuntimeSceneWithDedicatedThreeWebGPU(runtimeScene)) {
-        return this._dedicatedThreeWebGpuRenderer as THREE.WebGLRenderer | null;
-      }
-
-      if (this._activeRenderingBackend === 'webgl') {
-        return this._threeRenderer;
-      }
-
-      if (this.shouldRenderRuntimeSceneWithLegacyComposition(runtimeScene)) {
-        return this._threeRenderer;
+        return this._dedicatedThreeWebGpuRenderer;
       }
 
       return null;
-    }
-
-    private _getThreePixiInteropRenderer(): PIXI.Renderer | null {
-      return this._legacyPixiRenderer || this._pixiRenderer;
     }
 
     supportsThreePixiSharedContextInterop(): boolean {
-      return gdjs.areThreeAndPixiRenderersSharingWebGLContext(
-        this._threeRenderer,
-        this._getThreePixiInteropRenderer()
-      );
+      return false;
     }
 
-    supportsThreeWebGL2(): boolean {
-      return !!this._threeRenderer && this._threeRenderer.capabilities.isWebGL2;
+    supportsThreeWebGpuInterop(): boolean {
+      return false;
     }
 
     getThreePixiInteropIssue(): string | null {
-      if (this.usesWebGPUBackend() && !this.usesHybridWebGPUComposition()) {
-        return 'Active renderer backend is WebGPU, so shared Three.js/Pixi WebGL interop is unavailable.';
-      }
-      if (!this._threeRenderer) {
-        return 'Three.js renderer is not initialized';
-      }
-      const interopPixiRenderer = this._getThreePixiInteropRenderer();
-      if (!interopPixiRenderer) {
-        return 'PixiJS renderer is not initialized';
-      }
-      if (
-        !gdjs.areThreeAndPixiRenderersSharingWebGLContext(
-          this._threeRenderer,
-          interopPixiRenderer
-        )
-      ) {
-        return 'Shared Three.js/Pixi WebGL context not available';
-      }
-      return null;
+      return 'Three.js/Pixi shared WebGL interop is disabled in WebGPU-only runtime.';
     }
 
     getFsrSupportIssue(): string | null {
-      const threePixiInteropIssue = this.getThreePixiInteropIssue();
-      if (threePixiInteropIssue) {
-        return threePixiInteropIssue;
-      }
-      if (!this.supportsThreeWebGL2()) {
-        return 'WebGL2 not supported';
-      }
-      return null;
+      return 'FSR 1.0 is disabled in WebGPU-only runtime.';
     }
 
     supportsFsrRendering(): boolean {
-      return !this.getFsrSupportIssue();
+      return false;
     }
 
     /**
@@ -1983,9 +1719,6 @@ namespace gdjs {
           .getPixelRatio === 'function'
       ) {
         return (this._dedicatedThreeWebGpuRenderer as Record<string, any>).getPixelRatio();
-      }
-      if (this._threeRenderer) {
-        return this._threeRenderer.getPixelRatio();
       }
       if (this._pixiRenderer) {
         return this._pixiRenderer.resolution;
@@ -2066,16 +1799,11 @@ namespace gdjs {
      */
     dispose(removeCanvas?: boolean) {
       this._pixiRenderer?.destroy();
-      this._legacyPixiRenderer?.destroy();
-      this._threeRenderer?.dispose();
       this._disposeDedicatedThreeWebGpuRenderer();
       this._pixiRenderer = null;
-      this._legacyPixiRenderer = null;
-      this._threeRenderer = null;
       this._dedicatedThreeWebGpuIssue = null;
       this._renderingBackendFallbackIssue = null;
       this._hybridRenderingIssue = null;
-      this._legacyRenderingCanvas = null;
 
       if (removeCanvas && this._gameCanvas) {
         this._gameCanvas.parentNode?.removeChild(this._gameCanvas);
@@ -2101,10 +1829,7 @@ namespace gdjs {
      * @returns true if WebGL is supported
      */
     isWebGLSupported(): boolean {
-      return (
-        !!this._pixiRenderer &&
-        this._pixiRenderer.type === PIXI.RendererType.WEBGL
-      ) || !!this._legacyPixiRenderer;
+      return false;
     }
 
     /**

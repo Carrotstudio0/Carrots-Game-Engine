@@ -153,11 +153,8 @@ const useCreateProject = ({
     if (newProjectSetup.scriptingMode) {
       setProjectScriptingMode(project, newProjectSetup.scriptingMode);
     }
-    if (
-      newProjectSetup.renderingBackend &&
-      typeof project.setRenderingBackend === 'function'
-    ) {
-      project.setRenderingBackend(newProjectSetup.renderingBackend);
+    if (typeof project.setRenderingBackend === 'function') {
+      project.setRenderingBackend('webgpu');
     }
   };
 

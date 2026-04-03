@@ -122,6 +122,7 @@
     "format": "prettier --write \"src/!(locales)/**/*.js\"",
     "check-format": "prettier --list-different \"src/!(locales)/**/*.js\"",
     "lint": "eslint src/ --max-warnings=0",
+    "check-webgpu-only": "node ../../scripts/check-webgpu-only.js",
     "typecheck:ts": "tsc -p tsconfig.json --noEmit",
     "test": "react-app-rewired test --env=node",
     "flow": "flow",

@@ -1,13 +1,12 @@
 namespace gdjs {
   type ThreeRendererWithNodeLibrary =
-    | THREE.WebGLRenderer
+    | gdjs.ThreeRendererCompat
     | (Record<string, any> & {
         isWebGPURenderer?: boolean;
         library?: {
           fromMaterial?: (material: THREE.Material) => THREE.Material | null;
         };
-      })
-    | null;
+      });
 
   type ThreeShadowMapType =
     | typeof THREE.BasicShadowMap

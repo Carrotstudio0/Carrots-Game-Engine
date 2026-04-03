@@ -140,7 +140,11 @@ namespace gdjs {
       },
       gameState: {
         sceneNames,
-        isWebGLSupported: runtimeGame.getRenderer().isWebGLSupported(),
+        isWebGPUSupported:
+          typeof runtimeGame.getRenderer().usesWebGPUBackend === 'function'
+            ? runtimeGame.getRenderer().usesWebGPUBackend()
+            : typeof navigator !== 'undefined' &&
+              !!(navigator as Navigator & { gpu?: GPU }).gpu,
         hasPixiRenderer: !!runtimeGame.getRenderer().getPIXIRenderer(),
         hasThreeRenderer: !!runtimeGame.getRenderer().getThreeRenderer(),
         requestedRenderingBackend: runtimeGame.getRenderingBackend(),
@@ -148,7 +152,7 @@ namespace gdjs {
           typeof runtimeGame.getRenderer().getActiveRenderingBackend ===
           'function'
             ? runtimeGame.getRenderer().getActiveRenderingBackend()
-            : 'webgl',
+            : 'webgpu',
         renderingBackendFallbackIssue:
           typeof runtimeGame.getRenderer().getRenderingBackendFallbackIssue ===
           'function'
