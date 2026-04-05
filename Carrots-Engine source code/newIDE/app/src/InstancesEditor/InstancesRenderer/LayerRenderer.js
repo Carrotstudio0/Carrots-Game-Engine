@@ -84,6 +84,10 @@ export default class LayerRenderer {
   _threeScene: THREE.Scene | null = null;
   // $FlowFixMe[value-as-type]
   _threeCamera: THREE.PerspectiveCamera | null = null;
+  // $FlowFixMe[value-as-type]
+  _threeRaycaster: THREE.Raycaster | null = null;
+  // $FlowFixMe[value-as-type]
+  _threeRaycastNdc: THREE.Vector2 | null = null;
 
   // For a 2D+3D layer, the 2D rendering is done on the render texture
   // and then must be displayed on a plane in the 3D world:
@@ -206,11 +210,20 @@ export default class LayerRenderer {
         const isVisible = this._isInstanceVisible(instance);
         if (pixiObject) {
           pixiObject.visible = isVisible;
-          pixiObject.eventMode =
-            this.layer.isLocked() ||
-            (instance.isLocked() && instance.isSealed())
-              ? 'auto'
-              : 'static';
+          if (
+            this._showObjectInstancesIn3D &&
+            renderedInstance instanceof Rendered3DInstance
+          ) {
+            // In 3D editor mode, pick 3D objects via Three.js raycasting.
+            // Keep Pixi overlays non-interactive so they don't steal pointer events.
+            pixiObject.eventMode = 'none';
+          } else {
+            pixiObject.eventMode =
+              this.layer.isLocked() ||
+              (instance.isLocked() && instance.isSealed())
+                ? 'auto'
+                : 'static';
+          }
         }
         if (isVisible) {
           const objectName = instance.getObjectName();
@@ -229,6 +242,9 @@ export default class LayerRenderer {
           const threeObject = renderedInstance.getThreeObject();
           if (threeObject) {
             threeObject.visible = isVisible;
+            const userData = (threeObject.userData =
+              threeObject.userData || {});
+            userData.__gdInitialInstance = instance;
           }
           if (this._threeGroup && threeObject) {
             this._threeGroup.add(threeObject);
@@ -303,6 +319,66 @@ export default class LayerRenderer {
   ): RenderedInstance | Rendered3DInstance | null {
     if (!this.renderedInstances.hasOwnProperty(instance.ptr)) return null;
     return this.renderedInstances[instance.ptr];
+  }
+
+  pick3DInstanceAtCanvasPosition(
+    canvasX: number,
+    canvasY: number,
+    options?: {| lightObjectsOnly?: boolean |}
+  ): gdInitialInstance | null {
+    if (!this._showObjectInstancesIn3D || !this._threeCamera) {
+      return null;
+    }
+
+    const width = this.viewPosition.getWidth();
+    const height = this.viewPosition.getHeight();
+    if (width <= 0 || height <= 0) {
+      return null;
+    }
+
+    if (!this._threeRaycaster) {
+      this._threeRaycaster = new THREE.Raycaster();
+    }
+    if (!this._threeRaycastNdc) {
+      this._threeRaycastNdc = new THREE.Vector2();
+    }
+    const raycaster = this._threeRaycaster;
+    const raycastNdc = this._threeRaycastNdc;
+    raycastNdc.set((canvasX / width) * 2 - 1, -(canvasY / height) * 2 + 1);
+    raycaster.setFromCamera(raycastNdc, this._threeCamera);
+    if (raycaster.params && raycaster.params.Line) {
+      raycaster.params.Line.threshold = 0.2;
+    }
+
+    const pickTargets = [];
+    for (const instancePtr in this.renderedInstances) {
+      if (!this.renderedInstances.hasOwnProperty(instancePtr)) continue;
+      const renderedInstance = this.renderedInstances[instancePtr];
+      if (!(renderedInstance instanceof Rendered3DInstance)) continue;
+      const threeObject = renderedInstance.getThreeObject();
+      if (!threeObject || !threeObject.visible) continue;
+      pickTargets.push(threeObject);
+    }
+    if (pickTargets.length === 0) {
+      return null;
+    }
+
+    const intersections = raycaster.intersectObjects(pickTargets, true);
+    const lightObjectsOnly = !!(options && options.lightObjectsOnly);
+    for (let i = 0; i < intersections.length; i++) {
+      let currentObject = intersections[i].object;
+      while (currentObject) {
+        const userData = currentObject.userData || {};
+        if (
+          userData.__gdInitialInstance &&
+          (!lightObjectsOnly || !!userData.__gdLightObjectPick)
+        ) {
+          return userData.__gdInitialInstance;
+        }
+        currentObject = currentObject.parent;
+      }
+    }
+    return null;
   }
 
   getUnrotatedInstanceLeft = (instance: gdInitialInstance): any => {
@@ -477,114 +553,121 @@ export default class LayerRenderer {
         );
       }
 
-      renderedInstance._pixiObject.eventMode = 'static';
-      panable(renderedInstance._pixiObject);
-      makeDoubleClickable(renderedInstance._pixiObject);
-      renderedInstance._pixiObject.addEventListener('click', event => {
-        if (event.data.originalEvent.button === 0)
-          this.onInstanceClicked(instance);
-      });
-      renderedInstance._pixiObject.addEventListener('doubleclick', () => {
-        this.onInstanceDoubleClicked(instance);
-      });
-      renderedInstance._pixiObject.addEventListener('mouseover', () => {
-        this.onOverInstance(instance);
-      });
-      renderedInstance._pixiObject.addEventListener(
-        'mousedown',
-        // $FlowFixMe[value-as-type]
-        (event: PIXI.InteractionEvent) => {
-          if (event.data.originalEvent.button === 0) {
-            const viewPoint = event.data.global;
+      const shouldUse3DRaycastPicking =
+        this._showObjectInstancesIn3D &&
+        renderedInstance instanceof Rendered3DInstance;
+      if (shouldUse3DRaycastPicking) {
+        renderedInstance._pixiObject.eventMode = 'none';
+      } else {
+        renderedInstance._pixiObject.eventMode = 'static';
+        panable(renderedInstance._pixiObject);
+        makeDoubleClickable(renderedInstance._pixiObject);
+        renderedInstance._pixiObject.addEventListener('click', event => {
+          if (event.data.originalEvent.button === 0)
+            this.onInstanceClicked(instance);
+        });
+        renderedInstance._pixiObject.addEventListener('doubleclick', () => {
+          this.onInstanceDoubleClicked(instance);
+        });
+        renderedInstance._pixiObject.addEventListener('mouseover', () => {
+          this.onOverInstance(instance);
+        });
+        renderedInstance._pixiObject.addEventListener(
+          'mousedown',
+          // $FlowFixMe[value-as-type]
+          (event: PIXI.InteractionEvent) => {
+            if (event.data.originalEvent.button === 0) {
+              const viewPoint = event.data.global;
+              const scenePoint = this.viewPosition.toSceneCoordinates(
+                viewPoint.x,
+                viewPoint.y
+              );
+              this.onDownInstance(instance, scenePoint[0], scenePoint[1]);
+            }
+          }
+        );
+        renderedInstance._pixiObject.addEventListener(
+          'mouseup',
+          // $FlowFixMe[value-as-type]
+          (event: PIXI.InteractionEvent) => {
+            if (event.data.originalEvent.button === 0) {
+              const viewPoint = event.data.global;
+              const scenePoint = this.viewPosition.toSceneCoordinates(
+                viewPoint.x,
+                viewPoint.y
+              );
+              this.onUpInstance(instance, scenePoint[0], scenePoint[1]);
+            }
+          }
+        );
+        renderedInstance._pixiObject.addEventListener(
+          'rightclick',
+          interactionEvent => {
+            const {
+              data: { global: viewPoint, originalEvent: event },
+            } = interactionEvent;
+
+            // First select the instance
             const scenePoint = this.viewPosition.toSceneCoordinates(
               viewPoint.x,
               viewPoint.y
             );
             this.onDownInstance(instance, scenePoint[0], scenePoint[1]);
-          }
-        }
-      );
-      renderedInstance._pixiObject.addEventListener(
-        'mouseup',
-        // $FlowFixMe[value-as-type]
-        (event: PIXI.InteractionEvent) => {
-          if (event.data.originalEvent.button === 0) {
-            const viewPoint = event.data.global;
-            const scenePoint = this.viewPosition.toSceneCoordinates(
-              viewPoint.x,
-              viewPoint.y
-            );
-            this.onUpInstance(instance, scenePoint[0], scenePoint[1]);
-          }
-        }
-      );
-      renderedInstance._pixiObject.addEventListener(
-        'rightclick',
-        interactionEvent => {
-          const {
-            data: { global: viewPoint, originalEvent: event },
-          } = interactionEvent;
 
-          // First select the instance
+            // Then call right click callback
+            if (this.onInstanceRightClicked) {
+              this.onInstanceRightClicked({
+                offsetX: event.offsetX,
+                offsetY: event.offsetY,
+                x: event.clientX,
+                y: event.clientY,
+              });
+            }
+
+            return false;
+          }
+        );
+        renderedInstance._pixiObject.addEventListener('touchstart', event => {
+          if (shouldBeHandledByPinch(event.data && event.data.originalEvent)) {
+            return null;
+          }
+
+          const viewPoint = event.data.global;
           const scenePoint = this.viewPosition.toSceneCoordinates(
             viewPoint.x,
             viewPoint.y
           );
           this.onDownInstance(instance, scenePoint[0], scenePoint[1]);
-
-          // Then call right click callback
-          if (this.onInstanceRightClicked) {
-            this.onInstanceRightClicked({
-              offsetX: event.offsetX,
-              offsetY: event.offsetY,
-              x: event.clientX,
-              y: event.clientY,
-            });
-          }
-
-          return false;
-        }
-      );
-      renderedInstance._pixiObject.addEventListener('touchstart', event => {
-        if (shouldBeHandledByPinch(event.data && event.data.originalEvent)) {
-          return null;
-        }
-
-        const viewPoint = event.data.global;
-        const scenePoint = this.viewPosition.toSceneCoordinates(
-          viewPoint.x,
-          viewPoint.y
-        );
-        this.onDownInstance(instance, scenePoint[0], scenePoint[1]);
-      });
-      renderedInstance._pixiObject.addEventListener('touchend', event => {
-        if (shouldBeHandledByPinch(event.data && event.data.originalEvent)) {
-          return null;
-        }
-
-        const viewPoint = event.data.global;
-        const scenePoint = this.viewPosition.toSceneCoordinates(
-          viewPoint.x,
-          viewPoint.y
-        );
-        this.onUpInstance(instance, scenePoint[0], scenePoint[1]);
-      });
-      renderedInstance._pixiObject.addEventListener('mouseout', () => {
-        this.onOutInstance(instance);
-      });
-      renderedInstance._pixiObject.addEventListener(
-        'panmove',
-        (event: PanMoveEvent) => {
+        });
+        renderedInstance._pixiObject.addEventListener('touchend', event => {
           if (shouldBeHandledByPinch(event.data && event.data.originalEvent)) {
             return null;
           }
 
-          this.onMoveInstance(instance, event.deltaX, event.deltaY);
-        }
-      );
-      renderedInstance._pixiObject.addEventListener('panend', event => {
-        this.onMoveInstanceEnd();
-      });
+          const viewPoint = event.data.global;
+          const scenePoint = this.viewPosition.toSceneCoordinates(
+            viewPoint.x,
+            viewPoint.y
+          );
+          this.onUpInstance(instance, scenePoint[0], scenePoint[1]);
+        });
+        renderedInstance._pixiObject.addEventListener('mouseout', () => {
+          this.onOutInstance(instance);
+        });
+        renderedInstance._pixiObject.addEventListener(
+          'panmove',
+          (event: PanMoveEvent) => {
+            if (shouldBeHandledByPinch(event.data && event.data.originalEvent)) {
+              return null;
+            }
+
+            this.onMoveInstance(instance, event.deltaX, event.deltaY);
+          }
+        );
+        renderedInstance._pixiObject.addEventListener('panend', event => {
+          this.onMoveInstanceEnd();
+        });
+      }
     }
 
     return renderedInstance;

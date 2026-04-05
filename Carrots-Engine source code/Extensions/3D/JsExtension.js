@@ -4280,17 +4280,16 @@ module.exports = {
       .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
       .addIncludeFile('Extensions/3D/Primitive3DRuntimeObjects.js');
 
-    const SpotLightObject = new gd.ObjectJsImplementation();
-    SpotLightObject.updateProperty = function (propertyName, newValue) {
+    const PointLightObject = new gd.ObjectJsImplementation();
+    PointLightObject.updateProperty = function (propertyName, newValue) {
       const objectContent = this.content;
       if (
         propertyName === 'width' ||
         propertyName === 'height' ||
         propertyName === 'depth' ||
         propertyName === 'intensity' ||
+        propertyName === 'power' ||
         propertyName === 'distance' ||
-        propertyName === 'angle' ||
-        propertyName === 'penumbra' ||
         propertyName === 'decay' ||
         propertyName === 'shadowBias' ||
         propertyName === 'shadowNormalBias' ||
@@ -4320,7 +4319,323 @@ module.exports = {
       if (
         propertyName === 'enabled' ||
         propertyName === 'castShadow' ||
-        propertyName === 'guardrailsEnabled'
+        propertyName === 'usePhysicalUnits' ||
+        propertyName === 'shadowAutoTuning' ||
+        propertyName === 'showDebugGizmos'
+      ) {
+        objectContent[propertyName] = newValue === '1' || newValue === 'true';
+        return true;
+      }
+      return false;
+    };
+    PointLightObject.getProperties = function () {
+      const objectProperties = new gd.MapStringPropertyDescriptor();
+      const objectContent = this.content;
+
+      objectProperties
+        .getOrCreate('enabled')
+        .setValue(objectContent.enabled ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Enabled'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('color')
+        .setValue(objectContent.color || '255;255;255')
+        .setType('Color')
+        .setLabel(_('Color'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('intensity')
+        .setValue(
+          (
+            objectContent.intensity !== undefined ? objectContent.intensity : 2.2
+          ).toString()
+        )
+        .setType('number')
+        .setLabel(_('Intensity'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('usePhysicalUnits')
+        .setValue(
+          objectContent.usePhysicalUnits === undefined ||
+            objectContent.usePhysicalUnits
+            ? 'true'
+            : 'false'
+        )
+        .setType('boolean')
+        .setLabel(_('Physical light units'))
+        .setDescription(
+          _(
+            'Use physically-correct units (lumens-like power) when Lighting Pipeline is enabled.'
+          )
+        )
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('power')
+        .setValue((objectContent.power !== undefined ? objectContent.power : 2600).toString())
+        .setType('number')
+        .setLabel(_('Power (physical)'))
+        .setDescription(
+          _('Power used when physical units are enabled (three.js style).')
+        )
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('distance')
+        .setValue(
+          (
+            objectContent.distance !== undefined ? objectContent.distance : 900
+          ).toString()
+        )
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Distance'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('decay')
+        .setValue(
+          (objectContent.decay !== undefined ? objectContent.decay : 2).toString()
+        )
+        .setType('number')
+        .setLabel(_('Decay'))
+        .setGroup(_('Light'));
+
+      objectProperties
+        .getOrCreate('castShadow')
+        .setValue(objectContent.castShadow ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Cast shadow'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowQuality')
+        .setValue(objectContent.shadowQuality || 'high')
+        .setType('choice')
+        .addChoice('low', _('Low quality'))
+        .addChoice('medium', _('Medium quality'))
+        .addChoice('high', _('High quality'))
+        .setLabel(_('Shadow quality'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowBias')
+        .setValue(
+          (
+            objectContent.shadowBias !== undefined
+              ? objectContent.shadowBias
+              : 0.001
+          ).toString()
+        )
+        .setType('number')
+        .setLabel(_('Shadow bias'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowNormalBias')
+        .setValue(
+          (
+            objectContent.shadowNormalBias !== undefined
+              ? objectContent.shadowNormalBias
+              : 0.02
+          ).toString()
+        )
+        .setType('number')
+        .setLabel(_('Shadow normal bias'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowRadius')
+        .setValue(
+          (
+            objectContent.shadowRadius !== undefined
+              ? objectContent.shadowRadius
+              : 2
+          ).toString()
+        )
+        .setType('number')
+        .setLabel(_('Shadow softness'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowNear')
+        .setValue(
+          (
+            objectContent.shadowNear !== undefined ? objectContent.shadowNear : 1
+          ).toString()
+        )
+        .setType('number')
+        .setLabel(_('Shadow near'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowFar')
+        .setValue(
+          (
+            objectContent.shadowFar !== undefined ? objectContent.shadowFar : 2000
+          ).toString()
+        )
+        .setType('number')
+        .setLabel(_('Shadow far'))
+        .setGroup(_('Shadows'));
+      objectProperties
+        .getOrCreate('shadowAutoTuning')
+        .setValue(
+          objectContent.shadowAutoTuning === undefined ||
+            objectContent.shadowAutoTuning
+            ? 'true'
+            : 'false'
+        )
+        .setType('boolean')
+        .setLabel(_('Auto shadow tuning'))
+        .setDescription(
+          _(
+            'Automatically adapts shadow bias and normal-bias for cleaner and more stable shadows.'
+          )
+        )
+        .setGroup(_('Shadows'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('showDebugGizmos')
+        .setValue(
+          objectContent.showDebugGizmos === undefined || objectContent.showDebugGizmos
+            ? 'true'
+            : 'false'
+        )
+        .setType('boolean')
+        .setLabel(_('Show debug gizmos'))
+        .setDescription(_('Show range rings/helpers while editing.'))
+        .setGroup(_('Editor'))
+        .setAdvanced(true);
+
+      objectProperties
+        .getOrCreate('width')
+        .setValue((objectContent.width || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo width'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('height')
+        .setValue((objectContent.height || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo height'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('depth')
+        .setValue((objectContent.depth || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo depth'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+
+      return objectProperties;
+    };
+    PointLightObject.content = {
+      width: 64,
+      height: 64,
+      depth: 64,
+      enabled: true,
+      color: '255;255;255',
+      intensity: 2.2,
+      usePhysicalUnits: true,
+      power: 2600,
+      distance: 900,
+      decay: 2,
+      castShadow: false,
+      shadowQuality: 'high',
+      shadowBias: 0.001,
+      shadowNormalBias: 0.02,
+      shadowRadius: 2,
+      shadowNear: 1,
+      shadowFar: 2000,
+      shadowAutoTuning: true,
+      showDebugGizmos: true,
+    };
+    PointLightObject.updateInitialInstanceProperty = function (
+      instance,
+      propertyName,
+      newValue
+    ) {
+      return false;
+    };
+    PointLightObject.getInitialInstanceProperties = function (instance) {
+      return new gd.MapStringPropertyDescriptor();
+    };
+
+    extension
+      .addObject(
+        'PointLightObject',
+        _('3D Point Light'),
+        _(
+          'A 3D point light object with transform gizmos and runtime lighting.'
+        ),
+        'JsPlatform/Extensions/3d_box.svg',
+        PointLightObject
+      )
+      .setCategory('General')
+      .addDefaultBehavior('ResizableCapability::ResizableBehavior')
+      .addDefaultBehavior('ScalableCapability::ScalableBehavior')
+      .addDefaultBehavior('FlippableCapability::FlippableBehavior')
+      .addDefaultBehavior('Scene3D::Base3DBehavior')
+      .markAsRenderedIn3D()
+      .setIncludeFile('Extensions/3D/A_RuntimeObject3D.js')
+      .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
+      .addIncludeFile('Extensions/3D/PointLightRuntimeObject.js');
+
+    const SpotLightObject = new gd.ObjectJsImplementation();
+    SpotLightObject.updateProperty = function (propertyName, newValue) {
+      const objectContent = this.content;
+      if (
+        propertyName === 'width' ||
+        propertyName === 'height' ||
+        propertyName === 'depth' ||
+        propertyName === 'intensity' ||
+        propertyName === 'power' ||
+        propertyName === 'distance' ||
+        propertyName === 'angle' ||
+        propertyName === 'penumbra' ||
+        propertyName === 'decay' ||
+        propertyName === 'shadowBias' ||
+        propertyName === 'shadowNormalBias' ||
+        propertyName === 'shadowRadius' ||
+        propertyName === 'shadowNear' ||
+        propertyName === 'shadowFar' ||
+        propertyName === 'targetOffsetX' ||
+        propertyName === 'targetOffsetY' ||
+        propertyName === 'targetOffsetZ' ||
+        propertyName === 'physicsBounceIntensityScale' ||
+        propertyName === 'physicsBounceDistance' ||
+        propertyName === 'physicsBounceOriginOffset' ||
+        propertyName === 'physicsBounceSurfaceTintStrength' ||
+        propertyName === 'physicsBounceSurfaceEnergyScale'
+      ) {
+        objectContent[propertyName] = parseFloat(newValue);
+        return true;
+      }
+      if (propertyName === 'color') {
+        objectContent.color = newValue;
+        return true;
+      }
+      if (propertyName === 'shadowQuality') {
+        const normalizedValue = newValue.toLowerCase();
+        if (
+          normalizedValue === 'low' ||
+          normalizedValue === 'medium' ||
+          normalizedValue === 'high'
+        ) {
+          objectContent.shadowQuality = normalizedValue;
+          return true;
+        }
+        return false;
+      }
+      if (
+        propertyName === 'enabled' ||
+        propertyName === 'castShadow' ||
+        propertyName === 'guardrailsEnabled' ||
+        propertyName === 'enableTargetHandle' ||
+        propertyName === 'showDebugGizmos' ||
+        propertyName === 'usePhysicalUnits' ||
+        propertyName === 'shadowAutoTuning' ||
+        propertyName === 'physicsBounceEnabled' ||
+        propertyName === 'physicsBounceCastShadow' ||
+        propertyName === 'physicsBounceUseSurfaceResponse'
       ) {
         objectContent[propertyName] = newValue === '1' || newValue === 'true';
         return true;
@@ -4345,27 +4660,66 @@ module.exports = {
         .setGroup(_('Light'));
       objectProperties
         .getOrCreate('intensity')
-        .setValue((objectContent.intensity || 1).toString())
+        .setValue(
+          (
+            objectContent.intensity !== undefined ? objectContent.intensity : 2.2
+          ).toString()
+        )
         .setType('number')
         .setLabel(_('Intensity'))
         .setGroup(_('Light'));
       objectProperties
+        .getOrCreate('usePhysicalUnits')
+        .setValue(
+          objectContent.usePhysicalUnits === undefined ||
+            objectContent.usePhysicalUnits
+            ? 'true'
+            : 'false'
+        )
+        .setType('boolean')
+        .setLabel(_('Physical light units'))
+        .setDescription(
+          _(
+            'Use physically-correct units (lumens-like power) when Lighting Pipeline is enabled.'
+          )
+        )
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('power')
+        .setValue((objectContent.power !== undefined ? objectContent.power : 3200).toString())
+        .setType('number')
+        .setLabel(_('Power (physical)'))
+        .setDescription(
+          _('Power used when physical units are enabled (three.js style).')
+        )
+        .setGroup(_('Light'));
+      objectProperties
         .getOrCreate('distance')
-        .setValue((objectContent.distance || 600).toString())
+        .setValue(
+          (
+            objectContent.distance !== undefined ? objectContent.distance : 950
+          ).toString()
+        )
         .setType('number')
         .setMeasurementUnit(gd.MeasurementUnit.getPixel())
         .setLabel(_('Distance'))
         .setGroup(_('Light'));
       objectProperties
         .getOrCreate('angle')
-        .setValue((objectContent.angle || 45).toString())
+        .setValue(
+          (objectContent.angle !== undefined ? objectContent.angle : 40).toString()
+        )
         .setType('number')
         .setMeasurementUnit(gd.MeasurementUnit.getDegreeAngle())
         .setLabel(_('Cone angle'))
         .setGroup(_('Light'));
       objectProperties
         .getOrCreate('penumbra')
-        .setValue((objectContent.penumbra || 0.1).toString())
+        .setValue(
+          (
+            objectContent.penumbra !== undefined ? objectContent.penumbra : 0.22
+          ).toString()
+        )
         .setType('number')
         .setLabel(_('Penumbra'))
         .setGroup(_('Light'));
@@ -4384,7 +4738,7 @@ module.exports = {
         .setGroup(_('Shadows'));
       objectProperties
         .getOrCreate('shadowQuality')
-        .setValue(objectContent.shadowQuality || 'medium')
+        .setValue(objectContent.shadowQuality || 'high')
         .setType('choice')
         .addChoice('low', _('Low quality'))
         .addChoice('medium', _('Medium quality'))
@@ -4405,7 +4759,7 @@ module.exports = {
         .setGroup(_('Shadows'));
       objectProperties
         .getOrCreate('shadowRadius')
-        .setValue((objectContent.shadowRadius || 1.5).toString())
+        .setValue((objectContent.shadowRadius || 2).toString())
         .setType('number')
         .setLabel(_('Shadow softness'))
         .setGroup(_('Shadows'));
@@ -4422,6 +4776,23 @@ module.exports = {
         .setLabel(_('Shadow far'))
         .setGroup(_('Shadows'));
       objectProperties
+        .getOrCreate('shadowAutoTuning')
+        .setValue(
+          objectContent.shadowAutoTuning === undefined ||
+            objectContent.shadowAutoTuning
+            ? 'true'
+            : 'false'
+        )
+        .setType('boolean')
+        .setLabel(_('Auto shadow tuning'))
+        .setDescription(
+          _(
+            'Automatically adapts shadow bias and normal-bias for cleaner and more stable spot shadows.'
+          )
+        )
+        .setGroup(_('Shadows'))
+        .setAdvanced(true);
+      objectProperties
         .getOrCreate('guardrailsEnabled')
         .setValue(objectContent.guardrailsEnabled ? 'true' : 'false')
         .setType('boolean')
@@ -4432,6 +4803,164 @@ module.exports = {
           )
         )
         .setGroup(_('Advanced'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('enableTargetHandle')
+        .setValue(objectContent.enableTargetHandle ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Enable target handle'))
+        .setDescription(
+          _(
+            'Show and use a target handle to control the spotlight direction in 3D editor/runtime.'
+          )
+        )
+        .setGroup(_('Target'));
+      objectProperties
+        .getOrCreate('targetOffsetX')
+        .setValue(
+          (objectContent.targetOffsetX !== undefined
+            ? objectContent.targetOffsetX
+            : 0
+          ).toString()
+        )
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Target offset X'))
+        .setGroup(_('Target'));
+      objectProperties
+        .getOrCreate('targetOffsetY')
+        .setValue(
+          (objectContent.targetOffsetY !== undefined
+            ? objectContent.targetOffsetY
+            : 0
+          ).toString()
+        )
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Target offset Y'))
+        .setGroup(_('Target'));
+      objectProperties
+        .getOrCreate('targetOffsetZ')
+        .setValue(
+          (objectContent.targetOffsetZ !== undefined
+            ? objectContent.targetOffsetZ
+            : -950
+          ).toString()
+        )
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Target offset Z'))
+        .setGroup(_('Target'));
+      objectProperties
+        .getOrCreate('physicsBounceEnabled')
+        .setValue(objectContent.physicsBounceEnabled ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Physics bounce'))
+        .setDescription(
+          _(
+            'Spawn a reflected secondary spotlight using Physics3D raycast reflection data.'
+          )
+        )
+        .setGroup(_('Bounce'));
+      objectProperties
+        .getOrCreate('physicsBounceIntensityScale')
+        .setValue(
+          (
+            objectContent.physicsBounceIntensityScale !== undefined
+              ? objectContent.physicsBounceIntensityScale
+              : 0.35
+          ).toString()
+        )
+        .setType('number')
+        .setLabel(_('Bounce intensity scale'))
+        .setGroup(_('Bounce'));
+      objectProperties
+        .getOrCreate('physicsBounceDistance')
+        .setValue(
+          (
+            objectContent.physicsBounceDistance !== undefined
+              ? objectContent.physicsBounceDistance
+              : 380
+          ).toString()
+        )
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Bounce distance'))
+        .setGroup(_('Bounce'));
+      objectProperties
+        .getOrCreate('physicsBounceOriginOffset')
+        .setValue(
+          (
+            objectContent.physicsBounceOriginOffset !== undefined
+              ? objectContent.physicsBounceOriginOffset
+              : 2
+          ).toString()
+        )
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Bounce origin offset'))
+        .setGroup(_('Bounce'));
+      objectProperties
+        .getOrCreate('physicsBounceCastShadow')
+        .setValue(objectContent.physicsBounceCastShadow ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Bounce casts shadow'))
+        .setGroup(_('Bounce'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('physicsBounceUseSurfaceResponse')
+        .setValue(
+          objectContent.physicsBounceUseSurfaceResponse === undefined ||
+            objectContent.physicsBounceUseSurfaceResponse
+            ? 'true'
+            : 'false'
+        )
+        .setType('boolean')
+        .setLabel(_('Surface response'))
+        .setDescription(
+          _('Tint and energy-loss of the bounce based on the hit object material.')
+        )
+        .setGroup(_('Bounce'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('physicsBounceSurfaceTintStrength')
+        .setValue(
+          (
+            objectContent.physicsBounceSurfaceTintStrength !== undefined
+              ? objectContent.physicsBounceSurfaceTintStrength
+              : 0.75
+          ).toString()
+        )
+        .setType('number')
+        .setLabel(_('Surface tint strength'))
+        .setGroup(_('Bounce'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('physicsBounceSurfaceEnergyScale')
+        .setValue(
+          (
+            objectContent.physicsBounceSurfaceEnergyScale !== undefined
+              ? objectContent.physicsBounceSurfaceEnergyScale
+              : 1
+          ).toString()
+        )
+        .setType('number')
+        .setLabel(_('Surface energy scale'))
+        .setGroup(_('Bounce'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('showDebugGizmos')
+        .setValue(
+          objectContent.showDebugGizmos === undefined || objectContent.showDebugGizmos
+            ? 'true'
+            : 'false'
+        )
+        .setType('boolean')
+        .setLabel(_('Show debug gizmos'))
+        .setDescription(
+          _('Show beam lines, cone and range helper while editing.')
+        )
+        .setGroup(_('Editor'))
         .setAdvanced(true);
 
       objectProperties
@@ -4467,19 +4996,35 @@ module.exports = {
       depth: 64,
       enabled: true,
       color: '255;255;255',
-      intensity: 1.2,
-      distance: 600,
-      angle: 45,
-      penumbra: 0.1,
+      intensity: 2.2,
+      usePhysicalUnits: true,
+      power: 3200,
+      distance: 950,
+      angle: 40,
+      penumbra: 0.22,
       decay: 2,
-      castShadow: true,
-      shadowQuality: 'medium',
+      castShadow: false,
+      shadowQuality: 'high',
       shadowBias: 0.001,
       shadowNormalBias: 0.02,
-      shadowRadius: 1.5,
+      shadowRadius: 2,
       shadowNear: 1,
       shadowFar: 2000,
+      shadowAutoTuning: true,
       guardrailsEnabled: true,
+      enableTargetHandle: true,
+      targetOffsetX: 0,
+      targetOffsetY: 0,
+      targetOffsetZ: -950,
+      physicsBounceEnabled: false,
+      physicsBounceIntensityScale: 0.35,
+      physicsBounceDistance: 380,
+      physicsBounceOriginOffset: 2,
+      physicsBounceCastShadow: false,
+      physicsBounceUseSurfaceResponse: true,
+      physicsBounceSurfaceTintStrength: 0.75,
+      physicsBounceSurfaceEnergyScale: 1,
+      showDebugGizmos: true,
     };
     SpotLightObject.updateInitialInstanceProperty = function (
       instance,
@@ -4509,6 +5054,198 @@ module.exports = {
       .setIncludeFile('Extensions/3D/A_RuntimeObject3D.js')
       .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
       .addIncludeFile('Extensions/3D/SpotLightRuntimeObject.js');
+
+    const RectAreaLightObject = new gd.ObjectJsImplementation();
+    RectAreaLightObject.updateProperty = function (propertyName, newValue) {
+      const objectContent = this.content;
+      if (
+        propertyName === 'width' ||
+        propertyName === 'height' ||
+        propertyName === 'depth' ||
+        propertyName === 'intensity' ||
+        propertyName === 'power' ||
+        propertyName === 'lightWidth' ||
+        propertyName === 'lightHeight'
+      ) {
+        objectContent[propertyName] = parseFloat(newValue);
+        return true;
+      }
+      if (propertyName === 'color') {
+        objectContent.color = newValue;
+        return true;
+      }
+      if (
+        propertyName === 'enabled' ||
+        propertyName === 'usePhysicalUnits' ||
+        propertyName === 'showDebugGizmos'
+      ) {
+        objectContent[propertyName] = newValue === '1' || newValue === 'true';
+        return true;
+      }
+      return false;
+    };
+    RectAreaLightObject.getProperties = function () {
+      const objectProperties = new gd.MapStringPropertyDescriptor();
+      const objectContent = this.content;
+
+      objectProperties
+        .getOrCreate('enabled')
+        .setValue(objectContent.enabled ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Enabled'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('color')
+        .setValue(objectContent.color || '255;255;255')
+        .setType('Color')
+        .setLabel(_('Color'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('intensity')
+        .setValue(
+          (
+            objectContent.intensity !== undefined ? objectContent.intensity : 35
+          ).toString()
+        )
+        .setType('number')
+        .setLabel(_('Intensity'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('usePhysicalUnits')
+        .setValue(
+          objectContent.usePhysicalUnits === undefined ||
+            objectContent.usePhysicalUnits
+            ? 'true'
+            : 'false'
+        )
+        .setType('boolean')
+        .setLabel(_('Physical light units'))
+        .setDescription(
+          _(
+            'Use physically-correct units (lumens-like power) when Lighting Pipeline is enabled.'
+          )
+        )
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('power')
+        .setValue(
+          (objectContent.power !== undefined ? objectContent.power : 22000).toString()
+        )
+        .setType('number')
+        .setLabel(_('Power (physical)'))
+        .setDescription(
+          _('Power used when physical units are enabled (three.js style).')
+        )
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('lightWidth')
+        .setValue(
+          (
+            objectContent.lightWidth !== undefined ? objectContent.lightWidth : 220
+          ).toString()
+        )
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Light width'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('lightHeight')
+        .setValue(
+          (
+            objectContent.lightHeight !== undefined
+              ? objectContent.lightHeight
+              : 120
+          ).toString()
+        )
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Light height'))
+        .setGroup(_('Light'));
+      objectProperties
+        .getOrCreate('showDebugGizmos')
+        .setValue(
+          objectContent.showDebugGizmos === undefined || objectContent.showDebugGizmos
+            ? 'true'
+            : 'false'
+        )
+        .setType('boolean')
+        .setLabel(_('Show debug gizmos'))
+        .setDescription(
+          _('Show a helper wireframe for area size while editing in 3D.')
+        )
+        .setGroup(_('Editor'))
+        .setAdvanced(true);
+
+      objectProperties
+        .getOrCreate('width')
+        .setValue((objectContent.width || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo width'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('height')
+        .setValue((objectContent.height || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo height'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('depth')
+        .setValue((objectContent.depth || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo depth'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+
+      return objectProperties;
+    };
+    RectAreaLightObject.content = {
+      width: 64,
+      height: 64,
+      depth: 64,
+      enabled: true,
+      color: '255;255;255',
+      intensity: 35,
+      usePhysicalUnits: true,
+      power: 22000,
+      lightWidth: 180,
+      lightHeight: 90,
+      showDebugGizmos: true,
+    };
+    RectAreaLightObject.updateInitialInstanceProperty = function (
+      instance,
+      propertyName,
+      newValue
+    ) {
+      return false;
+    };
+    RectAreaLightObject.getInitialInstanceProperties = function (instance) {
+      return new gd.MapStringPropertyDescriptor();
+    };
+
+    extension
+      .addObject(
+        'RectAreaLightObject',
+        _('3D Rect Area Light'),
+        _(
+          'A 3D rectangular area light object with transform gizmos and runtime lighting.'
+        ),
+        'JsPlatform/Extensions/3d_box.svg',
+        RectAreaLightObject
+      )
+      .setCategory('General')
+      .addDefaultBehavior('ResizableCapability::ResizableBehavior')
+      .addDefaultBehavior('ScalableCapability::ScalableBehavior')
+      .addDefaultBehavior('FlippableCapability::FlippableBehavior')
+      .addDefaultBehavior('Scene3D::Base3DBehavior')
+      .markAsRenderedIn3D()
+      .setIncludeFile('Extensions/3D/A_RuntimeObject3D.js')
+      .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
+      .addIncludeFile('Extensions/3D/RectAreaLightRuntimeObject.js');
 
     extension
       .addExpressionAndConditionAndAction(
@@ -4893,7 +5630,7 @@ module.exports = {
         .setType('choice');
       properties
         .getOrCreate('realtimeWeight')
-        .setValue('0.75')
+        .setValue('1')
         .setLabel(_('Realtime weight'))
         .setDescription(
           _('Weight of realtime lighting contribution in hybrid mode (0 to 1).')
@@ -4919,7 +5656,7 @@ module.exports = {
         .setGroup(_('Probes'));
       properties
         .getOrCreate('probeIntensity')
-        .setValue('0.35')
+        .setValue('0.5')
         .setLabel(_('Probe intensity'))
         .setDescription(_('Intensity of probe-based indirect fill lighting.'))
         .setType('number')
@@ -4964,7 +5701,7 @@ module.exports = {
         .setAdvanced(true);
       properties
         .getOrCreate('attenuationModel')
-        .setValue('balanced')
+        .setValue('physical')
         .addChoice('physical', _('Physical'))
         .addChoice('balanced', _('Balanced'))
         .addChoice('cinematic', _('Cinematic'))
@@ -4999,7 +5736,7 @@ module.exports = {
         .setAdvanced(true);
       properties
         .getOrCreate('shadowQualityScale')
-        .setValue('1')
+        .setValue('1.2')
         .setLabel(_('Shadow quality scale'))
         .setDescription(
           _(
@@ -5016,6 +5753,348 @@ module.exports = {
         .setDescription(
           _(
             'Global multiplier for LOD distances. Values > 1 keep higher detail farther from camera.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('adaptivePerformanceEnabled')
+        .setValue('true')
+        .setLabel(_('Adaptive performance'))
+        .setDescription(
+          _(
+            'Automatically lowers expensive 3D lighting/LOD settings when framerate drops, then restores quality when stable.'
+          )
+        )
+        .setType('boolean')
+        .setGroup(_('Performance'));
+      properties
+        .getOrCreate('targetFrameRate')
+        .setValue('60')
+        .setLabel(_('Target frame rate'))
+        .setDescription(
+          _('Desired framerate used by adaptive performance (20 to 240).')
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('minAdaptiveShadowQualityScale')
+        .setValue('0.75')
+        .setLabel(_('Min adaptive shadow scale'))
+        .setDescription(
+          _(
+            'Lowest shadow quality scale allowed when adaptive performance is active.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('minAdaptiveLodDistanceScale')
+        .setValue('0.55')
+        .setLabel(_('Min adaptive LOD distance scale'))
+        .setDescription(
+          _(
+            'Lowest global LOD distance scale allowed when adaptive performance is active.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('maxAdaptiveLodUpdateIntervalScale')
+        .setValue('2.2')
+        .setLabel(_('Max adaptive LOD update interval scale'))
+        .setDescription(
+          _(
+            'Maximum multiplier applied to LOD update interval during heavy frame pressure.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('shaderPrecompileEnabled')
+        .setValue('true')
+        .setLabel(_('Shader precompile'))
+        .setDescription(
+          _(
+            'Enable runtime shader precompile/cache for scene materials and all post-processing passes.'
+          )
+        )
+        .setType('boolean')
+        .setGroup(_('Performance'));
+      properties
+        .getOrCreate('shaderOptimizePostEffects')
+        .setValue('true')
+        .setLabel(_('Precompile post effects'))
+        .setDescription(
+          _(
+            'Precompile post-processing pass materials (Bloom, SSAO, SSR, Fog, ColorGrading, etc.).'
+          )
+        )
+        .setType('boolean')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('shaderIncludeSceneVariants')
+        .setValue('true')
+        .setLabel(_('Precompile scene variants'))
+        .setDescription(
+          _(
+            'Precompile scene material/light variants so runtime lighting and PBR combinations are ready before spikes happen.'
+          )
+        )
+        .setType('boolean')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('shaderWarmupBatchSize')
+        .setValue('2')
+        .setLabel(_('Shader warmup batch size'))
+        .setDescription(
+          _(
+            'How many shader variants are precompiled per warmup step. Higher values warm up faster but cost more CPU/GPU in that frame.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('shaderCompileCadenceMs')
+        .setValue('180')
+        .setLabel(_('Shader compile cadence (ms)'))
+        .setDescription(
+          _(
+            'Minimum delay between precompile batches to avoid frame spikes.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('shaderVariantMultiplier')
+        .setValue('1')
+        .setLabel(_('Shader variant multiplier'))
+        .setDescription(
+          _(
+            'Scales warmup aggressiveness across all shader variants (materials + lighting combos).'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('shaderVerboseValidation')
+        .setValue('false')
+        .setLabel(_('Shader debug logs'))
+        .setDescription(
+          _(
+            'Enable periodic runtime logs for shader precompile progress and pending variants.'
+          )
+        )
+        .setType('boolean')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('shaderValidationThrottleMs')
+        .setValue('1200')
+        .setLabel(_('Shader debug interval (ms)'))
+        .setDescription(
+          _(
+            'Minimum interval between shader debug logs when verbose mode is enabled.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('wasmSimdEnabled')
+        .setValue('true')
+        .setLabel(_('WASM SIMD runtime'))
+        .setDescription(
+          _(
+            'Enable SIMD-capability-aware runtime optimizations for 3D math and physics snapshot pipelines.'
+          )
+        )
+        .setType('boolean')
+        .setGroup(_('Performance'));
+      properties
+        .getOrCreate('wasmSimdAutoTune')
+        .setValue('true')
+        .setLabel(_('Auto tune (SIMD)'))
+        .setDescription(
+          _(
+            'When enabled, auto-adjusts LOD/shader cadence to exploit SIMD-capable devices while preserving frame stability.'
+          )
+        )
+        .setType('boolean')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('wasmSimdMinLodObjectCount')
+        .setValue('64')
+        .setLabel(_('SIMD LOD threshold'))
+        .setDescription(
+          _(
+            'Minimum number of LOD-enabled objects before SIMD-optimized distance path is activated.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('wasmSimdMinPhysicsBodyCount')
+        .setValue('24')
+        .setLabel(_('SIMD physics threshold'))
+        .setDescription(
+          _(
+            'Minimum number of Physics3D bodies before snapshot SIMD/object-sync acceleration becomes active.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('wasmSimdEnablePhysicsWorkerPreparation')
+        .setValue('true')
+        .setLabel(_('SIMD physics workers'))
+        .setDescription(
+          _(
+            'Allow worker-based preprocessing for Physics3D transform snapshots when threads are supported.'
+          )
+        )
+        .setType('boolean')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('wasmSimdEnablePhysicsSnapshotObjectSync')
+        .setValue('true')
+        .setLabel(_('SIMD physics object sync'))
+        .setDescription(
+          _(
+            'Apply Physics3D body-to-object transform sync through shared snapshots for lower per-object update overhead.'
+          )
+        )
+        .setType('boolean')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('clusteredLightsEnabled')
+        .setValue('true')
+        .setLabel(_('Clustered local lights'))
+        .setDescription(
+          _(
+            'Enable frustum-clustered management for Spot/Point/RectArea lights to keep only the most relevant local lights active near the camera view.'
+          )
+        )
+        .setType('boolean')
+        .setGroup(_('Performance'));
+      properties
+        .getOrCreate('clusteredGridX')
+        .setValue('14')
+        .setLabel(_('Cluster grid X'))
+        .setDescription(
+          _(
+            'Horizontal cluster resolution for local lights. Higher values improve distribution but increase CPU work.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('clusteredGridY')
+        .setValue('8')
+        .setLabel(_('Cluster grid Y'))
+        .setDescription(
+          _(
+            'Vertical cluster resolution for local lights.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('clusteredGridZ')
+        .setValue('18')
+        .setLabel(_('Cluster grid Z'))
+        .setDescription(
+          _(
+            'Depth cluster resolution for local lights.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('clusteredNeighborRadius')
+        .setValue('1')
+        .setLabel(_('Cluster neighbor radius'))
+        .setDescription(
+          _(
+            'How many neighboring clusters around the center view are considered for active local lights.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('clusteredMaxLightsPerCell')
+        .setValue('3')
+        .setLabel(_('Max lights per cluster'))
+        .setDescription(
+          _(
+            'Maximum local lights selected from each cluster before global prioritization.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('clusteredMaxActiveLights')
+        .setValue('24')
+        .setLabel(_('Max active local lights'))
+        .setDescription(
+          _(
+            'Global cap for active Spot/Point/RectArea lights after clustered prioritization.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('clusteredMaxShadowLights')
+        .setValue('8')
+        .setLabel(_('Max active shadow lights'))
+        .setDescription(
+          _(
+            'Maximum number of shadow-casting local lights kept active by clustered lighting.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('clusteredUpdateCadenceMs')
+        .setValue('80')
+        .setLabel(_('Cluster update cadence (ms)'))
+        .setDescription(
+          _(
+            'Minimum interval between clustered light refreshes.'
+          )
+        )
+        .setType('number')
+        .setGroup(_('Performance'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('clusteredRangeScale')
+        .setValue('1')
+        .setLabel(_('Cluster depth range scale'))
+        .setDescription(
+          _(
+            'Scales camera far-range used by clustered light selection.'
           )
         )
         .setType('number')
@@ -5066,7 +6145,7 @@ module.exports = {
         .setType('color');
       properties
         .getOrCreate('intensity')
-        .setValue('0.5')
+        .setValue('2.2')
         .setLabel(_('Intensity'))
         .setType('number');
       properties
@@ -5100,7 +6179,7 @@ module.exports = {
         .setGroup(_('Shadows'));
       properties
         .getOrCreate('shadowQuality')
-        .setValue('medium')
+        .setValue('high')
         .addChoice('low', _('Low quality'))
         .addChoice('medium', _('Medium quality'))
         .addChoice('high', _('High quality'))
@@ -5109,7 +6188,7 @@ module.exports = {
         .setGroup(_('Shadows'));
       properties
         .getOrCreate('shadowMapSize')
-        .setValue('1024')
+        .setValue('2048')
         .setLabel(_('Shadow map size (base)'))
         .setDescription(
           _(
@@ -5529,7 +6608,7 @@ module.exports = {
         .setGroup(_('Shadows'));
       properties
         .getOrCreate('shadowQuality')
-        .setValue('medium')
+        .setValue('high')
         .addChoice('low', _('Low quality'))
         .addChoice('medium', _('Medium quality'))
         .addChoice('high', _('High quality'))
@@ -5589,6 +6668,99 @@ module.exports = {
         .setDescription(_('Maximum distance for shadows to be cast.'))
         .setType('number')
         .setGroup(_('Shadows'));
+    }
+    {
+      const effect = extension
+        .addEffect('RectAreaLight')
+        .setFullName(_('Rect area light'))
+        .setDescription(
+          _(
+            'A physically-based rectangular emitter ideal for windows, panels and softboxes. Supports PBR (MeshStandard/Physical materials).'
+          )
+        )
+        .markAsNotWorkingForObjects()
+        .markAsOnlyWorkingFor3D()
+        .addIncludeFile('Extensions/3D/RectAreaLight.js');
+      const properties = effect.getProperties();
+      properties
+        .getOrCreate('color')
+        .setValue('255;255;255')
+        .setLabel(_('Light color'))
+        .setType('color');
+      properties
+        .getOrCreate('intensity')
+        .setValue('40')
+        .setLabel(_('Intensity'))
+        .setDescription(
+          _(
+            'Physical intensity of the rectangular emitter. Tune with Tone Mapping exposure for best results.'
+          )
+        )
+        .setType('number');
+      properties
+        .getOrCreate('top')
+        .setValue('Z+')
+        .setLabel(_('3D world top'))
+        .setType('choice')
+        .addExtraInfo('Z+')
+        .addExtraInfo('Y-')
+        .setGroup(_('Light position'));
+      properties
+        .getOrCreate('positionX')
+        .setValue('0')
+        .setLabel(_('X position'))
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setGroup(_('Light position'));
+      properties
+        .getOrCreate('positionY')
+        .setValue('0')
+        .setLabel(_('Y position'))
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setGroup(_('Light position'));
+      properties
+        .getOrCreate('positionZ')
+        .setValue('500')
+        .setLabel(_('Z position (height)'))
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setGroup(_('Light position'));
+      properties
+        .getOrCreate('targetX')
+        .setValue('0')
+        .setLabel(_('Target X position'))
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setGroup(_('Target position'));
+      properties
+        .getOrCreate('targetY')
+        .setValue('0')
+        .setLabel(_('Target Y position'))
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setGroup(_('Target position'));
+      properties
+        .getOrCreate('targetZ')
+        .setValue('0')
+        .setLabel(_('Target Z position'))
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setGroup(_('Target position'));
+      properties
+        .getOrCreate('width')
+        .setValue('220')
+        .setLabel(_('Area width'))
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setGroup(_('Shape'));
+      properties
+        .getOrCreate('height')
+        .setValue('120')
+        .setLabel(_('Area height'))
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setGroup(_('Shape'));
     }
     {
       const effect = extension
@@ -5843,7 +7015,7 @@ module.exports = {
         .setGroup(_('Shadows'));
       properties
         .getOrCreate('shadowQuality')
-        .setValue('medium')
+        .setValue('high')
         .addChoice('low', _('Low quality'))
         .addChoice('medium', _('Medium quality'))
         .addChoice('high', _('High quality'))
@@ -6158,10 +7330,21 @@ module.exports = {
         );
       properties
         .getOrCreate('exposure')
-        .setValue('1.0')
+        .setValue('1.15')
         .setLabel(_('Exposure'))
         .setType('number')
         .setDescription(_('Brightness multiplier applied by tone mapping.'));
+      properties
+        .getOrCreate('exposureCurvePower')
+        .setValue('1.0')
+        .setLabel(_('Exposure curve power'))
+        .setType('number')
+        .setDescription(
+          _(
+            'Applies exposure as pow(exposure, power). Use 5.0 to match the three.js physical lights example behavior.'
+          )
+        )
+        .setAdvanced(true);
     }
     {
       const effect = extension
@@ -6772,6 +7955,161 @@ module.exports = {
         basicMaterial.side = material.side;
       }
       return basicMaterial;
+    };
+
+    const clampNumber = (value, min, max) =>
+      Math.max(min, Math.min(max, value));
+
+    const parseFiniteNumber = (value, fallbackValue) => {
+      const parsed = parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : fallbackValue;
+    };
+
+    const getObjectPBRBehaviorData = (objectConfiguration) => {
+      if (
+        !objectConfiguration ||
+        typeof objectConfiguration.getAllBehaviorNames !== 'function' ||
+        typeof objectConfiguration.getBehavior !== 'function'
+      ) {
+        return null;
+      }
+
+      const behaviorNames = objectConfiguration.getAllBehaviorNames().toJSArray();
+      for (const behaviorName of behaviorNames) {
+        const behavior = objectConfiguration.getBehavior(behaviorName);
+        if (!behavior || behavior.getTypeName() !== 'Scene3D::PBRMaterial') {
+          continue;
+        }
+
+        const properties = behavior.getProperties();
+        if (!properties || typeof properties.get !== 'function') {
+          continue;
+        }
+
+        const getValue = (propertyName, fallbackValue = '') => {
+          if (!properties.has(propertyName)) {
+            return fallbackValue;
+          }
+          return properties.get(propertyName).getValue();
+        };
+
+        return {
+          metalness: clampNumber(
+            parseFiniteNumber(getValue('metalness', '0'), 0),
+            0,
+            1
+          ),
+          roughness: clampNumber(
+            parseFiniteNumber(getValue('roughness', '0.5'), 0.5),
+            0,
+            1
+          ),
+          envMapIntensity: clampNumber(
+            parseFiniteNumber(getValue('envMapIntensity', '1'), 1),
+            0,
+            4
+          ),
+          emissiveColor: getValue('emissiveColor', '0;0;0'),
+          emissiveIntensity: clampNumber(
+            parseFiniteNumber(getValue('emissiveIntensity', '0'), 0),
+            0,
+            4
+          ),
+          normalScale: clampNumber(
+            parseFiniteNumber(getValue('normalScale', '1'), 1),
+            0,
+            2
+          ),
+          normalMapAsset: getValue('normalMapAsset', ''),
+          aoMapAsset: getValue('aoMapAsset', ''),
+          aoMapIntensity: clampNumber(
+            parseFiniteNumber(getValue('aoMapIntensity', '1'), 1),
+            0,
+            1
+          ),
+          mapAsset: getValue('map', ''),
+        };
+      }
+
+      return null;
+    };
+
+    const getPBRBehaviorSignature = (pbrBehaviorData) => {
+      if (!pbrBehaviorData) {
+        return '';
+      }
+      return [
+        pbrBehaviorData.metalness,
+        pbrBehaviorData.roughness,
+        pbrBehaviorData.envMapIntensity,
+        pbrBehaviorData.emissiveColor,
+        pbrBehaviorData.emissiveIntensity,
+        pbrBehaviorData.normalScale,
+        pbrBehaviorData.normalMapAsset,
+        pbrBehaviorData.aoMapAsset,
+        pbrBehaviorData.aoMapIntensity,
+        pbrBehaviorData.mapAsset,
+      ].join('|');
+    };
+
+    const applyPBRBehaviorDataToMaterial = (
+      material,
+      pbrBehaviorData,
+      { normalMapTexture, aoMapTexture, albedoMapTexture }
+    ) => {
+      if (
+        !material ||
+        material.roughness === undefined ||
+        material.metalness === undefined
+      ) {
+        return;
+      }
+
+      material.metalness = pbrBehaviorData.metalness;
+      material.roughness = pbrBehaviorData.roughness;
+      if (material.envMapIntensity !== undefined) {
+        material.envMapIntensity = pbrBehaviorData.envMapIntensity;
+      }
+      if (material.emissive && material.emissive.setHex) {
+        material.emissive.setHex(
+          objectsRenderingService.rgbOrHexToHexNumber(
+            pbrBehaviorData.emissiveColor || '0;0;0'
+          )
+        );
+      }
+      if (material.emissiveIntensity !== undefined) {
+        material.emissiveIntensity = pbrBehaviorData.emissiveIntensity;
+      }
+
+      if (normalMapTexture) {
+        material.normalMap = normalMapTexture;
+        if (material.normalScale && material.normalScale.set) {
+          material.normalScale.set(
+            pbrBehaviorData.normalScale,
+            pbrBehaviorData.normalScale
+          );
+        }
+      } else if (pbrBehaviorData.normalMapAsset && material.normalMap !== undefined) {
+        material.normalMap = null;
+      }
+
+      if (aoMapTexture) {
+        material.aoMap = aoMapTexture;
+        if (material.aoMapIntensity !== undefined) {
+          material.aoMapIntensity = pbrBehaviorData.aoMapIntensity;
+        }
+      } else if (pbrBehaviorData.aoMapAsset && material.aoMap !== undefined) {
+        material.aoMap = null;
+        if (material.aoMapIntensity !== undefined) {
+          material.aoMapIntensity = pbrBehaviorData.aoMapIntensity;
+        }
+      }
+
+      if (albedoMapTexture && material.map !== undefined) {
+        material.map = albedoMapTexture;
+      }
+
+      material.needsUpdate = true;
     };
 
     class RenderedCube3DObject2DInstance extends RenderedInstance {
@@ -7638,7 +8976,7 @@ module.exports = {
       }
 
       _createThreeMaterial() {
-        const color = gdjs.rgbOrHexStringToNumber(this._color || '255;255;255');
+        const color = parseEditorColorToHex(this._color || '255;255;255');
         const side = this._doubleSidedMaterial
           ? THREE.DoubleSide
           : THREE.FrontSide;
@@ -7668,7 +9006,7 @@ module.exports = {
           }
         }
 
-        const color = gdjs.rgbOrHexStringToNumber(this._color);
+        const color = parseEditorColorToHex(this._color);
         if (this._threeObject.material && this._threeObject.material.color) {
           this._threeObject.material.color.setHex(color);
         }
@@ -7917,6 +9255,543 @@ module.exports = {
       RenderedCapsule3DObject3DInstance
     );
 
+    class RenderedPointLightObject2DInstance extends RenderedInstance {
+      _defaultWidth = 24;
+      _defaultHeight = 24;
+      _defaultDepth = 24;
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          pixiResourcesLoader
+        );
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 24;
+        this._defaultHeight = object.content.height || 24;
+        this._defaultDepth = object.content.depth || 24;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+      }
+
+      static getThumbnail(_project, _resourcesLoader, _objectConfiguration) {
+        return 'JsPlatform/Extensions/3d_box.svg';
+      }
+
+      update() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const radius = Math.max(8, Math.min(width, height) / 2);
+
+        this._pixiObject.clear();
+        this._pixiObject.lineStyle(2, 0xfff1b3, 1);
+        this._pixiObject.beginFill(0xfff1b3, 0.2);
+        this._pixiObject.drawCircle(0, 0, radius);
+        this._pixiObject.endFill();
+        this._pixiObject.lineStyle(1, 0xfff1b3, 0.85);
+        this._pixiObject.moveTo(-radius, 0);
+        this._pixiObject.lineTo(radius, 0);
+        this._pixiObject.moveTo(0, -radius);
+        this._pixiObject.lineTo(0, radius);
+
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    const LIGHT_OBJECT_ICON_DATA_URI = 'data:image/png;base64,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';
+
+    let lightObjectIconTexture = null;
+    const getLightObjectIconTexture = () => {
+      if (lightObjectIconTexture) return lightObjectIconTexture;
+      const texture = new THREE.TextureLoader().load(LIGHT_OBJECT_ICON_DATA_URI);
+      texture.needsUpdate = true;
+      texture.magFilter = THREE.LinearFilter;
+      texture.minFilter = THREE.LinearMipmapLinearFilter;
+      if ('colorSpace' in texture && THREE.SRGBColorSpace) {
+        texture.colorSpace = THREE.SRGBColorSpace;
+      }
+      lightObjectIconTexture = texture;
+      return lightObjectIconTexture;
+    };
+    const createInvisibleLightFaceMaterial = () =>
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        colorWrite: false,
+        side: THREE.DoubleSide,
+      });
+    const createLightObjectBoxMaterials = () => {
+      const logoFaceMaterial = new THREE.MeshBasicMaterial({
+        map: getLightObjectIconTexture(),
+        color: 0xffffff,
+        transparent: true,
+        alphaTest: 0.05,
+        depthWrite: false,
+        depthTest: false,
+        side: THREE.DoubleSide,
+      });
+      // BoxGeometry groups order: +X, -X, +Y, -Y, +Z, -Z.
+      // Keep only +X visible with the light icon (side badge like pro engines).
+      const materials = [
+        logoFaceMaterial,
+        createInvisibleLightFaceMaterial(),
+        createInvisibleLightFaceMaterial(),
+        createInvisibleLightFaceMaterial(),
+        createInvisibleLightFaceMaterial(),
+        createInvisibleLightFaceMaterial(),
+      ];
+      return {
+        materials,
+        logoFaceMaterial,
+      };
+    };
+    const parseEditorColorToHex = (colorValue, fallback = '255;255;255') =>
+      objectsRenderingService.rgbOrHexToHexNumber(
+        colorValue && typeof colorValue === 'string' ? colorValue : fallback
+      );
+    const createSpotLightConeWireGeometry = (distance, angleDegrees) => {
+      const safeDistance = Math.max(
+        10,
+        Number.isFinite(distance) ? distance : 950
+      );
+      const safeAngleDegrees = Math.min(
+        89,
+        Math.max(1, Number.isFinite(angleDegrees) ? angleDegrees : 45)
+      );
+      const halfAngleRadians = (safeAngleDegrees * Math.PI) / 180;
+      const coneRadius = Math.max(2, Math.tan(halfAngleRadians) * safeDistance);
+      const segmentCount = 24;
+      const radialEvery = 4;
+      const points = [];
+      const origin = new THREE.Vector3(0, 0, 0);
+      const tip = new THREE.Vector3(0, 0, -safeDistance);
+      for (let i = 0; i < segmentCount; i++) {
+        const theta = (i / segmentCount) * Math.PI * 2;
+        const nextTheta = ((i + 1) / segmentCount) * Math.PI * 2;
+        const point = new THREE.Vector3(
+          Math.cos(theta) * coneRadius,
+          Math.sin(theta) * coneRadius,
+          -safeDistance
+        );
+        const nextPoint = new THREE.Vector3(
+          Math.cos(nextTheta) * coneRadius,
+          Math.sin(nextTheta) * coneRadius,
+          -safeDistance
+        );
+        // Circle at the end of the cone.
+        points.push(point, nextPoint);
+        // A few radial lines from the light origin to the cone perimeter.
+        if (i % radialEvery === 0) {
+          points.push(origin, point);
+        }
+      }
+      points.push(origin, tip);
+      return new THREE.BufferGeometry().setFromPoints(points);
+    };
+    const createPointLightRangeWireGeometry = (distance) => {
+      const safeDistance = Math.max(
+        10,
+        Number.isFinite(distance) ? distance : 900
+      );
+      const segmentCount = 32;
+      const radialEvery = 8;
+      const points = [];
+      for (let i = 0; i < segmentCount; i++) {
+        const theta = (i / segmentCount) * Math.PI * 2;
+        const nextTheta = ((i + 1) / segmentCount) * Math.PI * 2;
+        const cosTheta = Math.cos(theta);
+        const sinTheta = Math.sin(theta);
+        const cosNextTheta = Math.cos(nextTheta);
+        const sinNextTheta = Math.sin(nextTheta);
+
+        points.push(
+          new THREE.Vector3(cosTheta * safeDistance, sinTheta * safeDistance, 0),
+          new THREE.Vector3(
+            cosNextTheta * safeDistance,
+            sinNextTheta * safeDistance,
+            0
+          )
+        );
+        points.push(
+          new THREE.Vector3(cosTheta * safeDistance, 0, sinTheta * safeDistance),
+          new THREE.Vector3(
+            cosNextTheta * safeDistance,
+            0,
+            sinNextTheta * safeDistance
+          )
+        );
+        points.push(
+          new THREE.Vector3(0, cosTheta * safeDistance, sinTheta * safeDistance),
+          new THREE.Vector3(
+            0,
+            cosNextTheta * safeDistance,
+            sinNextTheta * safeDistance
+          )
+        );
+
+        if (i % radialEvery === 0) {
+          points.push(
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(cosTheta * safeDistance, sinTheta * safeDistance, 0)
+          );
+          points.push(
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(cosTheta * safeDistance, 0, sinTheta * safeDistance)
+          );
+          points.push(
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, cosTheta * safeDistance, sinTheta * safeDistance)
+          );
+        }
+      }
+      return new THREE.BufferGeometry().setFromPoints(points);
+    };
+    const createRectAreaLightConeWireGeometry = (
+      lightWidth,
+      lightHeight,
+      distance
+    ) => {
+      const safeWidth = Math.max(
+        10,
+        Number.isFinite(lightWidth) ? lightWidth : 220
+      );
+      const safeHeight = Math.max(
+        10,
+        Number.isFinite(lightHeight) ? lightHeight : 120
+      );
+      const safeDistance = Math.max(
+        40,
+        Number.isFinite(distance) ? distance : Math.max(safeWidth, safeHeight) * 2
+      );
+      const halfW = safeWidth * 0.5;
+      const halfH = safeHeight * 0.5;
+      const farW = halfW * 1.8;
+      const farH = halfH * 1.8;
+      const nearCorners = [
+        new THREE.Vector3(-halfW, -halfH, 0),
+        new THREE.Vector3(halfW, -halfH, 0),
+        new THREE.Vector3(halfW, halfH, 0),
+        new THREE.Vector3(-halfW, halfH, 0),
+      ];
+      const farCorners = [
+        new THREE.Vector3(-farW, -farH, -safeDistance),
+        new THREE.Vector3(farW, -farH, -safeDistance),
+        new THREE.Vector3(farW, farH, -safeDistance),
+        new THREE.Vector3(-farW, farH, -safeDistance),
+      ];
+      const points = [];
+      for (let i = 0; i < 4; i++) {
+        const next = (i + 1) % 4;
+        points.push(nearCorners[i], nearCorners[next]);
+        points.push(farCorners[i], farCorners[next]);
+        points.push(nearCorners[i], farCorners[i]);
+      }
+      return new THREE.BufferGeometry().setFromPoints(points);
+    };
+    let rectAreaLightSupportInitialized = false;
+    let rectAreaLightSupportAvailable = false;
+    const ensureRectAreaLightSupport = () => {
+      if (rectAreaLightSupportInitialized) {
+        return rectAreaLightSupportAvailable;
+      }
+      rectAreaLightSupportInitialized = true;
+      const rectAreaUniformsLib =
+        THREE && THREE.RectAreaLightUniformsLib
+          ? THREE.RectAreaLightUniformsLib
+          : null;
+      if (rectAreaUniformsLib && typeof rectAreaUniformsLib.init === 'function') {
+        rectAreaUniformsLib.init();
+        rectAreaLightSupportAvailable = true;
+      }
+      return rectAreaLightSupportAvailable;
+    };
+
+    class RenderedPointLightObject3DInstance extends Rendered3DInstance {
+      _defaultWidth = 24;
+      _defaultHeight = 24;
+      _defaultDepth = 24;
+      /** @type {THREE.MeshBasicMaterial | null} */
+      _logoFaceMaterial = null;
+      /** @type {THREE.Mesh | null} */
+      _selectionProxyMesh = null;
+      /** @type {THREE.PointLight | null} */
+      _editorPointLight = null;
+      /** @type {THREE.LineSegments | null} */
+      _lightRangeLines = null;
+      _lightRangeSignature = '';
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        threeGroup,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          threeGroup,
+          pixiResourcesLoader
+        );
+
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 24;
+        this._defaultHeight = object.content.height || 24;
+        this._defaultDepth = object.content.depth || 24;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+        const { materials: boxMaterials, logoFaceMaterial } =
+          createLightObjectBoxMaterials();
+        const selectionProxyMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(1, 1, 1),
+          boxMaterials
+        );
+        selectionProxyMesh.rotation.order = 'ZYX';
+        selectionProxyMesh.userData = selectionProxyMesh.userData || {};
+        selectionProxyMesh.userData.__gdLightObjectPick = true;
+        selectionProxyMesh.userData.__gdLightObjectType = 'point';
+        this._logoFaceMaterial = logoFaceMaterial;
+        this._selectionProxyMesh = selectionProxyMesh;
+        this._threeObject = selectionProxyMesh;
+        this._threeGroup.add(selectionProxyMesh);
+
+        const editorPointLight = new THREE.PointLight(0xffffff, 2.2, 900, 2);
+        editorPointLight.castShadow = false;
+        this._editorPointLight = editorPointLight;
+        this._threeGroup.add(editorPointLight);
+
+        const lightRangeLines = new THREE.LineSegments(
+          new THREE.BufferGeometry(),
+          new THREE.LineBasicMaterial({
+            color: 0xfff1b3,
+            transparent: true,
+            opacity: 0.82,
+            depthWrite: false,
+            depthTest: false,
+          })
+        );
+        lightRangeLines.frustumCulled = false;
+        lightRangeLines.renderOrder = 9998;
+        this._lightRangeLines = lightRangeLines;
+        this._threeGroup.add(lightRangeLines);
+      }
+
+      onRemovedFromScene() {
+        super.onRemovedFromScene();
+        if (this._pixiObject) {
+          this._pixiObject.destroy({ children: true });
+        }
+        if (this._selectionProxyMesh) {
+          this._threeGroup.remove(this._selectionProxyMesh);
+        }
+        if (this._editorPointLight) {
+          this._threeGroup.remove(this._editorPointLight);
+        }
+        if (this._lightRangeLines) {
+          this._threeGroup.remove(this._lightRangeLines);
+        }
+        if (this._selectionProxyMesh && this._selectionProxyMesh.geometry) {
+          this._selectionProxyMesh.geometry.dispose();
+        }
+        if (this._selectionProxyMesh && this._selectionProxyMesh.material) {
+          const material = this._selectionProxyMesh.material;
+          if (Array.isArray(material)) {
+            material.forEach((entry) => entry && entry.dispose && entry.dispose());
+          } else if (material && material.dispose) {
+            material.dispose();
+          }
+        }
+        if (
+          this._lightRangeLines &&
+          this._lightRangeLines.geometry &&
+          this._lightRangeLines.geometry.dispose
+        ) {
+          this._lightRangeLines.geometry.dispose();
+        }
+        if (this._lightRangeLines && this._lightRangeLines.material) {
+          const lightRangeMaterial = /** @type {any} */ (
+            this._lightRangeLines.material
+          );
+          if (lightRangeMaterial && lightRangeMaterial.dispose) {
+            lightRangeMaterial.dispose();
+          }
+        }
+      }
+
+      updatePixiObject() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const radius = Math.max(8, Math.min(width, height) / 2);
+
+        this._pixiObject.clear();
+        this._pixiObject.lineStyle(2, 0xfff1b3, 1);
+        this._pixiObject.beginFill(0xfff1b3, 0.2);
+        this._pixiObject.drawCircle(0, 0, radius);
+        this._pixiObject.endFill();
+        this._pixiObject.lineStyle(1, 0xfff1b3, 0.85);
+        this._pixiObject.moveTo(-radius, 0);
+        this._pixiObject.lineTo(radius, 0);
+        this._pixiObject.moveTo(0, -radius);
+        this._pixiObject.lineTo(0, radius);
+
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      updateThreeObject() {
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        const content = object.content || {};
+
+        this._defaultWidth = content.width || this._defaultWidth;
+        this._defaultHeight = content.height || this._defaultHeight;
+        this._defaultDepth = content.depth || this._defaultDepth;
+
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const depth = this.getDepth();
+        const scaleX = width * (this._instance.isFlippedX() ? -1 : 1);
+        const scaleY = height * (this._instance.isFlippedY() ? -1 : 1);
+        const scaleZ = depth * (this._instance.isFlippedZ() ? -1 : 1);
+        const positionX = this._instance.getX() + width / 2;
+        const positionY = this._instance.getY() + height / 2;
+        const positionZ = this._instance.getZ() + depth / 2;
+        const rotationX = (this._instance.getRotationX() * Math.PI) / 180;
+        const rotationY = (this._instance.getRotationY() * Math.PI) / 180;
+        const rotationZ = (this._instance.getAngle() * Math.PI) / 180;
+        const selectionProxyMesh = this._selectionProxyMesh;
+        if (!selectionProxyMesh) return;
+        selectionProxyMesh.position.set(positionX, positionY, positionZ);
+        selectionProxyMesh.rotation.set(rotationX, rotationY, rotationZ);
+        selectionProxyMesh.scale.set(scaleX, scaleY, scaleZ);
+
+        const color = parseEditorColorToHex(content.color || '255;255;255');
+        const logoFaceMaterial = this._logoFaceMaterial;
+        if (logoFaceMaterial && logoFaceMaterial.color) {
+          logoFaceMaterial.color.setHex(color);
+        }
+
+        const enabled = content.enabled === undefined ? true : !!content.enabled;
+        const safeDistance = Math.max(
+          10,
+          Number.isFinite(content.distance) ? content.distance : 900
+        );
+        const safeDecay = Math.max(
+          0,
+          Number.isFinite(content.decay) ? content.decay : 2
+        );
+        const usePhysicalUnits =
+          content.usePhysicalUnits === undefined ? true : !!content.usePhysicalUnits;
+        const safePower = Math.max(
+          0,
+          Number.isFinite(content.power) ? content.power : 2600
+        );
+        const safeIntensity = Math.max(
+          0,
+          Number.isFinite(content.intensity) ? content.intensity : 2.2
+        );
+
+        const editorPointLight = this._editorPointLight;
+        if (editorPointLight) {
+          editorPointLight.visible = enabled;
+          editorPointLight.position.set(positionX, positionY, positionZ);
+          editorPointLight.color.setHex(color);
+          editorPointLight.distance = safeDistance;
+          editorPointLight.decay = safeDecay;
+          if (usePhysicalUnits && editorPointLight.power !== undefined) {
+            editorPointLight.power = safePower;
+          } else {
+            editorPointLight.intensity = safeIntensity;
+          }
+        }
+
+        const lightRangeLines = this._lightRangeLines;
+        if (lightRangeLines) {
+          lightRangeLines.visible = enabled;
+          lightRangeLines.position.set(positionX, positionY, positionZ);
+          const rangeSignature = safeDistance.toFixed(3);
+          if (this._lightRangeSignature !== rangeSignature) {
+            this._lightRangeSignature = rangeSignature;
+            const oldGeometry = lightRangeLines.geometry;
+            lightRangeLines.geometry = createPointLightRangeWireGeometry(
+              safeDistance
+            );
+            if (oldGeometry) {
+              oldGeometry.dispose();
+            }
+          }
+          const lightRangeMaterial = /** @type {any} */ (lightRangeLines.material);
+          if (lightRangeMaterial && lightRangeMaterial.color) {
+            lightRangeMaterial.color.setHex(color);
+          }
+        }
+      }
+
+      update() {
+        this.updatePixiObject();
+        this.updateThreeObject();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    objectsRenderingService.registerInstanceRenderer(
+      'Scene3D::PointLightObject',
+      RenderedPointLightObject2DInstance
+    );
+    objectsRenderingService.registerInstance3DRenderer(
+      'Scene3D::PointLightObject',
+      RenderedPointLightObject3DInstance
+    );
+
     class RenderedSpotLightObject2DInstance extends RenderedInstance {
       _defaultWidth = 24;
       _defaultHeight = 24;
@@ -7992,14 +9867,22 @@ module.exports = {
       _defaultWidth = 24;
       _defaultHeight = 24;
       _defaultDepth = 24;
-      /** @type {THREE.Mesh | null} */
-      _gizmoCoreMesh = null;
-      /** @type {THREE.Mesh | null} */
-      _gizmoConeMesh = null;
-      /** @type {THREE.Line | null} */
-      _gizmoDirectionLine = null;
+      /** @type {THREE.MeshBasicMaterial | null} */
+      _logoFaceMaterial = null;
       /** @type {THREE.Mesh | null} */
       _selectionProxyMesh = null;
+      /** @type {THREE.Group | null} */
+      _debugGizmoGroup = null;
+      /** @type {THREE.LineSegments | null} */
+      _debugConeLines = null;
+      /** @type {THREE.Line | null} */
+      _debugTargetLine = null;
+      /** @type {THREE.SpotLight | null} */
+      _editorSpotLight = null;
+      /** @type {THREE.Object3D | null} */
+      _editorSpotTarget = null;
+      _debugConeSignature = '';
+      _debugTargetSignature = '';
 
       constructor(
         project,
@@ -8028,67 +9911,119 @@ module.exports = {
 
         this._pixiObject = new PIXI.Graphics();
         this._pixiContainer.addChild(this._pixiObject);
-
-        const gizmoGroup = new THREE.Group();
-        gizmoGroup.rotation.order = 'ZYX';
-        this._threeObject = gizmoGroup;
-
-        this._gizmoCoreMesh = new THREE.Mesh(
-          new THREE.SphereGeometry(0.12, 16, 12),
-          new THREE.MeshBasicMaterial({
-            color: 0xffec9e,
-            transparent: true,
-            opacity: 0.9,
-          })
+        const { materials: boxMaterials, logoFaceMaterial } =
+          createLightObjectBoxMaterials();
+        const selectionProxyMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(1, 1, 1),
+          boxMaterials
         );
-        this._gizmoConeMesh = new THREE.Mesh(
-          new THREE.ConeGeometry(1, 1, 24, 1, true),
-          new THREE.MeshBasicMaterial({
-            color: 0xffec9e,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.75,
-          })
-        );
-        if (this._gizmoConeMesh) {
-          this._gizmoConeMesh.rotation.x = -Math.PI / 2;
-          this._gizmoConeMesh.position.z = -0.5;
-        }
+        selectionProxyMesh.rotation.order = 'ZYX';
+        selectionProxyMesh.userData = selectionProxyMesh.userData || {};
+        selectionProxyMesh.userData.__gdLightObjectPick = true;
+        selectionProxyMesh.userData.__gdLightObjectType = 'spot';
+        this._logoFaceMaterial = logoFaceMaterial;
+        this._selectionProxyMesh = selectionProxyMesh;
+        this._threeObject = selectionProxyMesh;
+        this._threeGroup.add(selectionProxyMesh);
 
-        const directionLineGeometry = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(0, 0, 0),
-          new THREE.Vector3(0, 0, -1),
-        ]);
-        this._gizmoDirectionLine = new THREE.Line(
-          directionLineGeometry,
+        const debugGizmoGroup = new THREE.Group();
+        debugGizmoGroup.rotation.order = 'ZYX';
+        debugGizmoGroup.visible = false;
+        const debugConeLines = new THREE.LineSegments(
+          new THREE.BufferGeometry(),
           new THREE.LineBasicMaterial({
             color: 0xffec9e,
             transparent: true,
             opacity: 0.85,
-          })
-        );
-        this._selectionProxyMesh = new THREE.Mesh(
-          new THREE.SphereGeometry(0.5, 12, 10),
-          new THREE.MeshBasicMaterial({
-            transparent: true,
-            opacity: 0.01,
             depthWrite: false,
+            depthTest: false,
           })
         );
+        debugConeLines.frustumCulled = false;
+        debugConeLines.renderOrder = 10000;
+        const debugTargetLine = new THREE.Line(
+          new THREE.BufferGeometry(),
+          new THREE.LineBasicMaterial({
+            color: 0xffec9e,
+            transparent: true,
+            opacity: 0.9,
+            depthWrite: false,
+            depthTest: false,
+          })
+        );
+        debugTargetLine.frustumCulled = false;
+        debugTargetLine.renderOrder = 10001;
+        debugGizmoGroup.add(debugConeLines);
+        debugGizmoGroup.add(debugTargetLine);
+        this._debugGizmoGroup = debugGizmoGroup;
+        this._debugConeLines = debugConeLines;
+        this._debugTargetLine = debugTargetLine;
+        this._threeGroup.add(debugGizmoGroup);
 
-        if (this._gizmoCoreMesh) {
-          gizmoGroup.add(this._gizmoCoreMesh);
-        }
-        if (this._gizmoConeMesh) {
-          gizmoGroup.add(this._gizmoConeMesh);
-        }
-        if (this._gizmoDirectionLine) {
-          gizmoGroup.add(this._gizmoDirectionLine);
+        const editorSpotLight = new THREE.SpotLight(
+          0xffffff,
+          2.2,
+          950,
+          (40 * Math.PI) / 180,
+          0.22,
+          2
+        );
+        editorSpotLight.castShadow = false;
+        const editorSpotTarget = new THREE.Object3D();
+        editorSpotTarget.position.set(0, 0, -950);
+        this._editorSpotLight = editorSpotLight;
+        this._editorSpotTarget = editorSpotTarget;
+        editorSpotLight.target = editorSpotTarget;
+        this._threeGroup.add(editorSpotLight);
+        this._threeGroup.add(editorSpotTarget);
+      }
+
+      onRemovedFromScene() {
+        super.onRemovedFromScene();
+        if (this._pixiObject) {
+          this._pixiObject.destroy({ children: true });
         }
         if (this._selectionProxyMesh) {
-          gizmoGroup.add(this._selectionProxyMesh);
+          this._threeGroup.remove(this._selectionProxyMesh);
         }
-        this._threeGroup.add(gizmoGroup);
+        if (this._debugGizmoGroup) {
+          this._threeGroup.remove(this._debugGizmoGroup);
+        }
+        if (this._editorSpotLight) {
+          this._threeGroup.remove(this._editorSpotLight);
+        }
+        if (this._editorSpotTarget) {
+          this._threeGroup.remove(this._editorSpotTarget);
+        }
+        if (this._selectionProxyMesh) {
+          if (this._selectionProxyMesh.geometry) {
+            this._selectionProxyMesh.geometry.dispose();
+          }
+          const material = this._selectionProxyMesh.material;
+          if (Array.isArray(material)) {
+            material.forEach((entry) => entry && entry.dispose && entry.dispose());
+          } else if (material && material.dispose) {
+            material.dispose();
+          }
+        }
+        const disposeLineObject = (lineObject) => {
+          if (!lineObject) return;
+          if (lineObject.geometry) {
+            lineObject.geometry.dispose();
+          }
+          if (lineObject.material && lineObject.material.dispose) {
+            lineObject.material.dispose();
+          }
+        };
+        disposeLineObject(this._debugConeLines);
+        disposeLineObject(this._debugTargetLine);
+        if (
+          this._editorSpotLight &&
+          this._editorSpotLight.shadow &&
+          this._editorSpotLight.shadow.map
+        ) {
+          this._editorSpotLight.shadow.map.dispose();
+        }
       }
 
       updatePixiObject() {
@@ -8113,6 +10048,100 @@ module.exports = {
         this._pixiObject.angle = this._instance.getAngle();
       }
 
+      _updateDebugGizmos(
+        content,
+        color,
+        positionX,
+        positionY,
+        positionZ,
+        rotationX,
+        rotationY,
+        rotationZ
+      ) {
+        const debugGizmoGroup = this._debugGizmoGroup;
+        if (!debugGizmoGroup) return;
+
+        const isLightEnabled =
+          content.enabled === undefined ? true : !!content.enabled;
+        debugGizmoGroup.visible = isLightEnabled;
+        if (!isLightEnabled) {
+          return;
+        }
+
+        debugGizmoGroup.position.set(positionX, positionY, positionZ);
+        debugGizmoGroup.rotation.set(rotationX, rotationY, rotationZ);
+
+        const safeDistance = Math.max(
+          10,
+          Number.isFinite(content.distance) ? content.distance : 950
+        );
+        const safeAngle = Number.isFinite(content.angle) ? content.angle : 40;
+
+        const debugConeLines = this._debugConeLines;
+        if (debugConeLines) {
+          const coneSignature = `${safeDistance.toFixed(3)}|${safeAngle.toFixed(
+            3
+          )}`;
+          if (this._debugConeSignature !== coneSignature) {
+            this._debugConeSignature = coneSignature;
+            const oldGeometry = debugConeLines.geometry;
+            debugConeLines.geometry = createSpotLightConeWireGeometry(
+              safeDistance,
+              safeAngle
+            );
+            if (oldGeometry) {
+              oldGeometry.dispose();
+            }
+          }
+          const debugConeMaterial = /** @type {any} */ (debugConeLines.material);
+          if (debugConeMaterial && debugConeMaterial.color) {
+            debugConeMaterial.color.setHex(color);
+          }
+        }
+
+        const debugTargetLine = this._debugTargetLine;
+        if (debugTargetLine) {
+          const enableTargetHandle =
+            content.enableTargetHandle === undefined
+              ? true
+              : !!content.enableTargetHandle;
+          debugTargetLine.visible = enableTargetHandle;
+          if (enableTargetHandle) {
+            const targetOffsetX = Number.isFinite(content.targetOffsetX)
+              ? content.targetOffsetX
+              : 0;
+            const targetOffsetY = Number.isFinite(content.targetOffsetY)
+              ? content.targetOffsetY
+              : 0;
+            const targetOffsetZ = Number.isFinite(content.targetOffsetZ)
+              ? content.targetOffsetZ
+              : -safeDistance;
+            const targetSignature = `${targetOffsetX.toFixed(
+              3
+            )}|${targetOffsetY.toFixed(3)}|${targetOffsetZ.toFixed(3)}`;
+            if (this._debugTargetSignature !== targetSignature) {
+              this._debugTargetSignature = targetSignature;
+              const oldGeometry = debugTargetLine.geometry;
+              debugTargetLine.geometry = new THREE.BufferGeometry().setFromPoints(
+                [
+                  new THREE.Vector3(0, 0, 0),
+                  new THREE.Vector3(targetOffsetX, targetOffsetY, targetOffsetZ),
+                ]
+              );
+              if (oldGeometry) {
+                oldGeometry.dispose();
+              }
+            }
+            const debugTargetMaterial = /** @type {any} */ (
+              debugTargetLine.material
+            );
+            if (debugTargetMaterial && debugTargetMaterial.color) {
+              debugTargetMaterial.color.setHex(color);
+            }
+          }
+        }
+      }
+
       updateThreeObject() {
         const object = gd.castObject(
           this._associatedObjectConfiguration,
@@ -8127,64 +10156,107 @@ module.exports = {
         const width = this.getWidth();
         const height = this.getHeight();
         const depth = this.getDepth();
-        this._threeObject.position.set(
-          this._instance.getX() + width / 2,
-          this._instance.getY() + height / 2,
-          this._instance.getZ() + depth / 2
-        );
-        this._threeObject.rotation.set(
-          (this._instance.getRotationX() * Math.PI) / 180,
-          (this._instance.getRotationY() * Math.PI) / 180,
-          (this._instance.getAngle() * Math.PI) / 180
-        );
-
-        const gizmoCoreMesh = this._gizmoCoreMesh;
-        const gizmoConeMesh = this._gizmoConeMesh;
-        const gizmoDirectionLine = this._gizmoDirectionLine;
+        const scaleX = width * (this._instance.isFlippedX() ? -1 : 1);
+        const scaleY = height * (this._instance.isFlippedY() ? -1 : 1);
+        const scaleZ = depth * (this._instance.isFlippedZ() ? -1 : 1);
+        const positionX = this._instance.getX() + width / 2;
+        const positionY = this._instance.getY() + height / 2;
+        const positionZ = this._instance.getZ() + depth / 2;
+        const rotationX = (this._instance.getRotationX() * Math.PI) / 180;
+        const rotationY = (this._instance.getRotationY() * Math.PI) / 180;
+        const rotationZ = (this._instance.getAngle() * Math.PI) / 180;
         const selectionProxyMesh = this._selectionProxyMesh;
-        if (
-          !gizmoCoreMesh ||
-          !gizmoConeMesh ||
-          !gizmoDirectionLine ||
-          !selectionProxyMesh
-        ) {
-          return;
+        if (!selectionProxyMesh) return;
+        selectionProxyMesh.position.set(positionX, positionY, positionZ);
+        selectionProxyMesh.rotation.set(rotationX, rotationY, rotationZ);
+        selectionProxyMesh.scale.set(scaleX, scaleY, scaleZ);
+
+        const color = parseEditorColorToHex(content.color || '255;255;255');
+        const logoFaceMaterial = this._logoFaceMaterial;
+        if (logoFaceMaterial && logoFaceMaterial.color) {
+          logoFaceMaterial.color.setHex(color);
         }
 
-        const color = gdjs.rgbOrHexStringToNumber(
-          content.color || '255;255;255'
+        const enabled = content.enabled === undefined ? true : !!content.enabled;
+        const safeDistance = Math.max(
+          10,
+          Number.isFinite(content.distance) ? content.distance : 950
         );
-        const coreMaterial = /** @type {any} */ (gizmoCoreMesh.material);
-        const coneMaterial = /** @type {any} */ (gizmoConeMesh.material);
-        const directionLineMaterial = /** @type {any} */ (
-          gizmoDirectionLine.material
+        const safeAngle = Math.min(
+          89,
+          Math.max(1, Number.isFinite(content.angle) ? content.angle : 40)
         );
-        if (coreMaterial && coreMaterial.color) {
-          coreMaterial.color.setHex(color);
-        }
-        if (coneMaterial && coneMaterial.color) {
-          coneMaterial.color.setHex(color);
-        }
-        if (directionLineMaterial && directionLineMaterial.color) {
-          directionLineMaterial.color.setHex(color);
-        }
+        const safePenumbra = Math.max(
+          0,
+          Math.min(1, Number.isFinite(content.penumbra) ? content.penumbra : 0.22)
+        );
+        const safeDecay = Math.max(
+          0,
+          Number.isFinite(content.decay) ? content.decay : 2
+        );
+        const usePhysicalUnits =
+          content.usePhysicalUnits === undefined ? true : !!content.usePhysicalUnits;
+        const safePower = Math.max(
+          0,
+          Number.isFinite(content.power) ? content.power : 3200
+        );
+        const safeIntensity = Math.max(
+          0,
+          Number.isFinite(content.intensity) ? content.intensity : 2.2
+        );
+        const enableTargetHandle =
+          content.enableTargetHandle === undefined
+            ? true
+            : !!content.enableTargetHandle;
+        const targetOffsetX = Number.isFinite(content.targetOffsetX)
+          ? content.targetOffsetX
+          : 0;
+        const targetOffsetY = Number.isFinite(content.targetOffsetY)
+          ? content.targetOffsetY
+          : 0;
+        const targetOffsetZ = Number.isFinite(content.targetOffsetZ)
+          ? content.targetOffsetZ
+          : -safeDistance;
+        const localTarget = enableTargetHandle
+          ? new THREE.Vector3(targetOffsetX, targetOffsetY, targetOffsetZ)
+          : new THREE.Vector3(0, 0, -safeDistance);
+        const worldTargetOffset = localTarget.applyEuler(
+          new THREE.Euler(rotationX, rotationY, rotationZ, 'ZYX')
+        );
 
-        const coneAngleRad = Math.max(
-          0.05,
-          ((content.angle !== undefined ? content.angle : 45) * Math.PI) / 180
+        const editorSpotLight = this._editorSpotLight;
+        const editorSpotTarget = this._editorSpotTarget;
+        if (editorSpotLight && editorSpotTarget) {
+          editorSpotLight.visible = enabled;
+          editorSpotLight.position.set(positionX, positionY, positionZ);
+          editorSpotLight.color.setHex(color);
+          editorSpotLight.distance = safeDistance;
+          editorSpotLight.angle = (safeAngle * Math.PI) / 180;
+          editorSpotLight.penumbra = safePenumbra;
+          editorSpotLight.decay = safeDecay;
+          if (usePhysicalUnits && editorSpotLight.power !== undefined) {
+            editorSpotLight.power = safePower;
+          } else {
+            editorSpotLight.intensity = safeIntensity;
+          }
+          editorSpotTarget.position.set(
+            positionX + worldTargetOffset.x,
+            positionY + worldTargetOffset.y,
+            positionZ + worldTargetOffset.z
+          );
+          editorSpotTarget.updateMatrixWorld(true);
+          editorSpotLight.target = editorSpotTarget;
+        }
+        this._updateDebugGizmos(
+          content,
+          color,
+          positionX,
+          positionY,
+          positionZ,
+          rotationX,
+          rotationY,
+          rotationZ
         );
-        const lightDistance =
-          content.distance !== undefined ? Math.max(0, content.distance) : 600;
-        const gizmoLength = Math.max(24, Math.min(220, lightDistance * 0.2));
-        const gizmoRadius = Math.max(10, Math.tan(coneAngleRad) * gizmoLength);
-        gizmoConeMesh.scale.set(gizmoRadius, gizmoRadius, gizmoLength);
-        gizmoDirectionLine.scale.set(1, 1, gizmoLength);
-
-        const proxyScale = Math.max(
-          28,
-          Math.min(220, Math.max(width, height, depth))
-        );
-        selectionProxyMesh.scale.set(proxyScale, proxyScale, proxyScale);
       }
 
       update() {
@@ -8212,6 +10284,416 @@ module.exports = {
     objectsRenderingService.registerInstance3DRenderer(
       'Scene3D::SpotLightObject',
       RenderedSpotLightObject3DInstance
+    );
+
+    class RenderedRectAreaLightObject2DInstance extends RenderedInstance {
+      _defaultWidth = 24;
+      _defaultHeight = 24;
+      _defaultDepth = 24;
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          pixiResourcesLoader
+        );
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 24;
+        this._defaultHeight = object.content.height || 24;
+        this._defaultDepth = object.content.depth || 24;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+      }
+
+      static getThumbnail(_project, _resourcesLoader, _objectConfiguration) {
+        return 'JsPlatform/Extensions/3d_box.svg';
+      }
+
+      update() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const halfW = width / 2;
+        const halfH = height / 2;
+
+        this._pixiObject.clear();
+        this._pixiObject.lineStyle(2, 0xa8f7ea, 1);
+        this._pixiObject.beginFill(0xa8f7ea, 0.2);
+        this._pixiObject.drawRoundedRect(
+          -halfW * 0.6,
+          -halfH * 0.42,
+          Math.max(12, width * 1.2),
+          Math.max(8, height * 0.84),
+          Math.max(4, Math.min(width, height) * 0.14)
+        );
+        this._pixiObject.endFill();
+        this._pixiObject.lineStyle(1, 0xa8f7ea, 0.85);
+        this._pixiObject.moveTo(-halfW * 0.6, 0);
+        this._pixiObject.lineTo(halfW * 0.6, 0);
+        this._pixiObject.moveTo(0, -halfH * 0.42);
+        this._pixiObject.lineTo(0, halfH * 0.42);
+
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    class RenderedRectAreaLightObject3DInstance extends Rendered3DInstance {
+      _defaultWidth = 24;
+      _defaultHeight = 24;
+      _defaultDepth = 24;
+      /** @type {THREE.MeshBasicMaterial | null} */
+      _logoFaceMaterial = null;
+      /** @type {THREE.Mesh | null} */
+      _selectionProxyMesh = null;
+      /** @type {THREE.RectAreaLight | null} */
+      _editorRectAreaLight = null;
+      /** @type {THREE.SpotLight | null} */
+      _editorRectFallbackSpotLight = null;
+      /** @type {THREE.Object3D | null} */
+      _editorRectFallbackTarget = null;
+      /** @type {THREE.LineSegments | null} */
+      _lightConeLines = null;
+      _lightConeSignature = '';
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        threeGroup,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          threeGroup,
+          pixiResourcesLoader
+        );
+
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 24;
+        this._defaultHeight = object.content.height || 24;
+        this._defaultDepth = object.content.depth || 24;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+        const { materials: boxMaterials, logoFaceMaterial } =
+          createLightObjectBoxMaterials();
+        const selectionProxyMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(1, 1, 1),
+          boxMaterials
+        );
+        selectionProxyMesh.rotation.order = 'ZYX';
+        selectionProxyMesh.userData = selectionProxyMesh.userData || {};
+        selectionProxyMesh.userData.__gdLightObjectPick = true;
+        selectionProxyMesh.userData.__gdLightObjectType = 'rect-area';
+        this._logoFaceMaterial = logoFaceMaterial;
+        this._selectionProxyMesh = selectionProxyMesh;
+        this._threeObject = selectionProxyMesh;
+        this._threeGroup.add(selectionProxyMesh);
+
+        const editorRectAreaLight = new THREE.RectAreaLight(
+          0xffffff,
+          35,
+          180,
+          90
+        );
+        this._editorRectAreaLight = editorRectAreaLight;
+        this._threeGroup.add(editorRectAreaLight);
+
+        const editorRectFallbackSpotLight = new THREE.SpotLight(
+          0xffffff,
+          2.2,
+          520,
+          (80 * Math.PI) / 180,
+          0.75,
+          2
+        );
+        editorRectFallbackSpotLight.castShadow = false;
+        const editorRectFallbackTarget = new THREE.Object3D();
+        editorRectFallbackTarget.position.set(0, 0, -520);
+        this._editorRectFallbackSpotLight = editorRectFallbackSpotLight;
+        this._editorRectFallbackTarget = editorRectFallbackTarget;
+        editorRectFallbackSpotLight.target = editorRectFallbackTarget;
+        this._threeGroup.add(editorRectFallbackSpotLight);
+        this._threeGroup.add(editorRectFallbackTarget);
+
+        const lightConeLines = new THREE.LineSegments(
+          new THREE.BufferGeometry(),
+          new THREE.LineBasicMaterial({
+            color: 0xa8f7ea,
+            transparent: true,
+            opacity: 0.85,
+            depthWrite: false,
+            depthTest: false,
+          })
+        );
+        lightConeLines.frustumCulled = false;
+        lightConeLines.renderOrder = 10000;
+        this._lightConeLines = lightConeLines;
+        this._threeGroup.add(lightConeLines);
+      }
+
+      onRemovedFromScene() {
+        super.onRemovedFromScene();
+        if (this._pixiObject) {
+          this._pixiObject.destroy({ children: true });
+        }
+        if (this._selectionProxyMesh) {
+          this._threeGroup.remove(this._selectionProxyMesh);
+        }
+        if (this._editorRectAreaLight) {
+          this._threeGroup.remove(this._editorRectAreaLight);
+        }
+        if (this._editorRectFallbackSpotLight) {
+          this._threeGroup.remove(this._editorRectFallbackSpotLight);
+        }
+        if (this._editorRectFallbackTarget) {
+          this._threeGroup.remove(this._editorRectFallbackTarget);
+        }
+        if (this._lightConeLines) {
+          this._threeGroup.remove(this._lightConeLines);
+        }
+        if (this._selectionProxyMesh) {
+          if (this._selectionProxyMesh.geometry) {
+            this._selectionProxyMesh.geometry.dispose();
+          }
+          const material = this._selectionProxyMesh.material;
+          if (Array.isArray(material)) {
+            material.forEach((entry) => entry && entry.dispose && entry.dispose());
+          } else if (material && material.dispose) {
+            material.dispose();
+          }
+        }
+        if (this._lightConeLines && this._lightConeLines.geometry) {
+          this._lightConeLines.geometry.dispose();
+        }
+        if (this._lightConeLines && this._lightConeLines.material) {
+          const lightConeMaterial = /** @type {any} */ (
+            this._lightConeLines.material
+          );
+          if (lightConeMaterial && lightConeMaterial.dispose) {
+            lightConeMaterial.dispose();
+          }
+        }
+      }
+
+      updatePixiObject() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const halfW = width / 2;
+        const halfH = height / 2;
+
+        this._pixiObject.clear();
+        this._pixiObject.lineStyle(2, 0xa8f7ea, 1);
+        this._pixiObject.beginFill(0xa8f7ea, 0.2);
+        this._pixiObject.drawRoundedRect(
+          -halfW * 0.6,
+          -halfH * 0.42,
+          Math.max(12, width * 1.2),
+          Math.max(8, height * 0.84),
+          Math.max(4, Math.min(width, height) * 0.14)
+        );
+        this._pixiObject.endFill();
+        this._pixiObject.lineStyle(1, 0xa8f7ea, 0.85);
+        this._pixiObject.moveTo(-halfW * 0.6, 0);
+        this._pixiObject.lineTo(halfW * 0.6, 0);
+        this._pixiObject.moveTo(0, -halfH * 0.42);
+        this._pixiObject.lineTo(0, halfH * 0.42);
+
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      updateThreeObject() {
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        const content = object.content || {};
+
+        this._defaultWidth = content.width || this._defaultWidth;
+        this._defaultHeight = content.height || this._defaultHeight;
+        this._defaultDepth = content.depth || this._defaultDepth;
+
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const depth = this.getDepth();
+        const scaleX = width * (this._instance.isFlippedX() ? -1 : 1);
+        const scaleY = height * (this._instance.isFlippedY() ? -1 : 1);
+        const scaleZ = depth * (this._instance.isFlippedZ() ? -1 : 1);
+        const positionX = this._instance.getX() + width / 2;
+        const positionY = this._instance.getY() + height / 2;
+        const positionZ = this._instance.getZ() + depth / 2;
+        const rotationX = (this._instance.getRotationX() * Math.PI) / 180;
+        const rotationY = (this._instance.getRotationY() * Math.PI) / 180;
+        const rotationZ = (this._instance.getAngle() * Math.PI) / 180;
+        const selectionProxyMesh = this._selectionProxyMesh;
+        if (!selectionProxyMesh) return;
+        selectionProxyMesh.position.set(positionX, positionY, positionZ);
+        selectionProxyMesh.rotation.set(rotationX, rotationY, rotationZ);
+        selectionProxyMesh.scale.set(scaleX, scaleY, scaleZ);
+
+        const color = parseEditorColorToHex(content.color || '255;255;255');
+        const logoFaceMaterial = this._logoFaceMaterial;
+        if (logoFaceMaterial && logoFaceMaterial.color) {
+          logoFaceMaterial.color.setHex(color);
+        }
+
+        const enabled = content.enabled === undefined ? true : !!content.enabled;
+        const usePhysicalUnits =
+          content.usePhysicalUnits === undefined ? true : !!content.usePhysicalUnits;
+        const safePower = Math.max(
+          0,
+          Number.isFinite(content.power) ? content.power : 22000
+        );
+        const safeIntensity = Math.max(
+          0,
+          Number.isFinite(content.intensity) ? content.intensity : 35
+        );
+        const safeLightWidth = Math.max(
+          10,
+          Number.isFinite(content.lightWidth) ? content.lightWidth : 180
+        );
+        const safeLightHeight = Math.max(
+          10,
+          Number.isFinite(content.lightHeight) ? content.lightHeight : 90
+        );
+        const beamDistance = Math.max(
+          140,
+          Math.max(safeLightWidth, safeLightHeight) * 3
+        );
+
+        const rectAreaLightSupport = ensureRectAreaLightSupport();
+        const editorRectAreaLight = this._editorRectAreaLight;
+        if (editorRectAreaLight) {
+          editorRectAreaLight.visible = enabled && rectAreaLightSupport;
+          editorRectAreaLight.position.set(positionX, positionY, positionZ);
+          editorRectAreaLight.rotation.set(rotationX, rotationY, rotationZ);
+          editorRectAreaLight.color.setHex(color);
+          editorRectAreaLight.width = safeLightWidth;
+          editorRectAreaLight.height = safeLightHeight;
+          if (usePhysicalUnits && editorRectAreaLight.power !== undefined) {
+            editorRectAreaLight.power = safePower;
+          } else {
+            editorRectAreaLight.intensity = safeIntensity;
+          }
+        }
+
+        const editorRectFallbackSpotLight = this._editorRectFallbackSpotLight;
+        const editorRectFallbackTarget = this._editorRectFallbackTarget;
+        if (editorRectFallbackSpotLight && editorRectFallbackTarget) {
+          editorRectFallbackSpotLight.visible = enabled && !rectAreaLightSupport;
+          editorRectFallbackSpotLight.position.set(positionX, positionY, positionZ);
+          editorRectFallbackSpotLight.rotation.set(rotationX, rotationY, rotationZ);
+          editorRectFallbackSpotLight.color.setHex(color);
+          editorRectFallbackSpotLight.distance = beamDistance;
+          editorRectFallbackSpotLight.angle = (80 * Math.PI) / 180;
+          editorRectFallbackSpotLight.penumbra = 0.75;
+          editorRectFallbackSpotLight.decay = 2;
+          if (
+            usePhysicalUnits &&
+            editorRectFallbackSpotLight.power !== undefined
+          ) {
+            editorRectFallbackSpotLight.power = Math.max(0, safePower * 0.55);
+          } else {
+            editorRectFallbackSpotLight.intensity = Math.max(0, safeIntensity * 2.2);
+          }
+          const forwardOffset = new THREE.Vector3(0, 0, -beamDistance).applyEuler(
+            new THREE.Euler(rotationX, rotationY, rotationZ, 'ZYX')
+          );
+          editorRectFallbackTarget.position.set(
+            positionX + forwardOffset.x,
+            positionY + forwardOffset.y,
+            positionZ + forwardOffset.z
+          );
+          editorRectFallbackTarget.updateMatrixWorld(true);
+          editorRectFallbackSpotLight.target = editorRectFallbackTarget;
+        }
+
+        const lightConeLines = this._lightConeLines;
+        if (lightConeLines) {
+          lightConeLines.visible = enabled;
+          lightConeLines.position.set(positionX, positionY, positionZ);
+          lightConeLines.rotation.set(rotationX, rotationY, rotationZ);
+          const coneSignature = `${safeLightWidth.toFixed(
+            3
+          )}|${safeLightHeight.toFixed(3)}|${beamDistance.toFixed(3)}`;
+          if (this._lightConeSignature !== coneSignature) {
+            this._lightConeSignature = coneSignature;
+            const oldGeometry = lightConeLines.geometry;
+            lightConeLines.geometry = createRectAreaLightConeWireGeometry(
+              safeLightWidth,
+              safeLightHeight,
+              beamDistance
+            );
+            if (oldGeometry) {
+              oldGeometry.dispose();
+            }
+          }
+          const lightConeMaterial = /** @type {any} */ (lightConeLines.material);
+          if (lightConeMaterial && lightConeMaterial.color) {
+            lightConeMaterial.color.setHex(color);
+          }
+        }
+      }
+
+      update() {
+        this.updatePixiObject();
+        this.updateThreeObject();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    objectsRenderingService.registerInstanceRenderer(
+      'Scene3D::RectAreaLightObject',
+      RenderedRectAreaLightObject2DInstance
+    );
+    objectsRenderingService.registerInstance3DRenderer(
+      'Scene3D::RectAreaLightObject',
+      RenderedRectAreaLightObject3DInstance
     );
 
     const epsilon = 1 / (1 << 16);
@@ -8531,6 +11013,8 @@ module.exports = {
       /** @type {THREE.Object3D | null} */
       _clonedModel3D = null;
       _materialType = 'Standard';
+      _pbrBehaviorSignature = '';
+      _pbrBehaviorUpdateId = 0;
 
       constructor(
         project,
@@ -8628,6 +11112,103 @@ module.exports = {
         });
       }
 
+      _applyPBRBehaviorOnModel() {
+        if (!this._clonedModel3D) {
+          return;
+        }
+
+        const pbrBehaviorData = getObjectPBRBehaviorData(
+          this._associatedObjectConfiguration
+        );
+        const pbrBehaviorSignature = getPBRBehaviorSignature(pbrBehaviorData);
+        if (this._pbrBehaviorSignature === pbrBehaviorSignature) {
+          return;
+        }
+
+        if (!pbrBehaviorData) {
+          const shouldRestoreBaseMaterials = this._pbrBehaviorSignature !== '';
+          this._pbrBehaviorSignature = '';
+          if (shouldRestoreBaseMaterials && this._modelResourceName) {
+            this._reloadModel(this._modelResourceName);
+          }
+          return;
+        }
+
+        this._pbrBehaviorSignature = pbrBehaviorSignature;
+        const updateId = ++this._pbrBehaviorUpdateId;
+
+        Promise.all([
+          pbrBehaviorData.normalMapAsset
+            ? this._pixiResourcesLoader.getThreeTexture(
+                this._project,
+                pbrBehaviorData.normalMapAsset,
+                { isColorTexture: false }
+              )
+            : Promise.resolve(null),
+          pbrBehaviorData.aoMapAsset
+            ? this._pixiResourcesLoader.getThreeTexture(
+                this._project,
+                pbrBehaviorData.aoMapAsset,
+                { isColorTexture: false }
+              )
+            : Promise.resolve(null),
+          pbrBehaviorData.mapAsset
+            ? this._pixiResourcesLoader.getThreeTexture(
+                this._project,
+                pbrBehaviorData.mapAsset,
+                { isColorTexture: true }
+              )
+            : Promise.resolve(null),
+        ])
+          .then(([normalMapTexture, aoMapTexture, albedoMapTexture]) => {
+            if (this._wasDestroyed || updateId !== this._pbrBehaviorUpdateId) {
+              return;
+            }
+
+            const clonedModel3D = this._clonedModel3D;
+            if (!clonedModel3D) {
+              return;
+            }
+            clonedModel3D.traverse((node) => {
+              const mesh = /** @type {THREE.Mesh} */ (node);
+              if (!mesh || !mesh.material) {
+                return;
+              }
+
+              if (
+                aoMapTexture &&
+                mesh.geometry &&
+                mesh.geometry.attributes &&
+                !mesh.geometry.attributes.uv2 &&
+                mesh.geometry.attributes.uv
+              ) {
+                mesh.geometry.attributes.uv2 = mesh.geometry.attributes.uv;
+              }
+
+              const apply = (material) =>
+                applyPBRBehaviorDataToMaterial(material, pbrBehaviorData, {
+                  normalMapTexture,
+                  aoMapTexture,
+                  albedoMapTexture,
+                });
+
+              if (Array.isArray(mesh.material)) {
+                for (let index = 0; index < mesh.material.length; index++) {
+                  apply(mesh.material[index]);
+                }
+              } else {
+                apply(mesh.material);
+              }
+            });
+          })
+          .catch((error) => {
+            console.warn(
+              '[Scene3D] Unable to apply PBR behavior textures in editor preview.',
+              error
+            );
+          });
+      }
+
       _reloadModel(modelResourceName) {
         this._pixiResourcesLoader
           .get3DModel(this._project, modelResourceName)
@@ -8638,6 +11219,8 @@ module.exports = {
             );
             this._applyMaterialTypeOnModel();
             this._updateDefaultTransformation();
+            this._pbrBehaviorSignature = '';
+            this._applyPBRBehaviorOnModel();
           });
       }
 
@@ -8861,6 +11444,8 @@ module.exports = {
 
         if (modelNeedsReload) {
           this._reloadModel(modelResourceName);
+        } else {
+          this._applyPBRBehaviorOnModel();
         }
 
         this._updateThreeObjectPosition();
@@ -8955,3 +11540,5 @@ module.exports = {
     );
   },
 };
+
+

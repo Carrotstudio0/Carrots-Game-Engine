@@ -20,11 +20,25 @@ namespace gdjs {
   const renderSnapshotLayerMinYOffset = 1;
   const renderSnapshotLayerMaxXOffset = 2;
   const renderSnapshotLayerMaxYOffset = 3;
+  const renderSnapshotSphereStride = 4;
+  const renderSnapshotSphereCenterXOffset = 0;
+  const renderSnapshotSphereCenterYOffset = 1;
+  const renderSnapshotSphereCenterZOffset = 2;
+  const renderSnapshotSphereRadiusOffset = 3;
   const renderSnapshotFlagHasRendererObject = 1 << 0;
   const renderSnapshotFlagHidden = 1 << 1;
   const renderSnapshotFlagHasAABB = 1 << 2;
+  const renderSnapshotFlagHas3DRendererObject = 1 << 3;
+  const renderSnapshotFlagHasSphere = 1 << 4;
   const renderSnapshotMinWorkerObjectCount = 128;
-  const renderSnapshotIsolationEnabled = false;
+  const renderSnapshotMinBvhObjectCount = 96;
+  const renderSnapshotBvhLeafSize = 16;
+  const renderSnapshotOcclusionMinObjectCount = 24;
+  const renderSnapshotOcclusionGridColumns = 24;
+  const renderSnapshotOcclusionGridRows = 14;
+  const renderSnapshotOcclusionDepthEpsilon = 0.001;
+  const renderSnapshotOcclusionMinCoverageRatio = 0.08;
+  const renderSnapshotIsolationEnabled = true;
   const renderSnapshotEnableWorkerCulling = false;
   let hasRegisteredRenderSnapshotWorkerHandler = false;
 
@@ -37,6 +51,36 @@ namespace gdjs {
     objects: Array<gdjs.RuntimeObject | null>;
     layerNames: string[];
     layerBounds: Float32Array;
+    sphereData: Float32Array;
+    depthData: Float32Array;
+    visibilityMask: Uint8Array;
+    layerVisibilityMask: Uint8Array;
+  };
+
+  type RenderSnapshotLayerMetadata = {
+    layer: gdjs.RuntimeLayer;
+    layerIndex: integer;
+    boundsMinX: float;
+    boundsMinY: float;
+    boundsMaxX: float;
+    boundsMaxY: float;
+    layerVisible: boolean;
+    camera:
+      | THREE.PerspectiveCamera
+      | THREE.OrthographicCamera
+      | null;
+    cameraRotatedIn3D: boolean;
+  };
+
+  type RenderSnapshotBvhNode = {
+    minX: float;
+    minY: float;
+    maxX: float;
+    maxY: float;
+    leftNodeIndex: integer;
+    rightNodeIndex: integer;
+    rangeStart: integer;
+    rangeEnd: integer;
   };
 
   type RenderSnapshotWorkerCullingPayload = {
@@ -270,6 +314,21 @@ namespace gdjs {
     private _renderSnapshotVisibilityByVersion = new Map<integer, Uint8Array>();
     private _renderSnapshotCullingQueue: gdjs.WorkerTaskQueue | null = null;
     private _renderSnapshotCullingInFlightVersion: integer = 0;
+    private _renderSnapshotFrustum:
+      | THREE.Frustum
+      | null = typeof THREE !== 'undefined' ? new THREE.Frustum() : null;
+    private _renderSnapshotProjectionMatrix:
+      | THREE.Matrix4
+      | null = typeof THREE !== 'undefined' ? new THREE.Matrix4() : null;
+    private _renderSnapshotTempVector3A:
+      | THREE.Vector3
+      | null = typeof THREE !== 'undefined' ? new THREE.Vector3() : null;
+    private _renderSnapshotTempVector3B:
+      | THREE.Vector3
+      | null = typeof THREE !== 'undefined' ? new THREE.Vector3() : null;
+    private _renderSnapshotTempSphere:
+      | THREE.Sphere
+      | null = typeof THREE !== 'undefined' ? new THREE.Sphere() : null;
 
     /**
      * A network ID associated to the scene to be used
@@ -330,6 +389,10 @@ namespace gdjs {
         objects: new Array<gdjs.RuntimeObject | null>(objectCapacity),
         layerNames: [],
         layerBounds: new Float32Array(0),
+        sphereData: new Float32Array(objectCapacity * renderSnapshotSphereStride),
+        depthData: new Float32Array(objectCapacity),
+        visibilityMask: new Uint8Array(objectCapacity),
+        layerVisibilityMask: new Uint8Array(0),
       };
     }
 
@@ -383,11 +446,41 @@ namespace gdjs {
       nextFlags.set(snapshot.flags.subarray(0, previousCapacity));
       snapshot.flags = nextFlags;
 
+      const nextSphereData = new Float32Array(
+        nextCapacity * renderSnapshotSphereStride
+      );
+      nextSphereData.set(
+        snapshot.sphereData.subarray(0, previousCapacity * renderSnapshotSphereStride)
+      );
+      snapshot.sphereData = nextSphereData;
+
+      const nextDepthData = new Float32Array(nextCapacity);
+      nextDepthData.set(snapshot.depthData.subarray(0, previousCapacity));
+      snapshot.depthData = nextDepthData;
+
+      const nextVisibilityMask = new Uint8Array(nextCapacity);
+      nextVisibilityMask.set(snapshot.visibilityMask.subarray(0, previousCapacity));
+      snapshot.visibilityMask = nextVisibilityMask;
+
       const nextObjects = new Array<gdjs.RuntimeObject | null>(nextCapacity);
       for (let i = 0; i < previousCapacity; i++) {
         nextObjects[i] = snapshot.objects[i] || null;
       }
       snapshot.objects = nextObjects;
+    }
+
+    private _ensureRenderSnapshotLayerCapacity(
+      snapshot: RuntimeRenderSnapshot,
+      requiredLayerCount: integer
+    ): void {
+      if (requiredLayerCount * renderSnapshotLayerBoundsStride > snapshot.layerBounds.length) {
+        snapshot.layerBounds = new Float32Array(
+          requiredLayerCount * renderSnapshotLayerBoundsStride
+        );
+      }
+      if (requiredLayerCount > snapshot.layerVisibilityMask.length) {
+        snapshot.layerVisibilityMask = new Uint8Array(requiredLayerCount);
+      }
     }
 
     private _swapRenderSnapshots(): void {
@@ -398,6 +491,789 @@ namespace gdjs {
       this._renderSnapshotRead.version = this._renderSnapshotVersion;
     }
 
+    private _collectRenderSnapshotLayerMetadata(
+      snapshot: RuntimeRenderSnapshot
+    ): {
+      layerMetadataByIndex: RenderSnapshotLayerMetadata[];
+      layerNameToIndex: Map<string, integer>;
+    } {
+      const layerCount = this._orderedLayers.length;
+      snapshot.layerCount = layerCount;
+      this._ensureRenderSnapshotLayerCapacity(snapshot, layerCount);
+      snapshot.layerNames.length = layerCount;
+
+      const layerMetadataByIndex: RenderSnapshotLayerMetadata[] = [];
+      const layerNameToIndex = new Map<string, integer>();
+
+      for (let layerIndex = 0; layerIndex < layerCount; layerIndex++) {
+        const layer = this._orderedLayers[layerIndex];
+        const layerName = layer.getName();
+        layerNameToIndex.set(layerName, layerIndex);
+        snapshot.layerNames[layerIndex] = layerName;
+
+        const halfWidth = layer.getCameraWidth() / 2;
+        const halfHeight = layer.getCameraHeight() / 2;
+        const boundsMinX = layer.getCameraX() - halfWidth;
+        const boundsMinY = layer.getCameraY() - halfHeight;
+        const boundsMaxX = layer.getCameraX() + halfWidth;
+        const boundsMaxY = layer.getCameraY() + halfHeight;
+        const layerBoundsOffset = layerIndex * renderSnapshotLayerBoundsStride;
+        snapshot.layerBounds[layerBoundsOffset + renderSnapshotLayerMinXOffset] =
+          boundsMinX;
+        snapshot.layerBounds[layerBoundsOffset + renderSnapshotLayerMinYOffset] =
+          boundsMinY;
+        snapshot.layerBounds[layerBoundsOffset + renderSnapshotLayerMaxXOffset] =
+          boundsMaxX;
+        snapshot.layerBounds[layerBoundsOffset + renderSnapshotLayerMaxYOffset] =
+          boundsMaxY;
+
+        const layerVisible = layer.isVisible();
+        snapshot.layerVisibilityMask[layerIndex] = layerVisible ? 1 : 0;
+
+        const layerRenderer = layer.getRenderer();
+        let camera:
+          | THREE.PerspectiveCamera
+          | THREE.OrthographicCamera
+          | null = null;
+        let cameraRotatedIn3D = false;
+        if (layerRenderer && typeof layerRenderer.getThreeCamera === 'function') {
+          const threeCamera = layerRenderer.getThreeCamera();
+          if (threeCamera) {
+            threeCamera.updateMatrixWorld();
+            threeCamera.updateProjectionMatrix();
+            camera = threeCamera;
+          }
+          if (typeof layerRenderer.isCameraRotatedIn3D === 'function') {
+            cameraRotatedIn3D = !!layerRenderer.isCameraRotatedIn3D();
+          }
+          if (typeof layerRenderer.getThreeGroup === 'function') {
+            const threeGroup = layerRenderer.getThreeGroup();
+            if (threeGroup) {
+              threeGroup.updateWorldMatrix(true, true);
+            }
+          }
+        }
+
+        layerMetadataByIndex[layerIndex] = {
+          layer,
+          layerIndex,
+          boundsMinX,
+          boundsMinY,
+          boundsMaxX,
+          boundsMaxY,
+          layerVisible,
+          camera,
+          cameraRotatedIn3D,
+        };
+      }
+
+      return { layerMetadataByIndex, layerNameToIndex };
+    }
+
+    private _isFiniteRenderSnapshotAABB(
+      minX: number,
+      minY: number,
+      maxX: number,
+      maxY: number
+    ): boolean {
+      return (
+        Number.isFinite(minX) &&
+        Number.isFinite(minY) &&
+        Number.isFinite(maxX) &&
+        Number.isFinite(maxY) &&
+        minX <= maxX &&
+        minY <= maxY
+      );
+    }
+
+    private _computeRenderSnapshot3DSphere(
+      object: gdjs.RuntimeObject,
+      rendererObject3D: THREE.Object3D,
+      snapshot: RuntimeRenderSnapshot,
+      objectIndex: integer
+    ): boolean {
+      const center = this._renderSnapshotTempVector3A;
+      if (!center) {
+        return false;
+      }
+
+      rendererObject3D.getWorldPosition(center);
+
+      const objectAsAny = object as any;
+      let width = Math.abs(Number(object.getWidth()));
+      let height = Math.abs(Number(object.getHeight()));
+      let depth =
+        typeof objectAsAny.getDepth === 'function'
+          ? Math.abs(Number(objectAsAny.getDepth()))
+          : Math.max(width, height, 1);
+
+      if (!Number.isFinite(width) || width <= 0) width = 1;
+      if (!Number.isFinite(height) || height <= 0) height = 1;
+      if (!Number.isFinite(depth) || depth <= 0) depth = Math.max(width, height, 1);
+
+      const radius = Math.max(
+        0.5,
+        Math.sqrt(width * width + height * height + depth * depth) / 2
+      );
+
+      const sphereOffset = objectIndex * renderSnapshotSphereStride;
+      snapshot.sphereData[sphereOffset + renderSnapshotSphereCenterXOffset] =
+        center.x;
+      snapshot.sphereData[sphereOffset + renderSnapshotSphereCenterYOffset] =
+        center.y;
+      snapshot.sphereData[sphereOffset + renderSnapshotSphereCenterZOffset] =
+        center.z;
+      snapshot.sphereData[sphereOffset + renderSnapshotSphereRadiusOffset] =
+        radius;
+      return true;
+    }
+
+    private _isRenderSnapshotObjectInsideLayerBounds(
+      snapshot: RuntimeRenderSnapshot,
+      objectIndex: integer,
+      layerMetadata: RenderSnapshotLayerMetadata
+    ): boolean {
+      const numericOffset = objectIndex * renderSnapshotNumericStride;
+      const minX =
+        snapshot.numericData[numericOffset + renderSnapshotAABBMinXOffset];
+      const minY =
+        snapshot.numericData[numericOffset + renderSnapshotAABBMinYOffset];
+      const maxX =
+        snapshot.numericData[numericOffset + renderSnapshotAABBMaxXOffset];
+      const maxY =
+        snapshot.numericData[numericOffset + renderSnapshotAABBMaxYOffset];
+
+      return !(
+        minX > layerMetadata.boundsMaxX ||
+        minY > layerMetadata.boundsMaxY ||
+        maxX < layerMetadata.boundsMinX ||
+        maxY < layerMetadata.boundsMinY
+      );
+    }
+
+    private _buildRenderSnapshotBVH(
+      snapshot: RuntimeRenderSnapshot,
+      objectIndexes: integer[],
+      rangeStart: integer,
+      rangeEnd: integer,
+      nodes: RenderSnapshotBvhNode[]
+    ): integer {
+      let boundsMinX = Number.POSITIVE_INFINITY;
+      let boundsMinY = Number.POSITIVE_INFINITY;
+      let boundsMaxX = Number.NEGATIVE_INFINITY;
+      let boundsMaxY = Number.NEGATIVE_INFINITY;
+      let centerMinX = Number.POSITIVE_INFINITY;
+      let centerMinY = Number.POSITIVE_INFINITY;
+      let centerMaxX = Number.NEGATIVE_INFINITY;
+      let centerMaxY = Number.NEGATIVE_INFINITY;
+
+      for (
+        let objectRangeIndex = rangeStart;
+        objectRangeIndex < rangeEnd;
+        objectRangeIndex++
+      ) {
+        const objectIndex = objectIndexes[objectRangeIndex];
+        const numericOffset = objectIndex * renderSnapshotNumericStride;
+        const minX =
+          snapshot.numericData[numericOffset + renderSnapshotAABBMinXOffset];
+        const minY =
+          snapshot.numericData[numericOffset + renderSnapshotAABBMinYOffset];
+        const maxX =
+          snapshot.numericData[numericOffset + renderSnapshotAABBMaxXOffset];
+        const maxY =
+          snapshot.numericData[numericOffset + renderSnapshotAABBMaxYOffset];
+        boundsMinX = Math.min(boundsMinX, minX);
+        boundsMinY = Math.min(boundsMinY, minY);
+        boundsMaxX = Math.max(boundsMaxX, maxX);
+        boundsMaxY = Math.max(boundsMaxY, maxY);
+
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        centerMinX = Math.min(centerMinX, centerX);
+        centerMinY = Math.min(centerMinY, centerY);
+        centerMaxX = Math.max(centerMaxX, centerX);
+        centerMaxY = Math.max(centerMaxY, centerY);
+      }
+
+      const nodeIndex = nodes.length;
+      nodes.push({
+        minX: boundsMinX,
+        minY: boundsMinY,
+        maxX: boundsMaxX,
+        maxY: boundsMaxY,
+        leftNodeIndex: -1,
+        rightNodeIndex: -1,
+        rangeStart,
+        rangeEnd,
+      });
+
+      const rangeLength = rangeEnd - rangeStart;
+      if (rangeLength <= renderSnapshotBvhLeafSize) {
+        return nodeIndex;
+      }
+
+      const centerExtentX = centerMaxX - centerMinX;
+      const centerExtentY = centerMaxY - centerMinY;
+      const useXAxis = centerExtentX >= centerExtentY;
+      if (
+        (!Number.isFinite(centerExtentX) || centerExtentX <= 0) &&
+        (!Number.isFinite(centerExtentY) || centerExtentY <= 0)
+      ) {
+        return nodeIndex;
+      }
+
+      const sortedSubRange = objectIndexes.slice(rangeStart, rangeEnd);
+      sortedSubRange.sort((firstObjectIndex, secondObjectIndex) => {
+        const firstOffset = firstObjectIndex * renderSnapshotNumericStride;
+        const secondOffset = secondObjectIndex * renderSnapshotNumericStride;
+        const firstCenter = useXAxis
+          ? (snapshot.numericData[firstOffset + renderSnapshotAABBMinXOffset] +
+              snapshot.numericData[firstOffset + renderSnapshotAABBMaxXOffset]) /
+            2
+          : (snapshot.numericData[firstOffset + renderSnapshotAABBMinYOffset] +
+              snapshot.numericData[firstOffset + renderSnapshotAABBMaxYOffset]) /
+            2;
+        const secondCenter = useXAxis
+          ? (snapshot.numericData[secondOffset + renderSnapshotAABBMinXOffset] +
+              snapshot.numericData[secondOffset + renderSnapshotAABBMaxXOffset]) /
+            2
+          : (snapshot.numericData[secondOffset + renderSnapshotAABBMinYOffset] +
+              snapshot.numericData[secondOffset + renderSnapshotAABBMaxYOffset]) /
+            2;
+        return firstCenter - secondCenter;
+      });
+      for (let i = 0; i < sortedSubRange.length; i++) {
+        objectIndexes[rangeStart + i] = sortedSubRange[i];
+      }
+
+      const middleRangeIndex = rangeStart + Math.floor(rangeLength / 2);
+      if (middleRangeIndex <= rangeStart || middleRangeIndex >= rangeEnd) {
+        return nodeIndex;
+      }
+
+      const leftNodeIndex = this._buildRenderSnapshotBVH(
+        snapshot,
+        objectIndexes,
+        rangeStart,
+        middleRangeIndex,
+        nodes
+      );
+      const rightNodeIndex = this._buildRenderSnapshotBVH(
+        snapshot,
+        objectIndexes,
+        middleRangeIndex,
+        rangeEnd,
+        nodes
+      );
+      nodes[nodeIndex].leftNodeIndex = leftNodeIndex;
+      nodes[nodeIndex].rightNodeIndex = rightNodeIndex;
+      nodes[nodeIndex].rangeStart = -1;
+      nodes[nodeIndex].rangeEnd = -1;
+
+      return nodeIndex;
+    }
+
+    private _queryRenderSnapshotBVH(
+      nodes: RenderSnapshotBvhNode[],
+      nodeIndex: integer,
+      objectIndexes: integer[],
+      queryMinX: number,
+      queryMinY: number,
+      queryMaxX: number,
+      queryMaxY: number,
+      candidateMask: Uint8Array
+    ): void {
+      if (nodeIndex < 0 || nodeIndex >= nodes.length) {
+        return;
+      }
+
+      const node = nodes[nodeIndex];
+      const intersectsNode =
+        node.minX <= queryMaxX &&
+        node.minY <= queryMaxY &&
+        node.maxX >= queryMinX &&
+        node.maxY >= queryMinY;
+      if (!intersectsNode) {
+        return;
+      }
+
+      if (node.leftNodeIndex === -1 && node.rightNodeIndex === -1) {
+        for (
+          let objectRangeIndex = node.rangeStart;
+          objectRangeIndex < node.rangeEnd;
+          objectRangeIndex++
+        ) {
+          const objectIndex = objectIndexes[objectRangeIndex];
+          candidateMask[objectIndex] = 1;
+        }
+        return;
+      }
+
+      if (node.leftNodeIndex !== -1) {
+        this._queryRenderSnapshotBVH(
+          nodes,
+          node.leftNodeIndex,
+          objectIndexes,
+          queryMinX,
+          queryMinY,
+          queryMaxX,
+          queryMaxY,
+          candidateMask
+        );
+      }
+      if (node.rightNodeIndex !== -1) {
+        this._queryRenderSnapshotBVH(
+          nodes,
+          node.rightNodeIndex,
+          objectIndexes,
+          queryMinX,
+          queryMinY,
+          queryMaxX,
+          queryMaxY,
+          candidateMask
+        );
+      }
+    }
+
+    private _computeRenderSnapshotObjectDepthFromCamera(
+      snapshot: RuntimeRenderSnapshot,
+      objectIndex: integer,
+      camera: THREE.PerspectiveCamera | THREE.OrthographicCamera
+    ): number {
+      const position = this._renderSnapshotTempVector3A;
+      if (!position) {
+        return Number.POSITIVE_INFINITY;
+      }
+      const sphereOffset = objectIndex * renderSnapshotSphereStride;
+      position.set(
+        snapshot.sphereData[sphereOffset + renderSnapshotSphereCenterXOffset],
+        snapshot.sphereData[sphereOffset + renderSnapshotSphereCenterYOffset],
+        snapshot.sphereData[sphereOffset + renderSnapshotSphereCenterZOffset]
+      );
+      position.applyMatrix4(camera.matrixWorldInverse);
+      return -position.z;
+    }
+
+    private _applyRenderSnapshotOcclusionCullingForLayer(
+      snapshot: RuntimeRenderSnapshot,
+      layerMetadata: RenderSnapshotLayerMetadata,
+      layer3DObjectIndexes: integer[]
+    ): void {
+      const camera = layerMetadata.camera;
+      if (!camera) {
+        return;
+      }
+      if (layer3DObjectIndexes.length < renderSnapshotOcclusionMinObjectCount) {
+        return;
+      }
+      const projectedCenter = this._renderSnapshotTempVector3A;
+      if (!projectedCenter) {
+        return;
+      }
+
+      type OcclusionCandidate = {
+        objectIndex: integer;
+        depth: number;
+        minCellX: integer;
+        minCellY: integer;
+        maxCellX: integer;
+        maxCellY: integer;
+      };
+
+      const gridCellCount =
+        renderSnapshotOcclusionGridColumns * renderSnapshotOcclusionGridRows;
+      const nearestDepthByCell = new Float32Array(gridCellCount);
+      nearestDepthByCell.fill(Number.POSITIVE_INFINITY);
+      const candidates: OcclusionCandidate[] = [];
+
+      const safeCameraAspect =
+        camera instanceof THREE.PerspectiveCamera
+          ? Math.max(0.0001, camera.aspect || 1)
+          : 1;
+      const perspectiveHalfTan =
+        camera instanceof THREE.PerspectiveCamera
+          ? Math.max(0.0001, Math.tan(gdjs.toRad(camera.fov) / 2))
+          : 0;
+      const orthographicHalfWidth =
+        camera instanceof THREE.OrthographicCamera
+          ? Math.max(
+              0.0001,
+              (camera.right - camera.left) / 2 / Math.max(0.0001, camera.zoom)
+            )
+          : 0;
+      const orthographicHalfHeight =
+        camera instanceof THREE.OrthographicCamera
+          ? Math.max(
+              0.0001,
+              (camera.top - camera.bottom) / 2 / Math.max(0.0001, camera.zoom)
+            )
+          : 0;
+
+      for (
+        let layerObjectIndex = 0;
+        layerObjectIndex < layer3DObjectIndexes.length;
+        layerObjectIndex++
+      ) {
+        const objectIndex = layer3DObjectIndexes[layerObjectIndex];
+        if (snapshot.visibilityMask[objectIndex] !== 1) {
+          continue;
+        }
+
+        const sphereOffset = objectIndex * renderSnapshotSphereStride;
+        const radius =
+          snapshot.sphereData[sphereOffset + renderSnapshotSphereRadiusOffset];
+        if (!Number.isFinite(radius) || radius <= 0) {
+          continue;
+        }
+
+        const depth = snapshot.depthData[objectIndex];
+        if (!Number.isFinite(depth) || depth <= renderSnapshotOcclusionDepthEpsilon) {
+          continue;
+        }
+
+        projectedCenter.set(
+          snapshot.sphereData[sphereOffset + renderSnapshotSphereCenterXOffset],
+          snapshot.sphereData[sphereOffset + renderSnapshotSphereCenterYOffset],
+          snapshot.sphereData[sphereOffset + renderSnapshotSphereCenterZOffset]
+        );
+        projectedCenter.project(camera);
+
+        let radiusNdcX = 0;
+        let radiusNdcY = 0;
+        if (camera instanceof THREE.PerspectiveCamera) {
+          radiusNdcY = radius / (depth * perspectiveHalfTan);
+          radiusNdcX = radiusNdcY / safeCameraAspect;
+        } else {
+          radiusNdcX = radius / orthographicHalfWidth;
+          radiusNdcY = radius / orthographicHalfHeight;
+        }
+
+        if (
+          !Number.isFinite(radiusNdcX) ||
+          !Number.isFinite(radiusNdcY) ||
+          radiusNdcX <= 0 ||
+          radiusNdcY <= 0
+        ) {
+          continue;
+        }
+
+        const minNdcX = projectedCenter.x - radiusNdcX;
+        const maxNdcX = projectedCenter.x + radiusNdcX;
+        const minNdcY = projectedCenter.y - radiusNdcY;
+        const maxNdcY = projectedCenter.y + radiusNdcY;
+        if (maxNdcX < -1 || minNdcX > 1 || maxNdcY < -1 || minNdcY > 1) {
+          continue;
+        }
+
+        const clampedMinNdcX = Math.max(-1, minNdcX);
+        const clampedMaxNdcX = Math.min(1, maxNdcX);
+        const clampedMinNdcY = Math.max(-1, minNdcY);
+        const clampedMaxNdcY = Math.min(1, maxNdcY);
+
+        const minCellX = Math.max(
+          0,
+          Math.min(
+            renderSnapshotOcclusionGridColumns - 1,
+            Math.floor(
+              ((clampedMinNdcX + 1) * 0.5) * renderSnapshotOcclusionGridColumns
+            )
+          )
+        );
+        const maxCellX = Math.max(
+          0,
+          Math.min(
+            renderSnapshotOcclusionGridColumns - 1,
+            Math.floor(
+              ((clampedMaxNdcX + 1) * 0.5) * renderSnapshotOcclusionGridColumns
+            )
+          )
+        );
+        const minCellY = Math.max(
+          0,
+          Math.min(
+            renderSnapshotOcclusionGridRows - 1,
+            Math.floor(
+              (1 - (clampedMaxNdcY + 1) * 0.5) * renderSnapshotOcclusionGridRows
+            )
+          )
+        );
+        const maxCellY = Math.max(
+          0,
+          Math.min(
+            renderSnapshotOcclusionGridRows - 1,
+            Math.floor(
+              (1 - (clampedMinNdcY + 1) * 0.5) * renderSnapshotOcclusionGridRows
+            )
+          )
+        );
+        if (maxCellX < minCellX || maxCellY < minCellY) {
+          continue;
+        }
+
+        candidates.push({
+          objectIndex,
+          depth,
+          minCellX,
+          minCellY,
+          maxCellX,
+          maxCellY,
+        });
+      }
+
+      candidates.sort((firstCandidate, secondCandidate) => {
+        if (firstCandidate.depth === secondCandidate.depth) {
+          return firstCandidate.objectIndex - secondCandidate.objectIndex;
+        }
+        return firstCandidate.depth - secondCandidate.depth;
+      });
+
+      for (
+        let candidateIndex = 0;
+        candidateIndex < candidates.length;
+        candidateIndex++
+      ) {
+        const candidate = candidates[candidateIndex];
+        const candidateWidth = candidate.maxCellX - candidate.minCellX + 1;
+        const candidateHeight = candidate.maxCellY - candidate.minCellY + 1;
+        const coveredCellCount = candidateWidth * candidateHeight;
+        const coverageRatio = coveredCellCount / gridCellCount;
+
+        let fullyOccluded = true;
+        for (
+          let cellY = candidate.minCellY;
+          cellY <= candidate.maxCellY && fullyOccluded;
+          cellY++
+        ) {
+          for (let cellX = candidate.minCellX; cellX <= candidate.maxCellX; cellX++) {
+            const cellIndex =
+              cellY * renderSnapshotOcclusionGridColumns + cellX;
+            const nearestDepth = nearestDepthByCell[cellIndex];
+            if (
+              !Number.isFinite(nearestDepth) ||
+              nearestDepth + renderSnapshotOcclusionDepthEpsilon >=
+                candidate.depth
+            ) {
+              fullyOccluded = false;
+              break;
+            }
+          }
+        }
+
+        if (fullyOccluded) {
+          snapshot.visibilityMask[candidate.objectIndex] = 0;
+          continue;
+        }
+
+        if (coverageRatio < renderSnapshotOcclusionMinCoverageRatio) {
+          continue;
+        }
+
+        for (let cellY = candidate.minCellY; cellY <= candidate.maxCellY; cellY++) {
+          for (let cellX = candidate.minCellX; cellX <= candidate.maxCellX; cellX++) {
+            const cellIndex = cellY * renderSnapshotOcclusionGridColumns + cellX;
+            nearestDepthByCell[cellIndex] = Math.min(
+              nearestDepthByCell[cellIndex],
+              candidate.depth
+            );
+          }
+        }
+      }
+    }
+
+    private _computeRenderSnapshotVisibility(
+      snapshot: RuntimeRenderSnapshot,
+      layerMetadataByIndex: RenderSnapshotLayerMetadata[]
+    ): void {
+      const visibilityMask = snapshot.visibilityMask;
+      const objectCount = snapshot.objectCount;
+      const layerCount = snapshot.layerCount;
+      visibilityMask.fill(0, 0, objectCount);
+
+      const layerObjectIndexesForBvh: integer[][] = [];
+      const layer3DObjectIndexes: integer[][] = [];
+      for (let layerIndex = 0; layerIndex < layerCount; layerIndex++) {
+        layerObjectIndexesForBvh[layerIndex] = [];
+        layer3DObjectIndexes[layerIndex] = [];
+      }
+
+      for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
+        snapshot.depthData[objectIndex] = 0;
+        const flagsValue = snapshot.flags[objectIndex];
+        const hasRendererObject =
+          (flagsValue & renderSnapshotFlagHasRendererObject) !== 0;
+        const isHidden = (flagsValue & renderSnapshotFlagHidden) !== 0;
+        if (!hasRendererObject || isHidden) {
+          visibilityMask[objectIndex] = 0;
+          continue;
+        }
+        visibilityMask[objectIndex] = 1;
+
+        const numericOffset = objectIndex * renderSnapshotNumericStride;
+        const layerIndex = Math.floor(
+          snapshot.numericData[numericOffset + renderSnapshotLayerIndexOffset]
+        );
+        if (layerIndex < 0 || layerIndex >= layerCount) {
+          continue;
+        }
+
+        const hasAABB = (flagsValue & renderSnapshotFlagHasAABB) !== 0;
+        const has3DRendererObject =
+          (flagsValue & renderSnapshotFlagHas3DRendererObject) !== 0;
+        if (hasAABB && !has3DRendererObject) {
+          layerObjectIndexesForBvh[layerIndex].push(objectIndex);
+        }
+        if (has3DRendererObject) {
+          layer3DObjectIndexes[layerIndex].push(objectIndex);
+        }
+      }
+
+      const bvhCandidateMask = new Uint8Array(objectCount);
+      for (let layerIndex = 0; layerIndex < layerCount; layerIndex++) {
+        const layerMetadata = layerMetadataByIndex[layerIndex];
+        const aabbObjectIndexes = layerObjectIndexesForBvh[layerIndex];
+        if (aabbObjectIndexes.length > 0) {
+          if (aabbObjectIndexes.length >= renderSnapshotMinBvhObjectCount) {
+            for (
+              let objectRangeIndex = 0;
+              objectRangeIndex < aabbObjectIndexes.length;
+              objectRangeIndex++
+            ) {
+              bvhCandidateMask[aabbObjectIndexes[objectRangeIndex]] = 0;
+            }
+
+            const bvhObjectIndexes = aabbObjectIndexes.slice();
+            const bvhNodes: RenderSnapshotBvhNode[] = [];
+            const bvhRootNodeIndex = this._buildRenderSnapshotBVH(
+              snapshot,
+              bvhObjectIndexes,
+              0,
+              bvhObjectIndexes.length,
+              bvhNodes
+            );
+            this._queryRenderSnapshotBVH(
+              bvhNodes,
+              bvhRootNodeIndex,
+              bvhObjectIndexes,
+              layerMetadata.boundsMinX,
+              layerMetadata.boundsMinY,
+              layerMetadata.boundsMaxX,
+              layerMetadata.boundsMaxY,
+              bvhCandidateMask
+            );
+
+            for (
+              let objectRangeIndex = 0;
+              objectRangeIndex < aabbObjectIndexes.length;
+              objectRangeIndex++
+            ) {
+              const objectIndex = aabbObjectIndexes[objectRangeIndex];
+              if (bvhCandidateMask[objectIndex] === 0) {
+                visibilityMask[objectIndex] = 0;
+              }
+            }
+          } else {
+            for (
+              let objectRangeIndex = 0;
+              objectRangeIndex < aabbObjectIndexes.length;
+              objectRangeIndex++
+            ) {
+              const objectIndex = aabbObjectIndexes[objectRangeIndex];
+              if (
+                !this._isRenderSnapshotObjectInsideLayerBounds(
+                  snapshot,
+                  objectIndex,
+                  layerMetadata
+                )
+              ) {
+                visibilityMask[objectIndex] = 0;
+              }
+            }
+          }
+        }
+
+        const camera = layerMetadata.camera;
+        const canComputeFrustum =
+          !!camera && !!this._renderSnapshotFrustum && !!this._renderSnapshotProjectionMatrix;
+        if (
+          canComputeFrustum &&
+          camera &&
+          this._renderSnapshotFrustum &&
+          this._renderSnapshotProjectionMatrix
+        ) {
+          this._renderSnapshotProjectionMatrix.multiplyMatrices(
+            camera.projectionMatrix,
+            camera.matrixWorldInverse
+          );
+          this._renderSnapshotFrustum.setFromProjectionMatrix(
+            this._renderSnapshotProjectionMatrix
+          );
+        }
+
+        const threeDObjectIndexes = layer3DObjectIndexes[layerIndex];
+        for (
+          let objectRangeIndex = 0;
+          objectRangeIndex < threeDObjectIndexes.length;
+          objectRangeIndex++
+        ) {
+          const objectIndex = threeDObjectIndexes[objectRangeIndex];
+          if (visibilityMask[objectIndex] !== 1) continue;
+
+          if (camera) {
+            snapshot.depthData[objectIndex] =
+              this._computeRenderSnapshotObjectDepthFromCamera(
+                snapshot,
+                objectIndex,
+                camera
+              );
+          }
+
+          if (
+            !canComputeFrustum ||
+            !this._renderSnapshotFrustum ||
+            !this._renderSnapshotTempVector3B ||
+            !this._renderSnapshotTempSphere
+          ) {
+            continue;
+          }
+
+          const flagsValue = snapshot.flags[objectIndex];
+          const hasSphere = (flagsValue & renderSnapshotFlagHasSphere) !== 0;
+          if (!hasSphere) continue;
+
+          const sphereOffset = objectIndex * renderSnapshotSphereStride;
+          const sphereRadius =
+            snapshot.sphereData[sphereOffset + renderSnapshotSphereRadiusOffset];
+          if (!Number.isFinite(sphereRadius) || sphereRadius <= 0) {
+            continue;
+          }
+
+          this._renderSnapshotTempVector3B.set(
+            snapshot.sphereData[sphereOffset + renderSnapshotSphereCenterXOffset],
+            snapshot.sphereData[sphereOffset + renderSnapshotSphereCenterYOffset],
+            snapshot.sphereData[sphereOffset + renderSnapshotSphereCenterZOffset]
+          );
+          this._renderSnapshotTempSphere.center.copy(
+            this._renderSnapshotTempVector3B
+          );
+          this._renderSnapshotTempSphere.radius = sphereRadius;
+          const intersectsFrustum = this._renderSnapshotFrustum.intersectsSphere(
+            this._renderSnapshotTempSphere
+          );
+          if (!intersectsFrustum) {
+            visibilityMask[objectIndex] = 0;
+          }
+        }
+
+        if (camera && !layerMetadata.cameraRotatedIn3D) {
+          this._applyRenderSnapshotOcclusionCullingForLayer(
+            snapshot,
+            layerMetadata,
+            threeDObjectIndexes
+          );
+        }
+      }
+    }
+
     private _buildRenderSnapshot(): void {
       const allInstancesList = this.getAdhocListOfAllInstances();
       const objectCount = allInstancesList.length;
@@ -405,8 +1281,9 @@ namespace gdjs {
       this._ensureRenderSnapshotObjectCapacity(writeSnapshot, objectCount);
 
       writeSnapshot.objectCount = objectCount;
-      writeSnapshot.layerCount = 0;
-      writeSnapshot.layerNames.length = 0;
+      const { layerMetadataByIndex, layerNameToIndex } =
+        this._collectRenderSnapshotLayerMetadata(writeSnapshot);
+
       for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
         const object = allInstancesList[objectIndex];
         const numericOffset = objectIndex * renderSnapshotNumericStride;
@@ -417,29 +1294,123 @@ namespace gdjs {
         writeSnapshot.numericData[numericOffset + renderSnapshotYOffset] =
           object.getY();
 
+        const layerName = object.getLayer();
+        const layerIndex = layerNameToIndex.has(layerName)
+          ? (layerNameToIndex.get(layerName) as integer)
+          : -1;
+        const layerMetadata =
+          layerIndex >= 0 && layerIndex < layerMetadataByIndex.length
+            ? layerMetadataByIndex[layerIndex]
+            : null;
+        const isLayerVisible = layerMetadata ? layerMetadata.layerVisible : true;
+
         const rendererObject = object.getRendererObject();
+        const rendererObject3D = object.get3DRendererObject();
+        const has2DRendererObject = !!rendererObject;
+        const has3DRendererObject = !!rendererObject3D;
         let objectFlags = 0;
-        if (rendererObject) {
+        if (has2DRendererObject || has3DRendererObject) {
           objectFlags |= renderSnapshotFlagHasRendererObject;
         }
-        if (object.isHidden()) {
+        if (has3DRendererObject) {
+          objectFlags |= renderSnapshotFlagHas3DRendererObject;
+        }
+        if (object.isHidden() || !isLayerVisible) {
           objectFlags |= renderSnapshotFlagHidden;
         }
         writeSnapshot.numericData[
           numericOffset + renderSnapshotLayerIndexOffset
-        ] = 0;
-        writeSnapshot.numericData[
-          numericOffset + renderSnapshotAABBMinXOffset
-        ] = 0;
-        writeSnapshot.numericData[
-          numericOffset + renderSnapshotAABBMinYOffset
-        ] = 0;
-        writeSnapshot.numericData[
-          numericOffset + renderSnapshotAABBMaxXOffset
-        ] = 0;
-        writeSnapshot.numericData[
-          numericOffset + renderSnapshotAABBMaxYOffset
-        ] = 0;
+        ] = layerIndex;
+
+        let hasVisibilityAABB = false;
+        let visibilityMinX = 0;
+        let visibilityMinY = 0;
+        let visibilityMaxX = 0;
+        let visibilityMaxY = 0;
+        const visibilityAABB = object.getVisibilityAABB();
+        if (visibilityAABB) {
+          const minX = Number(visibilityAABB.min[0]);
+          const minY = Number(visibilityAABB.min[1]);
+          const maxX = Number(visibilityAABB.max[0]);
+          const maxY = Number(visibilityAABB.max[1]);
+          if (this._isFiniteRenderSnapshotAABB(minX, minY, maxX, maxY)) {
+            hasVisibilityAABB = true;
+            visibilityMinX = minX;
+            visibilityMinY = minY;
+            visibilityMaxX = maxX;
+            visibilityMaxY = maxY;
+          }
+        }
+        if (!hasVisibilityAABB) {
+          const objectAsAny = object as any;
+          const drawableX =
+            typeof objectAsAny.getDrawableX === 'function'
+              ? Number(objectAsAny.getDrawableX())
+              : Number(object.getX());
+          const drawableY =
+            typeof objectAsAny.getDrawableY === 'function'
+              ? Number(objectAsAny.getDrawableY())
+              : Number(object.getY());
+          const width = Math.abs(Number(object.getWidth()));
+          const height = Math.abs(Number(object.getHeight()));
+          const minX = drawableX;
+          const minY = drawableY;
+          const maxX = drawableX + (Number.isFinite(width) && width > 0 ? width : 1);
+          const maxY = drawableY + (Number.isFinite(height) && height > 0 ? height : 1);
+          if (this._isFiniteRenderSnapshotAABB(minX, minY, maxX, maxY)) {
+            hasVisibilityAABB = true;
+            visibilityMinX = minX;
+            visibilityMinY = minY;
+            visibilityMaxX = maxX;
+            visibilityMaxY = maxY;
+          }
+        }
+
+        if (hasVisibilityAABB) {
+          objectFlags |= renderSnapshotFlagHasAABB;
+          writeSnapshot.numericData[
+            numericOffset + renderSnapshotAABBMinXOffset
+          ] = visibilityMinX;
+          writeSnapshot.numericData[
+            numericOffset + renderSnapshotAABBMinYOffset
+          ] = visibilityMinY;
+          writeSnapshot.numericData[
+            numericOffset + renderSnapshotAABBMaxXOffset
+          ] = visibilityMaxX;
+          writeSnapshot.numericData[
+            numericOffset + renderSnapshotAABBMaxYOffset
+          ] = visibilityMaxY;
+        } else {
+          writeSnapshot.numericData[
+            numericOffset + renderSnapshotAABBMinXOffset
+          ] = 0;
+          writeSnapshot.numericData[
+            numericOffset + renderSnapshotAABBMinYOffset
+          ] = 0;
+          writeSnapshot.numericData[
+            numericOffset + renderSnapshotAABBMaxXOffset
+          ] = 0;
+          writeSnapshot.numericData[
+            numericOffset + renderSnapshotAABBMaxYOffset
+          ] = 0;
+        }
+
+        const sphereOffset = objectIndex * renderSnapshotSphereStride;
+        writeSnapshot.sphereData[sphereOffset + renderSnapshotSphereCenterXOffset] = 0;
+        writeSnapshot.sphereData[sphereOffset + renderSnapshotSphereCenterYOffset] = 0;
+        writeSnapshot.sphereData[sphereOffset + renderSnapshotSphereCenterZOffset] = 0;
+        writeSnapshot.sphereData[sphereOffset + renderSnapshotSphereRadiusOffset] = 0;
+        if (rendererObject3D) {
+          const hasSphere = this._computeRenderSnapshot3DSphere(
+            object,
+            rendererObject3D,
+            writeSnapshot,
+            objectIndex
+          );
+          if (hasSphere) {
+            objectFlags |= renderSnapshotFlagHasSphere;
+          }
+        }
 
         writeSnapshot.flags[objectIndex] = objectFlags;
       }
@@ -452,6 +1423,7 @@ namespace gdjs {
         writeSnapshot.objects[objectIndex] = null;
       }
 
+      this._computeRenderSnapshotVisibility(writeSnapshot, layerMetadataByIndex);
       this._swapRenderSnapshots();
       this._scheduleRenderSnapshotCulling(this._renderSnapshotRead);
     }
@@ -544,6 +1516,10 @@ namespace gdjs {
       snapshot: RuntimeRenderSnapshot,
       objectIndex: integer
     ): boolean {
+      if (objectIndex >= 0 && objectIndex < snapshot.objectCount) {
+        return snapshot.visibilityMask[objectIndex] === 1;
+      }
+
       const flagsValue = snapshot.flags[objectIndex];
       const hasRendererObject =
         (flagsValue & renderSnapshotFlagHasRendererObject) !== 0;
@@ -959,6 +1935,9 @@ namespace gdjs {
       }
 
       this.render();
+      if (this._profiler) {
+        this._profiler.recordRenderStats(this._collectProfilerRenderStats());
+      }
       this._isJustResumed = false;
       if (this._profiler) {
         this._profiler.end('render');
@@ -1010,6 +1989,55 @@ namespace gdjs {
       this._renderer.render();
     }
 
+    private _collectProfilerRenderStats():
+      | gdjs.ProfilerRenderStatsSample
+      | null {
+      const gameRenderer = this._runtimeGame
+        ? (this._runtimeGame.getRenderer() as any)
+        : null;
+      if (!gameRenderer || typeof gameRenderer.getThreeRenderer !== 'function') {
+        return null;
+      }
+      const threeRenderer = gameRenderer.getThreeRenderer() as
+        | THREE.WebGLRenderer
+        | null;
+      if (!threeRenderer || !threeRenderer.info) {
+        return null;
+      }
+
+      const toNonNegativeFiniteNumber = (value: any): number | undefined =>
+        typeof value === 'number' && Number.isFinite(value) && value >= 0
+          ? value
+          : undefined;
+
+      const rendererInfo = threeRenderer.info as THREE.WebGLInfo & {
+        programs?: Array<any>;
+      };
+      const renderInfo = rendererInfo.render as {
+        calls?: number;
+        triangles?: number;
+        lines?: number;
+        points?: number;
+      };
+      const memoryInfo = rendererInfo.memory as {
+        textures?: number;
+        geometries?: number;
+      };
+      const shaderPrograms = Array.isArray(rendererInfo.programs)
+        ? rendererInfo.programs.length
+        : undefined;
+
+      return {
+        drawCalls: toNonNegativeFiniteNumber(renderInfo.calls),
+        triangles: toNonNegativeFiniteNumber(renderInfo.triangles),
+        lines: toNonNegativeFiniteNumber(renderInfo.lines),
+        points: toNonNegativeFiniteNumber(renderInfo.points),
+        textures: toNonNegativeFiniteNumber(memoryInfo.textures),
+        geometries: toNonNegativeFiniteNumber(memoryInfo.geometries),
+        shaderPrograms: toNonNegativeFiniteNumber(shaderPrograms),
+      };
+    }
+
     /**
      * Called to update visibility of the renderers of objects
      * rendered on the scene ("culling"), update effects (of visible objects)
@@ -1039,7 +2067,8 @@ namespace gdjs {
         }
 
         const rendererObject = object.getRendererObject();
-        if (!rendererObject) {
+        const rendererObject3D = object.get3DRendererObject();
+        if (!rendererObject && !rendererObject3D) {
           // Objects without renderer object own their visibility/update flow.
           object.updatePreRender(this);
           continue;
@@ -1049,16 +2078,23 @@ namespace gdjs {
           visibilityFromWorker && objectIndex < visibilityFromWorker.length
             ? visibilityFromWorker[objectIndex] === 1
             : this._isObjectVisibleFromRenderSnapshot(snapshot, objectIndex);
-        rendererObject.visible = isVisible;
+        if (rendererObject) {
+          rendererObject.visible = isVisible;
+        }
+        if (rendererObject3D) {
+          rendererObject3D.visible = isVisible;
+        }
 
         if (!isVisible) {
           object.updatePreRender(this);
           continue;
         }
 
-        this._runtimeGame
-          .getEffectsManager()
-          .updatePreRender(object.getRendererEffects(), object);
+        if (rendererObject) {
+          this._runtimeGame
+            .getEffectsManager()
+            .updatePreRender(object.getRendererEffects(), object);
+        }
         object.updatePreRender(this);
       }
     }

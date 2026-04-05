@@ -18,10 +18,11 @@ const physicsSnapshotRotationWOffset = 6;
 const physicsSnapshotWorkerHandlerName =
   'GDJS::Physics3D::prepareSnapshotChunk::v1';
 const physicsSnapshotWorkerChunkSize = 256;
-const physicsSnapshotWorkerPreparationEnabled = false;
-const physicsSnapshotObjectSyncEnabled = false;
-const physicsSnapshotPipelineEnabled =
-  physicsSnapshotWorkerPreparationEnabled || physicsSnapshotObjectSyncEnabled;
+const scene3DWasmSimdConfigKey = '__gdScene3dWasmSimdConfig';
+const physicsSnapshotWorkerPreparationDefaultEnabled = true;
+const physicsSnapshotObjectSyncDefaultEnabled = false;
+const physicsSnapshotDefaultMinBodyCountForWorkerPreparation = 24;
+const physicsSnapshotDefaultMinBodyCountForObjectSync = 24;
 let hasRegisteredPhysicsSnapshotWorkerHandler = false;
 
 namespace gdjs {
@@ -45,6 +46,14 @@ namespace gdjs {
 
   export interface RuntimeScene {
     physics3DSharedData: gdjs.Physics3DSharedData | null;
+  }
+  interface Scene3DWasmSimdRuntimeConfig {
+    supported?: boolean;
+    threadsSupported?: boolean;
+    active?: boolean;
+    minPhysicsBodyCount?: number;
+    enablePhysicsWorkerPreparation?: boolean;
+    enablePhysicsSnapshotObjectSync?: boolean;
   }
   interface Physics3DNetworkSyncDataType {
     px: number | undefined;
@@ -200,6 +209,46 @@ namespace gdjs {
       typeof result.worldScale === 'number' &&
       result.chunkBuffer instanceof ArrayBuffer
     );
+  };
+
+  const getRuntimeWasmFeaturesSnapshot = (): {
+    simdSupported: boolean;
+    threadsSupported: boolean;
+  } => {
+    const runtimeCapabilities = (gdjs as unknown as {
+      runtimeCapabilities?: {
+        getWasmFeatureSupportSnapshot?: () => {
+          simdSupported?: boolean;
+          threadsSupported?: boolean;
+        };
+      };
+    }).runtimeCapabilities;
+    if (
+      runtimeCapabilities &&
+      typeof runtimeCapabilities.getWasmFeatureSupportSnapshot === 'function'
+    ) {
+      const snapshot = runtimeCapabilities.getWasmFeatureSupportSnapshot();
+      return {
+        simdSupported: !!(snapshot && snapshot.simdSupported),
+        threadsSupported: !!(snapshot && snapshot.threadsSupported),
+      };
+    }
+    return {
+      simdSupported: false,
+      threadsSupported: false,
+    };
+  };
+
+  const getScene3DWasmSimdRuntimeConfig = (
+    runtimeScene: gdjs.RuntimeScene | null | undefined
+  ): Scene3DWasmSimdRuntimeConfig | null => {
+    if (!runtimeScene) {
+      return null;
+    }
+    const runtimeSceneAny = runtimeScene as gdjs.RuntimeScene & {
+      [scene3DWasmSimdConfigKey]?: Scene3DWasmSimdRuntimeConfig;
+    };
+    return runtimeSceneAny[scene3DWasmSimdConfigKey] || null;
   };
 
   const ensurePhysicsSnapshotWorkerHandlerRegistered = (): void => {
@@ -410,6 +459,11 @@ namespace gdjs {
         stride: physicsSnapshotStride,
         transforms: this._snapshotPreparedReadBuffer,
       };
+    private _snapshotWorkerPreparationEnabled: boolean;
+    private _snapshotObjectSyncEnabled: boolean;
+    private _snapshotPipelineEnabled: boolean;
+    private _snapshotWorkerPreparationMinBodyCount: integer;
+    private _snapshotObjectSyncMinBodyCount: integer;
 
     private _fixedTimeStep: float = 1 / 60;
     private _maxSubSteps: integer = 3;
@@ -610,10 +664,58 @@ namespace gdjs {
       this.gravityZ = sharedData.gravityZ;
       this.worldScale = sharedData.worldScale;
       this.worldInvScale = 1 / this.worldScale;
-      if (physicsSnapshotWorkerPreparationEnabled) {
+      const runtimeScene = instanceContainer.getScene();
+      const simdConfig = getScene3DWasmSimdRuntimeConfig(runtimeScene);
+      const wasmFeatures = getRuntimeWasmFeaturesSnapshot();
+      const simdActive = simdConfig ? !!simdConfig.active : false;
+      const threadsSupported =
+        simdConfig && simdConfig.threadsSupported !== undefined
+          ? !!simdConfig.threadsSupported
+          : wasmFeatures.threadsSupported;
+      const workerPreparationAllowedByConfig =
+        simdConfig && simdConfig.enablePhysicsWorkerPreparation !== undefined
+          ? !!simdConfig.enablePhysicsWorkerPreparation
+          : true;
+      const objectSyncAllowedByConfig =
+        simdConfig && simdConfig.enablePhysicsSnapshotObjectSync !== undefined
+          ? !!simdConfig.enablePhysicsSnapshotObjectSync
+          : true;
+      const configuredMinBodyCount =
+        simdConfig && typeof simdConfig.minPhysicsBodyCount === 'number'
+          ? simdConfig.minPhysicsBodyCount
+          : physicsSnapshotDefaultMinBodyCountForWorkerPreparation;
+      const clampedMinBodyCount = Math.max(
+        1,
+        Math.min(50000, Math.round(configuredMinBodyCount))
+      );
+
+      this._snapshotWorkerPreparationEnabled =
+        physicsSnapshotWorkerPreparationDefaultEnabled &&
+        simdActive &&
+        threadsSupported &&
+        workerPreparationAllowedByConfig;
+      this._snapshotObjectSyncEnabled =
+        physicsSnapshotObjectSyncDefaultEnabled ||
+        (simdActive && objectSyncAllowedByConfig);
+      this._snapshotWorkerPreparationMinBodyCount = clampedMinBodyCount;
+      this._snapshotObjectSyncMinBodyCount = Math.max(
+        1,
+        Math.min(
+          50000,
+          Math.round(
+            simdConfig && typeof simdConfig.minPhysicsBodyCount === 'number'
+              ? simdConfig.minPhysicsBodyCount
+              : physicsSnapshotDefaultMinBodyCountForObjectSync
+          )
+        )
+      );
+      this._snapshotPipelineEnabled =
+        this._snapshotWorkerPreparationEnabled ||
+        this._snapshotObjectSyncEnabled;
+
+      if (this._snapshotWorkerPreparationEnabled) {
         ensurePhysicsSnapshotWorkerHandlerRegistered();
 
-        const runtimeScene = instanceContainer.getScene();
         if (
           runtimeScene &&
           runtimeScene.createWorkerTaskQueue &&
@@ -955,7 +1057,7 @@ namespace gdjs {
     private _registerBehaviorSnapshotSlot(
       physicsBehavior: gdjs.Physics3DRuntimeBehavior
     ): void {
-      if (!physicsSnapshotPipelineEnabled) {
+      if (!this._snapshotPipelineEnabled) {
         return;
       }
       if (this._snapshotIndexByBehavior.has(physicsBehavior)) {
@@ -986,7 +1088,7 @@ namespace gdjs {
     private _unregisterBehaviorSnapshotSlot(
       physicsBehavior: gdjs.Physics3DRuntimeBehavior
     ): void {
-      if (!physicsSnapshotPipelineEnabled) {
+      if (!this._snapshotPipelineEnabled) {
         return;
       }
       const snapshotSlotIndex =
@@ -1057,7 +1159,10 @@ namespace gdjs {
     applyLatestSnapshotToBehavior(
       physicsBehavior: gdjs.Physics3DRuntimeBehavior
     ): boolean {
-      if (!physicsSnapshotObjectSyncEnabled) {
+      if (
+        !this._snapshotObjectSyncEnabled ||
+        this._snapshotBodyCount < this._snapshotObjectSyncMinBodyCount
+      ) {
         return false;
       }
       const snapshotSlotIndex =
@@ -1123,7 +1228,7 @@ namespace gdjs {
      */
     addToBehaviorsList(physicsBehavior: gdjs.Physics3DRuntimeBehavior): void {
       this._registeredBehaviors.add(physicsBehavior);
-      if (physicsSnapshotPipelineEnabled) {
+      if (this._snapshotPipelineEnabled) {
         this._registerBehaviorSnapshotSlot(physicsBehavior);
       }
     }
@@ -1135,7 +1240,7 @@ namespace gdjs {
       physicsBehavior: gdjs.Physics3DRuntimeBehavior
     ): void {
       this._registeredBehaviors.delete(physicsBehavior);
-      if (physicsSnapshotPipelineEnabled) {
+      if (this._snapshotPipelineEnabled) {
         this._unregisterBehaviorSnapshotSlot(physicsBehavior);
       }
     }
@@ -1515,14 +1620,20 @@ namespace gdjs {
         this._fixedStepAccumulator = 0;
       }
       this.stepped = true;
-      if (physicsSnapshotPipelineEnabled) {
+      if (this._snapshotPipelineEnabled) {
         this._capturePhysicsSnapshotToWriteBuffer();
         this._swapPhysicsSnapshotBuffers();
-        if (physicsSnapshotWorkerPreparationEnabled) {
+        if (
+          this._snapshotWorkerPreparationEnabled &&
+          this._snapshotBodyCount >= this._snapshotWorkerPreparationMinBodyCount
+        ) {
           this._schedulePreparedSnapshotProcessing(this._snapshotVersion);
         }
       }
-      if (physicsSnapshotObjectSyncEnabled) {
+      if (
+        this._snapshotObjectSyncEnabled &&
+        this._snapshotBodyCount >= this._snapshotObjectSyncMinBodyCount
+      ) {
         this._applyReadSnapshotToObjects();
         return;
       }
@@ -3192,10 +3303,7 @@ namespace gdjs {
     }
 
     updateObjectFromBody() {
-      if (
-        !physicsSnapshotObjectSyncEnabled ||
-        !this._sharedData.applyLatestSnapshotToBehavior(this)
-      ) {
+      if (!this._sharedData.applyLatestSnapshotToBehavior(this)) {
         this.bodyUpdater.updateObjectFromBody();
       }
       this._cacheObjectTransform();

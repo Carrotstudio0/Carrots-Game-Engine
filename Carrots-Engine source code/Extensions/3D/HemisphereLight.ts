@@ -39,7 +39,7 @@ namespace gdjs {
     return gdjs.evtTools.common.clamp(
       0,
       1,
-      state.realtimeWeight !== undefined ? state.realtimeWeight : 0.75
+      state.realtimeWeight !== undefined ? state.realtimeWeight : 1
     );
   };
   gdjs.PixiFiltersTools.registerFilterCreator(
@@ -298,3 +298,4 @@ namespace gdjs {
     })()
   );
 }
+

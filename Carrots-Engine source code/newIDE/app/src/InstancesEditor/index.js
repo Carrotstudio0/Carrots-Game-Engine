@@ -154,6 +154,21 @@ type State = {|
   |},
 |};
 
+type FramePerformanceSnapshot = {|
+  fps: number,
+  fpsSmoothed: number,
+  frameTimeMs: number,
+  frameTimeMsSmoothed: number,
+  frameCpuTimeMs: number,
+  frameCpuTimeMsSmoothed: number,
+  drawCalls: number,
+  triangles: number,
+  lines: number,
+  points: number,
+  geometries: number,
+  textures: number,
+|};
+
 export default class InstancesEditor extends Component<Props, State> {
   lastContextMenuX = 0;
   lastContextMenuY = 0;
@@ -200,6 +215,25 @@ export default class InstancesEditor extends Component<Props, State> {
   hasCursorMovedSinceItIsDown = false;
   _showObjectInstancesIn3D: boolean = false;
   _previousToolBeforePicker: ?TileMapTileSelection = null;
+  _picked3DBackgroundInstance: gdInitialInstance | null = null;
+  _lastRenderedFrameAt: number = 0;
+  _smoothedFps: number = 0;
+  _smoothedFrameTimeMs: number = 0;
+  _smoothedFrameCpuTimeMs: number = 0;
+  _latestFramePerformanceSnapshot: FramePerformanceSnapshot = {
+    fps: 0,
+    fpsSmoothed: 0,
+    frameTimeMs: 0,
+    frameTimeMsSmoothed: 0,
+    frameCpuTimeMs: 0,
+    frameCpuTimeMsSmoothed: 0,
+    drawCalls: 0,
+    triangles: 0,
+    lines: 0,
+    points: 0,
+    geometries: 0,
+    textures: 0,
+  };
 
   // $FlowFixMe[missing-local-annot]
   state = {
@@ -265,7 +299,12 @@ export default class InstancesEditor extends Component<Props, State> {
         const threeRenderer = new THREE.WebGLRenderer({
           canvas: gameCanvas,
         });
-        threeRenderer.useLegacyLights = true;
+        const threeRendererAny: any = threeRenderer;
+        if (typeof threeRendererAny.useLegacyLights === 'boolean')
+          threeRendererAny.useLegacyLights = false;
+        if (typeof threeRendererAny.physicallyCorrectLights === 'boolean')
+          threeRendererAny.physicallyCorrectLights = true;
+        threeRenderer.shadowMap.enabled = false;
         threeRenderer.autoClear = false;
         threeRenderer.setSize(this.props.width, this.props.height);
 
@@ -1255,6 +1294,7 @@ export default class InstancesEditor extends Component<Props, State> {
     this.lastCursorX = x;
     this.lastCursorY = y;
     this.pixiRenderer.view.focus();
+    this._picked3DBackgroundInstance = null;
 
     // KeyboardShortcuts.shouldMoveView cannot be used here because
     // the click event fires first on the background, then on the pixi
@@ -1263,6 +1303,25 @@ export default class InstancesEditor extends Component<Props, State> {
     const shouldMoveView =
       this.keyboardShortcuts.shouldMoveView() ||
       (event ? event.button === MID_MOUSE_BUTTON : false);
+
+    if (this._showObjectInstancesIn3D && !shouldMoveView) {
+      const pickedLightInstance = this.instancesRenderer.pick3DInstanceAtCanvasPosition(
+        x,
+        y,
+        {
+          lightObjectsOnly: true,
+        }
+      );
+      const picked3DInstance =
+        pickedLightInstance ||
+        this.instancesRenderer.pick3DInstanceAtCanvasPosition(x, y);
+      if (picked3DInstance) {
+        const [sceneX, sceneY] = this.viewPosition.toSceneCoordinates(x, y);
+        this._picked3DBackgroundInstance = picked3DInstance;
+        this._onDownInstance(picked3DInstance, sceneX, sceneY);
+        return;
+      }
+    }
 
     // Selection rectangle is only drawn in _onPanMove,
     // which can happen a few milliseconds after a background
@@ -1285,6 +1344,11 @@ export default class InstancesEditor extends Component<Props, State> {
 
   _onPanMove = (deltaX: number, deltaY: number, x: number, y: number) => {
     this.fpsLimiter.notifyInteractionHappened();
+    if (this._picked3DBackgroundInstance) {
+      this._onMoveInstance(this._picked3DBackgroundInstance, deltaX, deltaY);
+      return;
+    }
+
     if (this.keyboardShortcuts.shouldMoveView()) {
       const sceneDeltaX = deltaX / this.getZoomFactor();
       const sceneDeltaY = deltaY / this.getZoomFactor();
@@ -1312,12 +1376,26 @@ export default class InstancesEditor extends Component<Props, State> {
   };
 
   _onUpBackground = (x: number, y: number, event?: PointerEvent) => {
+    if (this._picked3DBackgroundInstance) {
+      const [sceneX, sceneY] = this.viewPosition.toSceneCoordinates(x, y);
+      this._onUpInstance(this._picked3DBackgroundInstance, sceneX, sceneY);
+      this._onMoveInstanceEnd();
+      this._picked3DBackgroundInstance = null;
+      return;
+    }
+
     if (this.selectionRectangle.hasStartedSelectionRectangle()) {
       this._selectInstanceInsideSelectionRectangle();
     }
   };
 
   _onPanEnd = () => {
+    if (this._picked3DBackgroundInstance) {
+      this._onMoveInstanceEnd();
+      this._picked3DBackgroundInstance = null;
+      return;
+    }
+
     // When a pan is ended, this can be that either the user was making
     // a selection, or that the user was moving the view.
     if (this.selectionRectangle.hasStartedSelectionRectangle()) {
@@ -1785,6 +1863,55 @@ export default class InstancesEditor extends Component<Props, State> {
     return this.viewPosition;
   };
 
+  _updateFramePerformanceSnapshot = (frameCpuTimeMs: number) => {
+    const now = performance.now();
+    const frameTimeMs =
+      this._lastRenderedFrameAt > 0
+        ? Math.max(0.001, now - this._lastRenderedFrameAt)
+        : Math.max(0.001, frameCpuTimeMs);
+    this._lastRenderedFrameAt = now;
+
+    const fps = 1000 / frameTimeMs;
+    const smoothing = 0.2;
+    this._smoothedFps =
+      this._smoothedFps > 0
+        ? this._smoothedFps + (fps - this._smoothedFps) * smoothing
+        : fps;
+    this._smoothedFrameTimeMs =
+      this._smoothedFrameTimeMs > 0
+        ? this._smoothedFrameTimeMs +
+          (frameTimeMs - this._smoothedFrameTimeMs) * smoothing
+        : frameTimeMs;
+    this._smoothedFrameCpuTimeMs =
+      this._smoothedFrameCpuTimeMs > 0
+        ? this._smoothedFrameCpuTimeMs +
+          (frameCpuTimeMs - this._smoothedFrameCpuTimeMs) * smoothing
+        : frameCpuTimeMs;
+
+    const renderStats =
+      this.threeRenderer && this.threeRenderer.info
+        ? this.threeRenderer.info.render
+        : null;
+    const memoryStats =
+      this.threeRenderer && this.threeRenderer.info
+        ? this.threeRenderer.info.memory
+        : null;
+    this._latestFramePerformanceSnapshot = {
+      fps,
+      fpsSmoothed: this._smoothedFps,
+      frameTimeMs,
+      frameTimeMsSmoothed: this._smoothedFrameTimeMs,
+      frameCpuTimeMs,
+      frameCpuTimeMsSmoothed: this._smoothedFrameCpuTimeMs,
+      drawCalls: renderStats ? renderStats.calls : 0,
+      triangles: renderStats ? renderStats.triangles : 0,
+      lines: renderStats ? renderStats.lines : 0,
+      points: renderStats ? renderStats.points : 0,
+      geometries: memoryStats ? memoryStats.geometries : 0,
+      textures: memoryStats ? memoryStats.textures : 0,
+    };
+  };
+
   _renderScene = () => {
     // Protect against rendering scheduled after the component is unmounted.
     if (this._unmounted) return;
@@ -1796,6 +1923,7 @@ export default class InstancesEditor extends Component<Props, State> {
         this.fpsLimiter.shouldUpdate() &&
         !shouldPreventRenderingInstanceEditors()
       ) {
+        const frameWorkStart = performance.now();
         this.canvasCursor.render();
         this.grid.render();
         this.highlightedInstance.render();
@@ -1808,7 +1936,11 @@ export default class InstancesEditor extends Component<Props, State> {
         this.statusBar.render();
         this.profilerBar.render({
           basicProfilingCounters: this.instancesRenderer.getBasicProfilingCounters(),
-          display: this.props.showBasicProfilingCounters,
+          framePerformanceSnapshot: this._latestFramePerformanceSnapshot,
+          display:
+            this._showObjectInstancesIn3D &&
+            this.props.showBasicProfilingCounters,
+          showDetails: this.props.showBasicProfilingCounters,
         });
         this.background.render();
 
@@ -1818,6 +1950,9 @@ export default class InstancesEditor extends Component<Props, State> {
           this.viewPosition,
           this.uiPixiContainer,
           this.backgroundPixiContainer
+        );
+        this._updateFramePerformanceSnapshot(
+          performance.now() - frameWorkStart
         );
       }
 

@@ -2,6 +2,7 @@ namespace gdjs {
   interface ToneMappingNetworkSyncData {
     m: string;
     x: number;
+    p?: number;
     e: boolean;
   }
 
@@ -51,13 +52,29 @@ namespace gdjs {
           _effectEnabled: boolean;
           _mode: string;
           _exposure: number;
+          _exposureCurvePower: number;
 
           constructor() {
             this._isEnabled = false;
-            this._effectEnabled = true;
-            this._mode = 'ACESFilmic';
-            this._exposure = 1.0;
-            void effectData;
+            this._effectEnabled =
+              effectData.booleanParameters.enabled === undefined
+                ? true
+                : !!effectData.booleanParameters.enabled;
+            this._mode = normalizeToneMappingMode(
+              effectData.stringParameters.mode || 'ACESFilmic'
+            );
+            this._exposure = Math.max(
+              0,
+              effectData.doubleParameters.exposure !== undefined
+                ? effectData.doubleParameters.exposure
+                : 1.15
+            );
+            this._exposureCurvePower = Math.max(
+              0.05,
+              effectData.doubleParameters.exposureCurvePower !== undefined
+                ? effectData.doubleParameters.exposureCurvePower
+                : 1.0
+            );
           }
 
           private _getRenderer(
@@ -81,7 +98,12 @@ namespace gdjs {
 
             const mode = normalizeToneMappingMode(this._mode);
             renderer.toneMapping = getToneMappingConstant(mode);
-            renderer.toneMappingExposure = Math.max(0, this._exposure);
+            const curvePower = Math.max(0.05, this._exposureCurvePower);
+            const normalizedExposure = Math.max(0, this._exposure);
+            renderer.toneMappingExposure = Math.pow(
+              normalizedExposure,
+              curvePower
+            );
             renderer.outputColorSpace = THREE.SRGBColorSpace;
             return true;
           }
@@ -144,12 +166,16 @@ namespace gdjs {
           updateDoubleParameter(parameterName: string, value: number): void {
             if (parameterName === 'exposure') {
               this._exposure = Math.max(0, value);
+            } else if (parameterName === 'exposureCurvePower') {
+              this._exposureCurvePower = Math.max(0.05, value);
             }
           }
 
           getDoubleParameter(parameterName: string): number {
             if (parameterName === 'exposure') {
               return this._exposure;
+            } else if (parameterName === 'exposureCurvePower') {
+              return this._exposureCurvePower;
             }
             return 0;
           }
@@ -176,6 +202,7 @@ namespace gdjs {
             return {
               m: this._mode,
               x: this._exposure,
+              p: this._exposureCurvePower,
               e: this._effectEnabled,
             };
           }
@@ -185,6 +212,7 @@ namespace gdjs {
           ): void {
             this._mode = normalizeToneMappingMode(syncData.m);
             this._exposure = Math.max(0, syncData.x);
+            this._exposureCurvePower = Math.max(0.05, syncData.p || 1);
             this._effectEnabled = !!syncData.e;
           }
         })();

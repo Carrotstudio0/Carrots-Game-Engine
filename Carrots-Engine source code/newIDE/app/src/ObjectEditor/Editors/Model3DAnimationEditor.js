@@ -554,6 +554,51 @@ type Model3DAnimationPreviewProps = {|
   onConsumePreviewTriggers: (parameterIds: string[]) => void,
   restartToken: number,
 |};
+type AnimationPreviewErrorBoundaryProps = {|
+  children: React.Node,
+  resetKey: string,
+|};
+type AnimationPreviewErrorBoundaryState = {|
+  hasError: boolean,
+|};
+
+class AnimationPreviewErrorBoundary extends React.Component<
+  AnimationPreviewErrorBoundaryProps,
+  AnimationPreviewErrorBoundaryState,
+> {
+  state = {
+    hasError: false,
+  };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    // Keep the editor responsive even if preview code fails on malformed/no-animation assets.
+    console.error('Model3D animation preview crashed:', error);
+  }
+
+  componentDidUpdate(prevProps: AnimationPreviewErrorBoundaryProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <AlertMessage kind="warning">
+          <Trans>
+            Animation preview is unavailable for this object right now. You can
+            still edit states and transitions safely.
+          </Trans>
+        </AlertMessage>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const ANY_STATE_INDEX = -1;
 
@@ -1472,7 +1517,9 @@ const Model3DAnimationPreview = ({
     React.useState<number>(
       initialAnimationIndex >= 0 && initialAnimationIndex < animations.length
         ? initialAnimationIndex
-        : 0
+        : animations.length > 0
+          ? 0
+          : -1
     );
 
   const isPlayingRef = React.useRef<boolean>(isPlaying);
@@ -1522,7 +1569,9 @@ const Model3DAnimationPreview = ({
     const nextInitialAnimationIndex =
       initialAnimationIndex >= 0 && initialAnimationIndex < animations.length
         ? initialAnimationIndex
-        : 0;
+        : animations.length > 0
+          ? 0
+          : -1;
     currentAnimationIndexRef.current = nextInitialAnimationIndex;
     setCurrentAnimationIndex(nextInitialAnimationIndex);
     setLocalRestartToken((currentToken) => currentToken + 1);
@@ -1627,7 +1676,11 @@ const Model3DAnimationPreview = ({
       antialias: true,
       alpha: true,
     });
-    renderer.useLegacyLights = true;
+    const rendererAny: any = renderer;
+    if (typeof rendererAny.useLegacyLights === 'boolean')
+      rendererAny.useLegacyLights = false;
+    if (typeof rendererAny.physicallyCorrectLights === 'boolean')
+      rendererAny.physicallyCorrectLights = true;
     renderer.setClearColor(0x000000, 0);
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.domElement.style.width = '100%';
@@ -4984,18 +5037,27 @@ const Model3DAnimationEditor = ({
               <Text size="block-title" noMargin>
                 <Trans>Preview</Trans>
               </Text>
-              <Model3DAnimationPreview
-                gltf={gltf}
-                animations={previewAnimations}
-                animatorTransitions={animatorTransitions}
-                initialAnimationIndex={
-                  selectedAnimationIndex >= 0 ? selectedAnimationIndex : 0
-                }
-                previewParameterValuesById={previewParameterValuesById}
-                animatorParametersById={animatorParametersById}
-                onConsumePreviewTriggers={consumePreviewTriggers}
-                restartToken={previewRestartToken}
-              />
+              <AnimationPreviewErrorBoundary
+                resetKey={`${gltf && gltf.scene ? gltf.scene.uuid : 'none'}-${previewAnimations.length}-${previewRestartToken}`}
+              >
+                <Model3DAnimationPreview
+                  gltf={gltf}
+                  animations={previewAnimations}
+                  animatorTransitions={animatorTransitions}
+                  initialAnimationIndex={
+                    selectedAnimationIndex >= 0 &&
+                    selectedAnimationIndex < previewAnimations.length
+                      ? selectedAnimationIndex
+                      : previewAnimations.length > 0
+                        ? 0
+                        : -1
+                  }
+                  previewParameterValuesById={previewParameterValuesById}
+                  animatorParametersById={animatorParametersById}
+                  onConsumePreviewTriggers={consumePreviewTriggers}
+                  restartToken={previewRestartToken}
+                />
+              </AnimationPreviewErrorBoundary>
             </Paper>
           </div>
         </Paper>

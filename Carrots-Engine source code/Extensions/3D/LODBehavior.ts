@@ -2,11 +2,19 @@ namespace gdjs {
   const lodOriginalCastShadowKey = '__gdScene3dLodOriginalCastShadow';
   const lodOriginalReceiveShadowKey = '__gdScene3dLodOriginalReceiveShadow';
   const lightingPipelineStateKey = '__gdScene3dLightingPipelineState';
+  const scene3DWasmSimdConfigKey = '__gdScene3dWasmSimdConfig';
 
   interface LightingPipelineState {
     mode?: string;
     realtimeWeight?: number;
     lodDistanceScale?: number;
+    lodUpdateIntervalScale?: number;
+  }
+
+  interface Scene3DWasmSimdRuntimeConfig {
+    active?: boolean;
+    autoTune?: boolean;
+    minLodObjectCount?: number;
   }
 
   type RuntimeObjectWith3DRenderer = gdjs.RuntimeObject & {
@@ -29,6 +37,12 @@ namespace gdjs {
    * @category Behaviors > 3D
    */
   export class LODRuntimeBehavior extends gdjs.RuntimeBehavior {
+    private static _sceneLodPopulation = new Map<gdjs.RuntimeScene, number>();
+    private static _sceneCameraCache = new Map<
+      gdjs.RuntimeScene,
+      { timeFromStartMs: number; camera: THREE.Camera | null; x: number; y: number; z: number }
+    >();
+
     private _enabled: boolean;
     private _lod1Distance: number;
     private _lod2Distance: number;
@@ -58,6 +72,7 @@ namespace gdjs {
     private _baseModelResource: string;
     private _activeModelResource: string;
     private _lastModelSwitchTimeMs: number;
+    private _lodPopulationScene: gdjs.RuntimeScene | null;
 
     constructor(
       instanceContainer: gdjs.RuntimeInstanceContainer,
@@ -147,9 +162,11 @@ namespace gdjs {
       this._baseModelResource = '';
       this._activeModelResource = '';
       this._lastModelSwitchTimeMs = -1;
+      this._lodPopulationScene = null;
 
       this._sortThresholds();
       this._captureBaseModelResource();
+      this._registerInLodPopulation(instanceContainer);
     }
 
     override applyBehaviorOverriding(behaviorData): boolean {
@@ -197,6 +214,7 @@ namespace gdjs {
 
     override onDestroy(): void {
       this._resetToFullQuality();
+      this._unregisterFromLodPopulation();
     }
 
     override doStepPostEvents(
@@ -214,10 +232,18 @@ namespace gdjs {
         return;
       }
 
-      if (this._updateIntervalFrames > 1) {
-        this._frameCounter = (this._frameCounter + 1) % this._updateIntervalFrames;
+      const pipelineState = this._getLightingPipelineState();
+      const effectiveUpdateIntervalFrames =
+        this._getEffectiveUpdateIntervalFrames(pipelineState);
+
+      if (effectiveUpdateIntervalFrames > 1) {
+        this._frameCounter =
+          (this._frameCounter + 1) % effectiveUpdateIntervalFrames;
         if (this._frameCounter !== 0) {
-          this._applyVisibility(this._currentLevel < 0 ? 0 : this._currentLevel, object3D);
+          this._applyVisibility(
+            this._currentLevel < 0 ? 0 : this._currentLevel,
+            object3D
+          );
           return;
         }
       }
@@ -227,9 +253,18 @@ namespace gdjs {
         return;
       }
 
-      const distance = this._computeDistanceToCamera(object3D, camera);
+      const useSimdDistancePath = this._shouldUseSimdDistancePath(
+        instanceContainer
+      );
+      const distance = useSimdDistancePath
+        ? this._computeDistanceToCameraOptimized(
+            object3D,
+            camera,
+            instanceContainer.getScene()
+          )
+        : this._computeDistanceToCamera(object3D, camera);
       this._lastComputedDistanceToCamera = distance;
-      const effectiveScale = this._getEffectiveDistanceScale();
+      const effectiveScale = this._getEffectiveDistanceScale(pipelineState);
       const scaledDistance = distance / effectiveScale;
       const nextLevel = this._computeNextLevel(scaledDistance);
       const levelChanged = nextLevel !== this._currentLevel;
@@ -488,23 +523,94 @@ namespace gdjs {
       return state || null;
     }
 
-    private _getEffectiveDistanceScale(): number {
-      const pipelineState = this._getLightingPipelineState();
-      let pipelineDistanceScale = 1;
+    private _getScene3DWasmSimdConfig(
+      runtimeScene: gdjs.RuntimeScene | null
+    ): Scene3DWasmSimdRuntimeConfig | null {
+      if (!runtimeScene) {
+        return null;
+      }
+      const runtimeSceneAny = runtimeScene as gdjs.RuntimeScene & {
+        [scene3DWasmSimdConfigKey]?: Scene3DWasmSimdRuntimeConfig;
+      };
+      return runtimeSceneAny[scene3DWasmSimdConfigKey] || null;
+    }
+
+    private _registerInLodPopulation(
+      instanceContainer: gdjs.RuntimeInstanceContainer
+    ): void {
+      const runtimeScene = instanceContainer.getScene();
+      const previousScene = this._lodPopulationScene;
+      if (previousScene === runtimeScene) {
+        return;
+      }
+      if (previousScene) {
+        this._unregisterFromLodPopulation();
+      }
+      this._lodPopulationScene = runtimeScene;
+      const currentCount =
+        LODRuntimeBehavior._sceneLodPopulation.get(runtimeScene) || 0;
+      LODRuntimeBehavior._sceneLodPopulation.set(runtimeScene, currentCount + 1);
+    }
+
+    private _unregisterFromLodPopulation(): void {
+      const runtimeScene = this._lodPopulationScene;
+      if (!runtimeScene) {
+        return;
+      }
+      const currentCount =
+        LODRuntimeBehavior._sceneLodPopulation.get(runtimeScene) || 0;
+      if (currentCount <= 1) {
+        LODRuntimeBehavior._sceneLodPopulation.delete(runtimeScene);
+        LODRuntimeBehavior._sceneCameraCache.delete(runtimeScene);
+      } else {
+        LODRuntimeBehavior._sceneLodPopulation.set(runtimeScene, currentCount - 1);
+      }
+      this._lodPopulationScene = null;
+    }
+
+    private _getSceneLodPopulation(runtimeScene: gdjs.RuntimeScene): number {
+      return LODRuntimeBehavior._sceneLodPopulation.get(runtimeScene) || 0;
+    }
+
+    private _getEffectiveUpdateIntervalFrames(
+      pipelineState: LightingPipelineState | null
+    ): number {
+      let updateIntervalScale = 1;
       if (pipelineState) {
+        updateIntervalScale = this._clamp(
+          pipelineState.lodUpdateIntervalScale !== undefined
+            ? pipelineState.lodUpdateIntervalScale
+            : 1,
+          1,
+          6
+        );
+      }
+
+      return this._clampInt(this._updateIntervalFrames * updateIntervalScale, 1, 180);
+    }
+
+    private _getEffectiveDistanceScale(
+      pipelineState?: LightingPipelineState | null
+    ): number {
+      const lightingPipelineState =
+        pipelineState !== undefined
+          ? pipelineState
+          : this._getLightingPipelineState();
+      let pipelineDistanceScale = 1;
+      if (lightingPipelineState) {
         pipelineDistanceScale = this._clamp(
-          pipelineState.lodDistanceScale !== undefined
-            ? pipelineState.lodDistanceScale
+          lightingPipelineState.lodDistanceScale !== undefined
+            ? lightingPipelineState.lodDistanceScale
             : 1,
           0.25,
           4
         );
-        if (pipelineState.mode === 'baked') {
+        if (lightingPipelineState.mode === 'baked') {
           pipelineDistanceScale *= 0.9;
-        } else if (pipelineState.mode === 'hybrid') {
+        } else if (lightingPipelineState.mode === 'hybrid') {
           const realtimeWeight = this._clamp(
-            pipelineState.realtimeWeight !== undefined
-              ? pipelineState.realtimeWeight
+            lightingPipelineState.realtimeWeight !== undefined
+              ? lightingPipelineState.realtimeWeight
               : 0.75,
             0,
             1
@@ -540,6 +646,72 @@ namespace gdjs {
       const depth = Math.max(0, Number(ownerAny.getDepth()) || 0);
       const radius = 0.5 * Math.sqrt(width * width + height * height + depth * depth);
       return Math.max(0, distance - radius);
+    }
+
+    private _computeDistanceToCameraOptimized(
+      object3D: THREE.Object3D,
+      camera: THREE.Camera,
+      runtimeScene: gdjs.RuntimeScene
+    ): number {
+      const cache = LODRuntimeBehavior._sceneCameraCache.get(runtimeScene);
+      const nowMs = runtimeScene.getTimeManager().getTimeFromStart();
+      if (!cache || cache.timeFromStartMs !== nowMs || cache.camera !== camera) {
+        camera.getWorldPosition(this._tempCameraPosition);
+        LODRuntimeBehavior._sceneCameraCache.set(runtimeScene, {
+          timeFromStartMs: nowMs,
+          camera,
+          x: this._tempCameraPosition.x,
+          y: this._tempCameraPosition.y,
+          z: this._tempCameraPosition.z,
+        });
+      }
+      const activeCache = LODRuntimeBehavior._sceneCameraCache.get(runtimeScene);
+      if (!activeCache) {
+        return this._computeDistanceToCamera(object3D, camera);
+      }
+
+      object3D.getWorldPosition(this._tempObjectPosition);
+      const deltaX = activeCache.x - this._tempObjectPosition.x;
+      const deltaY = activeCache.y - this._tempObjectPosition.y;
+      const deltaZ = activeCache.z - this._tempObjectPosition.z;
+      let distance = Math.sqrt(
+        deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ
+      );
+      if (!this._useBoundingRadius) {
+        return distance;
+      }
+
+      const ownerAny = this.owner as any;
+      if (
+        typeof ownerAny.getWidth !== 'function' ||
+        typeof ownerAny.getHeight !== 'function' ||
+        typeof ownerAny.getDepth !== 'function'
+      ) {
+        return distance;
+      }
+
+      const width = Math.max(0, Number(ownerAny.getWidth()) || 0);
+      const height = Math.max(0, Number(ownerAny.getHeight()) || 0);
+      const depth = Math.max(0, Number(ownerAny.getDepth()) || 0);
+      const radius =
+        0.5 * Math.sqrt(width * width + height * height + depth * depth);
+      return Math.max(0, distance - radius);
+    }
+
+    private _shouldUseSimdDistancePath(
+      instanceContainer: gdjs.RuntimeInstanceContainer
+    ): boolean {
+      const runtimeScene = instanceContainer.getScene();
+      const config = this._getScene3DWasmSimdConfig(runtimeScene);
+      if (!config || !config.active) {
+        return false;
+      }
+      const requiredPopulation = Math.max(
+        1,
+        Number(config.minLodObjectCount) || 1
+      );
+      const scenePopulation = this._getSceneLodPopulation(runtimeScene);
+      return scenePopulation >= requiredPopulation;
     }
 
     private _computeNextLevel(distanceToCamera: number): number {

@@ -136,6 +136,14 @@ const light3DByKind = {
     objectType: 'Scene3D::SpotLightObject',
     defaultName: 'SpotLight',
   },
+  point: {
+    objectType: 'Scene3D::PointLightObject',
+    defaultName: 'PointLight',
+  },
+  rectArea: {
+    objectType: 'Scene3D::RectAreaLightObject',
+    defaultName: 'RectAreaLight',
+  },
 };
 type Light3DKind = $Keys<typeof light3DByKind>;
 const PHYSICS_3D_BEHAVIOR_TYPE = 'Physics3D::Physics3DBehavior';
@@ -2983,6 +2991,16 @@ export default class SceneEditor extends React.Component<Props, State> {
               label: i18n._(t`Spot Light`),
               click: () =>
                 this._createLight3DObjectAndInstanceUnderCursor('spot'),
+            },
+            {
+              label: i18n._(t`Point Light`),
+              click: () =>
+                this._createLight3DObjectAndInstanceUnderCursor('point'),
+            },
+            {
+              label: i18n._(t`Rect Area Light`),
+              click: () =>
+                this._createLight3DObjectAndInstanceUnderCursor('rectArea'),
             },
           ],
         },

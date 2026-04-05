@@ -22,6 +22,8 @@ import VideoIcon from '../../UI/CustomSvgIcons/Video';
 import CompactToggleButtons from '../../UI/CompactToggleButtons';
 import Grid2d from '../../UI/CustomSvgIcons/Grid2d';
 import Grid3d from '../../UI/CustomSvgIcons/Grid3d';
+import ProfilerIcon from '../../UI/CustomSvgIcons/Profiler';
+import PreferencesContext from '../../MainFrame/Preferences/PreferencesContext';
 
 type Props = {|
   gameEditorMode: 'embedded-game' | 'instances-editor',
@@ -62,6 +64,10 @@ type Props = {|
 |};
 
 const Toolbar: React.ComponentType<Props> = React.memo<Props>(function(props) {
+  const { values, setShowBasicProfilingCounters } = React.useContext(
+    PreferencesContext
+  );
+
   return (
     <>
       <ToolbarCommands
@@ -153,6 +159,22 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function(props) {
         }
       >
         <RectangleIcon />
+      </IconButton>
+      <IconButton
+        size="small"
+        color="default"
+        id="scene-toolbar-toggle-performance-counters-mobile"
+        onClick={() =>
+          setShowBasicProfilingCounters(!values.showBasicProfilingCounters)
+        }
+        selected={values.showBasicProfilingCounters}
+        tooltip={
+          values.showBasicProfilingCounters
+            ? t`Hide performance and FPS counters`
+            : t`Show performance and FPS counters`
+        }
+      >
+        <ProfilerIcon />
       </IconButton>
       <IconButton
         size="small"

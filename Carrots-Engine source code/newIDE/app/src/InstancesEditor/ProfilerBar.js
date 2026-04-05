@@ -5,6 +5,21 @@ import {
   type BasicProfilingCounters,
 } from './InstancesRenderer/BasicProfilingCounters';
 
+type FramePerformanceSnapshot = {|
+  fps: number,
+  fpsSmoothed: number,
+  frameTimeMs: number,
+  frameTimeMsSmoothed: number,
+  frameCpuTimeMs: number,
+  frameCpuTimeMsSmoothed: number,
+  drawCalls: number,
+  triangles: number,
+  lines: number,
+  points: number,
+  geometries: number,
+  textures: number,
+|};
+
 export default class ProfilerBar {
   // $FlowFixMe[value-as-type]
   _profilerBarContainer: PIXI.Container;
@@ -34,10 +49,14 @@ export default class ProfilerBar {
 
   render({
     basicProfilingCounters,
+    framePerformanceSnapshot,
     display,
+    showDetails,
   }: {|
     basicProfilingCounters: BasicProfilingCounters,
+    framePerformanceSnapshot?: ?FramePerformanceSnapshot,
     display: boolean,
+    showDetails?: boolean,
   |}) {
     if (!display) {
       this._profilerBarContainer.visible = false;
@@ -51,9 +70,37 @@ export default class ProfilerBar {
     const textXPosition = profilerBarPadding + textPadding;
     const textYPosition = profilerBarPadding + textPadding;
 
-    this._profilerBarText.text = getBasicProfilingCountersText(
-      basicProfilingCounters
-    );
+    const texts = [];
+    const stats = framePerformanceSnapshot;
+    if (stats) {
+      texts.push(
+        `FPS: ${stats.fps.toFixed(1)} (avg ${stats.fpsSmoothed.toFixed(
+          1
+        )}) | Frame: ${stats.frameTimeMs.toFixed(
+          2
+        )}ms (avg ${stats.frameTimeMsSmoothed.toFixed(2)}ms)`
+      );
+      texts.push(
+        `CPU: ${stats.frameCpuTimeMs.toFixed(
+          2
+        )}ms (avg ${stats.frameCpuTimeMsSmoothed.toFixed(
+          2
+        )}ms) | Draw Calls: ${stats.drawCalls}`
+      );
+      texts.push(
+        `Triangles: ${stats.triangles} | Lines: ${stats.lines} | Points: ${stats.points}`
+      );
+      texts.push(
+        `GPU Memory -> Geometries: ${stats.geometries} | Textures: ${stats.textures}`
+      );
+    }
+
+    if (showDetails) {
+      if (texts.length > 0) texts.push(' ');
+      texts.push(getBasicProfilingCountersText(basicProfilingCounters));
+    }
+
+    this._profilerBarText.text = texts.join('\n');
     this._profilerBarText.position.x = textXPosition;
     this._profilerBarText.position.y = textYPosition;
 

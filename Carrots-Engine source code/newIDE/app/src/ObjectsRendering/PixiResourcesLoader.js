@@ -58,6 +58,31 @@ let loadedOrLoading3DModelPromises: ResourcePromise<THREE.THREE_ADDONS.GLTF> = {
 let spineAtlasPromises: ResourcePromise<SpineTextureAtlasOrLoadingError> = {};
 let spineDataPromises: ResourcePromise<SpineDataOrLoadingError> = {};
 
+const makeThreeTextureCacheKey = (
+  resourceName: string,
+  {
+    isColorTexture,
+    wrapS,
+    wrapT,
+    minFilter,
+    magFilter,
+  }: {|
+    isColorTexture: boolean,
+    wrapS: number,
+    wrapT: number,
+    minFilter: number,
+    magFilter: number,
+  |}
+) =>
+  [
+    resourceName,
+    `color:${isColorTexture ? 1 : 0}`,
+    `wrapS:${wrapS}`,
+    `wrapT:${wrapT}`,
+    `min:${minFilter}`,
+    `mag:${magFilter}`,
+  ].join('|');
+
 // $FlowFixMe[value-as-type]
 const createInvalidModel = (): GLTF => {
   /**
@@ -119,7 +144,6 @@ const load3DModel = (
     gltfLoader.load(
       url,
       gltf => {
-        traverseToRemoveMetalnessFromMeshes(gltf.scene);
         resolve(gltf);
       },
       undefined,
@@ -163,35 +187,6 @@ const applyThreeTextureSettings = (
     threeTexture.minFilter = THREE.NearestFilter;
   }
 };
-
-// If modifying this function, make sure to update Resource3DPreview.worker.js copy.
-// $FlowFixMe[value-as-type]
-const removeMetalness = (material: THREE.Material): void => {
-  if (material.metalness) {
-    material.metalness = 0;
-  }
-};
-
-// If modifying this function, make sure to update Resource3DPreview.worker.js copy.
-// $FlowFixMe[value-as-type]
-const removeMetalnessFromMesh = (node: THREE.Object3D): void => {
-  // $FlowFixMe[value-as-type]
-  const mesh = (node: THREE.Mesh);
-  if (!mesh.material) {
-    return;
-  }
-  if (Array.isArray(mesh.material)) {
-    for (let index = 0; index < mesh.material.length; index++) {
-      removeMetalness(mesh.material[index]);
-    }
-  } else {
-    removeMetalness(mesh.material);
-  }
-};
-
-// $FlowFixMe[value-as-type]
-const traverseToRemoveMetalnessFromMeshes = (node: THREE.Object3D) =>
-  node.traverse(removeMetalnessFromMesh);
 
 export const readEmbeddedResourcesMapping = (
   resource: gdResource
@@ -321,6 +316,20 @@ export default class PixiResourcesLoader {
       const threeTexture = await loadedOrLoadingThreeTextures[resourceName];
       threeTexture.dispose();
       delete loadedOrLoadingThreeTextures[resourceName];
+    }
+    const matchingThreeTextureCacheKeys = Object.keys(
+      loadedOrLoadingThreeTextures
+    ).filter(
+      key => key === resourceName || key.startsWith(resourceName + '|')
+    );
+    if (matchingThreeTextureCacheKeys.length > 0) {
+      await Promise.all(
+        matchingThreeTextureCacheKeys.map(async key => {
+          const threeTexture = await loadedOrLoadingThreeTextures[key];
+          threeTexture.dispose();
+          delete loadedOrLoadingThreeTextures[key];
+        })
+      );
     }
     if (spineAtlasPromises[resourceName]) {
       await PIXI.Assets.unload(resourceName).catch(async () => {
@@ -544,10 +553,35 @@ export default class PixiResourcesLoader {
    */
   static async getThreeTexture(
     project: gdProject,
-    resourceName: string
+    resourceName: string,
+    {
+      isColorTexture = true,
+      wrapS = THREE.RepeatWrapping,
+      wrapT = THREE.RepeatWrapping,
+      minFilter = THREE.LinearFilter,
+      magFilter = THREE.LinearFilter,
+    }: {|
+      isColorTexture?: boolean,
+      wrapS?: number,
+      wrapT?: number,
+      minFilter?: number,
+      magFilter?: number,
+    |} = {}
     // $FlowFixMe[value-as-type]
   ): Promise<THREE.Texture> {
-    const loadedOrLoadingPromise = loadedOrLoadingThreeTextures[resourceName];
+    const normalizedOptions = {
+      isColorTexture,
+      wrapS,
+      wrapT,
+      minFilter,
+      magFilter,
+    };
+    const cacheKey = makeThreeTextureCacheKey(
+      resourceName,
+      normalizedOptions
+    );
+
+    const loadedOrLoadingPromise = loadedOrLoadingThreeTextures[cacheKey];
     // $FlowFixMe[constant-condition]
     if (loadedOrLoadingPromise) return loadedOrLoadingPromise;
 
@@ -563,7 +597,7 @@ export default class PixiResourcesLoader {
       // Post pone texture update if texture is not loaded.
       return new Promise(resolve => {
         pixiTexture.once('update', () =>
-          resolve(this.getThreeTexture(project, resourceName))
+          resolve(this.getThreeTexture(project, resourceName, normalizedOptions))
         );
       });
     }
@@ -577,17 +611,25 @@ export default class PixiResourcesLoader {
     }
 
     const threeTexture = new THREE.Texture(image);
-    threeTexture.magFilter = THREE.LinearFilter;
-    threeTexture.minFilter = THREE.LinearFilter;
-    threeTexture.wrapS = THREE.RepeatWrapping;
-    threeTexture.wrapT = THREE.RepeatWrapping;
-    threeTexture.colorSpace = THREE.SRGBColorSpace;
+    threeTexture.magFilter = magFilter;
+    threeTexture.minFilter = minFilter;
+    threeTexture.wrapS = wrapS;
+    threeTexture.wrapT = wrapT;
+    const srgbColorSpace = (THREE: any).SRGBColorSpace;
+    const noColorSpace = (THREE: any).NoColorSpace;
+    if (isColorTexture) {
+      if (srgbColorSpace !== undefined) {
+        (threeTexture: any).colorSpace = srgbColorSpace;
+      }
+    } else if (noColorSpace !== undefined) {
+      (threeTexture: any).colorSpace = noColorSpace;
+    }
     threeTexture.needsUpdate = true;
 
     const resource = project.getResourcesManager().getResource(resourceName);
     applyThreeTextureSettings(resource, threeTexture);
 
-    return (loadedOrLoadingThreeTextures[resourceName] = Promise.resolve(
+    return (loadedOrLoadingThreeTextures[cacheKey] = Promise.resolve(
       threeTexture
     ));
   }
@@ -604,26 +646,40 @@ export default class PixiResourcesLoader {
     resourceName: string,
     {
       useTransparentTexture,
+      forceBasicMaterial = true,
+      vertexColors = true,
     }: {|
       useTransparentTexture: boolean,
+      forceBasicMaterial?: boolean,
+      vertexColors?: boolean,
     |}
   ): // $FlowFixMe[value-as-type]
   Promise<THREE.Material> {
-    const cacheKey = `${resourceName}|transparent:${useTransparentTexture.toString()}`;
+    const cacheKey = `${resourceName}|transparent:${useTransparentTexture.toString()}|basic:${forceBasicMaterial.toString()}|vertexColors:${vertexColors.toString()}`;
     const loadedOrLoadingPromise = loadedOrLoadingThreeMaterials[cacheKey];
     // $FlowFixMe[constant-condition]
     if (loadedOrLoadingPromise) return loadedOrLoadingPromise;
 
     return (loadedOrLoadingThreeMaterials[cacheKey] = this.getThreeTexture(
       project,
-      resourceName
+      resourceName,
+      { isColorTexture: true }
     ).then(texture => {
-      const material = new THREE.MeshBasicMaterial({
-        map: texture,
-        side: useTransparentTexture ? THREE.DoubleSide : THREE.FrontSide,
-        transparent: useTransparentTexture,
-        vertexColors: true,
-      });
+      const material = forceBasicMaterial
+        ? new THREE.MeshBasicMaterial({
+            map: texture,
+            side: useTransparentTexture ? THREE.DoubleSide : THREE.FrontSide,
+            transparent: useTransparentTexture,
+            vertexColors,
+          })
+        : new THREE.MeshStandardMaterial({
+            map: texture,
+            side: useTransparentTexture ? THREE.DoubleSide : THREE.FrontSide,
+            transparent: useTransparentTexture,
+            metalness: 0,
+            roughness: 1,
+            vertexColors,
+          });
 
       return material;
     }));

@@ -64,7 +64,7 @@ namespace gdjs {
     return gdjs.evtTools.common.clamp(
       0,
       1,
-      state.realtimeWeight !== undefined ? state.realtimeWeight : 0.75
+      state.realtimeWeight !== undefined ? state.realtimeWeight : 1
     );
   };
 
@@ -136,7 +136,7 @@ namespace gdjs {
           private _distance: float = 0;
           private _decay: float = 2;
           private _intensity: float = 1;
-          private _shadowMapSize: float = 1024;
+          private _shadowMapSize: float = 2048;
           private _shadowBias: float = -0.001;
           private _shadowNormalBias: float = 0.02;
           private _shadowRadius: float = 1.5;
@@ -344,16 +344,29 @@ namespace gdjs {
                     const rendererWithLightingMode = threeRenderer as
                       | (THREE.WebGLRenderer & {
                           physicallyCorrectLights?: boolean;
+                          useLegacyLights?: boolean;
                         })
                       | null;
                     if (
                       rendererWithLightingMode &&
-                      typeof rendererWithLightingMode.physicallyCorrectLights ===
-                        'boolean' &&
                       pipelineState.physicallyCorrectLights !== undefined
                     ) {
-                      rendererWithLightingMode.physicallyCorrectLights =
+                      const shouldUsePhysicalLights =
                         !!pipelineState.physicallyCorrectLights;
+                      if (
+                        typeof rendererWithLightingMode.physicallyCorrectLights ===
+                        'boolean'
+                      ) {
+                        rendererWithLightingMode.physicallyCorrectLights =
+                          shouldUsePhysicalLights;
+                      }
+                      if (
+                        typeof rendererWithLightingMode.useLegacyLights ===
+                          'boolean'
+                      ) {
+                        rendererWithLightingMode.useLegacyLights =
+                          !shouldUsePhysicalLights;
+                      }
                     }
                   }
                 }
@@ -430,14 +443,8 @@ namespace gdjs {
 
             threeRenderer.shadowMap.enabled = true;
             threeRenderer.shadowMap.autoUpdate = true;
-            const preferredShadowType =
-              this._shadowRadius > 1
-                ? THREE.PCFShadowMap
-                : THREE.PCFSoftShadowMap;
-            if (
-              preferredShadowType === THREE.PCFShadowMap ||
-              threeRenderer.shadowMap.type !== THREE.PCFShadowMap
-            ) {
+            const preferredShadowType = THREE.PCFSoftShadowMap;
+            if (threeRenderer.shadowMap.type !== preferredShadowType) {
               threeRenderer.shadowMap.type = preferredShadowType;
             }
           }
@@ -944,3 +951,4 @@ namespace gdjs {
     })()
   );
 }
+

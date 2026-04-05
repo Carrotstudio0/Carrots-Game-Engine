@@ -2,8 +2,44 @@ namespace gdjs {
   /**
    * @category Debugging > Profiler
    */
+  export type ProfilerRenderStatsSample = {
+    drawCalls?: number;
+    triangles?: number;
+    lines?: number;
+    points?: number;
+    textures?: number;
+    geometries?: number;
+    shaderPrograms?: number;
+  };
+
+  /**
+   * @category Debugging > Profiler
+   */
+  export type ProfilerRenderStatsSummary = {
+    averageDrawCalls: number;
+    maxDrawCalls: number;
+    averageTriangles: number;
+    maxTriangles: number;
+    averageLines: number;
+    averagePoints: number;
+    averageTextures: number;
+    averageGeometries: number;
+    averageShaderPrograms: number;
+  };
+
+  /**
+   * @category Debugging > Profiler
+   */
   export type ProfilerStats = {
     framesCount: integer;
+    averageFrameTimeMs?: number;
+    minFrameTimeMs?: number;
+    maxFrameTimeMs?: number;
+    percentile95FrameTimeMs?: number;
+    averageFps?: number;
+    frameTimeJitterMs?: number;
+    renderStats?: ProfilerRenderStatsSummary;
+    optimizationHints?: string[];
   };
 
   /**
@@ -42,6 +78,15 @@ namespace gdjs {
     /** The number of frames that have been measured */
     _framesCount: number = 0;
 
+    /** Duration in milliseconds of each captured frame. */
+    _frameDurationsMs: Array<number> = [];
+
+    /** Render/GPU related stats captured for each frame. */
+    _renderStatsSamples: Array<ProfilerRenderStatsSample | null> = [];
+
+    /** Render stats collected for the frame currently being profiled. */
+    _pendingRenderStats: ProfilerRenderStatsSample | null = null;
+
     /** A function to get the current time. If available, corresponds to performance.now(). */
     _getTimeNow: () => float;
 
@@ -53,6 +98,8 @@ namespace gdjs {
           lastStartTime: 0,
           subsections: {},
         });
+        this._frameDurationsMs.push(0);
+        this._renderStatsSamples.push(null);
       }
       this._getTimeNow =
         window.performance && typeof window.performance.now === 'function'
@@ -68,6 +115,25 @@ namespace gdjs {
         subsections: {},
       };
       this._currentSection = this._currentFrameMeasure;
+      this._pendingRenderStats = null;
+    }
+
+    recordRenderStats(
+      renderStats: ProfilerRenderStatsSample | null | undefined
+    ): void {
+      if (!renderStats) {
+        this._pendingRenderStats = null;
+        return;
+      }
+      this._pendingRenderStats = {
+        drawCalls: renderStats.drawCalls,
+        triangles: renderStats.triangles,
+        lines: renderStats.lines,
+        points: renderStats.points,
+        textures: renderStats.textures,
+        geometries: renderStats.geometries,
+        shaderPrograms: renderStats.shaderPrograms,
+      };
     }
 
     begin(sectionName: string): void {
@@ -124,12 +190,177 @@ namespace gdjs {
       if (this._framesCount > this._maxFramesCount) {
         this._framesCount = this._maxFramesCount;
       }
-      this._framesMeasures[this._currentFrameIndex] = this
+      const frameIndex = this._currentFrameIndex;
+      this._framesMeasures[frameIndex] = this
         ._currentFrameMeasure as FrameMeasure;
+      this._frameDurationsMs[frameIndex] = this._currentFrameMeasure.time;
+      this._renderStatsSamples[frameIndex] = this._pendingRenderStats;
       this._currentFrameIndex++;
       if (this._currentFrameIndex >= this._maxFramesCount) {
         this._currentFrameIndex = 0;
       }
+    }
+
+    private static _isFiniteNonNegativeNumber(value: any): value is number {
+      return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+    }
+
+    private static _getAverage(values: Array<number>): number {
+      if (!values.length) {
+        return 0;
+      }
+      let sum = 0;
+      for (let i = 0; i < values.length; i++) {
+        sum += values[i];
+      }
+      return sum / values.length;
+    }
+
+    private static _getPercentile(values: Array<number>, percentile: number): number {
+      if (!values.length) {
+        return 0;
+      }
+      const sortedValues = values.slice().sort((a, b) => a - b);
+      const normalizedPercentile = Math.max(0, Math.min(1, percentile));
+      const index = Math.min(
+        sortedValues.length - 1,
+        Math.max(0, Math.ceil(sortedValues.length * normalizedPercentile) - 1)
+      );
+      return sortedValues[index];
+    }
+
+    private _computeRenderStatsSummary():
+      | ProfilerRenderStatsSummary
+      | null {
+      let drawCallsSum = 0;
+      let drawCallsCount = 0;
+      let drawCallsMax = 0;
+
+      let trianglesSum = 0;
+      let trianglesCount = 0;
+      let trianglesMax = 0;
+
+      let linesSum = 0;
+      let linesCount = 0;
+
+      let pointsSum = 0;
+      let pointsCount = 0;
+
+      let texturesSum = 0;
+      let texturesCount = 0;
+
+      let geometriesSum = 0;
+      let geometriesCount = 0;
+
+      let shaderProgramsSum = 0;
+      let shaderProgramsCount = 0;
+
+      for (let i = 0; i < this._framesCount; i++) {
+        const sample = this._renderStatsSamples[i];
+        if (!sample) {
+          continue;
+        }
+
+        if (Profiler._isFiniteNonNegativeNumber(sample.drawCalls)) {
+          drawCallsSum += sample.drawCalls;
+          drawCallsMax = Math.max(drawCallsMax, sample.drawCalls);
+          drawCallsCount++;
+        }
+        if (Profiler._isFiniteNonNegativeNumber(sample.triangles)) {
+          trianglesSum += sample.triangles;
+          trianglesMax = Math.max(trianglesMax, sample.triangles);
+          trianglesCount++;
+        }
+        if (Profiler._isFiniteNonNegativeNumber(sample.lines)) {
+          linesSum += sample.lines;
+          linesCount++;
+        }
+        if (Profiler._isFiniteNonNegativeNumber(sample.points)) {
+          pointsSum += sample.points;
+          pointsCount++;
+        }
+        if (Profiler._isFiniteNonNegativeNumber(sample.textures)) {
+          texturesSum += sample.textures;
+          texturesCount++;
+        }
+        if (Profiler._isFiniteNonNegativeNumber(sample.geometries)) {
+          geometriesSum += sample.geometries;
+          geometriesCount++;
+        }
+        if (Profiler._isFiniteNonNegativeNumber(sample.shaderPrograms)) {
+          shaderProgramsSum += sample.shaderPrograms;
+          shaderProgramsCount++;
+        }
+      }
+
+      if (
+        drawCallsCount === 0 &&
+        trianglesCount === 0 &&
+        linesCount === 0 &&
+        pointsCount === 0 &&
+        texturesCount === 0 &&
+        geometriesCount === 0 &&
+        shaderProgramsCount === 0
+      ) {
+        return null;
+      }
+
+      return {
+        averageDrawCalls: drawCallsCount > 0 ? drawCallsSum / drawCallsCount : 0,
+        maxDrawCalls: drawCallsMax,
+        averageTriangles: trianglesCount > 0 ? trianglesSum / trianglesCount : 0,
+        maxTriangles: trianglesMax,
+        averageLines: linesCount > 0 ? linesSum / linesCount : 0,
+        averagePoints: pointsCount > 0 ? pointsSum / pointsCount : 0,
+        averageTextures: texturesCount > 0 ? texturesSum / texturesCount : 0,
+        averageGeometries: geometriesCount > 0 ? geometriesSum / geometriesCount : 0,
+        averageShaderPrograms:
+          shaderProgramsCount > 0 ? shaderProgramsSum / shaderProgramsCount : 0,
+      };
+    }
+
+    private _buildOptimizationHints(stats: ProfilerStats): string[] {
+      const hints: string[] = [];
+      if (!stats.framesCount || stats.framesCount < 10) {
+        return hints;
+      }
+
+      const averageFrameTimeMs = stats.averageFrameTimeMs || 0;
+      const averageFps = stats.averageFps || 0;
+      const percentile95FrameTimeMs = stats.percentile95FrameTimeMs || 0;
+      const renderStats = stats.renderStats;
+
+      if (averageFrameTimeMs > 18 || averageFps < 55) {
+        if (renderStats && renderStats.averageDrawCalls > 1200) {
+          hints.push(
+            'High draw-call pressure detected. Prioritize instancing, draw-call merging, and stricter culling.'
+          );
+        }
+        if (renderStats && renderStats.averageTriangles > 2500000) {
+          hints.push(
+            'High triangle throughput detected. Review LOD thresholds and distant geometry complexity.'
+          );
+        }
+        if (renderStats && renderStats.averageShaderPrograms > 96) {
+          hints.push(
+            'Many shader programs are active. Shader variant caching/prewarming is likely needed.'
+          );
+        }
+      }
+
+      if (percentile95FrameTimeMs - averageFrameTimeMs > 6) {
+        hints.push(
+          'Frame-time spikes detected. Investigate shader compilation stutters and runtime resource uploads.'
+        );
+      }
+
+      if (averageFrameTimeMs > 25 && hints.length === 0) {
+        hints.push(
+          'Frame time is high. Start with profiler hotspots in events/behaviors and expensive post-processing effects.'
+        );
+      }
+
+      return hints;
     }
 
     static _addAverageSectionTimes(
@@ -185,7 +416,56 @@ namespace gdjs {
      * Get stats measured during the frames captured.
      */
     getStats(): ProfilerStats {
-      return { framesCount: this._framesCount };
+      const stats: ProfilerStats = { framesCount: this._framesCount };
+      if (!this._framesCount) {
+        return stats;
+      }
+
+      const frameDurations: Array<number> = [];
+      for (let i = 0; i < this._framesCount; i++) {
+        const frameDuration = this._frameDurationsMs[i];
+        if (Profiler._isFiniteNonNegativeNumber(frameDuration)) {
+          frameDurations.push(frameDuration);
+          continue;
+        }
+        const fallbackDuration = this._framesMeasures[i].time;
+        if (Profiler._isFiniteNonNegativeNumber(fallbackDuration)) {
+          frameDurations.push(fallbackDuration);
+        }
+      }
+
+      if (frameDurations.length > 0) {
+        const averageFrameTimeMs = Profiler._getAverage(frameDurations);
+        const minFrameTimeMs = Math.min.apply(null, frameDurations);
+        const maxFrameTimeMs = Math.max.apply(null, frameDurations);
+        const percentile95FrameTimeMs = Profiler._getPercentile(frameDurations, 0.95);
+
+        let squaredDeltaSum = 0;
+        for (let i = 0; i < frameDurations.length; i++) {
+          const delta = frameDurations[i] - averageFrameTimeMs;
+          squaredDeltaSum += delta * delta;
+        }
+        const frameTimeJitterMs = Math.sqrt(squaredDeltaSum / frameDurations.length);
+
+        stats.averageFrameTimeMs = averageFrameTimeMs;
+        stats.minFrameTimeMs = minFrameTimeMs;
+        stats.maxFrameTimeMs = maxFrameTimeMs;
+        stats.percentile95FrameTimeMs = percentile95FrameTimeMs;
+        stats.averageFps = averageFrameTimeMs > 0 ? 1000 / averageFrameTimeMs : 0;
+        stats.frameTimeJitterMs = frameTimeJitterMs;
+      }
+
+      const renderStatsSummary = this._computeRenderStatsSummary();
+      if (renderStatsSummary) {
+        stats.renderStats = renderStatsSummary;
+      }
+
+      const optimizationHints = this._buildOptimizationHints(stats);
+      if (optimizationHints.length) {
+        stats.optimizationHints = optimizationHints;
+      }
+
+      return stats;
     }
 
     /**

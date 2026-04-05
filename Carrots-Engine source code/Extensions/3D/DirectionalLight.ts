@@ -38,6 +38,8 @@ namespace gdjs {
     realtimeShadowsOnly?: boolean;
     physicallyCorrectLights?: boolean;
     shadowQualityScale?: number;
+    wasmSimdActive?: boolean;
+    wasmSimdAutoTune?: boolean;
   }
 
   const lightingPipelineStateKey = '__gdScene3dLightingPipelineState';
@@ -69,7 +71,7 @@ namespace gdjs {
     return gdjs.evtTools.common.clamp(
       0,
       1,
-      state.realtimeWeight !== undefined ? state.realtimeWeight : 0.75
+      state.realtimeWeight !== undefined ? state.realtimeWeight : 1
     );
   };
 
@@ -108,7 +110,7 @@ namespace gdjs {
           private _top: string = 'Z+';
           private _elevation: float = 45;
           private _rotation: float = 0;
-          private _shadowMapSize: float = 1024;
+          private _shadowMapSize: float = 2048;
           private _minimumShadowBias: float = 0;
           private _shadowNormalBias: float = 0.02;
           private _shadowRadius: float = 2;
@@ -132,13 +134,15 @@ namespace gdjs {
           private _directionRotationOffset: float = 0;
           private _directionElevationOffset: float = 0;
 
-          private _intensity: float = 0.5;
+          private _intensity: float = 2.2;
           private _colorHex: number = 0xffffff;
           private _shadowCastingEnabled: boolean = false;
           private _isEnabled: boolean = false;
           private _pipelineRealtimeMultiplier: float = 1;
           private _pipelineAllowsRealtimeShadows: boolean = true;
           private _pipelineShadowQualityScale: float = 1;
+          private _pipelineWasmSimdActive: boolean = false;
+          private _pipelineWasmSimdAutoTune: boolean = true;
           private _desiredCascadeCount: integer = csmCascadeCount;
           private _adaptiveCascadeCount: boolean = true;
           private _activeCascadeCount: integer = csmCascadeCount;
@@ -341,6 +345,20 @@ namespace gdjs {
               targetCascadeCount = Math.min(targetCascadeCount, 1);
             } else if (this._maxShadowDistance < 1700) {
               targetCascadeCount = Math.min(targetCascadeCount, 2);
+            }
+
+            if (this._pipelineWasmSimdActive && this._pipelineWasmSimdAutoTune) {
+              // SIMD-capable profiles can afford one stronger cascade tier
+              // without destabilizing frame-time in large realtime scenes.
+              if (
+                this._pipelineShadowQualityScale > 1.05 &&
+                this._pipelineRealtimeMultiplier > 0.72
+              ) {
+                targetCascadeCount = Math.min(
+                  csmCascadeCount,
+                  targetCascadeCount + 1
+                );
+              }
             }
 
             return this._clampCascadeCount(targetCascadeCount);
@@ -1196,15 +1214,8 @@ namespace gdjs {
 
             threeRenderer.shadowMap.enabled = true;
             threeRenderer.shadowMap.autoUpdate = true;
-            // `radius` has effect with PCFShadowMap, while PCFSoftShadowMap gives built-in soft filtering.
-            const preferredShadowType =
-              this._shadowRadius > 1
-                ? THREE.PCFShadowMap
-                : THREE.PCFSoftShadowMap;
-            if (
-              preferredShadowType === THREE.PCFShadowMap ||
-              threeRenderer.shadowMap.type !== THREE.PCFShadowMap
-            ) {
+            const preferredShadowType = THREE.PCFSoftShadowMap;
+            if (threeRenderer.shadowMap.type !== preferredShadowType) {
               threeRenderer.shadowMap.type = preferredShadowType;
             }
           }
@@ -1217,6 +1228,13 @@ namespace gdjs {
             const pipelineState = getLightingPipelineState(scene);
             this._pipelineRealtimeMultiplier =
               getRealtimeLightingMultiplier(pipelineState);
+            this._pipelineWasmSimdActive = !!(
+              pipelineState && pipelineState.wasmSimdActive
+            );
+            this._pipelineWasmSimdAutoTune =
+              pipelineState && pipelineState.wasmSimdAutoTune !== undefined
+                ? !!pipelineState.wasmSimdAutoTune
+                : true;
             let targetShadowQualityScale = 1;
             if (pipelineState) {
               const baseScale = Math.max(
@@ -1279,16 +1297,29 @@ namespace gdjs {
                     const rendererWithLightingMode = threeRenderer as
                       | (THREE.WebGLRenderer & {
                           physicallyCorrectLights?: boolean;
+                          useLegacyLights?: boolean;
                         })
                       | null;
                     if (
                       rendererWithLightingMode &&
-                      typeof rendererWithLightingMode.physicallyCorrectLights ===
-                        'boolean' &&
                       pipelineState.physicallyCorrectLights !== undefined
                     ) {
-                      rendererWithLightingMode.physicallyCorrectLights =
+                      const shouldUsePhysicalLights =
                         !!pipelineState.physicallyCorrectLights;
+                      if (
+                        typeof rendererWithLightingMode.physicallyCorrectLights ===
+                        'boolean'
+                      ) {
+                        rendererWithLightingMode.physicallyCorrectLights =
+                          shouldUsePhysicalLights;
+                      }
+                      if (
+                        typeof rendererWithLightingMode.useLegacyLights ===
+                          'boolean'
+                      ) {
+                        rendererWithLightingMode.useLegacyLights =
+                          !shouldUsePhysicalLights;
+                      }
                     }
                   }
                 }
@@ -1676,3 +1707,4 @@ namespace gdjs {
     })()
   );
 }
+

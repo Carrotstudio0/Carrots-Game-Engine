@@ -12,10 +12,19 @@ namespace gdjs {
     | THREE.MeshStandardMaterial
     | THREE.MeshPhysicalMaterial;
 
+  interface PBRMaterialOriginalState {
+    map: THREE.Texture | null;
+    normalMap: THREE.Texture | null;
+    aoMap: THREE.Texture | null;
+    normalScale: THREE.Vector2;
+    aoMapIntensity: number;
+  }
+
   interface PBRPatchedMeshState {
     originalMaterial: THREE.Material | THREE.Material[];
     patchedMaterial: THREE.Material | THREE.Material[];
     clonedMaterials: PBRManagedMaterial[];
+    materialStateByClone: Map<PBRManagedMaterial, PBRMaterialOriginalState>;
     geometry: THREE.BufferGeometry | null;
     hadUv2Attribute: boolean;
     originalUv2Attribute:
@@ -58,6 +67,7 @@ namespace gdjs {
     private _albedoMapTexture: THREE.Texture | null;
     private _albedoMapTextureAsset: string;
     private _patchedMeshes: Map<THREE.Mesh, PBRPatchedMeshState>;
+    private _textureVariantsByKey: Map<string, THREE.Texture>;
     private _materialScanCounter: number;
 
     constructor(
@@ -112,6 +122,7 @@ namespace gdjs {
       this._albedoMapTexture = null;
       this._albedoMapTextureAsset = '';
       this._patchedMeshes = new Map();
+      this._textureVariantsByKey = new Map();
       this._materialScanCounter = pbrMaterialScanIntervalFrames;
     }
 
@@ -234,6 +245,7 @@ namespace gdjs {
     }
 
     setNormalMapAsset(assetName: string): void {
+      this._disposeTextureVariants();
       this._normalMapAsset = assetName || '';
       this._normalMapTextureAsset = '';
       this._normalMapTexture = null;
@@ -241,6 +253,7 @@ namespace gdjs {
     }
 
     setAOMapAsset(assetName: string): void {
+      this._disposeTextureVariants();
       this._aoMapAsset = assetName || '';
       this._aoMapTextureAsset = '';
       this._aoMapTexture = null;
@@ -257,6 +270,7 @@ namespace gdjs {
     }
 
     setMap(assetName: string): void {
+      this._disposeTextureVariants();
       this._albedoMapAsset = assetName || '';
       this._albedoMapTextureAsset = '';
       this._albedoMapTexture = null;
@@ -523,6 +537,61 @@ namespace gdjs {
       return this._albedoMapTexture;
     }
 
+    private _getMaxTextureAnisotropy(): number {
+      const sceneAndRenderer = this._getThreeSceneAndRenderer();
+      if (!sceneAndRenderer) {
+        return 1;
+      }
+      const rendererMaxAnisotropy = Math.max(
+        1,
+        sceneAndRenderer.renderer.capabilities.getMaxAnisotropy()
+      );
+      // Cap anisotropy to keep texture quality high without a large GPU cost spike.
+      return Math.min(4, rendererMaxAnisotropy);
+    }
+
+    private _getTextureVariant(
+      texture: THREE.Texture | null,
+      usage: 'color' | 'data'
+    ): THREE.Texture | null {
+      if (!texture) {
+        return null;
+      }
+
+      const srgbColorSpace = (THREE as { SRGBColorSpace?: unknown })
+        .SRGBColorSpace;
+      const noColorSpace = (THREE as { NoColorSpace?: unknown }).NoColorSpace;
+      const desiredColorSpace =
+        usage === 'color' ? srgbColorSpace : noColorSpace;
+      const typedTexture = texture as THREE.Texture & { colorSpace?: unknown };
+
+      if (
+        desiredColorSpace === undefined ||
+        typedTexture.colorSpace === desiredColorSpace
+      ) {
+        return texture;
+      }
+
+      const cacheKey = texture.uuid + '|' + usage;
+      const existingVariant = this._textureVariantsByKey.get(cacheKey);
+      if (existingVariant) {
+        return existingVariant;
+      }
+
+      const variant = texture.clone();
+      (variant as any).colorSpace = desiredColorSpace;
+      variant.needsUpdate = true;
+      this._textureVariantsByKey.set(cacheKey, variant);
+      return variant;
+    }
+
+    private _disposeTextureVariants(): void {
+      for (const texture of this._textureVariantsByKey.values()) {
+        texture.dispose();
+      }
+      this._textureVariantsByKey.clear();
+    }
+
     private _ensureUv2ForAO(
       mesh: THREE.Mesh,
       patchState: PBRPatchedMeshState
@@ -560,25 +629,58 @@ namespace gdjs {
 
     private _applyParametersToMaterial(
       material: PBRManagedMaterial,
+      originalState: PBRMaterialOriginalState,
       normalMapTexture: THREE.Texture | null,
       aoMapTexture: THREE.Texture | null,
-      albedoMapTexture: THREE.Texture | null
+      albedoMapTexture: THREE.Texture | null,
+      maxTextureAnisotropy: number
     ): void {
       material.metalness = this._metalness;
       material.roughness = this._roughness;
       material.envMapIntensity = this._envMapIntensity;
       material.emissive.setHex(this._emissiveColorHex);
       material.emissiveIntensity = this._emissiveIntensity;
-      material.normalScale.set(this._normalScale, this._normalScale);
-      material.aoMapIntensity = this._aoMapIntensity;
-      if (normalMapTexture) {
-        material.normalMap = normalMapTexture;
+
+      const resolvedNormalMap = this._normalMapAsset
+        ? normalMapTexture
+        : originalState.normalMap;
+      const resolvedAOMap = this._aoMapAsset ? aoMapTexture : originalState.aoMap;
+      const resolvedAlbedoMap = this._albedoMapAsset
+        ? albedoMapTexture
+        : originalState.map;
+
+      material.normalMap = this._getTextureVariant(resolvedNormalMap, 'data');
+      material.aoMap = this._getTextureVariant(resolvedAOMap, 'data');
+      material.map = this._getTextureVariant(resolvedAlbedoMap, 'color');
+      material.normalMapType = THREE.TangentSpaceNormalMap;
+
+      if (this._normalMapAsset && material.normalMap) {
+        material.normalScale.set(this._normalScale, this._normalScale);
+      } else {
+        material.normalScale.copy(originalState.normalScale);
       }
-      if (aoMapTexture) {
-        material.aoMap = aoMapTexture;
+
+      material.aoMapIntensity = this._aoMapAsset
+        ? this._aoMapIntensity
+        : originalState.aoMapIntensity;
+
+      if (material.map) {
+        material.map.anisotropy = Math.max(
+          material.map.anisotropy || 1,
+          maxTextureAnisotropy
+        );
       }
-      if (albedoMapTexture) {
-        material.map = albedoMapTexture;
+      if (material.normalMap) {
+        material.normalMap.anisotropy = Math.max(
+          material.normalMap.anisotropy || 1,
+          maxTextureAnisotropy
+        );
+      }
+      if (material.aoMap) {
+        material.aoMap.anisotropy = Math.max(
+          material.aoMap.anisotropy || 1,
+          maxTextureAnisotropy
+        );
       }
 
       material.userData = material.userData || {};
@@ -594,17 +696,31 @@ namespace gdjs {
       const normalMapTexture = this._resolveNormalMapTexture();
       const aoMapTexture = this._resolveAOMapTexture();
       const albedoMapTexture = this._resolveAlbedoMapTexture();
+      const maxTextureAnisotropy = this._getMaxTextureAnisotropy();
 
-      if (aoMapTexture) {
+      const shouldEnsureUv2ForAO =
+        (!!this._aoMapAsset && !!aoMapTexture) ||
+        patchState.clonedMaterials.some((material) => {
+          const originalState = patchState.materialStateByClone.get(material);
+          return !!(originalState && originalState.aoMap);
+        });
+
+      if (shouldEnsureUv2ForAO) {
         this._ensureUv2ForAO(mesh, patchState);
       }
 
       for (const material of patchState.clonedMaterials) {
+        const originalState = patchState.materialStateByClone.get(material);
+        if (!originalState) {
+          continue;
+        }
         this._applyParametersToMaterial(
           material,
+          originalState,
           normalMapTexture,
           aoMapTexture,
-          albedoMapTexture
+          albedoMapTexture,
+          maxTextureAnisotropy
         );
       }
     }
@@ -630,6 +746,7 @@ namespace gdjs {
         this._disposePatchedMeshState(state);
       }
       this._patchedMeshes.clear();
+      this._disposeTextureVariants();
     }
 
     private _patchMeshMaterial(mesh: THREE.Mesh): void {
@@ -655,6 +772,10 @@ namespace gdjs {
         : [originalMaterial];
       const patchedMaterials = sourceMaterials.slice();
       const clonedMaterials: PBRManagedMaterial[] = [];
+      const materialStateByClone = new Map<
+        PBRManagedMaterial,
+        PBRMaterialOriginalState
+      >();
       let hasPatchedMaterial = false;
 
       for (let index = 0; index < sourceMaterials.length; index++) {
@@ -666,6 +787,13 @@ namespace gdjs {
         const clonedMaterial = sourceMaterial.clone() as PBRManagedMaterial;
         patchedMaterials[index] = clonedMaterial;
         clonedMaterials.push(clonedMaterial);
+        materialStateByClone.set(clonedMaterial, {
+          map: clonedMaterial.map || null,
+          normalMap: clonedMaterial.normalMap || null,
+          aoMap: clonedMaterial.aoMap || null,
+          normalScale: clonedMaterial.normalScale.clone(),
+          aoMapIntensity: clonedMaterial.aoMapIntensity,
+        });
         hasPatchedMaterial = true;
       }
 
@@ -687,6 +815,7 @@ namespace gdjs {
         originalMaterial,
         patchedMaterial: appliedMaterial as THREE.Material | THREE.Material[],
         clonedMaterials,
+        materialStateByClone,
         geometry: geometry || null,
         hadUv2Attribute,
         originalUv2Attribute: hadUv2Attribute ? geometry.attributes.uv2 : null,

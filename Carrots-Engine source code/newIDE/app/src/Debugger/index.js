@@ -23,11 +23,33 @@ export type ProfilerMeasuresSection = {|
   subsections: { [string]: ProfilerMeasuresSection },
 |};
 
+export type ProfilerRenderStats = {|
+  averageDrawCalls?: number,
+  maxDrawCalls?: number,
+  averageTriangles?: number,
+  maxTriangles?: number,
+  averageLines?: number,
+  averagePoints?: number,
+  averageTextures?: number,
+  averageGeometries?: number,
+  averageShaderPrograms?: number,
+|};
+
+export type ProfilerStats = {|
+  framesCount: number,
+  averageFrameTimeMs?: number,
+  minFrameTimeMs?: number,
+  maxFrameTimeMs?: number,
+  percentile95FrameTimeMs?: number,
+  averageFps?: number,
+  frameTimeJitterMs?: number,
+  renderStats?: ProfilerRenderStats,
+  optimizationHints?: Array<string>,
+|};
+
 export type ProfilerOutput = {|
   framesAverageMeasures: ProfilerMeasuresSection,
-  stats: {
-    framesCount: number,
-  },
+  stats: ProfilerStats,
 |};
 
 /**

@@ -20,6 +20,7 @@ namespace gdjs {
             this.shaderPass = new THREE_ADDONS.ShaderPass(
               THREE_ADDONS.ExposureShader
             );
+            gdjs.markScene3DPostProcessingPass(this.shaderPass, 'EXPOSURE');
             this._isEnabled = false;
           }
 
@@ -41,6 +42,7 @@ namespace gdjs {
               return false;
             }
             target.getRenderer().addPostProcessingPass(this.shaderPass);
+            gdjs.reorderScene3DPostProcessingPasses(target);
             this._isEnabled = true;
             return true;
           }

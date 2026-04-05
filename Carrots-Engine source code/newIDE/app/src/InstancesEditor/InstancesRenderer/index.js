@@ -440,6 +440,39 @@ export default class InstancesRenderer {
     return layerRenderer.getRendererOfInstance(instance);
   }
 
+  pick3DInstanceAtCanvasPosition(
+    canvasX: number,
+    canvasY: number,
+    options?: {| lightObjectsOnly?: boolean |}
+  ): gdInitialInstance | null {
+    if (!this._showObjectInstancesIn3D) {
+      return null;
+    }
+
+    // Try top-most visible/unlocked layers first, to mimic editor selection order.
+    for (let i = this.layersContainer.getLayersCount() - 1; i >= 0; i--) {
+      const layer = this.layersContainer.getLayerAt(i);
+      if (!layer.getVisibility() || layer.isLocked()) {
+        continue;
+      }
+      const layerName = layer.getName();
+      const layerRenderer = this.layersRenderers[layerName];
+      if (!layerRenderer) {
+        continue;
+      }
+      const pickedInstance = layerRenderer.pick3DInstanceAtCanvasPosition(
+        canvasX,
+        canvasY,
+        options
+      );
+      if (pickedInstance) {
+        return pickedInstance;
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Clean up rendered layers that are not existing anymore
    */
