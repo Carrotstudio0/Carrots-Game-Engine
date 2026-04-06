@@ -116,57 +116,70 @@ namespace gdjs {
 
   const createSoundRangeWireGeometry = (distance: number): THREE.BufferGeometry => {
     const safeDistance = Math.max(10, Number.isFinite(distance) ? distance : 1200);
-    const segmentCount = 32;
-    const radialEvery = 8;
     const points: THREE.Vector3[] = [];
-    for (let i = 0; i < segmentCount; i++) {
-      const theta = (i / segmentCount) * Math.PI * 2;
-      const nextTheta = ((i + 1) / segmentCount) * Math.PI * 2;
-      const cosTheta = Math.cos(theta);
-      const sinTheta = Math.sin(theta);
-      const cosNextTheta = Math.cos(nextTheta);
-      const sinNextTheta = Math.sin(nextTheta);
+    const segmentCount = 36;
+    const arcStart = -0.95;
+    const arcLength = 1.9;
+    const ringScales = [0.36, 0.68, 1];
 
-      points.push(
-        new THREE.Vector3(cosTheta * safeDistance, sinTheta * safeDistance, 0),
-        new THREE.Vector3(
-          cosNextTheta * safeDistance,
-          sinNextTheta * safeDistance,
-          0
-        )
-      );
-      points.push(
-        new THREE.Vector3(cosTheta * safeDistance, 0, sinTheta * safeDistance),
-        new THREE.Vector3(
-          cosNextTheta * safeDistance,
-          0,
-          sinNextTheta * safeDistance
-        )
-      );
-      points.push(
-        new THREE.Vector3(0, cosTheta * safeDistance, sinTheta * safeDistance),
-        new THREE.Vector3(
-          0,
-          cosNextTheta * safeDistance,
-          sinNextTheta * safeDistance
-        )
-      );
+    for (let ringIndex = 0; ringIndex < ringScales.length; ringIndex++) {
+      const radius = safeDistance * ringScales[ringIndex];
+      for (let i = 0; i < segmentCount; i++) {
+        const theta = arcStart + (i / segmentCount) * arcLength * Math.PI;
+        const nextTheta =
+          arcStart + ((i + 1) / segmentCount) * arcLength * Math.PI;
 
-      if (i % radialEvery === 0) {
+        // Audio wave arcs on YZ plane (front hemisphere around -Z).
         points.push(
-          new THREE.Vector3(0, 0, 0),
-          new THREE.Vector3(cosTheta * safeDistance, sinTheta * safeDistance, 0)
+          new THREE.Vector3(
+            0,
+            Math.sin(theta) * radius,
+            -Math.cos(theta) * radius
+          ),
+          new THREE.Vector3(
+            0,
+            Math.sin(nextTheta) * radius,
+            -Math.cos(nextTheta) * radius
+          )
         );
+
+        // Audio wave arcs on XZ plane.
         points.push(
-          new THREE.Vector3(0, 0, 0),
-          new THREE.Vector3(cosTheta * safeDistance, 0, sinTheta * safeDistance)
-        );
-        points.push(
-          new THREE.Vector3(0, 0, 0),
-          new THREE.Vector3(0, cosTheta * safeDistance, sinTheta * safeDistance)
+          new THREE.Vector3(
+            Math.sin(theta) * radius,
+            0,
+            -Math.cos(theta) * radius
+          ),
+          new THREE.Vector3(
+            Math.sin(nextTheta) * radius,
+            0,
+            -Math.cos(nextTheta) * radius
+          )
         );
       }
     }
+
+    // Outer reference ring for max audible distance.
+    for (let i = 0; i < segmentCount; i++) {
+      const theta = (i / segmentCount) * Math.PI * 2;
+      const nextTheta = ((i + 1) / segmentCount) * Math.PI * 2;
+      points.push(
+        new THREE.Vector3(
+          Math.cos(theta) * safeDistance,
+          Math.sin(theta) * safeDistance,
+          0
+        ),
+        new THREE.Vector3(
+          Math.cos(nextTheta) * safeDistance,
+          Math.sin(nextTheta) * safeDistance,
+          0
+        )
+      );
+    }
+
+    // Small forward axis hint.
+    points.push(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -safeDistance));
+
     return new THREE.BufferGeometry().setFromPoints(points);
   };
 
@@ -264,8 +277,8 @@ namespace gdjs {
         180
       );
       this._maxDistance = clampDistance(
-        objectContent.maxDistance !== undefined ? objectContent.maxDistance : 1200,
-        1200
+        objectContent.maxDistance !== undefined ? objectContent.maxDistance : 2200,
+        2200
       );
       this._rolloffFactor = Math.max(
         0,
@@ -364,7 +377,7 @@ namespace gdjs {
         objectContent.refDistance !== undefined ? objectContent.refDistance : 180
       );
       this.setMaxDistance(
-        objectContent.maxDistance !== undefined ? objectContent.maxDistance : 1200
+        objectContent.maxDistance !== undefined ? objectContent.maxDistance : 2200
       );
       this.setRolloffFactor(
         objectContent.rolloffFactor !== undefined ? objectContent.rolloffFactor : 1
@@ -569,7 +582,7 @@ namespace gdjs {
     }
 
     setMaxDistance(maxDistance: number): void {
-      this._maxDistance = clampDistance(maxDistance, 1200);
+      this._maxDistance = clampDistance(maxDistance, 2200);
       this._renderer.setMaxDistance(this._maxDistance);
     }
 
@@ -651,6 +664,22 @@ namespace gdjs {
     areDebugGizmosShown(): boolean {
       return this._showDebugGizmos;
     }
+
+    play(): void {
+      this._renderer.playFromEvents();
+    }
+
+    stop(): void {
+      this._renderer.stopFromEvents();
+    }
+
+    refreshSpatialization(): void {
+      this._renderer.refreshSpatialization();
+    }
+
+    isPlaying(): boolean {
+      return this._renderer.isPlaying();
+    }
   }
 
   export class SoundEmitterRuntimeObjectRenderer extends gdjs.RuntimeObject3DRenderer {
@@ -677,6 +706,7 @@ namespace gdjs {
     private _showDebugGizmos: boolean;
     private _lastEffectiveChannel: integer | null;
     private _tempForwardDirection: THREE.Vector3;
+    private _manualPlayRequested: boolean;
 
     constructor(
       runtimeObject: gdjs.SoundEmitterRuntimeObject,
@@ -725,7 +755,7 @@ namespace gdjs {
       this._pitch = 1;
       this._channel = -1;
       this._refDistance = 180;
-      this._maxDistance = 1200;
+      this._maxDistance = 2200;
       this._rolloffFactor = 1;
       this._distanceModel = 'inverse';
       this._panningModel = 'HRTF';
@@ -736,6 +766,7 @@ namespace gdjs {
       this._showDebugGizmos = true;
       this._lastEffectiveChannel = null;
       this._tempForwardDirection = new THREE.Vector3(0, 0, -1);
+      this._manualPlayRequested = false;
 
       this.updateSize();
       this.updatePosition();
@@ -776,11 +807,17 @@ namespace gdjs {
       );
     }
 
+    private _shouldShowDebugHelpers(): boolean {
+      return this._shouldShowSelectionProxy();
+    }
+
     private _updateVisibility(): void {
       const objectVisible = !this._object.isHidden() && this._runtimeEnabled;
+      const editorVisible = this._shouldShowSelectionProxy();
       this._selectionProxyMesh.visible =
-        objectVisible && this._shouldShowSelectionProxy();
-      this._debugRangeLines.visible = objectVisible && this._showDebugGizmos;
+        objectVisible && editorVisible;
+      this._debugRangeLines.visible =
+        objectVisible && this._showDebugGizmos && this._shouldShowDebugHelpers();
     }
 
     private _getSoundManager(
@@ -864,7 +901,7 @@ namespace gdjs {
       const effectiveChannel = this._getEffectiveChannel();
       const shouldPlay =
         this._runtimeEnabled &&
-        this._autoPlay &&
+        (this._autoPlay || this._manualPlayRequested) &&
         !!this._soundResourceName &&
         this._soundResourceName.length > 0;
 
@@ -879,6 +916,7 @@ namespace gdjs {
       if (!shouldPlay) {
         this._stopManagedChannel(runtimeScene, effectiveChannel);
         this._lastEffectiveChannel = null;
+        this._manualPlayRequested = false;
         return;
       }
 
@@ -917,6 +955,7 @@ namespace gdjs {
 
       this._applyPannerAttributes(sound);
       this._lastEffectiveChannel = effectiveChannel;
+      this._manualPlayRequested = false;
     }
 
     private _applyPannerAttributes(sound: any): void {
@@ -1016,6 +1055,16 @@ namespace gdjs {
       this._updateVisibility();
     }
 
+    private _syncPlaybackState(): void {
+      const runtimeScene = this._object.getRuntimeScene();
+      if (!runtimeScene) {
+        return;
+      }
+      this._ensurePlayback(runtimeScene);
+      this._updateSoundPosition(runtimeScene);
+      this._updateSoundOrientation(runtimeScene);
+    }
+
     disposeManagedSound(runtimeScene: gdjs.RuntimeScene | null | undefined): void {
       if (!runtimeScene) {
         return;
@@ -1025,12 +1074,15 @@ namespace gdjs {
       }
       this._stopManagedChannel(runtimeScene, this._getEffectiveChannel());
       this._lastEffectiveChannel = null;
+      this._manualPlayRequested = false;
     }
 
     setRuntimeEnabled(enabled: boolean): void {
       this._runtimeEnabled = !!enabled;
       if (!this._runtimeEnabled) {
         this.disposeManagedSound(this._object.getRuntimeScene());
+      } else {
+        this._syncPlaybackState();
       }
       this._updateVisibility();
     }
@@ -1041,12 +1093,16 @@ namespace gdjs {
       }
       this.disposeManagedSound(this._object.getRuntimeScene());
       this._soundResourceName = soundResourceName || '';
+      this._syncPlaybackState();
     }
 
     setAutoPlay(autoPlay: boolean): void {
       this._autoPlay = !!autoPlay;
       if (!this._autoPlay) {
+        this._manualPlayRequested = false;
         this.disposeManagedSound(this._object.getRuntimeScene());
+      } else {
+        this._syncPlaybackState();
       }
     }
 
@@ -1075,6 +1131,7 @@ namespace gdjs {
       }
       this.disposeManagedSound(this._object.getRuntimeScene());
       this._channel = safeChannel;
+      this._syncPlaybackState();
     }
 
     setRefDistance(refDistance: number): void {
@@ -1082,7 +1139,7 @@ namespace gdjs {
     }
 
     setMaxDistance(maxDistance: number): void {
-      this._maxDistance = clampDistance(maxDistance, 1200);
+      this._maxDistance = clampDistance(maxDistance, 2200);
       this._refreshDebugRangeGeometry();
     }
 
@@ -1120,6 +1177,52 @@ namespace gdjs {
     setShowDebugGizmos(showDebugGizmos: boolean): void {
       this._showDebugGizmos = !!showDebugGizmos;
       this._updateVisibility();
+    }
+
+    playFromEvents(): void {
+      this._manualPlayRequested = true;
+      this._syncPlaybackState();
+    }
+
+    stopFromEvents(): void {
+      this._manualPlayRequested = false;
+      this.disposeManagedSound(this._object.getRuntimeScene());
+    }
+
+    refreshSpatialization(): void {
+      const runtimeScene = this._object.getRuntimeScene();
+      if (!runtimeScene) {
+        return;
+      }
+      const soundManager = this._getSoundManager(runtimeScene);
+      if (!soundManager || typeof soundManager.getSoundOnChannel !== 'function') {
+        return;
+      }
+      const sound = soundManager.getSoundOnChannel(this._getEffectiveChannel());
+      if (sound && this._isOurSound(sound)) {
+        this._applyPannerAttributes(sound);
+      }
+      this._updateSoundPosition(runtimeScene);
+      this._updateSoundOrientation(runtimeScene);
+    }
+
+    isPlaying(): boolean {
+      const runtimeScene = this._object.getRuntimeScene();
+      if (!runtimeScene) {
+        return false;
+      }
+      const soundManager = this._getSoundManager(runtimeScene);
+      if (!soundManager || typeof soundManager.getSoundOnChannel !== 'function') {
+        return false;
+      }
+      const sound = soundManager.getSoundOnChannel(this._getEffectiveChannel());
+      if (!sound || !this._isOurSound(sound)) {
+        return false;
+      }
+      if (typeof sound.playing === 'function') {
+        return !!sound.playing();
+      }
+      return true;
     }
   }
 

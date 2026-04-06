@@ -4804,7 +4804,7 @@ module.exports = {
         .setValue(
           (objectContent.targetOffsetX !== undefined
             ? objectContent.targetOffsetX
-            : 0
+            : 950
           ).toString()
         )
         .setType('number')
@@ -4828,7 +4828,7 @@ module.exports = {
         .setValue(
           (objectContent.targetOffsetZ !== undefined
             ? objectContent.targetOffsetZ
-            : -950
+            : 0
           ).toString()
         )
         .setType('number')
@@ -4982,9 +4982,9 @@ module.exports = {
       shadowAutoTuning: true,
       guardrailsEnabled: true,
       enableTargetHandle: true,
-      targetOffsetX: 0,
+      targetOffsetX: 950,
       targetOffsetY: 0,
-      targetOffsetZ: -950,
+      targetOffsetZ: 0,
       physicsBounceEnabled: false,
       physicsBounceIntensityScale: 0.35,
       physicsBounceDistance: 380,
@@ -5330,7 +5330,7 @@ module.exports = {
         .getOrCreate('maxDistance')
         .setValue(
           (
-            objectContent.maxDistance !== undefined ? objectContent.maxDistance : 1200
+            objectContent.maxDistance !== undefined ? objectContent.maxDistance : 2200
           ).toString()
         )
         .setType('number')
@@ -5450,7 +5450,7 @@ module.exports = {
       pitch: 1,
       channel: -1,
       refDistance: 180,
-      maxDistance: 1200,
+      maxDistance: 2200,
       rolloffFactor: 1,
       distanceModel: 'inverse',
       panningModel: 'HRTF',
@@ -5470,7 +5470,7 @@ module.exports = {
       return new gd.MapStringPropertyDescriptor();
     };
 
-    extension
+    const soundEmitterObject = extension
       .addObject(
         'SoundEmitterObject',
         _('3D Sound Emitter'),
@@ -5490,6 +5490,63 @@ module.exports = {
       .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
       .addIncludeFile('Extensions/3D/SoundEmitterRuntimeObject.js')
       .addIncludeFile('Extensions/SpatialSound/howler.spatial.min.js');
+
+    soundEmitterObject
+      .addAction(
+        'PlayNow',
+        _('Play sound emitter now'),
+        _(
+          'Start playback immediately for this 3D sound emitter from its current world position.'
+        ),
+        _('Play _PARAM0_ now'),
+        _('Sound'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .setFunctionName('play');
+
+    soundEmitterObject
+      .addAction(
+        'StopNow',
+        _('Stop sound emitter'),
+        _('Stop playback immediately for this 3D sound emitter.'),
+        _('Stop _PARAM0_'),
+        _('Sound'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .setFunctionName('stop');
+
+    soundEmitterObject
+      .addAction(
+        'RefreshSpatialization',
+        _('Refresh spatial position'),
+        _(
+          'Force immediate update of spatial position/orientation and cone parameters for this emitter.'
+        ),
+        _('Refresh spatial audio of _PARAM0_'),
+        _('Sound'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .setFunctionName('refreshSpatialization')
+      .markAsAdvanced();
+
+    soundEmitterObject
+      .addCondition(
+        'IsPlaying',
+        _('Sound is playing'),
+        _('Check if this 3D sound emitter is currently playing.'),
+        _('_PARAM0_ is playing'),
+        _('Sound'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .setFunctionName('isPlaying');
 
     extension
       .addExpressionAndConditionAndAction(
@@ -9702,19 +9759,19 @@ module.exports = {
       const radialEvery = 4;
       const points = [];
       const origin = new THREE.Vector3(0, 0, 0);
-      const tip = new THREE.Vector3(0, 0, -safeDistance);
+      const tip = new THREE.Vector3(safeDistance, 0, 0);
       for (let i = 0; i < segmentCount; i++) {
         const theta = (i / segmentCount) * Math.PI * 2;
         const nextTheta = ((i + 1) / segmentCount) * Math.PI * 2;
         const point = new THREE.Vector3(
+          safeDistance,
           Math.cos(theta) * coneRadius,
-          Math.sin(theta) * coneRadius,
-          -safeDistance
+          Math.sin(theta) * coneRadius
         );
         const nextPoint = new THREE.Vector3(
+          safeDistance,
           Math.cos(nextTheta) * coneRadius,
-          Math.sin(nextTheta) * coneRadius,
-          -safeDistance
+          Math.sin(nextTheta) * coneRadius
         );
         // Circle at the end of the cone.
         points.push(point, nextPoint);
@@ -9794,6 +9851,119 @@ module.exports = {
       octahedronGeometry.dispose();
       return edgesGeometry;
     };
+    const createAudioRangeWaveWireGeometry = (distance) => {
+      const safeDistance = Math.max(
+        10,
+        Number.isFinite(distance) ? distance : 1200
+      );
+      const points = [];
+      const segmentCount = 36;
+      const ringScales = [0.36, 0.68, 1];
+      const arcStart = -0.95;
+      const arcLength = 1.9;
+
+      for (let ringIndex = 0; ringIndex < ringScales.length; ringIndex++) {
+        const radius = safeDistance * ringScales[ringIndex];
+        for (let i = 0; i < segmentCount; i++) {
+          const theta = arcStart + (i / segmentCount) * arcLength * Math.PI;
+          const nextTheta =
+            arcStart + ((i + 1) / segmentCount) * arcLength * Math.PI;
+
+          points.push(
+            new THREE.Vector3(0, Math.sin(theta) * radius, -Math.cos(theta) * radius),
+            new THREE.Vector3(
+              0,
+              Math.sin(nextTheta) * radius,
+              -Math.cos(nextTheta) * radius
+            )
+          );
+          points.push(
+            new THREE.Vector3(Math.sin(theta) * radius, 0, -Math.cos(theta) * radius),
+            new THREE.Vector3(
+              Math.sin(nextTheta) * radius,
+              0,
+              -Math.cos(nextTheta) * radius
+            )
+          );
+        }
+      }
+
+      for (let i = 0; i < segmentCount; i++) {
+        const theta = (i / segmentCount) * Math.PI * 2;
+        const nextTheta = ((i + 1) / segmentCount) * Math.PI * 2;
+        points.push(
+          new THREE.Vector3(
+            Math.cos(theta) * safeDistance,
+            Math.sin(theta) * safeDistance,
+            0
+          ),
+          new THREE.Vector3(
+            Math.cos(nextTheta) * safeDistance,
+            Math.sin(nextTheta) * safeDistance,
+            0
+          )
+        );
+      }
+
+      points.push(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -safeDistance));
+      return new THREE.BufferGeometry().setFromPoints(points);
+    };
+    const createAudioDirectionalConeWireGeometry = (distance, angleDegrees) => {
+      const safeDistance = Math.max(
+        10,
+        Number.isFinite(distance) ? distance : 950
+      );
+      const safeAngleDegrees = Math.min(
+        89,
+        Math.max(1, Number.isFinite(angleDegrees) ? angleDegrees : 45)
+      );
+      const halfAngleRadians = (safeAngleDegrees * Math.PI) / 180;
+      const segmentCount = 24;
+      const radialCount = 8;
+      const ringSteps = [0.35, 0.68, 1];
+      const points = [];
+      const origin = new THREE.Vector3(0, 0, 0);
+
+      for (let ringIndex = 0; ringIndex < ringSteps.length; ringIndex++) {
+        const step = ringSteps[ringIndex];
+        const ringDistance = safeDistance * step;
+        const ringRadius = Math.max(2, Math.tan(halfAngleRadians) * ringDistance);
+        for (let i = 0; i < segmentCount; i++) {
+          const theta = (i / segmentCount) * Math.PI * 2;
+          const nextTheta = ((i + 1) / segmentCount) * Math.PI * 2;
+          points.push(
+            new THREE.Vector3(
+              Math.cos(theta) * ringRadius,
+              Math.sin(theta) * ringRadius,
+              -ringDistance
+            ),
+            new THREE.Vector3(
+              Math.cos(nextTheta) * ringRadius,
+              Math.sin(nextTheta) * ringRadius,
+              -ringDistance
+            )
+          );
+        }
+      }
+
+      const outerRadius = Math.max(2, Math.tan(halfAngleRadians) * safeDistance);
+      for (let i = 0; i < radialCount; i++) {
+        const theta = (i / radialCount) * Math.PI * 2;
+        points.push(
+          origin,
+          new THREE.Vector3(
+            Math.cos(theta) * outerRadius,
+            Math.sin(theta) * outerRadius,
+            -safeDistance
+          )
+        );
+      }
+      points.push(origin, new THREE.Vector3(0, 0, -safeDistance));
+
+      return new THREE.BufferGeometry().setFromPoints(points);
+    };
+    const createAudioOmniConeWireGeometry = (distance) =>
+      createAudioRangeWaveWireGeometry(distance);
     const getAudioConeHalfAngleForEditor = (coneAngle, fallback = 360) => {
       const safeFullAngle = Math.max(
         0,
@@ -9875,6 +10045,8 @@ module.exports = {
       _selectionProxyMesh = null;
       /** @type {THREE.PointLight | null} */
       _editorPointLight = null;
+      /** @type {THREE.PointLightHelper | null} */
+      _pointLightHelper = null;
       /** @type {THREE.LineSegments | null} */
       _lightRangeLines = null;
       _lightRangeSignature = '';
@@ -9928,6 +10100,16 @@ module.exports = {
         editorPointLight.castShadow = false;
         this._editorPointLight = editorPointLight;
         this._threeGroup.add(editorPointLight);
+        if (typeof THREE.PointLightHelper === 'function') {
+          const pointLightHelper = new THREE.PointLightHelper(
+            editorPointLight,
+            Math.max(6, Math.min(this._defaultWidth, this._defaultHeight) * 0.2)
+          );
+          pointLightHelper.frustumCulled = false;
+          pointLightHelper.renderOrder = 10000;
+          this._pointLightHelper = pointLightHelper;
+          this._threeGroup.add(pointLightHelper);
+        }
 
         const lightRangeLines = new THREE.LineSegments(
           new THREE.BufferGeometry(),
@@ -9970,6 +10152,9 @@ module.exports = {
         }
         if (this._editorPointLight) {
           this._threeGroup.remove(this._editorPointLight);
+        }
+        if (this._pointLightHelper) {
+          this._threeGroup.remove(this._pointLightHelper);
         }
         if (this._lightRangeLines) {
           this._threeGroup.remove(this._lightRangeLines);
@@ -10017,6 +10202,9 @@ module.exports = {
           if (lightConeMaterial && lightConeMaterial.dispose) {
             lightConeMaterial.dispose();
           }
+        }
+        if (this._pointLightHelper && this._pointLightHelper.dispose) {
+          this._pointLightHelper.dispose();
         }
       }
 
@@ -10109,6 +10297,12 @@ module.exports = {
           } else {
             editorPointLight.intensity = safeIntensity;
           }
+        }
+        const pointLightHelper = this._pointLightHelper;
+        if (pointLightHelper) {
+          pointLightHelper.visible = true;
+          pointLightHelper.color = color;
+          pointLightHelper.update();
         }
 
         const lightRangeLines = this._lightRangeLines;
@@ -10275,6 +10469,8 @@ module.exports = {
       _editorSpotLight = null;
       /** @type {THREE.Object3D | null} */
       _editorSpotTarget = null;
+      /** @type {THREE.SpotLightHelper | null} */
+      _spotLightHelper = null;
       _debugConeSignature = '';
       _debugTargetSignature = '';
 
@@ -10364,12 +10560,19 @@ module.exports = {
         );
         editorSpotLight.castShadow = false;
         const editorSpotTarget = new THREE.Object3D();
-        editorSpotTarget.position.set(0, 0, -950);
+        editorSpotTarget.position.set(950, 0, 0);
         this._editorSpotLight = editorSpotLight;
         this._editorSpotTarget = editorSpotTarget;
         editorSpotLight.target = editorSpotTarget;
         this._threeGroup.add(editorSpotLight);
         this._threeGroup.add(editorSpotTarget);
+        if (typeof THREE.SpotLightHelper === 'function') {
+          const spotLightHelper = new THREE.SpotLightHelper(editorSpotLight);
+          spotLightHelper.frustumCulled = false;
+          spotLightHelper.renderOrder = 10002;
+          this._spotLightHelper = spotLightHelper;
+          this._threeGroup.add(spotLightHelper);
+        }
       }
 
       onRemovedFromScene() {
@@ -10388,6 +10591,9 @@ module.exports = {
         }
         if (this._editorSpotTarget) {
           this._threeGroup.remove(this._editorSpotTarget);
+        }
+        if (this._spotLightHelper) {
+          this._threeGroup.remove(this._spotLightHelper);
         }
         if (this._selectionProxyMesh) {
           if (this._selectionProxyMesh.geometry) {
@@ -10411,6 +10617,9 @@ module.exports = {
         };
         disposeLineObject(this._debugConeLines);
         disposeLineObject(this._debugTargetLine);
+        if (this._spotLightHelper && this._spotLightHelper.dispose) {
+          this._spotLightHelper.dispose();
+        }
         if (
           this._editorSpotLight &&
           this._editorSpotLight.shadow &&
@@ -10471,26 +10680,30 @@ module.exports = {
 
         const debugConeLines = this._debugConeLines;
         if (debugConeLines) {
-          const coneSignature = `${safeDistance.toFixed(3)}|${safeAngle.toFixed(
-            3
-          )}`;
-          if (this._debugConeSignature !== coneSignature) {
-            this._debugConeSignature = coneSignature;
-            const oldGeometry = debugConeLines.geometry;
-            debugConeLines.geometry = createSpotLightConeWireGeometry(
-              safeDistance,
-              safeAngle
-            );
-            if (oldGeometry) {
-              oldGeometry.dispose();
+          const shouldUseLegacyConeLines = !this._spotLightHelper;
+          debugConeLines.visible = shouldUseLegacyConeLines;
+          if (shouldUseLegacyConeLines) {
+            const coneSignature = `${safeDistance.toFixed(3)}|${safeAngle.toFixed(
+              3
+            )}`;
+            if (this._debugConeSignature !== coneSignature) {
+              this._debugConeSignature = coneSignature;
+              const oldGeometry = debugConeLines.geometry;
+              debugConeLines.geometry = createSpotLightConeWireGeometry(
+                safeDistance,
+                safeAngle
+              );
+              if (oldGeometry) {
+                oldGeometry.dispose();
+              }
             }
-          }
-          const debugConeMaterial = /** @type {any} */ (debugConeLines.material);
-          if (debugConeMaterial && debugConeMaterial.color) {
-            debugConeMaterial.color.setHex(color);
-          }
-          if (debugConeMaterial && debugConeMaterial.opacity !== undefined) {
-            debugConeMaterial.opacity = helperOpacity;
+            const debugConeMaterial = /** @type {any} */ (debugConeLines.material);
+            if (debugConeMaterial && debugConeMaterial.color) {
+              debugConeMaterial.color.setHex(color);
+            }
+            if (debugConeMaterial && debugConeMaterial.opacity !== undefined) {
+              debugConeMaterial.opacity = helperOpacity;
+            }
           }
         }
 
@@ -10504,13 +10717,13 @@ module.exports = {
           if (enableTargetHandle) {
             const targetOffsetX = Number.isFinite(content.targetOffsetX)
               ? content.targetOffsetX
-              : 0;
+              : safeDistance;
             const targetOffsetY = Number.isFinite(content.targetOffsetY)
               ? content.targetOffsetY
               : 0;
             const targetOffsetZ = Number.isFinite(content.targetOffsetZ)
               ? content.targetOffsetZ
-              : -safeDistance;
+              : 0;
             const targetSignature = `${targetOffsetX.toFixed(
               3
             )}|${targetOffsetY.toFixed(3)}|${targetOffsetZ.toFixed(3)}`;
@@ -10611,16 +10824,16 @@ module.exports = {
             : !!content.enableTargetHandle;
         const targetOffsetX = Number.isFinite(content.targetOffsetX)
           ? content.targetOffsetX
-          : 0;
+          : safeDistance;
         const targetOffsetY = Number.isFinite(content.targetOffsetY)
           ? content.targetOffsetY
           : 0;
         const targetOffsetZ = Number.isFinite(content.targetOffsetZ)
           ? content.targetOffsetZ
-          : -safeDistance;
+          : 0;
         const localTarget = enableTargetHandle
           ? new THREE.Vector3(targetOffsetX, targetOffsetY, targetOffsetZ)
-          : new THREE.Vector3(0, 0, -safeDistance);
+          : new THREE.Vector3(safeDistance, 0, 0);
         const worldTargetOffset = localTarget.applyEuler(
           new THREE.Euler(rotationX, rotationY, rotationZ, 'ZYX')
         );
@@ -10647,6 +10860,12 @@ module.exports = {
           );
           editorSpotTarget.updateMatrixWorld(true);
           editorSpotLight.target = editorSpotTarget;
+        }
+        const spotLightHelper = this._spotLightHelper;
+        if (spotLightHelper) {
+          spotLightHelper.visible = true;
+          spotLightHelper.color = color;
+          spotLightHelper.update();
         }
         this._updateDebugGizmos(
           content,
@@ -11415,7 +11634,7 @@ module.exports = {
         const enabled = content.enabled === undefined ? true : !!content.enabled;
         const safeMaxDistance = Math.max(
           10,
-          Number.isFinite(content.maxDistance) ? content.maxDistance : 1200
+          Number.isFinite(content.maxDistance) ? content.maxDistance : 2200
         );
         const helperOpacity = enabled ? 0.82 : 0.42;
         const coneInnerHalfAngle = getAudioConeHalfAngleForEditor(
@@ -11435,7 +11654,7 @@ module.exports = {
           if (this._rangeSignature !== rangeSignature) {
             this._rangeSignature = rangeSignature;
             const oldGeometry = rangeLines.geometry;
-            rangeLines.geometry = createPointLightRangeWireGeometry(safeMaxDistance);
+            rangeLines.geometry = createAudioRangeWaveWireGeometry(safeMaxDistance);
             if (oldGeometry) {
               oldGeometry.dispose();
             }
@@ -11460,8 +11679,8 @@ module.exports = {
             const oldGeometry = outerConeLines.geometry;
             outerConeLines.geometry =
               coneOuterHalfAngle === null
-                ? createPointLightConeWireGeometry(safeMaxDistance)
-                : createSpotLightConeWireGeometry(
+                ? createAudioOmniConeWireGeometry(safeMaxDistance)
+                : createAudioDirectionalConeWireGeometry(
                     safeMaxDistance,
                     coneOuterHalfAngle
                   );
@@ -11491,7 +11710,7 @@ module.exports = {
             if (this._innerConeSignature !== innerConeSignature) {
               this._innerConeSignature = innerConeSignature;
               const oldGeometry = innerConeLines.geometry;
-              innerConeLines.geometry = createSpotLightConeWireGeometry(
+              innerConeLines.geometry = createAudioDirectionalConeWireGeometry(
                 safeMaxDistance,
                 coneInnerHalfAngle
               );

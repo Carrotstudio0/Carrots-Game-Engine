@@ -536,13 +536,17 @@ namespace gdjs {
           ? true
           : !!objectContent.enableTargetHandle;
       this._targetOffsetX =
-        objectContent.targetOffsetX !== undefined ? objectContent.targetOffsetX : 0;
+        objectContent.targetOffsetX !== undefined
+          ? objectContent.targetOffsetX
+          : this._distance > 0
+          ? this._distance
+          : 950;
       this._targetOffsetY =
         objectContent.targetOffsetY !== undefined ? objectContent.targetOffsetY : 0;
       this._targetOffsetZ =
         objectContent.targetOffsetZ !== undefined
           ? objectContent.targetOffsetZ
-          : -(this._distance > 0 ? this._distance : 950);
+          : 0;
       this._usePhysicalUnits =
         objectContent.usePhysicalUnits === undefined
           ? true
@@ -715,11 +719,15 @@ namespace gdjs {
           : !!objectContent.enableTargetHandle
       );
       this.setTargetOffset(
-        objectContent.targetOffsetX !== undefined ? objectContent.targetOffsetX : 0,
+        objectContent.targetOffsetX !== undefined
+          ? objectContent.targetOffsetX
+          : this._distance > 0
+          ? this._distance
+          : 950,
         objectContent.targetOffsetY !== undefined ? objectContent.targetOffsetY : 0,
         objectContent.targetOffsetZ !== undefined
           ? objectContent.targetOffsetZ
-          : -(this._distance > 0 ? this._distance : 950)
+          : 0
       );
       this.setUsePhysicalUnits(
         objectContent.usePhysicalUnits === undefined
@@ -1073,9 +1081,10 @@ namespace gdjs {
     }
 
     setTargetOffset(offsetX: number, offsetY: number, offsetZ: number): void {
-      this._targetOffsetX = Number.isFinite(offsetX) ? offsetX : 0;
+      const defaultOffsetX = this._distance > 0 ? this._distance : 950;
+      this._targetOffsetX = Number.isFinite(offsetX) ? offsetX : defaultOffsetX;
       this._targetOffsetY = Number.isFinite(offsetY) ? offsetY : 0;
-      const defaultOffsetZ = -(this._distance > 0 ? this._distance : 950);
+      const defaultOffsetZ = 0;
       this._targetOffsetZ = Number.isFinite(offsetZ) ? offsetZ : defaultOffsetZ;
       this._renderer.setTargetOffset(
         this._targetOffsetX,
@@ -1292,7 +1301,7 @@ namespace gdjs {
         2
       );
       spotLight.position.set(0, 0, 0);
-      spotLight.target.position.set(0, 0, -1);
+      spotLight.target.position.set(1, 0, 0);
       const bounceLight = new THREE.SpotLight(
         0xffffff,
         0,
@@ -1302,7 +1311,7 @@ namespace gdjs {
         2
       );
       bounceLight.visible = false;
-      bounceLight.target.position.set(0, 0, -1);
+      bounceLight.target.position.set(1, 0, 0);
       threeGroup.add(spotLight);
       threeGroup.add(spotLight.target);
       threeGroup.add(bounceLight);
@@ -1322,7 +1331,7 @@ namespace gdjs {
       this._runtimeEnabled = true;
       this._guardrailActive = true;
       this._useTargetHandle = true;
-      this._targetOffset = new THREE.Vector3(0, 0, -1);
+      this._targetOffset = new THREE.Vector3(1, 0, 0);
       this._usePhysicalUnits = true;
       this._power = 3200;
       this._baseIntensity = 2.2;
@@ -1361,7 +1370,7 @@ namespace gdjs {
         fraction: 0,
         hitBehavior: null,
       };
-      this._tempDirection = new THREE.Vector3(0, 0, -1);
+      this._tempDirection = new THREE.Vector3(1, 0, 0);
       this._tempWorldStart = new THREE.Vector3();
       this._tempWorldEnd = new THREE.Vector3();
       this._tempWorldHit = new THREE.Vector3();
@@ -1435,12 +1444,12 @@ namespace gdjs {
     private _updateTargetPosition(): void {
       if (this._useTargetHandle) {
         if (this._targetOffset.lengthSq() <= 0.0001) {
-          this._spotLight.target.position.set(0, 0, -1);
+          this._spotLight.target.position.set(1, 0, 0);
         } else {
           this._spotLight.target.position.copy(this._targetOffset);
         }
       } else {
-        this._spotLight.target.position.set(0, 0, -1);
+        this._spotLight.target.position.set(1, 0, 0);
       }
       this._spotLight.target.updateMatrixWorld(true);
       if (this._spotLight.castShadow) {
@@ -1903,7 +1912,7 @@ namespace gdjs {
       if (this._useTargetHandle) {
         this._tempWorldEnd.copy(this._targetOffset).applyMatrix4(threeObject.matrixWorld);
       } else {
-        this._tempDirection.set(0, 0, -1).applyQuaternion(threeObject.quaternion);
+        this._tempDirection.set(1, 0, 0).applyQuaternion(threeObject.quaternion);
         const traceLength =
           this._spotLight.distance > 0 ? this._spotLight.distance : 1200;
         this._tempWorldEnd
@@ -2008,7 +2017,7 @@ namespace gdjs {
     setTargetOffset(offsetX: number, offsetY: number, offsetZ: number): void {
       this._targetOffset.set(offsetX, offsetY, offsetZ);
       if (this._targetOffset.lengthSq() <= 0.0001) {
-        this._targetOffset.set(0, 0, -1);
+        this._targetOffset.set(1, 0, 0);
       }
       this._updateTargetPosition();
     }
