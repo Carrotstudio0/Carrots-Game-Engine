@@ -491,6 +491,15 @@ namespace gdjs {
     _globalVolume: float = 100;
     _sounds: Record<integer, HowlerSound> = {};
     _cachedSpatialPosition: Record<integer, [number, number, number]> = {};
+    _listenerSpatialPosition: [number, number, number] = [0, 0, 0];
+    _listenerSpatialOrientation: [
+      number,
+      number,
+      number,
+      number,
+      number,
+      number
+    ] = [0, 0, -1, 0, 1, 0];
     _musics: Record<integer, HowlerSound> = {};
     _freeSounds: HowlerSound[] = []; // Sounds without an assigned channel.
     _freeMusics: HowlerSound[] = []; // Musics without an assigned channel.
@@ -975,6 +984,84 @@ namespace gdjs {
         // it is not playing yet.
         this._cachedSpatialPosition[channel] = [x, y, z];
       }
+    }
+
+    setSoundListenerSpatialPosition(x: number, y: number, z: number): void {
+      if (typeof Howler.pos !== 'function') {
+        return;
+      }
+
+      const safeX = Number.isFinite(x) ? x : this._listenerSpatialPosition[0];
+      const safeY = Number.isFinite(y) ? y : this._listenerSpatialPosition[1];
+      const safeZ = Number.isFinite(z) ? z : this._listenerSpatialPosition[2];
+
+      if (
+        this._listenerSpatialPosition[0] === safeX &&
+        this._listenerSpatialPosition[1] === safeY &&
+        this._listenerSpatialPosition[2] === safeZ
+      ) {
+        return;
+      }
+
+      this._listenerSpatialPosition = [safeX, safeY, safeZ];
+      Howler.pos(safeX, safeY, safeZ);
+    }
+
+    setSoundListenerSpatialOrientation(
+      forwardX: number,
+      forwardY: number,
+      forwardZ: number,
+      upX: number,
+      upY: number,
+      upZ: number
+    ): void {
+      if (typeof Howler.orientation !== 'function') {
+        return;
+      }
+
+      const normalizeVector = (
+        x: number,
+        y: number,
+        z: number,
+        fallback: [number, number, number]
+      ): [number, number, number] => {
+        const safeX = Number.isFinite(x) ? x : fallback[0];
+        const safeY = Number.isFinite(y) ? y : fallback[1];
+        const safeZ = Number.isFinite(z) ? z : fallback[2];
+        const length = Math.sqrt(
+          safeX * safeX + safeY * safeY + safeZ * safeZ
+        );
+        if (!Number.isFinite(length) || length <= 1e-6) {
+          return fallback;
+        }
+        return [safeX / length, safeY / length, safeZ / length];
+      };
+
+      const [fx, fy, fz] = normalizeVector(forwardX, forwardY, forwardZ, [
+        0,
+        0,
+        -1,
+      ]);
+
+      let [ux, uy, uz] = normalizeVector(upX, upY, upZ, [0, 1, 0]);
+      const dot = fx * ux + fy * uy + fz * uz;
+      if (Math.abs(dot) > 0.995) {
+        [ux, uy, uz] = Math.abs(fy) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+      }
+
+      if (
+        this._listenerSpatialOrientation[0] === fx &&
+        this._listenerSpatialOrientation[1] === fy &&
+        this._listenerSpatialOrientation[2] === fz &&
+        this._listenerSpatialOrientation[3] === ux &&
+        this._listenerSpatialOrientation[4] === uy &&
+        this._listenerSpatialOrientation[5] === uz
+      ) {
+        return;
+      }
+
+      this._listenerSpatialOrientation = [fx, fy, fz, ux, uy, uz];
+      Howler.orientation(fx, fy, fz, ux, uy, uz);
     }
 
     _clearCachedSpatialPosition() {

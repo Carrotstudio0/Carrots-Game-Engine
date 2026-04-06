@@ -17,6 +17,33 @@ namespace gdjs {
     Math.max(0, Math.min(360, Number.isFinite(value) ? value : fallback));
   const clampConeOuterGain = (value: number): number =>
     Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+  const defaultSoundEmitterRefDistance = 120;
+  const defaultSoundEmitterMaxDistance = 1800;
+  const defaultSoundEmitterRolloffFactor = 1.15;
+  const defaultSoundEmitterHelperSize = 24;
+  const minSoundEmitterHelperSize = 12;
+  const maxSoundEmitterHelperSize = 96;
+
+  const clampSoundEmitterHelperSize = (value: number): number =>
+    Math.max(
+      minSoundEmitterHelperSize,
+      Math.min(
+        maxSoundEmitterHelperSize,
+        Number.isFinite(value) ? value : defaultSoundEmitterHelperSize
+      )
+    );
+
+  const sanitizeSoundEmitterDistanceRange = (
+    refDistance: number,
+    maxDistance: number
+  ): [number, number] => {
+    const safeRefDistance = Math.max(1, Number.isFinite(refDistance) ? refDistance : 1);
+    const safeMaxDistance = Math.max(
+      safeRefDistance + 1,
+      Number.isFinite(maxDistance) ? maxDistance : safeRefDistance + 1
+    );
+    return [safeRefDistance, safeMaxDistance];
+  };
 
   let soundSelectionIconTexture: THREE.Texture | null = null;
   const getSoundSelectionIconTexture = (): THREE.Texture => {
@@ -272,19 +299,27 @@ namespace gdjs {
       this._channel = clampChannel(
         objectContent.channel !== undefined ? objectContent.channel : -1
       );
-      this._refDistance = clampDistance(
-        objectContent.refDistance !== undefined ? objectContent.refDistance : 180,
-        180
+      const initialRefDistance = clampDistance(
+        objectContent.refDistance !== undefined
+          ? objectContent.refDistance
+          : defaultSoundEmitterRefDistance,
+        defaultSoundEmitterRefDistance
       );
-      this._maxDistance = clampDistance(
-        objectContent.maxDistance !== undefined ? objectContent.maxDistance : 2200,
-        2200
+      const initialMaxDistance = clampDistance(
+        objectContent.maxDistance !== undefined
+          ? objectContent.maxDistance
+          : defaultSoundEmitterMaxDistance,
+        defaultSoundEmitterMaxDistance
+      );
+      [this._refDistance, this._maxDistance] = sanitizeSoundEmitterDistanceRange(
+        initialRefDistance,
+        initialMaxDistance
       );
       this._rolloffFactor = Math.max(
         0,
         Number.isFinite(objectContent.rolloffFactor)
           ? objectContent.rolloffFactor!
-          : 1
+          : defaultSoundEmitterRolloffFactor
       );
       this._distanceModel = clampDistanceModel(
         objectContent.distanceModel || 'inverse'
@@ -374,13 +409,19 @@ namespace gdjs {
         objectContent.channel !== undefined ? objectContent.channel : -1
       );
       this.setRefDistance(
-        objectContent.refDistance !== undefined ? objectContent.refDistance : 180
+        objectContent.refDistance !== undefined
+          ? objectContent.refDistance
+          : defaultSoundEmitterRefDistance
       );
       this.setMaxDistance(
-        objectContent.maxDistance !== undefined ? objectContent.maxDistance : 2200
+        objectContent.maxDistance !== undefined
+          ? objectContent.maxDistance
+          : defaultSoundEmitterMaxDistance
       );
       this.setRolloffFactor(
-        objectContent.rolloffFactor !== undefined ? objectContent.rolloffFactor : 1
+        objectContent.rolloffFactor !== undefined
+          ? objectContent.rolloffFactor
+          : defaultSoundEmitterRolloffFactor
       );
       this.setDistanceModel(objectContent.distanceModel || 'inverse');
       this.setPanningModel(objectContent.panningModel || 'HRTF');
@@ -573,7 +614,15 @@ namespace gdjs {
     }
 
     setRefDistance(refDistance: number): void {
-      this._refDistance = clampDistance(refDistance, 180);
+      const [safeRefDistance, safeMaxDistance] = sanitizeSoundEmitterDistanceRange(
+        clampDistance(refDistance, defaultSoundEmitterRefDistance),
+        this._maxDistance
+      );
+      this._refDistance = safeRefDistance;
+      if (this._maxDistance !== safeMaxDistance) {
+        this._maxDistance = safeMaxDistance;
+        this._renderer.setMaxDistance(this._maxDistance);
+      }
       this._renderer.setRefDistance(this._refDistance);
     }
 
@@ -582,7 +631,15 @@ namespace gdjs {
     }
 
     setMaxDistance(maxDistance: number): void {
-      this._maxDistance = clampDistance(maxDistance, 2200);
+      const [safeRefDistance, safeMaxDistance] = sanitizeSoundEmitterDistanceRange(
+        this._refDistance,
+        clampDistance(maxDistance, defaultSoundEmitterMaxDistance)
+      );
+      if (this._refDistance !== safeRefDistance) {
+        this._refDistance = safeRefDistance;
+        this._renderer.setRefDistance(this._refDistance);
+      }
+      this._maxDistance = safeMaxDistance;
       this._renderer.setMaxDistance(this._maxDistance);
     }
 
@@ -706,6 +763,9 @@ namespace gdjs {
     private _showDebugGizmos: boolean;
     private _lastEffectiveChannel: integer | null;
     private _tempForwardDirection: THREE.Vector3;
+    private _tempCameraPosition: THREE.Vector3;
+    private _tempCameraDirection: THREE.Vector3;
+    private _tempCameraUp: THREE.Vector3;
     private _manualPlayRequested: boolean;
 
     constructor(
@@ -754,9 +814,9 @@ namespace gdjs {
       this._volume = 1;
       this._pitch = 1;
       this._channel = -1;
-      this._refDistance = 180;
-      this._maxDistance = 2200;
-      this._rolloffFactor = 1;
+      this._refDistance = defaultSoundEmitterRefDistance;
+      this._maxDistance = defaultSoundEmitterMaxDistance;
+      this._rolloffFactor = defaultSoundEmitterRolloffFactor;
       this._distanceModel = 'inverse';
       this._panningModel = 'HRTF';
       this._coneInnerAngle = 360;
@@ -766,6 +826,9 @@ namespace gdjs {
       this._showDebugGizmos = true;
       this._lastEffectiveChannel = null;
       this._tempForwardDirection = new THREE.Vector3(0, 0, -1);
+      this._tempCameraPosition = new THREE.Vector3();
+      this._tempCameraDirection = new THREE.Vector3();
+      this._tempCameraUp = new THREE.Vector3(0, 1, 0);
       this._manualPlayRequested = false;
 
       this.updateSize();
@@ -777,9 +840,9 @@ namespace gdjs {
 
     override updateSize(): void {
       const object = this._object;
-      const width = Math.max(1, Math.abs(object.getWidth()));
-      const height = Math.max(1, Math.abs(object.getHeight()));
-      const depth = Math.max(1, Math.abs(object.getDepth()));
+      const width = clampSoundEmitterHelperSize(Math.abs(object.getWidth()));
+      const height = clampSoundEmitterHelperSize(Math.abs(object.getHeight()));
+      const depth = clampSoundEmitterHelperSize(Math.abs(object.getDepth()));
       this._selectionProxyMesh.scale.set(
         object.isFlippedX() ? -width : width,
         object.isFlippedY() ? -height : height,
@@ -826,6 +889,8 @@ namespace gdjs {
       playSoundOnChannel?: Function;
       getSoundOnChannel?: Function;
       setSoundSpatialPositionOnChannel?: Function;
+      setSoundListenerSpatialPosition?: Function;
+      setSoundListenerSpatialOrientation?: Function;
     }) | null {
       if (!runtimeScene) {
         return null;
@@ -834,6 +899,8 @@ namespace gdjs {
         playSoundOnChannel?: Function;
         getSoundOnChannel?: Function;
         setSoundSpatialPositionOnChannel?: Function;
+        setSoundListenerSpatialPosition?: Function;
+        setSoundListenerSpatialOrientation?: Function;
       };
       if (!soundManager) {
         return null;
@@ -1047,7 +1114,59 @@ namespace gdjs {
       }
     }
 
+    private _getLayerThreeCamera(
+      runtimeScene: gdjs.RuntimeScene
+    ): THREE.Camera | null {
+      const layer = runtimeScene.getLayer(this._object.getLayer());
+      if (!layer || typeof layer.getRenderer !== 'function') {
+        return null;
+      }
+      const layerRenderer = layer.getRenderer() as any & {
+        getThreeCamera?: () => THREE.Camera | null;
+      };
+      if (!layerRenderer || typeof layerRenderer.getThreeCamera !== 'function') {
+        return null;
+      }
+      return layerRenderer.getThreeCamera() || null;
+    }
+
+    private _updateSpatialListener(runtimeScene: gdjs.RuntimeScene): void {
+      const soundManager = this._getSoundManager(runtimeScene);
+      if (
+        !soundManager ||
+        typeof soundManager.setSoundListenerSpatialPosition !== 'function' ||
+        typeof soundManager.setSoundListenerSpatialOrientation !== 'function'
+      ) {
+        return;
+      }
+
+      const camera = this._getLayerThreeCamera(runtimeScene);
+      if (!camera) {
+        return;
+      }
+
+      camera.updateMatrixWorld();
+      camera.getWorldPosition(this._tempCameraPosition);
+      camera.getWorldDirection(this._tempCameraDirection).normalize();
+      this._tempCameraUp.set(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
+
+      soundManager.setSoundListenerSpatialPosition(
+        this._tempCameraPosition.x,
+        this._tempCameraPosition.y,
+        this._tempCameraPosition.z
+      );
+      soundManager.setSoundListenerSpatialOrientation(
+        this._tempCameraDirection.x,
+        this._tempCameraDirection.y,
+        this._tempCameraDirection.z,
+        this._tempCameraUp.x,
+        this._tempCameraUp.y,
+        this._tempCameraUp.z
+      );
+    }
+
     updatePreRender(runtimeScene: gdjs.RuntimeScene): void {
+      this._updateSpatialListener(runtimeScene);
       this._ensurePlayback(runtimeScene);
       this._updateSoundPosition(runtimeScene);
       this._updateSoundOrientation(runtimeScene);
@@ -1060,6 +1179,7 @@ namespace gdjs {
       if (!runtimeScene) {
         return;
       }
+      this._updateSpatialListener(runtimeScene);
       this._ensurePlayback(runtimeScene);
       this._updateSoundPosition(runtimeScene);
       this._updateSoundOrientation(runtimeScene);
@@ -1135,11 +1255,25 @@ namespace gdjs {
     }
 
     setRefDistance(refDistance: number): void {
-      this._refDistance = clampDistance(refDistance, 180);
+      const [safeRefDistance, safeMaxDistance] = sanitizeSoundEmitterDistanceRange(
+        clampDistance(refDistance, defaultSoundEmitterRefDistance),
+        this._maxDistance
+      );
+      const maxDistanceChanged = this._maxDistance !== safeMaxDistance;
+      this._refDistance = safeRefDistance;
+      this._maxDistance = safeMaxDistance;
+      if (maxDistanceChanged) {
+        this._refreshDebugRangeGeometry();
+      }
     }
 
     setMaxDistance(maxDistance: number): void {
-      this._maxDistance = clampDistance(maxDistance, 2200);
+      const [safeRefDistance, safeMaxDistance] = sanitizeSoundEmitterDistanceRange(
+        this._refDistance,
+        clampDistance(maxDistance, defaultSoundEmitterMaxDistance)
+      );
+      this._refDistance = safeRefDistance;
+      this._maxDistance = safeMaxDistance;
       this._refreshDebugRangeGeometry();
     }
 
@@ -1194,6 +1328,7 @@ namespace gdjs {
       if (!runtimeScene) {
         return;
       }
+      this._updateSpatialListener(runtimeScene);
       const soundManager = this._getSoundManager(runtimeScene);
       if (!soundManager || typeof soundManager.getSoundOnChannel !== 'function') {
         return;

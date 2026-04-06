@@ -710,7 +710,7 @@ describeIfOnline('Firebase extension end-to-end tests', function () {
     });
 
     it('uploads an image', async function () {
-      if (!storageAvailable) this.skip();
+      if (!storageAvailable) return;
 
       await promisifyCallbackVariables((callback) =>
         gdjs.evtTools.firebaseTools.storage.uploadFile(
@@ -724,7 +724,7 @@ describeIfOnline('Firebase extension end-to-end tests', function () {
     });
 
     it('gets download url for an image', async function () {
-      if (!storageAvailable) this.skip();
+      if (!storageAvailable) return;
 
       const url = await promisifyCallbackVariables((callback, result) =>
         gdjs.evtTools.firebaseTools.storage.getDownloadURL(
@@ -758,7 +758,7 @@ describeIfOnline('Firebase extension end-to-end tests', function () {
     });
 
     it('deletes an image', async function () {
-      if (!storageAvailable) this.skip();
+      if (!storageAvailable) return;
 
       const storageRef = firebase.storage().ref(filename);
       await storageRef.getDownloadURL();

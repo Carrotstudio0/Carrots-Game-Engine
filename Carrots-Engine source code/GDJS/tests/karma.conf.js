@@ -157,6 +157,7 @@ module.exports = function (config) {
       './newIDE/app/resources/GDJS/Runtime/Extensions/TweenBehavior/TweenManager.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/TweenBehavior/tweentools.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/TweenBehavior/tweenruntimebehavior.js',
+      './newIDE/app/resources/GDJS/Runtime/Extensions/CinematicTimeline/cinematictimelinetools.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/Firebase/A_firebasejs/*.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/Firebase/B_firebasetools/*.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/Effects/outline-pixi-filter.js',

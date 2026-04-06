@@ -681,6 +681,7 @@ namespace gdjs {
       this.x = x;
       this.invalidateHitboxes();
       this._renderer.updateX();
+      this._onTransformChanged();
     }
 
     /**
@@ -694,6 +695,7 @@ namespace gdjs {
       this.y = y;
       this.invalidateHitboxes();
       this._renderer.updateY();
+      this._onTransformChanged();
     }
 
     /**
@@ -706,6 +708,7 @@ namespace gdjs {
         this.angle = actualValue;
         this.invalidateHitboxes();
         this._renderer.updateAngle();
+        this._onTransformChanged();
       }
     }
 

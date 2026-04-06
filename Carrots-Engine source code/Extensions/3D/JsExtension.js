@@ -5319,7 +5319,7 @@ module.exports = {
         .getOrCreate('refDistance')
         .setValue(
           (
-            objectContent.refDistance !== undefined ? objectContent.refDistance : 180
+            objectContent.refDistance !== undefined ? objectContent.refDistance : 120
           ).toString()
         )
         .setType('number')
@@ -5330,7 +5330,7 @@ module.exports = {
         .getOrCreate('maxDistance')
         .setValue(
           (
-            objectContent.maxDistance !== undefined ? objectContent.maxDistance : 2200
+            objectContent.maxDistance !== undefined ? objectContent.maxDistance : 1800
           ).toString()
         )
         .setType('number')
@@ -5343,7 +5343,7 @@ module.exports = {
           (
             objectContent.rolloffFactor !== undefined
               ? objectContent.rolloffFactor
-              : 1
+              : 1.15
           ).toString()
         )
         .setType('number')
@@ -5439,9 +5439,9 @@ module.exports = {
       return objectProperties;
     };
     SoundEmitterObject.content = {
-      width: 64,
-      height: 64,
-      depth: 64,
+      width: 24,
+      height: 24,
+      depth: 24,
       enabled: true,
       soundResourceName: '',
       autoPlay: true,
@@ -5449,9 +5449,9 @@ module.exports = {
       volume: 100,
       pitch: 1,
       channel: -1,
-      refDistance: 180,
-      maxDistance: 2200,
-      rolloffFactor: 1,
+      refDistance: 120,
+      maxDistance: 1800,
+      rolloffFactor: 1.15,
       distanceModel: 'inverse',
       panningModel: 'HRTF',
       coneInnerAngle: 360,
@@ -10291,9 +10291,12 @@ module.exports = {
         const width = this.getWidth();
         const height = this.getHeight();
         const depth = this.getDepth();
-        const scaleX = width * (this._instance.isFlippedX() ? -1 : 1);
-        const scaleY = height * (this._instance.isFlippedY() ? -1 : 1);
-        const scaleZ = depth * (this._instance.isFlippedZ() ? -1 : 1);
+        const helperWidth = Math.max(12, Math.min(96, Math.abs(width)));
+        const helperHeight = Math.max(12, Math.min(96, Math.abs(height)));
+        const helperDepth = Math.max(12, Math.min(96, Math.abs(depth)));
+        const scaleX = helperWidth * (this._instance.isFlippedX() ? -1 : 1);
+        const scaleY = helperHeight * (this._instance.isFlippedY() ? -1 : 1);
+        const scaleZ = helperDepth * (this._instance.isFlippedZ() ? -1 : 1);
         const positionX = this._instance.getX() + width / 2;
         const positionY = this._instance.getY() + height / 2;
         const positionZ = this._instance.getZ() + depth / 2;
@@ -11682,7 +11685,7 @@ module.exports = {
         const enabled = content.enabled === undefined ? true : !!content.enabled;
         const safeMaxDistance = Math.max(
           10,
-          Number.isFinite(content.maxDistance) ? content.maxDistance : 2200
+          Number.isFinite(content.maxDistance) ? content.maxDistance : 1800
         );
         const helperOpacity = enabled ? 0.82 : 0.42;
         const coneInnerHalfAngle = getAudioConeHalfAngleForEditor(
