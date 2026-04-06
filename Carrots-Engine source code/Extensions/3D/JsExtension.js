@@ -4320,8 +4320,7 @@ module.exports = {
         propertyName === 'enabled' ||
         propertyName === 'castShadow' ||
         propertyName === 'usePhysicalUnits' ||
-        propertyName === 'shadowAutoTuning' ||
-        propertyName === 'showDebugGizmos'
+        propertyName === 'shadowAutoTuning'
       ) {
         objectContent[propertyName] = newValue === '1' || newValue === 'true';
         return true;
@@ -4488,19 +4487,6 @@ module.exports = {
         .setGroup(_('Shadows'))
         .setAdvanced(true);
       objectProperties
-        .getOrCreate('showDebugGizmos')
-        .setValue(
-          objectContent.showDebugGizmos === undefined || objectContent.showDebugGizmos
-            ? 'true'
-            : 'false'
-        )
-        .setType('boolean')
-        .setLabel(_('Show debug gizmos'))
-        .setDescription(_('Show range rings/helpers while editing.'))
-        .setGroup(_('Editor'))
-        .setAdvanced(true);
-
-      objectProperties
         .getOrCreate('width')
         .setValue((objectContent.width || 24).toString())
         .setType('number')
@@ -4546,7 +4532,6 @@ module.exports = {
       shadowNear: 1,
       shadowFar: 2000,
       shadowAutoTuning: true,
-      showDebugGizmos: true,
     };
     PointLightObject.updateInitialInstanceProperty = function (
       instance,
@@ -4630,7 +4615,6 @@ module.exports = {
         propertyName === 'castShadow' ||
         propertyName === 'guardrailsEnabled' ||
         propertyName === 'enableTargetHandle' ||
-        propertyName === 'showDebugGizmos' ||
         propertyName === 'usePhysicalUnits' ||
         propertyName === 'shadowAutoTuning' ||
         propertyName === 'physicsBounceEnabled' ||
@@ -4949,21 +4933,6 @@ module.exports = {
         .setGroup(_('Bounce'))
         .setAdvanced(true);
       objectProperties
-        .getOrCreate('showDebugGizmos')
-        .setValue(
-          objectContent.showDebugGizmos === undefined || objectContent.showDebugGizmos
-            ? 'true'
-            : 'false'
-        )
-        .setType('boolean')
-        .setLabel(_('Show debug gizmos'))
-        .setDescription(
-          _('Show beam lines, cone and range helper while editing.')
-        )
-        .setGroup(_('Editor'))
-        .setAdvanced(true);
-
-      objectProperties
         .getOrCreate('width')
         .setValue((objectContent.width || 24).toString())
         .setType('number')
@@ -5024,7 +4993,6 @@ module.exports = {
       physicsBounceUseSurfaceResponse: true,
       physicsBounceSurfaceTintStrength: 0.75,
       physicsBounceSurfaceEnergyScale: 1,
-      showDebugGizmos: true,
     };
     SpotLightObject.updateInitialInstanceProperty = function (
       instance,
@@ -5076,8 +5044,7 @@ module.exports = {
       }
       if (
         propertyName === 'enabled' ||
-        propertyName === 'usePhysicalUnits' ||
-        propertyName === 'showDebugGizmos'
+        propertyName === 'usePhysicalUnits'
       ) {
         objectContent[propertyName] = newValue === '1' || newValue === 'true';
         return true;
@@ -5162,21 +5129,6 @@ module.exports = {
         .setLabel(_('Light height'))
         .setGroup(_('Light'));
       objectProperties
-        .getOrCreate('showDebugGizmos')
-        .setValue(
-          objectContent.showDebugGizmos === undefined || objectContent.showDebugGizmos
-            ? 'true'
-            : 'false'
-        )
-        .setType('boolean')
-        .setLabel(_('Show debug gizmos'))
-        .setDescription(
-          _('Show a helper wireframe for area size while editing in 3D.')
-        )
-        .setGroup(_('Editor'))
-        .setAdvanced(true);
-
-      objectProperties
         .getOrCreate('width')
         .setValue((objectContent.width || 24).toString())
         .setType('number')
@@ -5214,7 +5166,6 @@ module.exports = {
       power: 22000,
       lightWidth: 180,
       lightHeight: 90,
-      showDebugGizmos: true,
     };
     RectAreaLightObject.updateInitialInstanceProperty = function (
       instance,
@@ -5295,8 +5246,7 @@ module.exports = {
         propertyName === 'enabled' ||
         propertyName === 'autoPlay' ||
         propertyName === 'loop' ||
-        propertyName === 'followObjectRotation' ||
-        propertyName === 'showDebugGizmos'
+        propertyName === 'followObjectRotation'
       ) {
         objectContent[propertyName] = newValue === '1' || newValue === 'true';
         return true;
@@ -5462,19 +5412,6 @@ module.exports = {
         .setGroup(_('Cone'));
 
       objectProperties
-        .getOrCreate('showDebugGizmos')
-        .setValue(
-          objectContent.showDebugGizmos === undefined || objectContent.showDebugGizmos
-            ? 'true'
-            : 'false'
-        )
-        .setType('boolean')
-        .setLabel(_('Show debug gizmos'))
-        .setDescription(_('Show attenuation range wireframe in editor and preview.'))
-        .setGroup(_('Editor'))
-        .setAdvanced(true);
-
-      objectProperties
         .getOrCreate('width')
         .setValue((objectContent.width || 24).toString())
         .setType('number')
@@ -5521,7 +5458,6 @@ module.exports = {
       coneOuterAngle: 360,
       coneOuterGain: 0,
       followObjectRotation: false,
-      showDebugGizmos: true,
     };
     SoundEmitterObject.updateInitialInstanceProperty = function (
       instance,
@@ -9848,6 +9784,27 @@ module.exports = {
       }
       return new THREE.BufferGeometry().setFromPoints(points);
     };
+    const createPointLightConeWireGeometry = (distance) => {
+      const safeDistance = Math.max(
+        10,
+        Number.isFinite(distance) ? distance : 900
+      );
+      const octahedronGeometry = new THREE.OctahedronGeometry(safeDistance);
+      const edgesGeometry = new THREE.EdgesGeometry(octahedronGeometry);
+      octahedronGeometry.dispose();
+      return edgesGeometry;
+    };
+    const getAudioConeHalfAngleForEditor = (coneAngle, fallback = 360) => {
+      const safeFullAngle = Math.max(
+        0,
+        Math.min(
+          360,
+          Number.isFinite(coneAngle) ? coneAngle : fallback
+        )
+      );
+      if (safeFullAngle >= 359.5) return null;
+      return Math.max(1, Math.min(89, safeFullAngle * 0.5));
+    };
     const createRectAreaLightConeWireGeometry = (
       lightWidth,
       lightHeight,
@@ -9921,6 +9878,9 @@ module.exports = {
       /** @type {THREE.LineSegments | null} */
       _lightRangeLines = null;
       _lightRangeSignature = '';
+      /** @type {THREE.LineSegments | null} */
+      _lightConeLines = null;
+      _lightConeSignature = '';
 
       constructor(
         project,
@@ -9983,6 +9943,21 @@ module.exports = {
         lightRangeLines.renderOrder = 9998;
         this._lightRangeLines = lightRangeLines;
         this._threeGroup.add(lightRangeLines);
+
+        const lightConeLines = new THREE.LineSegments(
+          new THREE.BufferGeometry(),
+          new THREE.LineBasicMaterial({
+            color: 0xfff1b3,
+            transparent: true,
+            opacity: 0.62,
+            depthWrite: false,
+            depthTest: false,
+          })
+        );
+        lightConeLines.frustumCulled = false;
+        lightConeLines.renderOrder = 9999;
+        this._lightConeLines = lightConeLines;
+        this._threeGroup.add(lightConeLines);
       }
 
       onRemovedFromScene() {
@@ -9998,6 +9973,9 @@ module.exports = {
         }
         if (this._lightRangeLines) {
           this._threeGroup.remove(this._lightRangeLines);
+        }
+        if (this._lightConeLines) {
+          this._threeGroup.remove(this._lightConeLines);
         }
         if (this._selectionProxyMesh && this._selectionProxyMesh.geometry) {
           this._selectionProxyMesh.geometry.dispose();
@@ -10023,6 +10001,21 @@ module.exports = {
           );
           if (lightRangeMaterial && lightRangeMaterial.dispose) {
             lightRangeMaterial.dispose();
+          }
+        }
+        if (
+          this._lightConeLines &&
+          this._lightConeLines.geometry &&
+          this._lightConeLines.geometry.dispose
+        ) {
+          this._lightConeLines.geometry.dispose();
+        }
+        if (this._lightConeLines && this._lightConeLines.material) {
+          const lightConeMaterial = /** @type {any} */ (
+            this._lightConeLines.material
+          );
+          if (lightConeMaterial && lightConeMaterial.dispose) {
+            lightConeMaterial.dispose();
           }
         }
       }
@@ -10102,6 +10095,7 @@ module.exports = {
           0,
           Number.isFinite(content.intensity) ? content.intensity : 2.2
         );
+        const helperOpacity = enabled ? 0.82 : 0.42;
 
         const editorPointLight = this._editorPointLight;
         if (editorPointLight) {
@@ -10119,7 +10113,7 @@ module.exports = {
 
         const lightRangeLines = this._lightRangeLines;
         if (lightRangeLines) {
-          lightRangeLines.visible = enabled;
+          lightRangeLines.visible = true;
           lightRangeLines.position.set(positionX, positionY, positionZ);
           const rangeSignature = safeDistance.toFixed(3);
           if (this._lightRangeSignature !== rangeSignature) {
@@ -10135,6 +10129,32 @@ module.exports = {
           const lightRangeMaterial = /** @type {any} */ (lightRangeLines.material);
           if (lightRangeMaterial && lightRangeMaterial.color) {
             lightRangeMaterial.color.setHex(color);
+          }
+          if (lightRangeMaterial && lightRangeMaterial.opacity !== undefined) {
+            lightRangeMaterial.opacity = helperOpacity;
+          }
+        }
+
+        const lightConeLines = this._lightConeLines;
+        if (lightConeLines) {
+          lightConeLines.visible = true;
+          lightConeLines.position.set(positionX, positionY, positionZ);
+          lightConeLines.rotation.set(rotationX, rotationY, rotationZ);
+          const coneSignature = safeDistance.toFixed(3);
+          if (this._lightConeSignature !== coneSignature) {
+            this._lightConeSignature = coneSignature;
+            const oldGeometry = lightConeLines.geometry;
+            lightConeLines.geometry = createPointLightConeWireGeometry(safeDistance);
+            if (oldGeometry) {
+              oldGeometry.dispose();
+            }
+          }
+          const lightConeMaterial = /** @type {any} */ (lightConeLines.material);
+          if (lightConeMaterial && lightConeMaterial.color) {
+            lightConeMaterial.color.setHex(color);
+          }
+          if (lightConeMaterial && lightConeMaterial.opacity !== undefined) {
+            lightConeMaterial.opacity = enabled ? 0.62 : 0.34;
           }
         }
       }
@@ -10437,10 +10457,8 @@ module.exports = {
 
         const isLightEnabled =
           content.enabled === undefined ? true : !!content.enabled;
-        debugGizmoGroup.visible = isLightEnabled;
-        if (!isLightEnabled) {
-          return;
-        }
+        debugGizmoGroup.visible = true;
+        const helperOpacity = isLightEnabled ? 0.85 : 0.38;
 
         debugGizmoGroup.position.set(positionX, positionY, positionZ);
         debugGizmoGroup.rotation.set(rotationX, rotationY, rotationZ);
@@ -10470,6 +10488,9 @@ module.exports = {
           const debugConeMaterial = /** @type {any} */ (debugConeLines.material);
           if (debugConeMaterial && debugConeMaterial.color) {
             debugConeMaterial.color.setHex(color);
+          }
+          if (debugConeMaterial && debugConeMaterial.opacity !== undefined) {
+            debugConeMaterial.opacity = helperOpacity;
           }
         }
 
@@ -10511,6 +10532,12 @@ module.exports = {
             );
             if (debugTargetMaterial && debugTargetMaterial.color) {
               debugTargetMaterial.color.setHex(color);
+            }
+            if (
+              debugTargetMaterial &&
+              debugTargetMaterial.opacity !== undefined
+            ) {
+              debugTargetMaterial.opacity = isLightEnabled ? 0.9 : 0.4;
             }
           }
         }
@@ -11018,7 +11045,7 @@ module.exports = {
 
         const lightConeLines = this._lightConeLines;
         if (lightConeLines) {
-          lightConeLines.visible = enabled;
+          lightConeLines.visible = true;
           lightConeLines.position.set(positionX, positionY, positionZ);
           lightConeLines.rotation.set(rotationX, rotationY, rotationZ);
           const coneSignature = `${safeLightWidth.toFixed(
@@ -11039,6 +11066,9 @@ module.exports = {
           const lightConeMaterial = /** @type {any} */ (lightConeLines.material);
           if (lightConeMaterial && lightConeMaterial.color) {
             lightConeMaterial.color.setHex(color);
+          }
+          if (lightConeMaterial && lightConeMaterial.opacity !== undefined) {
+            lightConeMaterial.opacity = enabled ? 0.85 : 0.42;
           }
         }
       }
@@ -11160,6 +11190,12 @@ module.exports = {
       /** @type {THREE.LineSegments | null} */
       _rangeLines = null;
       _rangeSignature = '';
+      /** @type {THREE.LineSegments | null} */
+      _outerConeLines = null;
+      /** @type {THREE.LineSegments | null} */
+      _innerConeLines = null;
+      _outerConeSignature = '';
+      _innerConeSignature = '';
 
       constructor(
         project,
@@ -11217,6 +11253,36 @@ module.exports = {
         rangeLines.renderOrder = 9998;
         this._rangeLines = rangeLines;
         this._threeGroup.add(rangeLines);
+
+        const outerConeLines = new THREE.LineSegments(
+          new THREE.BufferGeometry(),
+          new THREE.LineBasicMaterial({
+            color: 0x9edbff,
+            transparent: true,
+            opacity: 0.86,
+            depthWrite: false,
+            depthTest: false,
+          })
+        );
+        outerConeLines.frustumCulled = false;
+        outerConeLines.renderOrder = 9999;
+        this._outerConeLines = outerConeLines;
+        this._threeGroup.add(outerConeLines);
+
+        const innerConeLines = new THREE.LineSegments(
+          new THREE.BufferGeometry(),
+          new THREE.LineBasicMaterial({
+            color: 0xe2f4ff,
+            transparent: true,
+            opacity: 0.64,
+            depthWrite: false,
+            depthTest: false,
+          })
+        );
+        innerConeLines.frustumCulled = false;
+        innerConeLines.renderOrder = 10000;
+        this._innerConeLines = innerConeLines;
+        this._threeGroup.add(innerConeLines);
       }
 
       onRemovedFromScene() {
@@ -11229,6 +11295,12 @@ module.exports = {
         }
         if (this._rangeLines) {
           this._threeGroup.remove(this._rangeLines);
+        }
+        if (this._outerConeLines) {
+          this._threeGroup.remove(this._outerConeLines);
+        }
+        if (this._innerConeLines) {
+          this._threeGroup.remove(this._innerConeLines);
         }
         if (this._selectionProxyMesh && this._selectionProxyMesh.geometry) {
           this._selectionProxyMesh.geometry.dispose();
@@ -11248,6 +11320,24 @@ module.exports = {
           const rangeMaterial = /** @type {any} */ (this._rangeLines.material);
           if (rangeMaterial && rangeMaterial.dispose) {
             rangeMaterial.dispose();
+          }
+        }
+        if (this._outerConeLines && this._outerConeLines.geometry) {
+          this._outerConeLines.geometry.dispose();
+        }
+        if (this._outerConeLines && this._outerConeLines.material) {
+          const outerConeMaterial = /** @type {any} */ (this._outerConeLines.material);
+          if (outerConeMaterial && outerConeMaterial.dispose) {
+            outerConeMaterial.dispose();
+          }
+        }
+        if (this._innerConeLines && this._innerConeLines.geometry) {
+          this._innerConeLines.geometry.dispose();
+        }
+        if (this._innerConeLines && this._innerConeLines.material) {
+          const innerConeMaterial = /** @type {any} */ (this._innerConeLines.material);
+          if (innerConeMaterial && innerConeMaterial.dispose) {
+            innerConeMaterial.dispose();
           }
         }
       }
@@ -11323,16 +11413,23 @@ module.exports = {
         }
 
         const enabled = content.enabled === undefined ? true : !!content.enabled;
-        const showDebugGizmos =
-          content.showDebugGizmos === undefined ? true : !!content.showDebugGizmos;
         const safeMaxDistance = Math.max(
           10,
           Number.isFinite(content.maxDistance) ? content.maxDistance : 1200
         );
+        const helperOpacity = enabled ? 0.82 : 0.42;
+        const coneInnerHalfAngle = getAudioConeHalfAngleForEditor(
+          content.coneInnerAngle,
+          360
+        );
+        const coneOuterHalfAngle = getAudioConeHalfAngleForEditor(
+          content.coneOuterAngle,
+          360
+        );
 
         const rangeLines = this._rangeLines;
         if (rangeLines) {
-          rangeLines.visible = enabled && showDebugGizmos;
+          rangeLines.visible = true;
           rangeLines.position.set(positionX, positionY, positionZ);
           const rangeSignature = safeMaxDistance.toFixed(3);
           if (this._rangeSignature !== rangeSignature) {
@@ -11341,6 +11438,70 @@ module.exports = {
             rangeLines.geometry = createPointLightRangeWireGeometry(safeMaxDistance);
             if (oldGeometry) {
               oldGeometry.dispose();
+            }
+          }
+          const rangeMaterial = /** @type {any} */ (rangeLines.material);
+          if (rangeMaterial && rangeMaterial.opacity !== undefined) {
+            rangeMaterial.opacity = helperOpacity;
+          }
+        }
+
+        const outerConeLines = this._outerConeLines;
+        if (outerConeLines) {
+          outerConeLines.visible = true;
+          outerConeLines.position.set(positionX, positionY, positionZ);
+          outerConeLines.rotation.set(rotationX, rotationY, rotationZ);
+          const outerConeSignature =
+            coneOuterHalfAngle === null
+              ? `omni|${safeMaxDistance.toFixed(3)}`
+              : `${safeMaxDistance.toFixed(3)}|${coneOuterHalfAngle.toFixed(3)}`;
+          if (this._outerConeSignature !== outerConeSignature) {
+            this._outerConeSignature = outerConeSignature;
+            const oldGeometry = outerConeLines.geometry;
+            outerConeLines.geometry =
+              coneOuterHalfAngle === null
+                ? createPointLightConeWireGeometry(safeMaxDistance)
+                : createSpotLightConeWireGeometry(
+                    safeMaxDistance,
+                    coneOuterHalfAngle
+                  );
+            if (oldGeometry) {
+              oldGeometry.dispose();
+            }
+          }
+          const outerConeMaterial = /** @type {any} */ (outerConeLines.material);
+          if (outerConeMaterial && outerConeMaterial.opacity !== undefined) {
+            outerConeMaterial.opacity = enabled ? 0.86 : 0.44;
+          }
+        }
+
+        const innerConeLines = this._innerConeLines;
+        if (innerConeLines) {
+          const hasInnerCone =
+            coneInnerHalfAngle !== null &&
+            coneOuterHalfAngle !== null &&
+            coneInnerHalfAngle < coneOuterHalfAngle - 0.1;
+          innerConeLines.visible = hasInnerCone;
+          if (hasInnerCone) {
+            innerConeLines.position.set(positionX, positionY, positionZ);
+            innerConeLines.rotation.set(rotationX, rotationY, rotationZ);
+            const innerConeSignature = `${safeMaxDistance.toFixed(
+              3
+            )}|${coneInnerHalfAngle.toFixed(3)}`;
+            if (this._innerConeSignature !== innerConeSignature) {
+              this._innerConeSignature = innerConeSignature;
+              const oldGeometry = innerConeLines.geometry;
+              innerConeLines.geometry = createSpotLightConeWireGeometry(
+                safeMaxDistance,
+                coneInnerHalfAngle
+              );
+              if (oldGeometry) {
+                oldGeometry.dispose();
+              }
+            }
+            const innerConeMaterial = /** @type {any} */ (innerConeLines.material);
+            if (innerConeMaterial && innerConeMaterial.opacity !== undefined) {
+              innerConeMaterial.opacity = enabled ? 0.64 : 0.34;
             }
           }
         }
