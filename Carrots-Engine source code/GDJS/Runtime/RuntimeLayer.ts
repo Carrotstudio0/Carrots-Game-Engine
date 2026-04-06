@@ -146,10 +146,7 @@ namespace gdjs {
       const hasHemisphereLight = effects.some(
         effect => effect.effectType === 'Scene3D::HemisphereLight'
       );
-      const hasToneMapping = effects.some(
-        effect => effect.effectType === 'Scene3D::ToneMapping'
-      );
-      if (hasDirectionalLight && hasHemisphereLight && hasToneMapping) return;
+      if (hasDirectionalLight && hasHemisphereLight) return;
 
       const existingNames = new Set(effects.map(effect => effect.name));
       if (!hasDirectionalLight) {
@@ -161,7 +158,7 @@ namespace gdjs {
           effectType: 'Scene3D::DirectionalLight',
           name: sunLightName,
           doubleParameters: {
-            intensity: 1.05,
+            intensity: 2.2,
             elevation: 40,
             rotation: 300,
             minimumShadowBias: 0,
@@ -187,7 +184,7 @@ namespace gdjs {
           effectType: 'Scene3D::HemisphereLight',
           name: skyLightName,
           doubleParameters: {
-            intensity: 0.22,
+            intensity: 0.35,
             elevation: 40,
             rotation: 300,
           },
@@ -197,25 +194,6 @@ namespace gdjs {
             top: 'Z+',
           },
           booleanParameters: {},
-        });
-      }
-
-      if (!hasToneMapping) {
-        const toneMappingName = existingNames.has('3D Tone Mapping')
-          ? '__auto_3d_tone_mapping'
-          : '3D Tone Mapping';
-        this.addEffect({
-          effectType: 'Scene3D::ToneMapping',
-          name: toneMappingName,
-          doubleParameters: {
-            exposure: 1.08,
-          },
-          stringParameters: {
-            mode: 'ACESFilmic',
-          },
-          booleanParameters: {
-            enabled: true,
-          },
         });
       }
     }

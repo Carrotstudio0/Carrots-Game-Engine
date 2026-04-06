@@ -58,6 +58,12 @@ import { BundleStoreContext } from '../AssetStore/Bundles/BundleStoreContext';
 import { type CreateProjectResult } from '../Utils/UseCreateProject';
 import { isNativeMobileApp } from '../Utils/Platform';
 import { type ScriptingMode } from '../Utils/ScriptingMode';
+import {
+  SCENE_TYPE_2D,
+  SCENE_TYPE_3D,
+  SCENE_TYPE_2_5D,
+  type SceneType,
+} from '../Utils/SceneType';
 
 const electron = optionalRequire('electron');
 const remote = optionalRequire('@electron/remote');
@@ -88,6 +94,7 @@ export type NewProjectSetup = {|
   saveAsLocation: ?SaveAsLocation,
   projectName?: string,
   scriptingMode?: ScriptingMode,
+  defaultSceneType?: SceneType,
   height?: number,
   width?: number,
   orientation?: 'landscape' | 'portrait' | 'default',
@@ -236,6 +243,9 @@ const NewProjectSetupDialog = ({
   );
   const [scriptingMode, setScriptingMode] = React.useState<ScriptingMode>(
     'event-sheet'
+  );
+  const [defaultSceneType, setDefaultSceneType] = React.useState<SceneType>(
+    SCENE_TYPE_2_5D
   );
   const newProjectsDefaultFolder = app
     ? findEmptyPathInWorkspaceFolder(app, values.newProjectsDefaultFolder || '')
@@ -467,6 +477,7 @@ const NewProjectSetupDialog = ({
         storageProvider: storageProviderForCreation,
         saveAsLocation: projectLocation,
         scriptingMode,
+        defaultSceneType,
         height: selectedHeight,
         width: selectedWidth,
         orientation: selectedOrientation,
@@ -482,6 +493,7 @@ const NewProjectSetupDialog = ({
             storageProvider: storageProviderForCreation,
             saveAsLocation: projectLocation,
             scriptingMode,
+            defaultSceneType,
             creationSource: 'default',
           },
           i18n,
@@ -490,11 +502,12 @@ const NewProjectSetupDialog = ({
         await onCreateProjectFromPrivateGameTemplate(
           selectedPrivateGameTemplateListingData,
           {
-            // We only pass down the project name as this is the only cusomizable field for a template.
+            // For templates, keep project creation options lightweight.
             projectName,
             storageProvider: storageProviderForCreation,
             saveAsLocation,
             scriptingMode,
+            defaultSceneType,
             creationSource: 'default',
           },
           i18n
@@ -513,6 +526,7 @@ const NewProjectSetupDialog = ({
       selectedWidth,
       selectedOrientation,
       scriptingMode,
+      defaultSceneType,
       optimizeForPixelArt,
       selectedExampleShortHeader,
       selectedPrivateGameTemplateListingData,
@@ -775,6 +789,22 @@ const NewProjectSetupDialog = ({
                   <SelectOption
                     value="typescript"
                     label={t`TypeScript + Event Sheet (hybrid)`}
+                  />
+                </SelectField>
+                <SelectField
+                  fullWidth
+                  disabled={isLoading}
+                  floatingLabelText={<Trans>Default scene mode</Trans>}
+                  value={defaultSceneType}
+                  onChange={(e, i, newValue: SceneType) => {
+                    setDefaultSceneType(newValue);
+                  }}
+                >
+                  <SelectOption value={SCENE_TYPE_2D} label={t`2D only`} />
+                  <SelectOption value={SCENE_TYPE_3D} label={t`3D only`} />
+                  <SelectOption
+                    value={SCENE_TYPE_2_5D}
+                    label={t`2.5D (2D + 3D)`}
                   />
                 </SelectField>
                 <SelectField

@@ -201,7 +201,12 @@ type Props = {|
   |}) => Promise<void>,
 |};
 
-const DropTarget = makeDropTarget<{||}>(objectWithContextReactDndType);
+type DraggedObjectItem = {|
+  name?: string,
+  is3D?: boolean,
+|};
+
+const DropTarget = makeDropTarget<DraggedObjectItem>(objectWithContextReactDndType);
 
 const noHotReloadSteps = {
   shouldReloadProjectData: false,
@@ -636,7 +641,7 @@ export const EmbeddedGameFrame = ({
           }}
         />
         <DropTarget
-          canDrop={() => true}
+          canDrop={item => !!item.is3D}
           // TODO: "isAltPressed" is hardcoded to false, but we should detect it instead.
           hover={monitor =>
             dragNewInstance({ monitor, dropped: false, isAltPressed: false })

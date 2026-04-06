@@ -1,5 +1,58 @@
 namespace gdjs {
   const logger = new gdjs.Logger('In-Game editor');
+  const SCENE_TYPES_EXTENSION_NAME = 'CarrotsEngine';
+  const SCENE_TYPES_PROPERTY_NAME = 'sceneTypesV1';
+  const PROJECT_SCENE_TYPE_PROPERTY_NAME = 'projectSceneTypeV1';
+  type RuntimeSceneType = '2d' | '3d' | '2.5d';
+  const DEFAULT_RUNTIME_SCENE_TYPE: RuntimeSceneType = '2.5d';
+
+  const parseRuntimeSceneType = (value: unknown): RuntimeSceneType | null => {
+    // Legacy compatibility for previous in-progress values.
+    if (value === 'ui') return '2d';
+    return value === '2d' || value === '3d' || value === '2.5d' ? value : null;
+  };
+
+  const getRuntimeProjectSceneType = (
+    runtimeGame: RuntimeGame
+  ): RuntimeSceneType => {
+    const rawProjectSceneType = runtimeGame.getExtensionProperty(
+      SCENE_TYPES_EXTENSION_NAME,
+      PROJECT_SCENE_TYPE_PROPERTY_NAME
+    );
+    return (
+      parseRuntimeSceneType(rawProjectSceneType) || DEFAULT_RUNTIME_SCENE_TYPE
+    );
+  };
+
+  const getRuntimeSceneType = (
+    runtimeGame: RuntimeGame,
+    sceneName: string
+  ): RuntimeSceneType => {
+    const projectSceneType = getRuntimeProjectSceneType(runtimeGame);
+    const rawValue = runtimeGame.getExtensionProperty(
+      SCENE_TYPES_EXTENSION_NAME,
+      SCENE_TYPES_PROPERTY_NAME
+    );
+    if (!rawValue) return projectSceneType;
+
+    try {
+      const parsed = JSON.parse(rawValue);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return projectSceneType;
+      }
+
+      const sceneType = parseRuntimeSceneType(
+        (parsed as Record<string, unknown>)[sceneName]
+      );
+      return sceneType || projectSceneType;
+    } catch (error) {
+      return projectSceneType;
+    }
+  };
+
+  const doesRuntimeSceneTypeAllow3DObjects = (
+    sceneType: RuntimeSceneType
+  ): boolean => sceneType !== '2d';
 
   /**
    * A minimal utility to define DOM elements.
@@ -376,6 +429,9 @@ namespace gdjs {
   const cameraFloatEpsilon = 0.0001;
   const pointerLockReleaseGracePeriodMs = 100;
   const absoluteVerticalMovementVector = new THREE.Vector3(0, 0, 1);
+  const professional3DViewRotationAngle = 35;
+  const professional3DViewElevationAngle = 32;
+  const professional3DViewDistanceScale = 1.28;
 
   const normalizeCameraAngleDegrees = (angle: float): float => {
     if (!Number.isFinite(angle)) {
@@ -986,6 +1042,7 @@ namespace gdjs {
     private _editorId: string = '';
     private _runtimeGame: RuntimeGame;
     private _currentScene: gdjs.RuntimeScene | null = null;
+    private _currentSceneType: RuntimeSceneType = DEFAULT_RUNTIME_SCENE_TYPE;
     private _editedInstanceContainer: gdjs.RuntimeInstanceContainer | null =
       null;
     private _editedInstanceDataList: InstanceData[] = [];
@@ -1391,6 +1448,7 @@ namespace gdjs {
         this._currentScene.unloadScene();
         this._currentScene = null;
       }
+      this._currentSceneType = DEFAULT_RUNTIME_SCENE_TYPE;
       // The 3D scene is rebuilt and the inner area marker is lost in the process.
       this._threeInnerArea = null;
       this._innerArea = null;
@@ -1415,6 +1473,7 @@ namespace gdjs {
       let editedLayerDataList: Array<LayerData> = [];
       let editedInstanceDataList: Array<InstanceData> = [];
       if (eventsBasedObjectType) {
+        this._currentSceneType = DEFAULT_RUNTIME_SCENE_TYPE;
         const eventsBasedObjectVariantData =
           this._runtimeGame.getEventsBasedObjectVariantData(
             eventsBasedObjectType,
@@ -1449,6 +1508,7 @@ namespace gdjs {
           );
         }
       } else if (sceneName) {
+        this._currentSceneType = getRuntimeSceneType(this._runtimeGame, sceneName);
         await this._runtimeGame.loadFirstAssetsAndStartBackgroundLoading(
           sceneName,
           () => {}
@@ -1500,6 +1560,7 @@ namespace gdjs {
           }
         }
       } else {
+        this._currentSceneType = DEFAULT_RUNTIME_SCENE_TYPE;
         console.warn('eventsBasedObjectType or sceneName must be set.');
       }
       this._editedInstanceDataList = editedInstanceDataList;
@@ -1867,10 +1928,13 @@ namespace gdjs {
       margin: float
     ) {
       if (!this._currentScene) return;
+      const viewPreset: EditorCameraViewPreset =
+        this._currentSceneType === '3d' ? 'perspective' : 'topdown';
       this._getEditorCamera().zoomToFitArea(
         sceneArea,
         visibleScreenArea,
-        margin
+        margin,
+        viewPreset
       );
       this._getEditorCamera().switchToFreeCamera();
     }
@@ -4110,6 +4174,9 @@ namespace gdjs {
       }
 
       if (!this._draggedNewObject) {
+        if (!doesRuntimeSceneTypeAllow3DObjects(this._currentSceneType)) {
+          return;
+        }
         const newObject = editedInstanceContainer.createObject(name);
         if (!newObject) return;
         if (!is3D(newObject)) {
@@ -7591,6 +7658,7 @@ namespace gdjs {
     elevationAngle: float;
     distance: float;
   };
+  type EditorCameraViewPreset = 'topdown' | 'perspective';
 
   class EditorCamera implements CameraControl {
     editor: gdjs.InGameEditor;
@@ -7894,7 +7962,8 @@ namespace gdjs {
         maxX: number;
         maxY: number;
       },
-      margin: float
+      margin: float,
+      viewPreset: EditorCameraViewPreset = 'topdown'
     ) {
       const sceneAreaWidth = sceneArea.maxX - sceneArea.minX;
       const sceneAreaHeight = sceneArea.maxY - sceneArea.minY;
@@ -7923,8 +7992,15 @@ namespace gdjs {
         sceneAreaCenterY,
         sceneArea.minZ
       );
-      this.resetRotationToTopDown();
-      this.setOrbitDistance(distance);
+      if (viewPreset === 'perspective') {
+        this.orbitCameraControl.rotationAngle = professional3DViewRotationAngle;
+        this.orbitCameraControl.elevationAngle =
+          professional3DViewElevationAngle;
+        this.setOrbitDistance(distance * professional3DViewDistanceScale);
+      } else {
+        this.resetRotationToTopDown();
+        this.setOrbitDistance(distance);
+      }
       this.onHasCameraChanged();
     }
 

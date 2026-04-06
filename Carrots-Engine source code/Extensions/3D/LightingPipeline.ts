@@ -239,13 +239,13 @@ namespace gdjs {
       probeSkyColorHex: 0xbfd7ff,
       probeGroundColorHex: 0x6d7356,
       probeUseSceneColors: true,
-      attenuationModel: 'physical',
+      attenuationModel: 'balanced',
       attenuationDistanceScale: 1,
       attenuationDecayScale: 1,
       shadowQualityScale: 1.2,
       lodDistanceScale: 1,
       realtimeShadowsOnly: true,
-      physicallyCorrectLights: true,
+      physicallyCorrectLights: false,
       adaptivePerformanceScale: 1,
       lodUpdateIntervalScale: 1,
       probeLight: null,
@@ -1132,11 +1132,11 @@ const updateProbeLighting = (
                 : !!effectData.booleanParameters.realtimeShadowsOnly;
             this._physicallyCorrectLights =
               effectData.booleanParameters.physicallyCorrectLights === undefined
-                ? true
+                ? false
                 : !!effectData.booleanParameters.physicallyCorrectLights;
             this._adaptivePerformanceEnabled =
               effectData.booleanParameters.adaptivePerformanceEnabled === undefined
-                ? true
+                ? false
                 : !!effectData.booleanParameters.adaptivePerformanceEnabled;
             this._targetFrameRate = gdjs.evtTools.common.clamp(
               20,

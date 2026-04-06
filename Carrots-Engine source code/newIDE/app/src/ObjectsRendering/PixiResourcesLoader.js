@@ -144,6 +144,7 @@ const load3DModel = (
     gltfLoader.load(
       url,
       gltf => {
+        applyModelTextureQuality(gltf);
         resolve(gltf);
       },
       undefined,
@@ -179,13 +180,110 @@ const applyThreeTextureSettings = (
   // $FlowFixMe[value-as-type]
   threeTexture: THREE.Texture
 ) => {
-  if (resource.getKind() !== 'image') return;
+  const editorGlobal: any = typeof window !== 'undefined' ? window : {};
+  const globalRenderer = editorGlobal.__gdEditorThreeRenderer;
+  const maxAnisotropy =
+    globalRenderer &&
+    globalRenderer.capabilities &&
+    typeof globalRenderer.capabilities.getMaxAnisotropy === 'function'
+      ? Math.max(1, globalRenderer.capabilities.getMaxAnisotropy())
+      : 8;
+
+  if (resource.getKind() !== 'image') {
+    threeTexture.magFilter = THREE.LinearFilter;
+    threeTexture.minFilter = THREE.LinearMipmapLinearFilter;
+    threeTexture.generateMipmaps = true;
+    threeTexture.anisotropy = maxAnisotropy;
+    threeTexture.needsUpdate = true;
+    return;
+  }
 
   const imageResource = gd.asImageResource(resource);
   if (!imageResource.isSmooth()) {
     threeTexture.magFilter = THREE.NearestFilter;
     threeTexture.minFilter = THREE.NearestFilter;
+    threeTexture.generateMipmaps = false;
+    threeTexture.anisotropy = 1;
+    threeTexture.needsUpdate = true;
+    return;
   }
+
+  threeTexture.magFilter = THREE.LinearFilter;
+  threeTexture.minFilter = THREE.LinearMipmapLinearFilter;
+  threeTexture.generateMipmaps = true;
+  threeTexture.anisotropy = maxAnisotropy;
+  threeTexture.needsUpdate = true;
+};
+
+// $FlowFixMe[value-as-type]
+const applyModelTextureQuality = (gltf: THREE.THREE_ADDONS.GLTF) => {
+  const editorGlobal: any = typeof window !== 'undefined' ? window : {};
+  const globalRenderer = editorGlobal.__gdEditorThreeRenderer;
+  const maxAnisotropy =
+    globalRenderer &&
+    globalRenderer.capabilities &&
+    typeof globalRenderer.capabilities.getMaxAnisotropy === 'function'
+      ? Math.max(1, globalRenderer.capabilities.getMaxAnisotropy())
+      : 8;
+  const texturePropertyNames = [
+    'map',
+    'alphaMap',
+    'aoMap',
+    'bumpMap',
+    'displacementMap',
+    'emissiveMap',
+    'envMap',
+    'lightMap',
+    'metalnessMap',
+    'normalMap',
+    'roughnessMap',
+    'specularMap',
+    'clearcoatMap',
+    'clearcoatNormalMap',
+    'clearcoatRoughnessMap',
+    'iridescenceMap',
+    'iridescenceThicknessMap',
+    'sheenColorMap',
+    'sheenRoughnessMap',
+    'thicknessMap',
+    'transmissionMap',
+    'anisotropyMap',
+  ];
+  const processedTextures = new Set();
+
+  gltf.scene.traverse(object => {
+    // $FlowFixMe[prop-missing]
+    const materialOrMaterials = object.material;
+    if (!materialOrMaterials) return;
+    const materials = Array.isArray(materialOrMaterials)
+      ? materialOrMaterials
+      : [materialOrMaterials];
+
+    materials.forEach(material => {
+      texturePropertyNames.forEach(propertyName => {
+        const texture = material && material[propertyName];
+        if (!(texture instanceof THREE.Texture) || processedTextures.has(texture))
+          return;
+
+        processedTextures.add(texture);
+        if (
+          texture.magFilter === THREE.NearestFilter ||
+          texture.minFilter === THREE.NearestFilter
+        ) {
+          texture.magFilter = THREE.NearestFilter;
+          texture.minFilter = THREE.NearestFilter;
+          texture.generateMipmaps = false;
+          texture.anisotropy = 1;
+        } else {
+          texture.magFilter = THREE.LinearFilter;
+          texture.minFilter = THREE.LinearMipmapLinearFilter;
+          texture.generateMipmaps = true;
+          texture.anisotropy = maxAnisotropy;
+        }
+        texture.needsUpdate = true;
+      });
+    });
+  });
 };
 
 export const readEmbeddedResourcesMapping = (
@@ -558,7 +656,7 @@ export default class PixiResourcesLoader {
       isColorTexture = true,
       wrapS = THREE.RepeatWrapping,
       wrapT = THREE.RepeatWrapping,
-      minFilter = THREE.LinearFilter,
+      minFilter = THREE.LinearMipmapLinearFilter,
       magFilter = THREE.LinearFilter,
     }: {|
       isColorTexture?: boolean,

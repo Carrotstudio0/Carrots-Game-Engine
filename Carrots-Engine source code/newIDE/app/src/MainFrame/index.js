@@ -217,6 +217,11 @@ import {
 import { type ToolbarButtonConfig } from './CustomToolbarButton';
 import { applyProjectPreferences } from '../Utils/ApplyProjectPreferences';
 import {
+  ensureSceneTypeExists,
+  removeSceneType,
+  renameSceneType,
+} from '../Utils/SceneType';
+import {
   EmbeddedGameFrame,
   setEditorHotReloadNeeded,
   isEditorHotReloadNeeded,
@@ -1586,6 +1591,7 @@ const MainFrame = (props: Props): React.MixedElement => {
       if (currentProject.getFirstLayout() === layout.getName())
         currentProject.setFirstLayout('');
       currentProject.removeLayout(layout.getName());
+      removeSceneType(currentProject, layout.getName());
       _onProjectItemModified();
     });
   };
@@ -2018,6 +2024,7 @@ const MainFrame = (props: Props): React.MixedElement => {
         oldName,
         uniqueNewName
       );
+      renameSceneType(currentProject, oldName, uniqueNewName);
       if (inAppTutorialOrchestratorRef.current) {
         inAppTutorialOrchestratorRef.current.changeData(oldName, uniqueNewName);
       }
@@ -3600,6 +3607,7 @@ const MainFrame = (props: Props): React.MixedElement => {
       if (currentProject.getLayoutsCount() === 0) {
         const layoutName = i18n._(t`Untitled scene`);
         currentProject.insertNewLayout(layoutName, 0);
+        ensureSceneTypeExists(currentProject, layoutName);
         const layout = currentProject.getLayout(layoutName);
         addDefaultLightToAllLayers(layout);
       }

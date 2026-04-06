@@ -22,6 +22,8 @@ namespace gdjs {
     sms?: number;
     sat?: boolean;
     cs?: boolean;
+    lh?: boolean;
+    sh?: boolean;
   }
 
   interface LightingPipelineState {
@@ -135,7 +137,7 @@ namespace gdjs {
           private _positionZ: float = 500;
           private _distance: float = 0;
           private _decay: float = 2;
-          private _intensity: float = 1;
+          private _intensity: float = 2.2;
           private _shadowMapSize: float = 2048;
           private _shadowBias: float = -0.001;
           private _shadowNormalBias: float = 0.02;
@@ -150,6 +152,8 @@ namespace gdjs {
           private _followAttachedObjectRotation3D: boolean = false;
           private _inheritAttachedObjectScale: boolean = false;
           private _shadowAutoTuningEnabled: boolean = true;
+          private _lightHelperEnabled: boolean = false;
+          private _shadowHelperEnabled: boolean = false;
 
           private _isEnabled: boolean = false;
           private _isCastingShadow: boolean = false;
@@ -161,6 +165,10 @@ namespace gdjs {
           private _shadowCameraDirty = true;
           private _effectiveShadowMapSize: integer = 1024;
           private _maxRendererShadowMapSize: integer = 2048;
+          private _lightHelper: THREE.Mesh | null = null;
+          private _shadowHelper: THREE.Mesh | null = null;
+          private _lightHelperSignature: string = '';
+          private _shadowHelperSignature: string = '';
           private _temporaryOffsetVector = new THREE.Vector3();
           private _temporaryEuler = new THREE.Euler(0, 0, 0, 'ZYX');
 
@@ -235,6 +243,14 @@ namespace gdjs {
               effectData.booleanParameters.shadowAutoTuning === undefined
                 ? true
                 : !!effectData.booleanParameters.shadowAutoTuning;
+            this._lightHelperEnabled =
+              effectData.booleanParameters.lightHelper === undefined
+                ? false
+                : !!effectData.booleanParameters.lightHelper;
+            this._shadowHelperEnabled =
+              effectData.booleanParameters.shadowHelper === undefined
+                ? false
+                : !!effectData.booleanParameters.shadowHelper;
 
             if (effectData.stringParameters.shadowQuality) {
               this._applyShadowQualityPreset(
@@ -267,6 +283,158 @@ namespace gdjs {
             this._light.shadow.camera.near = this._shadowNear;
             this._light.shadow.camera.far = this._shadowFar;
             this._light.shadow.camera.updateProjectionMatrix();
+            this._ensureHelpers();
+          }
+
+          private _createHelperMaterial(
+            colorHex: number,
+            opacity: number
+          ): THREE.MeshBasicMaterial {
+            return new THREE.MeshBasicMaterial({
+              color: colorHex,
+              wireframe: true,
+              transparent: opacity < 1,
+              opacity,
+              depthTest: false,
+              depthWrite: false,
+              toneMapped: false,
+            });
+          }
+
+          private _disposeHelperMesh(mesh: THREE.Mesh | null): void {
+            if (!mesh) {
+              return;
+            }
+            if (mesh.geometry) {
+              mesh.geometry.dispose();
+            }
+            if (Array.isArray(mesh.material)) {
+              for (const material of mesh.material) {
+                material.dispose();
+              }
+            } else if (mesh.material) {
+              mesh.material.dispose();
+            }
+          }
+
+          private _replaceHelperGeometry(
+            mesh: THREE.Mesh,
+            geometry: THREE.BufferGeometry
+          ): void {
+            const previousGeometry = mesh.geometry;
+            mesh.geometry = geometry;
+            previousGeometry.dispose();
+          }
+
+          private _buildPointLightHelperGeometry(): THREE.BufferGeometry {
+            const radius =
+              this._distance > 0 ? this._distance : Math.max(1000, this._shadowFar);
+            return new THREE.IcosahedronGeometry(Math.max(1, radius), 2);
+          }
+
+          private _buildPointShadowHelperGeometry(): THREE.BufferGeometry {
+            const shadowFar = Math.max(1, this._light.shadow.camera.far || this._shadowFar);
+            return new THREE.IcosahedronGeometry(shadowFar, 1);
+          }
+
+          private _ensureHelpers(): void {
+            if (this._lightHelperEnabled && !this._lightHelper) {
+              const lightHelper = new THREE.Mesh(
+                this._buildPointLightHelperGeometry(),
+                this._createHelperMaterial(this._light.color.getHex(), 0.88)
+              );
+              lightHelper.frustumCulled = false;
+              lightHelper.renderOrder = 10000;
+              this._light.add(lightHelper);
+              this._lightHelper = lightHelper;
+              this._lightHelperSignature = '';
+            } else if (!this._lightHelperEnabled && this._lightHelper) {
+              this._light.remove(this._lightHelper);
+              this._disposeHelperMesh(this._lightHelper);
+              this._lightHelper = null;
+              this._lightHelperSignature = '';
+            }
+
+            if (this._shadowHelperEnabled && !this._shadowHelper) {
+              const shadowHelper = new THREE.Mesh(
+                this._buildPointShadowHelperGeometry(),
+                this._createHelperMaterial(0xff0000, 0.82)
+              );
+              shadowHelper.frustumCulled = false;
+              shadowHelper.renderOrder = 10001;
+              this._light.add(shadowHelper);
+              this._shadowHelper = shadowHelper;
+              this._shadowHelperSignature = '';
+            } else if (!this._shadowHelperEnabled && this._shadowHelper) {
+              this._light.remove(this._shadowHelper);
+              this._disposeHelperMesh(this._shadowHelper);
+              this._shadowHelper = null;
+              this._shadowHelperSignature = '';
+            }
+          }
+
+          private _refreshLightHelperGeometry(): void {
+            if (!this._lightHelper) {
+              return;
+            }
+            const radius =
+              this._distance > 0 ? this._distance : Math.max(1000, this._shadowFar);
+            const signature = Math.round(Math.max(1, radius) * 100).toString();
+            if (this._lightHelperSignature === signature) {
+              return;
+            }
+            this._lightHelperSignature = signature;
+            this._replaceHelperGeometry(
+              this._lightHelper,
+              this._buildPointLightHelperGeometry()
+            );
+          }
+
+          private _refreshShadowHelperGeometry(): void {
+            if (!this._shadowHelper) {
+              return;
+            }
+            const shadowFar = Math.max(1, this._light.shadow.camera.far || this._shadowFar);
+            const signature = Math.round(shadowFar * 100).toString();
+            if (this._shadowHelperSignature === signature) {
+              return;
+            }
+            this._shadowHelperSignature = signature;
+            this._replaceHelperGeometry(
+              this._shadowHelper,
+              this._buildPointShadowHelperGeometry()
+            );
+          }
+
+          private _setLightHelperEnabled(enabled: boolean): void {
+            if (this._lightHelperEnabled === enabled) {
+              return;
+            }
+            this._lightHelperEnabled = enabled;
+            this._ensureHelpers();
+          }
+
+          private _setShadowHelperEnabled(enabled: boolean): void {
+            if (this._shadowHelperEnabled === enabled) {
+              return;
+            }
+            this._shadowHelperEnabled = enabled;
+            this._ensureHelpers();
+          }
+
+          private _refreshHelpers(): void {
+            this._ensureHelpers();
+            if (this._lightHelper) {
+              this._lightHelper.visible = true;
+              this._refreshLightHelperGeometry();
+              const lightHelperMaterial =
+                this._lightHelper.material as THREE.MeshBasicMaterial;
+              lightHelperMaterial.color.setHex(this._light.color.getHex());
+            }
+            if (this._shadowHelper) {
+              this._shadowHelper.visible = this._light.castShadow;
+              this._refreshShadowHelperGeometry();
+            }
           }
 
           private _applyLightingPipeline(target: gdjs.EffectsTarget): void {
@@ -716,6 +884,7 @@ namespace gdjs {
             if (!scene) {
               return false;
             }
+            this._ensureHelpers();
             scene.add(this._light);
             this._isEnabled = true;
             this._applyLightingPipeline(target);
@@ -744,11 +913,13 @@ namespace gdjs {
             this._applyLightingPipeline(target);
             this._ensureSoftShadowRenderer(target);
             if (!this._light.castShadow) {
+              this._refreshHelpers();
               return;
             }
             this._updateShadowCamera();
             this._updateShadowMapSize();
             this._applyShadowTuning();
+            this._refreshHelpers();
           }
           updateDoubleParameter(parameterName: string, value: number): void {
             if (parameterName === 'intensity') {
@@ -882,6 +1053,10 @@ namespace gdjs {
               this._inheritAttachedObjectScale = value;
             } else if (parameterName === 'shadowAutoTuning') {
               this._shadowAutoTuningEnabled = value;
+            } else if (parameterName === 'lightHelper') {
+              this._setLightHelperEnabled(value);
+            } else if (parameterName === 'shadowHelper') {
+              this._setShadowHelperEnabled(value);
             }
           }
           getNetworkSyncData(): PointLightFilterNetworkSyncData {
@@ -908,6 +1083,8 @@ namespace gdjs {
               sms: this._shadowMapSize,
               sat: this._shadowAutoTuningEnabled,
               cs: this._isCastingShadow,
+              lh: this._lightHelperEnabled,
+              sh: this._shadowHelperEnabled,
             };
           }
           updateFromNetworkSyncData(
@@ -936,6 +1113,8 @@ namespace gdjs {
             this._followAttachedObjectRotation3D = syncData.fr ?? false;
             this._inheritAttachedObjectScale = syncData.ia ?? false;
             this._shadowAutoTuningEnabled = syncData.sat ?? true;
+            this._setLightHelperEnabled(syncData.lh ?? false);
+            this._setShadowHelperEnabled(syncData.sh ?? false);
             this._isCastingShadow = syncData.cs ?? this._isCastingShadow;
             this._light.castShadow =
               this._isCastingShadow && this._pipelineAllowsRealtimeShadows;

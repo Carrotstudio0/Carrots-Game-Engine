@@ -43,6 +43,8 @@ namespace gdjs {
   const renderSnapshotOcclusionConservativeRequiredOccludedCellsRatio = 0.96;
   const renderSnapshotOcclusionConservativeMinCoveredCells = 6;
   const renderSnapshotOcclusionConservativeDepthMarginRatio = 0.01;
+  const renderSnapshot3DSpherePaddingRatio = 1.2;
+  const renderSnapshot3DFrustumFallbackPaddingRatio = 1.35;
   const renderSnapshotOcclusionExtensionName = 'CarrotsEngine';
   const renderSnapshotOcclusionPropertyName = 'renderOcclusionCullingMode';
   const renderSnapshotIsolationEnabled = true;
@@ -59,7 +61,7 @@ namespace gdjs {
   ): RenderSnapshotOcclusionCullingMode => {
     if (value === 'aggressive') return 'aggressive';
     if (value === 'disabled') return 'disabled';
-    return 'conservative';
+    return 'disabled';
   };
 
   type RuntimeRenderSnapshot = {
@@ -677,7 +679,8 @@ namespace gdjs {
 
       const radius = Math.max(
         0.5,
-        Math.sqrt(width * width + height * height + depth * depth) / 2
+        (Math.sqrt(width * width + height * height + depth * depth) / 2) *
+          renderSnapshot3DSpherePaddingRatio
       );
 
       const sphereOffset = objectIndex * renderSnapshotSphereStride;
@@ -1339,9 +1342,16 @@ namespace gdjs {
             this._renderSnapshotTempVector3B
           );
           this._renderSnapshotTempSphere.radius = sphereRadius;
-          const intersectsFrustum = this._renderSnapshotFrustum.intersectsSphere(
+          let intersectsFrustum = this._renderSnapshotFrustum.intersectsSphere(
             this._renderSnapshotTempSphere
           );
+          if (!intersectsFrustum) {
+            this._renderSnapshotTempSphere.radius =
+              sphereRadius * renderSnapshot3DFrustumFallbackPaddingRatio;
+            intersectsFrustum = this._renderSnapshotFrustum.intersectsSphere(
+              this._renderSnapshotTempSphere
+            );
+          }
           if (!intersectsFrustum) {
             visibilityMask[objectIndex] = 0;
           }

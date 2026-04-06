@@ -38,7 +38,7 @@ namespace gdjs {
         if (!instanceContainer.hasLayer(layer)) {
           return 0;
         }
-        return instanceContainer.getLayer(layer).getCameraX();
+        return instanceContainer.getLayer(layer).getCameraX(cameraId);
       };
 
       export const getCameraY = function (
@@ -49,7 +49,7 @@ namespace gdjs {
         if (!instanceContainer.hasLayer(layer)) {
           return 0;
         }
-        return instanceContainer.getLayer(layer).getCameraY();
+        return instanceContainer.getLayer(layer).getCameraY(cameraId);
       };
 
       export const getCameraWidth = function (
@@ -60,7 +60,7 @@ namespace gdjs {
         if (!instanceContainer.hasLayer(layer)) {
           return 0;
         }
-        return instanceContainer.getLayer(layer).getCameraWidth();
+        return instanceContainer.getLayer(layer).getCameraWidth(cameraId);
       };
 
       export const getCameraHeight = function (
@@ -71,7 +71,7 @@ namespace gdjs {
         if (!instanceContainer.hasLayer(layer)) {
           return 0;
         }
-        return instanceContainer.getLayer(layer).getCameraHeight();
+        return instanceContainer.getLayer(layer).getCameraHeight(cameraId);
       };
 
       export const getCameraBorderLeft = function (

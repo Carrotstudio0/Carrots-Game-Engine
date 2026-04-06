@@ -6002,7 +6002,7 @@ module.exports = {
         .setAdvanced(true);
       properties
         .getOrCreate('attenuationModel')
-        .setValue('physical')
+        .setValue('balanced')
         .addChoice('physical', _('Physical'))
         .addChoice('balanced', _('Balanced'))
         .addChoice('cinematic', _('Cinematic'))
@@ -6061,7 +6061,7 @@ module.exports = {
         .setAdvanced(true);
       properties
         .getOrCreate('adaptivePerformanceEnabled')
-        .setValue('true')
+        .setValue('false')
         .setLabel(_('Adaptive performance'))
         .setDescription(
           _(
@@ -6415,7 +6415,7 @@ module.exports = {
         .setAdvanced(true);
       properties
         .getOrCreate('physicallyCorrectLights')
-        .setValue('true')
+        .setValue('false')
         .setLabel(_('Physically correct light units'))
         .setDescription(
           _(
@@ -6656,6 +6656,22 @@ module.exports = {
         )
         .setType('boolean')
         .setGroup(_('Shadows'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('lightHelper')
+        .setValue('false')
+        .setLabel(_('Light helper'))
+        .setDescription(_('Show a wireframe helper for directional light orientation.'))
+        .setType('boolean')
+        .setGroup(_('Helpers'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('shadowHelper')
+        .setValue('false')
+        .setLabel(_('Shadow helper'))
+        .setDescription(_('Show a wireframe helper for directional shadow range.'))
+        .setType('boolean')
+        .setGroup(_('Helpers'))
         .setAdvanced(true);
     }
     {
@@ -6969,6 +6985,22 @@ module.exports = {
         .setDescription(_('Maximum distance for shadows to be cast.'))
         .setType('number')
         .setGroup(_('Shadows'));
+      properties
+        .getOrCreate('lightHelper')
+        .setValue('false')
+        .setLabel(_('Light helper'))
+        .setDescription(_('Show a wireframe helper for the point light range.'))
+        .setType('boolean')
+        .setGroup(_('Helpers'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('shadowHelper')
+        .setValue('false')
+        .setLabel(_('Shadow helper'))
+        .setDescription(_('Show a wireframe helper for the point shadow range.'))
+        .setType('boolean')
+        .setGroup(_('Helpers'))
+        .setAdvanced(true);
     }
     {
       const effect = extension
@@ -7374,6 +7406,22 @@ module.exports = {
         .setDescription(_('Maximum distance for shadows to be cast.'))
         .setType('number')
         .setGroup(_('Shadows'));
+      properties
+        .getOrCreate('lightHelper')
+        .setValue('false')
+        .setLabel(_('Light helper'))
+        .setDescription(_('Show a wireframe helper for the spotlight cone.'))
+        .setType('boolean')
+        .setGroup(_('Helpers'))
+        .setAdvanced(true);
+      properties
+        .getOrCreate('shadowHelper')
+        .setValue('false')
+        .setLabel(_('Shadow helper'))
+        .setDescription(_('Show a wireframe helper for the spotlight shadow cone.'))
+        .setType('boolean')
+        .setGroup(_('Helpers'))
+        .setAdvanced(true);
     }
     {
       const effect = extension
@@ -7617,7 +7665,7 @@ module.exports = {
         .setType('boolean');
       properties
         .getOrCreate('mode')
-        .setValue('ACESFilmic')
+        .setValue('Linear')
         .addChoice('ACESFilmic', _('ACES Filmic'))
         .addChoice('Reinhard', _('Reinhard'))
         .addChoice('Cineon', _('Cineon'))
@@ -7631,7 +7679,7 @@ module.exports = {
         );
       properties
         .getOrCreate('exposure')
-        .setValue('1.15')
+        .setValue('1.0')
         .setLabel(_('Exposure'))
         .setType('number')
         .setDescription(_('Brightness multiplier applied by tone mapping.'));
@@ -8164,18 +8212,18 @@ module.exports = {
 
     const get3DMaterialProfile = (materialType) => {
       if (materialType === 'Matte') {
-        return { roughness: 0.94, metalness: 0.01, envMapIntensity: 0.85 };
+        return { roughness: 0.9, metalness: 0.02, envMapIntensity: 0.9 };
       }
       if (materialType === 'Standard') {
-        return { roughness: 0.56, metalness: 0.08, envMapIntensity: 1.05 };
+        return { roughness: 0.5, metalness: 0.08, envMapIntensity: 1.1 };
       }
       if (materialType === 'Glossy') {
-        return { roughness: 0.2, metalness: 0.16, envMapIntensity: 1.25 };
+        return { roughness: 0.14, metalness: 0.2, envMapIntensity: 1.35 };
       }
       if (materialType === 'Metallic') {
-        return { roughness: 0.24, metalness: 0.9, envMapIntensity: 1.35 };
+        return { roughness: 0.16, metalness: 1, envMapIntensity: 1.6 };
       }
-      return { roughness: 0.78, metalness: 0, envMapIntensity: 1 };
+      return { roughness: 0.74, metalness: 0, envMapIntensity: 1 };
     };
 
     const apply3DMaterialProfile = (materialType, material) => {

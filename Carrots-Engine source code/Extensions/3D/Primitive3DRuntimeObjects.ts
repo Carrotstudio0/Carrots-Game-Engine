@@ -18,16 +18,16 @@ namespace gdjs {
   ): Primitive3DMaterialProfile => {
     switch (materialType) {
       case gdjs.Primitive3DRuntimeObject.MaterialType.Matte:
-        return { roughness: 0.94, metalness: 0.01, envMapIntensity: 0.85 };
+        return { roughness: 0.9, metalness: 0.02, envMapIntensity: 0.9 };
       case gdjs.Primitive3DRuntimeObject.MaterialType.Standard:
-        return { roughness: 0.56, metalness: 0.08, envMapIntensity: 1.05 };
+        return { roughness: 0.5, metalness: 0.08, envMapIntensity: 1.1 };
       case gdjs.Primitive3DRuntimeObject.MaterialType.Glossy:
-        return { roughness: 0.2, metalness: 0.16, envMapIntensity: 1.25 };
+        return { roughness: 0.14, metalness: 0.2, envMapIntensity: 1.35 };
       case gdjs.Primitive3DRuntimeObject.MaterialType.Metallic:
-        return { roughness: 0.24, metalness: 0.9, envMapIntensity: 1.35 };
+        return { roughness: 0.16, metalness: 1, envMapIntensity: 1.6 };
       case gdjs.Primitive3DRuntimeObject.MaterialType.StandardWithoutMetalness:
       default:
-        return { roughness: 0.78, metalness: 0, envMapIntensity: 1 };
+        return { roughness: 0.74, metalness: 0, envMapIntensity: 1 };
     }
   };
 

@@ -208,7 +208,7 @@ export default class LayerRenderer {
 
       try {
         // "Culling" improves rendering performance of large levels
-        const isVisible = this._isInstanceVisible(instance);
+        const isVisible = this._isInstanceVisible(instance, renderedInstance);
         if (pixiObject) {
           pixiObject.visible = isVisible;
           if (
@@ -679,7 +679,20 @@ export default class LayerRenderer {
    * The approach is a naive bounding box testing but save rendering time on large
    * levels (though this could be improved with spatial partitioning).
    */
-  _isInstanceVisible(instance: gdInitialInstance): any {
+  _isInstanceVisible(
+    instance: gdInitialInstance,
+    renderedInstance?: RenderedInstance | Rendered3DInstance | null
+  ): any {
+    if (
+      this._showObjectInstancesIn3D &&
+      renderedInstance &&
+      renderedInstance instanceof Rendered3DInstance
+    ) {
+      // In 3D editor mode, a 2D AABB culling test can incorrectly hide meshes
+      // that are still visible in perspective view.
+      return true;
+    }
+
     const aabb = this.getInstanceAABB(instance, this._temporaryRectangle);
     if (
       aabb.left + aabb.width() < this.viewTopLeft[0] ||

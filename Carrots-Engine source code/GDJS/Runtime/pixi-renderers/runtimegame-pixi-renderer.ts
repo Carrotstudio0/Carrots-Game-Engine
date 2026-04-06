@@ -120,8 +120,10 @@ namespace gdjs {
         });
         this._threeRenderer.shadowMap.enabled = true;
         this._threeRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        this._threeRenderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this._threeRenderer.toneMappingExposure = 1.08;
+        // Keep tone mapping opt-in (via Scene3D::ToneMapping effect) so
+        // projects don't get automatic global color remapping unexpectedly.
+        this._threeRenderer.toneMapping = THREE.NoToneMapping;
+        this._threeRenderer.toneMappingExposure = 1;
         this._threeRenderer.autoClear = false;
         const srgbColorSpace = (THREE as { SRGBColorSpace?: unknown })
           .SRGBColorSpace;

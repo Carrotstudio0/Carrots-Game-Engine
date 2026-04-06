@@ -78,7 +78,12 @@ const styles = {
   dropCursor: { cursor: 'copy' },
 };
 
-const DropTarget = makeDropTarget<{||}>(objectWithContextReactDndType);
+type DraggedObjectItem = {|
+  name?: string,
+  is3D?: boolean,
+|};
+
+const DropTarget = makeDropTarget<DraggedObjectItem>(objectWithContextReactDndType);
 
 export type EditorViewPosition2D = {|
   viewX: number | null,
@@ -122,6 +127,8 @@ export type InstancesEditorPropsWithoutSizeAndScroll = {|
   onInstancesMoved: (instances: Array<gdInitialInstance>) => void,
   onInstancesResized: (instances: Array<gdInitialInstance>) => void,
   onInstancesRotated: (instances: Array<gdInitialInstance>) => void,
+  canAdd2DObjectsToScene: boolean,
+  canAdd3DObjectsToScene: boolean,
   selectedObjectNames: Array<string>,
   onContextMenu: (
     x: number,
@@ -273,6 +280,17 @@ export default class InstancesEditor extends Component<Props, State> {
     }
   }
 
+  _getDevicePixelRatio(): number {
+    if (typeof window === 'undefined' || !window.devicePixelRatio) {
+      return 1;
+    }
+    const pixelRatio = window.devicePixelRatio;
+    if (!Number.isFinite(pixelRatio) || pixelRatio <= 0) {
+      return 1;
+    }
+    return pixelRatio;
+  }
+
   _initializeCanvasAndRenderer() {
     const { canvasArea } = this;
     if (!canvasArea) return;
@@ -296,17 +314,30 @@ export default class InstancesEditor extends Component<Props, State> {
     if (this._showObjectInstancesIn3D) {
       gameCanvas = document.createElement('canvas');
       try {
+        const pixelRatio = this._getDevicePixelRatio();
         const threeRenderer = new THREE.WebGLRenderer({
           canvas: gameCanvas,
+          antialias: true,
+          preserveDrawingBuffer: true,
+          powerPreference: 'high-performance',
         });
         const threeRendererAny: any = threeRenderer;
         if (typeof threeRendererAny.useLegacyLights === 'boolean')
           threeRendererAny.useLegacyLights = false;
         if (typeof threeRendererAny.physicallyCorrectLights === 'boolean')
-          threeRendererAny.physicallyCorrectLights = true;
-        threeRenderer.shadowMap.enabled = false;
+          threeRendererAny.physicallyCorrectLights = false;
+        threeRenderer.shadowMap.enabled = true;
+        threeRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        threeRenderer.toneMapping = THREE.NoToneMapping;
+        threeRenderer.toneMappingExposure = 1;
+        if ((THREE: any).SRGBColorSpace !== undefined) {
+          // $FlowFixMe[prop-missing]
+          threeRenderer.outputColorSpace = (THREE: any).SRGBColorSpace;
+        }
         threeRenderer.autoClear = false;
+        threeRenderer.setPixelRatio(pixelRatio);
         threeRenderer.setSize(this.props.width, this.props.height);
+        (window: any).__gdEditorThreeRenderer = threeRenderer;
 
         // Create a PixiJS renderer that use the same GL context as Three.js
         // so that both can render to the canvas and even have PixiJS rendering
@@ -320,10 +351,10 @@ export default class InstancesEditor extends Component<Props, State> {
           preserveDrawingBuffer: true,
           antialias: false,
           backgroundAlpha: 0,
+          resolution: pixelRatio,
           // It's the default value, but it's better to make it explicit.
           // It allows instances composed of several pixi objects to detect hovering.
           eventMode: 'auto',
-          // TODO (3D): add a setting for pixel ratio (`resolution: window.devicePixelRatio`)
         });
 
         this.threeRenderer = threeRenderer;
@@ -334,12 +365,15 @@ export default class InstancesEditor extends Component<Props, State> {
         );
         this._showObjectInstancesIn3D = false;
         this.threeRenderer = null;
+        (window: any).__gdEditorThreeRenderer = null;
       }
     } else {
       this.threeRenderer = null;
+      (window: any).__gdEditorThreeRenderer = null;
     }
 
     if (!this._showObjectInstancesIn3D) {
+      const pixelRatio = this._getDevicePixelRatio();
       // Create the renderer and setup the rendering area for scene editor.
       this.pixiRenderer = PIXI.autoDetectRenderer({
         width: this.props.width,
@@ -350,6 +384,7 @@ export default class InstancesEditor extends Component<Props, State> {
         antialias: false,
         clearBeforeRender: false,
         backgroundAlpha: 0,
+        resolution: pixelRatio,
       });
 
       gameCanvas = this.pixiRenderer.view;
@@ -747,6 +782,7 @@ export default class InstancesEditor extends Component<Props, State> {
         console.warn('Unable to fully dispose Three.js renderer.', error);
       }
       this.threeRenderer = null;
+      (window: any).__gdEditorThreeRenderer = null;
     }
   }
 
@@ -756,8 +792,13 @@ export default class InstancesEditor extends Component<Props, State> {
       nextProps.width !== this.props.width ||
       nextProps.height !== this.props.height
     ) {
+      const pixelRatio = this._getDevicePixelRatio();
+      if (this.pixiRenderer.resolution !== pixelRatio) {
+        this.pixiRenderer.resolution = pixelRatio;
+      }
       this.pixiRenderer.resize(nextProps.width, nextProps.height);
       if (this.threeRenderer) {
+        this.threeRenderer.setPixelRatio(pixelRatio);
         this.threeRenderer.setSize(nextProps.width, nextProps.height);
       }
       this.viewPosition.resize(nextProps.width, nextProps.height);
@@ -2000,6 +2041,37 @@ export default class InstancesEditor extends Component<Props, State> {
       .getUnrotatedInstanceSize(initialInstance);
   };
 
+  _isObjectNameCompatibleWithSceneType = (objectName: string): boolean => {
+    const object = getObjectByName(
+      this.props.globalObjectsContainer,
+      this.props.objectsContainer,
+      objectName
+    );
+    if (!object) return false;
+
+    const objectMetadata = gd.MetadataProvider.getObjectMetadata(
+      this.props.project.getCurrentPlatform(),
+      object.getType()
+    );
+    if (!objectMetadata) return false;
+
+    return objectMetadata.isRenderedIn3D()
+      ? this.props.canAdd3DObjectsToScene
+      : this.props.canAdd2DObjectsToScene;
+  };
+
+  _getCompatibleSelectedObjectNames = (): Array<string> =>
+    this.props.selectedObjectNames.filter(objectName =>
+      this._isObjectNameCompatibleWithSceneType(objectName)
+    );
+
+  _canDropDraggedItem = (item: DraggedObjectItem): boolean => {
+    if (typeof item.is3D !== 'boolean') return true;
+    return item.is3D
+      ? this.props.canAdd3DObjectsToScene
+      : this.props.canAdd2DObjectsToScene;
+  };
+
   render(): any {
     if (!this.props.project) return null;
 
@@ -2016,11 +2088,16 @@ export default class InstancesEditor extends Component<Props, State> {
 
     return (
       <DropTarget
-        canDrop={() => true}
+        canDrop={this._canDropDraggedItem}
         hover={monitor => {
           this.fpsLimiter.notifyInteractionHappened();
           const { _instancesAdder, viewPosition, canvasArea } = this;
           if (!_instancesAdder || !canvasArea || !viewPosition) return;
+          const compatibleObjectNames = this._getCompatibleSelectedObjectNames();
+          if (!compatibleObjectNames.length) {
+            _instancesAdder.deleteTemporaryInstances();
+            return;
+          }
 
           const { x, y } = monitor.getClientOffset();
           const canvasRect = canvasArea.getBoundingClientRect();
@@ -2030,7 +2107,7 @@ export default class InstancesEditor extends Component<Props, State> {
           );
           _instancesAdder.createOrUpdateTemporaryInstancesFromObjectNames(
             pos,
-            this.props.selectedObjectNames,
+            compatibleObjectNames,
             this.props.chosenLayer
           );
         }}
@@ -2039,6 +2116,11 @@ export default class InstancesEditor extends Component<Props, State> {
 
           const { _instancesAdder, viewPosition, canvasArea } = this;
           if (!_instancesAdder || !canvasArea || !viewPosition) return;
+          const compatibleObjectNames = this._getCompatibleSelectedObjectNames();
+          if (!compatibleObjectNames.length) {
+            _instancesAdder.deleteTemporaryInstances();
+            return;
+          }
 
           if (monitor.didDrop()) {
             // Drop was done somewhere else (in a child of the canvas:

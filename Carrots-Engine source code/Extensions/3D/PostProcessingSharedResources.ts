@@ -148,7 +148,7 @@ namespace gdjs {
     if (normalized === 'low' || normalized === 'high') {
       return normalized;
     }
-    return 'medium';
+    return 'high';
   };
   const getHigherQualityMode = (
     first: Scene3DPostProcessingQualityMode,

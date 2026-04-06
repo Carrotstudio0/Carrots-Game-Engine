@@ -30,6 +30,8 @@ namespace gdjs {
     deo?: number;
     cc?: number;
     acc?: boolean;
+    lh?: boolean;
+    sh?: boolean;
   }
 
   interface LightingPipelineState {
@@ -88,7 +90,6 @@ namespace gdjs {
     return realtimeMultiplier > 0.02;
   };
 
-  const shadowHelper = false;
   const csmCascadeCount = 3;
   const csmIntensityWeightsByCount: { [key: number]: number[] } = {
     1: [1],
@@ -146,9 +147,13 @@ namespace gdjs {
           private _desiredCascadeCount: integer = csmCascadeCount;
           private _adaptiveCascadeCount: boolean = true;
           private _activeCascadeCount: integer = csmCascadeCount;
+          private _lightHelperEnabled: boolean = false;
+          private _shadowHelperEnabled: boolean = false;
 
           private _lights: THREE.DirectionalLight[] = [];
-          private _shadowCameraHelpers: Array<THREE.CameraHelper | null> = [];
+          private _lightHelpers: Array<THREE.Mesh | null> = [];
+          private _shadowRangeHelpers: Array<THREE.Mesh | null> = [];
+          private _shadowRangeHelperSignatures: string[] = [];
           private _shadowMapDirty = true;
           private _shadowCameraDirty = true;
           private _cascadeRanges: Array<{ near: float; far: float }> = [
@@ -176,13 +181,9 @@ namespace gdjs {
               const light = new THREE.DirectionalLight();
               light.castShadow = false;
               this._lights.push(light);
-              if (shadowHelper) {
-                this._shadowCameraHelpers.push(
-                  new THREE.CameraHelper(light.shadow.camera)
-                );
-              } else {
-                this._shadowCameraHelpers.push(null);
-              }
+              this._lightHelpers.push(null);
+              this._shadowRangeHelpers.push(null);
+              this._shadowRangeHelperSignatures.push('');
             }
             this._top = effectData.stringParameters.top || this._top;
             this._elevation =
@@ -280,6 +281,14 @@ namespace gdjs {
               effectData.booleanParameters.shadowAutoTuning === undefined
                 ? true
                 : !!effectData.booleanParameters.shadowAutoTuning;
+            this._lightHelperEnabled =
+              effectData.booleanParameters.lightHelper === undefined
+                ? false
+                : !!effectData.booleanParameters.lightHelper;
+            this._shadowHelperEnabled =
+              effectData.booleanParameters.shadowHelper === undefined
+                ? false
+                : !!effectData.booleanParameters.shadowHelper;
 
             this._colorHex = gdjs.rgbOrHexStringToNumber(
               effectData.stringParameters.color || '255;255;255'
@@ -301,12 +310,214 @@ namespace gdjs {
             this._setAllLightsColor(this._colorHex);
             this._setAllLightsIntensity(this._intensity);
             this._setShadowCastingEnabled(this._shadowCastingEnabled);
+            for (let i = 0; i < this._lights.length; i++) {
+              this._ensureCascadeHelpers(i);
+            }
             this._updateShadowCameraDirtyState();
           }
 
           private _updateShadowCameraDirtyState(): void {
             this._shadowCameraDirty = true;
             this._shadowMapDirty = true;
+          }
+
+          private _createHelperMaterial(
+            colorHex: number,
+            opacity: number
+          ): THREE.MeshBasicMaterial {
+            return new THREE.MeshBasicMaterial({
+              color: colorHex,
+              wireframe: true,
+              transparent: opacity < 1,
+              opacity,
+              depthTest: false,
+              depthWrite: false,
+              toneMapped: false,
+            });
+          }
+
+          private _disposeHelperMesh(mesh: THREE.Mesh | null): void {
+            if (!mesh) {
+              return;
+            }
+            if (mesh.geometry) {
+              mesh.geometry.dispose();
+            }
+            if (Array.isArray(mesh.material)) {
+              for (const material of mesh.material) {
+                material.dispose();
+              }
+            } else if (mesh.material) {
+              mesh.material.dispose();
+            }
+          }
+
+          private _replaceHelperGeometry(
+            mesh: THREE.Mesh,
+            geometry: THREE.BufferGeometry
+          ): void {
+            const previousGeometry = mesh.geometry;
+            mesh.geometry = geometry;
+            previousGeometry.dispose();
+          }
+
+          private _createDirectionalLightHelper(): THREE.Mesh {
+            const geometry = new THREE.ConeGeometry(32, 128, 3);
+            geometry.translate(0, 64, 0);
+            geometry.rotateZ(gdjs.toRad(-90));
+            const material = this._createHelperMaterial(this._colorHex, 0.88);
+            const helper = new THREE.Mesh(geometry, material);
+            helper.frustumCulled = false;
+            helper.renderOrder = 10000;
+            return helper;
+          }
+
+          private _createDirectionalShadowHelper(cascadeIndex: integer): THREE.Mesh {
+            const geometry = this._buildDirectionalShadowHelperGeometry(cascadeIndex);
+            const material = this._createHelperMaterial(0xff0000, 0.82);
+            const helper = new THREE.Mesh(geometry, material);
+            helper.frustumCulled = false;
+            helper.renderOrder = 10001;
+            return helper;
+          }
+
+          private _buildDirectionalShadowHelperGeometry(
+            cascadeIndex: integer
+          ): THREE.BufferGeometry {
+            const light = this._lights[cascadeIndex];
+            const shadowCamera = light.shadow.camera as THREE.OrthographicCamera;
+            const cylinderHeight = Math.max(
+              1,
+              (shadowCamera && Number.isFinite(shadowCamera.far)
+                ? shadowCamera.far
+                : this._maxShadowDistance) || this._maxShadowDistance
+            );
+            const cylinderRadius = Math.max(
+              1,
+              Math.abs(
+                (shadowCamera && Number.isFinite(shadowCamera.top)
+                  ? shadowCamera.top
+                  : this._frustumSize / 2) || this._frustumSize / 2
+              )
+            );
+            const geometry = new THREE.CylinderGeometry(
+              cylinderRadius,
+              cylinderRadius,
+              cylinderHeight,
+              12,
+              1
+            );
+            geometry.translate(0, -cylinderHeight / 2, 0);
+            geometry.rotateZ(gdjs.toRad(90));
+            return geometry;
+          }
+
+          private _refreshCascadeShadowHelperGeometry(cascadeIndex: integer): void {
+            const shadowHelper = this._shadowRangeHelpers[cascadeIndex];
+            if (!shadowHelper) {
+              return;
+            }
+            const light = this._lights[cascadeIndex];
+            const shadowCamera = light.shadow.camera as THREE.OrthographicCamera;
+            const shadowFar = Math.max(
+              1,
+              (shadowCamera && Number.isFinite(shadowCamera.far)
+                ? shadowCamera.far
+                : this._maxShadowDistance) || this._maxShadowDistance
+            );
+            const shadowTop = Math.max(
+              1,
+              Math.abs(
+                (shadowCamera && Number.isFinite(shadowCamera.top)
+                  ? shadowCamera.top
+                  : this._frustumSize / 2) || this._frustumSize / 2
+              )
+            );
+            const signature =
+              Math.round(shadowTop * 100) + ':' + Math.round(shadowFar * 100);
+            if (this._shadowRangeHelperSignatures[cascadeIndex] === signature) {
+              return;
+            }
+            this._shadowRangeHelperSignatures[cascadeIndex] = signature;
+            this._replaceHelperGeometry(
+              shadowHelper,
+              this._buildDirectionalShadowHelperGeometry(cascadeIndex)
+            );
+          }
+
+          private _ensureCascadeHelpers(cascadeIndex: integer): void {
+            const light = this._lights[cascadeIndex];
+            if (!light) {
+              return;
+            }
+
+            let lightHelper = this._lightHelpers[cascadeIndex];
+            if (this._lightHelperEnabled && !lightHelper) {
+              lightHelper = this._createDirectionalLightHelper();
+              light.add(lightHelper);
+              this._lightHelpers[cascadeIndex] = lightHelper;
+            } else if (!this._lightHelperEnabled && lightHelper) {
+              light.remove(lightHelper);
+              this._disposeHelperMesh(lightHelper);
+              this._lightHelpers[cascadeIndex] = null;
+            }
+
+            let shadowHelper = this._shadowRangeHelpers[cascadeIndex];
+            if (this._shadowHelperEnabled && !shadowHelper) {
+              shadowHelper = this._createDirectionalShadowHelper(cascadeIndex);
+              light.add(shadowHelper);
+              this._shadowRangeHelpers[cascadeIndex] = shadowHelper;
+              this._shadowRangeHelperSignatures[cascadeIndex] = '';
+            } else if (!this._shadowHelperEnabled && shadowHelper) {
+              light.remove(shadowHelper);
+              this._disposeHelperMesh(shadowHelper);
+              this._shadowRangeHelpers[cascadeIndex] = null;
+              this._shadowRangeHelperSignatures[cascadeIndex] = '';
+            }
+          }
+
+          private _setLightHelperEnabled(enabled: boolean): void {
+            if (this._lightHelperEnabled === enabled) {
+              return;
+            }
+            this._lightHelperEnabled = enabled;
+            for (let i = 0; i < this._lights.length; i++) {
+              this._ensureCascadeHelpers(i);
+            }
+          }
+
+          private _setShadowHelperEnabled(enabled: boolean): void {
+            if (this._shadowHelperEnabled === enabled) {
+              return;
+            }
+            this._shadowHelperEnabled = enabled;
+            for (let i = 0; i < this._lights.length; i++) {
+              this._ensureCascadeHelpers(i);
+            }
+          }
+
+          private _refreshHelpers(): void {
+            for (let cascadeIndex = 0; cascadeIndex < this._lights.length; cascadeIndex++) {
+              this._ensureCascadeHelpers(cascadeIndex);
+              const isPrimaryCascade = cascadeIndex === 0;
+              const isCascadeActive = cascadeIndex < this._activeCascadeCount;
+              const light = this._lights[cascadeIndex];
+
+              const lightHelper = this._lightHelpers[cascadeIndex];
+              if (lightHelper) {
+                lightHelper.visible = isPrimaryCascade && isCascadeActive;
+                const lightHelperMaterial =
+                  lightHelper.material as THREE.MeshBasicMaterial;
+                lightHelperMaterial.color.setHex(this._colorHex);
+              }
+
+              const shadowHelper = this._shadowRangeHelpers[cascadeIndex];
+              if (shadowHelper) {
+                shadowHelper.visible =
+                  isPrimaryCascade && isCascadeActive && light.castShadow;
+                this._refreshCascadeShadowHelperGeometry(cascadeIndex);
+              }
+            }
           }
 
           private _clampCascadeCount(value: number): integer {
@@ -395,6 +606,14 @@ namespace gdjs {
             this._colorHex = colorHex;
             for (const light of this._lights) {
               light.color.setHex(colorHex);
+            }
+            for (const lightHelper of this._lightHelpers) {
+              if (!lightHelper) {
+                continue;
+              }
+              const lightHelperMaterial =
+                lightHelper.material as THREE.MeshBasicMaterial;
+              lightHelperMaterial.color.setHex(colorHex);
             }
           }
 
@@ -1539,12 +1758,9 @@ namespace gdjs {
 
             for (let i = 0; i < this._lights.length; i++) {
               const light = this._lights[i];
+              this._ensureCascadeHelpers(i);
               scene.add(light);
               scene.add(light.target);
-              const helper = this._shadowCameraHelpers[i];
-              if (helper) {
-                scene.add(helper);
-              }
             }
 
             this._hadPreviousCameraPosition = false;
@@ -1566,10 +1782,6 @@ namespace gdjs {
               const light = this._lights[i];
               scene.remove(light);
               scene.remove(light.target);
-              const helper = this._shadowCameraHelpers[i];
-              if (helper) {
-                scene.remove(helper);
-              }
             }
 
             this._isEnabled = false;
@@ -1643,11 +1855,8 @@ namespace gdjs {
                 }
               }
 
-              const helper = this._shadowCameraHelpers[cascadeIndex];
-              if (helper) {
-                helper.update();
-              }
             }
+            this._refreshHelpers();
           }
           updateDoubleParameter(parameterName: string, value: number): void {
             if (parameterName === 'intensity') {
@@ -1799,6 +2008,10 @@ namespace gdjs {
               this._staticAnchorInitialized = false;
             } else if (parameterName === 'shadowAutoTuning') {
               this._shadowAutoTuningEnabled = value;
+            } else if (parameterName === 'lightHelper') {
+              this._setLightHelperEnabled(value);
+            } else if (parameterName === 'shadowHelper') {
+              this._setShadowHelperEnabled(value);
             } else if (parameterName === 'adaptiveCascadeCount') {
               this._adaptiveCascadeCount = value;
               this._refreshActiveCascadeCount();
@@ -1838,6 +2051,8 @@ namespace gdjs {
               deo: this._directionElevationOffset,
               cc: this._desiredCascadeCount,
               acc: this._adaptiveCascadeCount,
+              lh: this._lightHelperEnabled,
+              sh: this._shadowHelperEnabled,
             };
           }
           updateFromNetworkSyncData(
@@ -1884,6 +2099,8 @@ namespace gdjs {
               syncData.cc ?? csmCascadeCount
             );
             this._adaptiveCascadeCount = syncData.acc ?? true;
+            this._setLightHelperEnabled(syncData.lh ?? false);
+            this._setShadowHelperEnabled(syncData.sh ?? false);
             this._refreshActiveCascadeCount();
             this._hadPreviousCameraPosition = false;
             this._staticAnchorInitialized = false;

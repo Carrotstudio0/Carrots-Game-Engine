@@ -363,6 +363,8 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
                   onInstancesMoved={props.onInstancesMoved}
                   onInstancesResized={props.onInstancesResized}
                   onInstancesRotated={props.onInstancesRotated}
+                  canAdd2DObjectsToScene={props.canAdd2DObjectsToScene}
+                  canAdd3DObjectsToScene={props.canAdd3DObjectsToScene}
                   selectedObjectNames={selectedObjectNames}
                   onContextMenu={props.onContextMenu}
                   isInstanceOf3DObject={props.isInstanceOf3DObject}
@@ -370,7 +372,9 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
                     props.instancesEditorShortcutsCallbacks
                   }
                   pauseRendering={!props.isActive}
-                  showObjectInstancesIn3D={values.use3DEditor}
+                  showObjectInstancesIn3D={
+                    values.use3DEditor && props.canAdd3DObjectsToScene
+                  }
                   showBasicProfilingCounters={values.showBasicProfilingCounters}
                   tileMapTileSelection={props.tileMapTileSelection}
                   onSelectTileMapTile={props.onSelectTileMapTile}

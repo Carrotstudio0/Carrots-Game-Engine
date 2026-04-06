@@ -50,6 +50,8 @@ import PreferencesContext from '../../MainFrame/Preferences/PreferencesContext';
 type Props = {|
   gameEditorMode: 'embedded-game' | 'instances-editor',
   setGameEditorMode: ('embedded-game' | 'instances-editor') => void,
+  canUse2DEditor: boolean,
+  canUse3DEditor: boolean,
   toggleObjectsList: () => void,
   isObjectsListShown: boolean,
   toggleObjectGroupsList: () => void,
@@ -129,26 +131,34 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar(
           id="game-editor-toggle"
           noSeparator
           buttons={[
-            {
-              id: '2d-instances-editor',
-              renderIcon: className => <Grid2d className={className} />,
-              tooltip: <Trans>Top-down, classic editor</Trans>,
-              label: '2D',
-              onClick: () => {
-                props.setGameEditorMode('instances-editor');
-              },
-              isActive: props.gameEditorMode === 'instances-editor',
-            },
-            {
-              id: '3d-game-editor',
-              renderIcon: className => <Grid3d className={className} />,
-              tooltip: <Trans>3D, real-time editor (new)</Trans>,
-              label: '3D',
-              onClick: () => {
-                props.setGameEditorMode('embedded-game');
-              },
-              isActive: props.gameEditorMode === 'embedded-game',
-            },
+            ...(props.canUse2DEditor
+              ? [
+                  {
+                    id: '2d-instances-editor',
+                    renderIcon: className => <Grid2d className={className} />,
+                    tooltip: <Trans>Top-down, classic editor</Trans>,
+                    label: '2D',
+                    onClick: () => {
+                      props.setGameEditorMode('instances-editor');
+                    },
+                    isActive: props.gameEditorMode === 'instances-editor',
+                  },
+                ]
+              : []),
+            ...(props.canUse3DEditor
+              ? [
+                  {
+                    id: '3d-game-editor',
+                    renderIcon: className => <Grid3d className={className} />,
+                    tooltip: <Trans>3D, real-time editor (new)</Trans>,
+                    label: '3D',
+                    onClick: () => {
+                      props.setGameEditorMode('embedded-game');
+                    },
+                    isActive: props.gameEditorMode === 'embedded-game',
+                  },
+                ]
+              : []),
           ]}
         />
         <IconButton

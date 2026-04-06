@@ -20,7 +20,10 @@ namespace gdjs {
     if (normalized === 'linear') {
       return 'Linear';
     }
-    return 'ACESFilmic';
+    if (normalized === 'acesfilmic' || normalized === 'aces') {
+      return 'ACESFilmic';
+    }
+    return 'Linear';
   };
 
   const getToneMappingConstant = (mode: string): THREE.ToneMapping => {
@@ -61,13 +64,13 @@ namespace gdjs {
                 ? true
                 : !!effectData.booleanParameters.enabled;
             this._mode = normalizeToneMappingMode(
-              effectData.stringParameters.mode || 'ACESFilmic'
+              effectData.stringParameters.mode || 'Linear'
             );
             this._exposure = Math.max(
               0,
               effectData.doubleParameters.exposure !== undefined
                 ? effectData.doubleParameters.exposure
-                : 1.15
+                : 1.0
             );
             this._exposureCurvePower = Math.max(
               0.05,

@@ -49,6 +49,14 @@ import {
   setProjectRenderOcclusionCullingMode,
   type RenderOcclusionCullingMode,
 } from '../Utils/RenderCullingMode';
+import {
+  getProjectSceneType,
+  setProjectSceneType,
+  SCENE_TYPE_2D,
+  SCENE_TYPE_3D,
+  SCENE_TYPE_2_5D,
+  type SceneType,
+} from '../Utils/SceneType';
 
 type ProjectPropertiesTab = 'properties' | 'loading-screen' | 'icons';
 
@@ -68,6 +76,7 @@ type Props = {|
 |};
 
 type ProjectProperties = {|
+  defaultSceneType: SceneType,
   scriptingMode: ScriptingMode,
   gameResolutionWidth: number,
   gameResolutionHeight: number,
@@ -104,6 +113,7 @@ type ProjectProperties = {|
 const loadPropertiesFromProject = (project: gdProject): ProjectProperties => {
   const platformSpecificAssets = project.getPlatformSpecificAssets();
   return {
+    defaultSceneType: getProjectSceneType(project),
     scriptingMode: getProjectScriptingMode(project),
     gameResolutionWidth: project.getGameResolutionWidth(),
     gameResolutionHeight: project.getGameResolutionHeight(),
@@ -162,6 +172,7 @@ function applyPropertiesToProject(
   newProperties: ProjectProperties
 ) {
   const {
+    defaultSceneType,
     gameResolutionWidth,
     gameResolutionHeight,
     adaptGameResolutionAtRuntime,
@@ -194,6 +205,7 @@ function applyPropertiesToProject(
     sceneResourcesUnloading,
     scriptingMode,
   } = newProperties;
+  setProjectSceneType(project, defaultSceneType);
   setProjectScriptingMode(project, scriptingMode);
   project.setGameResolutionSize(gameResolutionWidth, gameResolutionHeight);
   project.setAdaptGameResolutionAtRuntime(adaptGameResolutionAtRuntime);
@@ -269,6 +281,9 @@ const ProjectPropertiesDialog = (props: Props) => {
   let [name, setName] = React.useState(initialProperties.name);
   let [description, setDescription] = React.useState(
     initialProperties.description
+  );
+  let [defaultSceneType, setDefaultSceneType] = React.useState<SceneType>(
+    initialProperties.defaultSceneType
   );
   let [scriptingMode, setScriptingMode] = React.useState<ScriptingMode>(
     initialProperties.scriptingMode
@@ -408,6 +423,7 @@ const ProjectPropertiesDialog = (props: Props) => {
         adaptGameResolutionAtRuntime,
         name,
         description,
+        defaultSceneType,
         author,
         authorIds,
         authorUsernames,
@@ -441,6 +457,18 @@ const ProjectPropertiesDialog = (props: Props) => {
       // $FlowFixMe[incompatible-type]
       props.onPropertiesApplied(specialPropertiesChanged);
     }
+  };
+
+  const applyUltraGraphicsPreset = () => {
+    setScaleMode('linear');
+    setPixelsRounding(false);
+    setAntialiasingMode('MSAA');
+    setAntialisingEnabledOnMobile(true);
+    setUpscalingMode('none');
+    setFsrQuality('ultra-quality');
+    setFsrSharpness(0.2);
+    setRenderOcclusionCullingMode('disabled');
+    notifyOfChange();
   };
 
   return (
@@ -569,6 +597,28 @@ const ProjectPropertiesDialog = (props: Props) => {
                   <SelectOption
                     value="typescript"
                     label={t`TypeScript + Event Sheet (hybrid)`}
+                  />
+                </SelectField>
+                <SelectField
+                  fullWidth
+                  floatingLabelText={<Trans>Default scene mode</Trans>}
+                  value={defaultSceneType}
+                  onChange={(e, i, newSceneType: SceneType) => {
+                    if (newSceneType === defaultSceneType) {
+                      return;
+                    }
+                    setDefaultSceneType(newSceneType);
+                    notifyOfChange();
+                  }}
+                  helperMarkdownText={i18n._(
+                    t`New scenes will use this mode by default. You can still override it per scene from scene properties.`
+                  )}
+                >
+                  <SelectOption value={SCENE_TYPE_2D} label={t`2D only`} />
+                  <SelectOption value={SCENE_TYPE_3D} label={t`3D only`} />
+                  <SelectOption
+                    value={SCENE_TYPE_2_5D}
+                    label={t`2.5D (2D + 3D)`}
                   />
                 </SelectField>
                 <Text size="block-title">
@@ -1006,6 +1056,20 @@ const ProjectPropertiesDialog = (props: Props) => {
                     </Trans>
                   </DismissableAlertMessage>
                 )}
+                <ResponsiveLineStackLayout noMargin>
+                  <RaisedButton
+                    label={<Trans>Apply Ultra Graphics Preset</Trans>}
+                    primary
+                    onClick={applyUltraGraphicsPreset}
+                  />
+                </ResponsiveLineStackLayout>
+                <AlertMessage kind="info">
+                  <Trans>
+                    This applies a high-quality rendering preset to this
+                    project only. Existing projects are not changed
+                    automatically.
+                  </Trans>
+                </AlertMessage>
 
                 <Text size="block-title">
                   <Trans>Project files</Trans>

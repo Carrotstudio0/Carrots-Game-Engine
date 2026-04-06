@@ -435,7 +435,9 @@ const FullSizeInstancesEditorWithScrollbars = (props: Props): React.Node => {
                     }
                   }
                 }}
-                showObjectInstancesIn3D={values.use3DEditor}
+                showObjectInstancesIn3D={
+                  values.use3DEditor && otherProps.canAdd3DObjectsToScene
+                }
                 showBasicProfilingCounters={values.showBasicProfilingCounters}
                 {...otherProps}
               />

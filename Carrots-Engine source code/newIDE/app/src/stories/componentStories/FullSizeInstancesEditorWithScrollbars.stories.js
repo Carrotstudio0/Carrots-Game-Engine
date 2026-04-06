@@ -59,6 +59,8 @@ export const Default = (): React.Node => (
         onInstancesMoved={() => {}}
         onInstancesResized={() => {}}
         onInstancesRotated={() => {}}
+        canAdd2DObjectsToScene={true}
+        canAdd3DObjectsToScene={false}
         selectedObjectNames={[]}
         onContextMenu={() => {}}
         instancesEditorShortcutsCallbacks={{

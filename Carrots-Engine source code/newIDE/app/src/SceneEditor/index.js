@@ -33,6 +33,15 @@ import DismissableInfoBar from '../UI/Messages/DismissableInfoBar';
 import ContextMenu, { type ContextMenuInterface } from '../UI/Menu/ContextMenu';
 import { shortenString } from '../Utils/StringHelpers';
 import getObjectByName from '../Utils/GetObjectByName';
+import {
+  canSceneContain2DObjects,
+  canSceneContain3DObjects,
+  getRequiredGameEditorModeForSceneType,
+  getSceneType,
+  is3DObjectCompatibleWithSceneType,
+  SCENE_TYPE_2_5D,
+  type SceneType,
+} from '../Utils/SceneType';
 import UseSceneEditorCommands from './UseSceneEditorCommands';
 import { type InstancesEditorSettings } from '../InstancesEditor/InstancesEditorSettings';
 import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
@@ -461,22 +470,20 @@ export default class SceneEditor extends React.Component<Props, State> {
     };
   }
 
-  componentDidUpdate(prevProps: Props, prevState: State) {
+  componentDidUpdate(_prevProps: Props, prevState: State) {
     if (this.state.history !== prevState.history)
       if (this.props.unsavedChanges)
         this.props.unsavedChanges.triggerUnsavedChanges();
+
+    if (this.props.isActive) {
+      this.enforceGameEditorModeForSceneType();
+    }
   }
 
   componentDidMount() {
-    // Sync the saved gameEditorMode from instancesEditorSettings to MainFrame.
-    if (
-      this.props.isActive &&
-      this.state.instancesEditorSettings.gameEditorMode
-    ) {
-      this.props.setGameEditorMode(
-        this.state.instancesEditorSettings.gameEditorMode
-      );
-    }
+    // Sync the game editor mode to MainFrame, then enforce scene type constraints.
+    this.syncGameEditorModeToMainFrame();
+    this.enforceGameEditorModeForSceneType();
 
     this.resourceExternallyChangedCallbackId =
       registerOnResourceExternallyChangedCallback(
@@ -555,6 +562,66 @@ export default class SceneEditor extends React.Component<Props, State> {
     }
     this._pendingUpdatedInstances.clear();
   }
+
+  getCurrentSceneType = (): SceneType => {
+    const { layout, project } = this.props;
+    if (!layout) return SCENE_TYPE_2_5D;
+    return getSceneType(project, layout.getName());
+  };
+
+  canCurrentSceneContain2DObjects = (): boolean =>
+    !this.props.layout || canSceneContain2DObjects(this.getCurrentSceneType());
+
+  canCurrentSceneContain3DObjects = (): boolean =>
+    !this.props.layout || canSceneContain3DObjects(this.getCurrentSceneType());
+
+  getForcedGameEditorModeForCurrentScene = (): ?(
+    'embedded-game' | 'instances-editor'
+  ) => {
+    if (!this.props.layout) return null;
+    return getRequiredGameEditorModeForSceneType(this.getCurrentSceneType());
+  };
+
+  syncGameEditorModeToMainFrame = () => {
+    if (!this.props.isActive) return;
+
+    const forcedGameEditorMode = this.getForcedGameEditorModeForCurrentScene();
+    if (forcedGameEditorMode) {
+      if (this.props.gameEditorMode !== forcedGameEditorMode) {
+        this.props.setGameEditorMode(forcedGameEditorMode);
+      }
+      return;
+    }
+
+    if (this.state.instancesEditorSettings.gameEditorMode) {
+      this.props.setGameEditorMode(
+        this.state.instancesEditorSettings.gameEditorMode
+      );
+    }
+  };
+
+  enforceGameEditorModeForSceneType = () => {
+    const forcedGameEditorMode = this.getForcedGameEditorModeForCurrentScene();
+    if (!forcedGameEditorMode) return;
+
+    if (this.state.instancesEditorSettings.gameEditorMode !== forcedGameEditorMode) {
+      this.setInstancesEditorSettings({
+        ...this.state.instancesEditorSettings,
+        gameEditorMode: forcedGameEditorMode,
+      });
+    }
+    if (this.props.gameEditorMode !== forcedGameEditorMode) {
+      this.props.setGameEditorMode(forcedGameEditorMode);
+    }
+    if (
+      forcedGameEditorMode !== 'embedded-game' &&
+      this.state.isCinematicTimelineShown
+    ) {
+      this.setState({ isCinematicTimelineShown: false }, () => {
+        this.updateToolbar();
+      });
+    }
+  };
 
   onEditorReloaded() {
     this._sendSelectedInstances();
@@ -873,6 +940,8 @@ export default class SceneEditor extends React.Component<Props, State> {
   updateToolbar = () => {
     const { editorDisplay } = this;
     if (!editorDisplay) return;
+    const canUse3DEditor = this.canCurrentSceneContain3DObjects();
+    const canUse2DEditor = this.canCurrentSceneContain2DObjects();
 
     if (editorDisplay.getName() === 'mosaic') {
       this.props.setToolbar(
@@ -882,6 +951,8 @@ export default class SceneEditor extends React.Component<Props, State> {
             this.props.gameEditorMode
           }
           setGameEditorMode={this.setGameEditorMode}
+          canUse2DEditor={canUse2DEditor}
+          canUse3DEditor={canUse3DEditor}
           selectedInstancesCount={
             this.instancesSelection.getSelectedInstances().length
           }
@@ -936,8 +1007,13 @@ export default class SceneEditor extends React.Component<Props, State> {
     } else {
       this.props.setToolbar(
         <SwipeableDrawerEditorsDisplayToolbar
-          gameEditorMode={this.props.gameEditorMode}
-          setGameEditorMode={this.props.setGameEditorMode}
+          gameEditorMode={
+            this.state.instancesEditorSettings.gameEditorMode ||
+            this.props.gameEditorMode
+          }
+          setGameEditorMode={this.setGameEditorMode}
+          canUse2DEditor={canUse2DEditor}
+          canUse3DEditor={canUse3DEditor}
           selectedInstancesCount={
             this.instancesSelection.getSelectedInstances().length
           }
@@ -991,9 +1067,27 @@ export default class SceneEditor extends React.Component<Props, State> {
       this.openSceneProperties(false);
     }
     if (!this.props.isActive && nextProps.isActive) {
-      // Sync the saved gameEditorMode from instancesEditorSettings to mainframe
-      // when the editor becomes active again
-      if (this.state.instancesEditorSettings.gameEditorMode) {
+      const sceneType = nextProps.layout
+        ? getSceneType(nextProps.project, nextProps.layout.getName())
+        : null;
+      const forcedGameEditorMode = sceneType
+        ? getRequiredGameEditorModeForSceneType(sceneType)
+        : null;
+
+      if (forcedGameEditorMode) {
+        this.props.setGameEditorMode(forcedGameEditorMode);
+        if (
+          this.state.instancesEditorSettings.gameEditorMode !==
+          forcedGameEditorMode
+        ) {
+          this.setInstancesEditorSettings({
+            ...this.state.instancesEditorSettings,
+            gameEditorMode: forcedGameEditorMode,
+          });
+        }
+      } else if (this.state.instancesEditorSettings.gameEditorMode) {
+        // Sync the saved gameEditorMode from instancesEditorSettings to mainframe
+        // when the editor becomes active again.
         this.props.setGameEditorMode(
           this.state.instancesEditorSettings.gameEditorMode
         );
@@ -1033,6 +1127,9 @@ export default class SceneEditor extends React.Component<Props, State> {
   };
 
   toggleCinematicTimeline = () => {
+    if (!this.canCurrentSceneContain3DObjects()) {
+      return;
+    }
     const shouldShowTimeline = !this.state.isCinematicTimelineShown;
     if (shouldShowTimeline && this.props.gameEditorMode !== 'embedded-game') {
       this.setGameEditorMode('embedded-game');
@@ -1309,19 +1406,26 @@ export default class SceneEditor extends React.Component<Props, State> {
   };
 
   setGameEditorMode = (newMode: 'instances-editor' | 'embedded-game') => {
-    if (newMode !== 'embedded-game' && this.state.isCinematicTimelineShown) {
+    const forcedGameEditorMode = this.getForcedGameEditorModeForCurrentScene();
+    const safeNewMode = forcedGameEditorMode || newMode;
+
+    if (safeNewMode !== 'embedded-game' && this.state.isCinematicTimelineShown) {
       this.setState({ isCinematicTimelineShown: false }, () => {
         this.updateToolbar();
       });
     }
 
-    this.setInstancesEditorSettings({
-      ...this.state.instancesEditorSettings,
-      gameEditorMode: newMode,
-    });
+    if (this.state.instancesEditorSettings.gameEditorMode !== safeNewMode) {
+      this.setInstancesEditorSettings({
+        ...this.state.instancesEditorSettings,
+        gameEditorMode: safeNewMode,
+      });
+    }
 
     // Call the setGameEditorMode from mainframe so it can make some global changes. (ex: hot reload)
-    this.props.setGameEditorMode(newMode);
+    if (this.props.gameEditorMode !== safeNewMode) {
+      this.props.setGameEditorMode(safeNewMode);
+    }
   };
 
   openSetupGrid = (open: boolean = true) => {
@@ -1600,6 +1704,9 @@ export default class SceneEditor extends React.Component<Props, State> {
   _createPrimitive3DObjectAndInstanceUnderCursor = (
     primitiveKind: Primitive3DKind
   ) => {
+    if (!this.canCurrentSceneContain3DObjects()) {
+      return;
+    }
     const { editorDisplay } = this;
     const { project, objectsContainer, globalObjectsContainer } = this.props;
     if (!editorDisplay) {
@@ -1647,6 +1754,9 @@ export default class SceneEditor extends React.Component<Props, State> {
   };
 
   _createLight3DObjectAndInstanceUnderCursor = (lightKind: Light3DKind) => {
+    if (!this.canCurrentSceneContain3DObjects()) {
+      return;
+    }
     const { editorDisplay } = this;
     const { project, objectsContainer, globalObjectsContainer } = this.props;
     if (!editorDisplay) {
@@ -1697,6 +1807,9 @@ export default class SceneEditor extends React.Component<Props, State> {
     objectName: string,
     targetPosition: 'center' | 'upperCenter' = 'center'
   ) => {
+    if (!this.isObjectNameCompatibleWithSceneType(objectName)) {
+      return;
+    }
     if (!this.editorDisplay) {
       return;
     }
@@ -1717,10 +1830,14 @@ export default class SceneEditor extends React.Component<Props, State> {
 
   _addInstance = (pos: [number, number], objectName: string) => {
     if (!objectName || !this.editorDisplay) return;
+    const compatibleObjectNames = this.getCompatibleObjectNamesForCurrentScene([
+      objectName,
+    ]);
+    if (!compatibleObjectNames.length) return;
 
     const instances = this.editorDisplay.instancesHandlers.addInstances(
       pos,
-      [objectName],
+      compatibleObjectNames,
       this.state.chosenLayer
     );
     this._onInstancesAddedAndSendToEditor3D(instances);
@@ -2942,7 +3059,50 @@ export default class SceneEditor extends React.Component<Props, State> {
     );
   };
 
+  isObjectNameCompatibleWithSceneType = (objectName: string): boolean => {
+    const { layout, project, globalObjectsContainer, objectsContainer } =
+      this.props;
+    if (!layout) return true;
+
+    const object = getObjectByName(
+      globalObjectsContainer,
+      objectsContainer,
+      objectName
+    );
+    if (!object) return false;
+
+    const objectMetadata = gd.MetadataProvider.getObjectMetadata(
+      project.getCurrentPlatform(),
+      object.getType()
+    );
+    if (!objectMetadata) return false;
+
+    return is3DObjectCompatibleWithSceneType(
+      this.getCurrentSceneType(),
+      objectMetadata.isRenderedIn3D()
+    );
+  };
+
+  getCompatibleObjectNamesForCurrentScene = (
+    objectNames: Array<string>
+  ): Array<string> =>
+    objectNames.filter(objectName =>
+      this.isObjectNameCompatibleWithSceneType(objectName)
+    );
+
+  filterSerializedInstancesForCurrentSceneType = (
+    serializedInstances: Array<Object>
+  ): Array<Object> =>
+    serializedInstances.filter(serializedInstance => {
+      const objectName = SafeExtractor.extractStringProperty(
+        serializedInstance,
+        'name'
+      );
+      return !!objectName && this.isObjectNameCompatibleWithSceneType(objectName);
+    });
+
   buildContextMenu = (i18n: I18nType, options: any): any => {
+    const canUse3DObjects = this.canCurrentSceneContain3DObjects();
     if (
       options.ignoreSelectedObjectsForContextMenu ||
       !this.instancesSelection.hasSelectedInstances()
@@ -2961,6 +3121,7 @@ export default class SceneEditor extends React.Component<Props, State> {
         },
         {
           label: i18n._(t`Insert 3D primitive`),
+          enabled: canUse3DObjects,
           submenu: [
             {
               label: i18n._(t`Box`),
@@ -2986,6 +3147,7 @@ export default class SceneEditor extends React.Component<Props, State> {
         },
         {
           label: i18n._(t`Insert 3D light`),
+          enabled: canUse3DObjects,
           submenu: [
             {
               label: i18n._(t`Spot Light`),
@@ -3132,18 +3294,20 @@ export default class SceneEditor extends React.Component<Props, State> {
   duplicateSelection = ({
     useLastCursorPosition,
   }: CopyCutPasteOptions = {}) => {
-    const serializedSelection = this.instancesSelection
-      .getSelectedInstances()
-      .map((instance) => serializeToJSObject(instance));
+    const serializedSelection = this.filterSerializedInstancesForCurrentSceneType(
+      this.instancesSelection
+        .getSelectedInstances()
+        .map((instance) => serializeToJSObject(instance))
+    );
+    if (!serializedSelection.length) return;
 
     const newInstances = addSerializedInstances({
       project: this.props.project,
       instancesContainer: this.props.initialInstances,
       copyReferential: [-2 * MOVEMENT_BIG_DELTA, -2 * MOVEMENT_BIG_DELTA],
       serializedInstances: serializedSelection,
-      doesObjectExistInContext:
-        // Instance duplication can only be done in the same scene, so no need to check
-        () => true,
+      doesObjectExistInContext: (objectName) =>
+        this.isObjectNameCompatibleWithSceneType(objectName),
     });
     this._onInstancesAddedAndSendToEditor3D(newInstances);
     this.instancesSelection.clearSelection();
@@ -3177,13 +3341,16 @@ export default class SceneEditor extends React.Component<Props, State> {
       project: this.props.project,
       instancesContainer: this.props.initialInstances,
       copyReferential: [x, y],
-      serializedInstances: instancesContent,
+      serializedInstances: this.filterSerializedInstancesForCurrentSceneType(
+        instancesContent
+      ),
       addInstancesInTheForeground: pasteInTheForeground,
       doesObjectExistInContext: (objectName) =>
         this.props.projectScopedContainersAccessor
           .get()
           .getObjectsContainersList()
-          .hasObjectNamed(objectName),
+          .hasObjectNamed(objectName) &&
+        this.isObjectNameCompatibleWithSceneType(objectName),
     });
 
     this._onInstancesAddedAndSendToEditor3D(newInstances);
@@ -3514,6 +3681,8 @@ export default class SceneEditor extends React.Component<Props, State> {
                   <EditorsDisplay
                     ref={(ref) => (this.editorDisplay = ref)}
                     gameEditorMode={this.props.gameEditorMode}
+                    canAdd2DObjectsToScene={this.canCurrentSceneContain2DObjects()}
+                    canAdd3DObjectsToScene={this.canCurrentSceneContain3DObjects()}
                     onRestartInGameEditor={this.props.onRestartInGameEditor}
                     showRestartInGameEditorAfterErrorButton={
                       this.props.showRestartInGameEditorAfterErrorButton
@@ -3932,7 +4101,18 @@ export default class SceneEditor extends React.Component<Props, State> {
                       project={project}
                       layout={layout}
                       onClose={() => this.openSceneProperties(false)}
-                      onApply={() => this.openSceneProperties(false)}
+                      onApply={() => {
+                        this.openSceneProperties(false);
+                        if (this.props.unsavedChanges) {
+                          this.props.unsavedChanges.triggerUnsavedChanges();
+                        }
+                        this.enforceGameEditorModeForSceneType();
+                        this.updateToolbar();
+                      }}
+                      onSceneTypeChanged={() => {
+                        this.enforceGameEditorModeForSceneType();
+                        this.updateToolbar();
+                      }}
                       onEditVariables={() => this.editLayoutVariables(true)}
                       onOpenMoreSettings={this.props.onOpenMoreSettings}
                       resourceManagementProps={

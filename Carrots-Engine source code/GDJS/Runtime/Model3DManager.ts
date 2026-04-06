@@ -192,6 +192,115 @@ namespace gdjs {
       }
     }
 
+    private _getMaxModelTextureAnisotropy(): integer {
+      const runtimeGame = this._resourceLoader.getRuntimeGame();
+      if (!runtimeGame || !runtimeGame.getRenderer) {
+        return 1;
+      }
+      const gameRenderer = runtimeGame.getRenderer();
+      if (!gameRenderer || !gameRenderer.getThreeRenderer) {
+        return 1;
+      }
+      const threeRenderer = gameRenderer.getThreeRenderer();
+      if (
+        !threeRenderer ||
+        !threeRenderer.capabilities ||
+        typeof threeRenderer.capabilities.getMaxAnisotropy !== 'function'
+      ) {
+        return 1;
+      }
+
+      const maxAnisotropy = threeRenderer.capabilities.getMaxAnisotropy();
+      if (!Number.isFinite(maxAnisotropy) || maxAnisotropy <= 0) {
+        return 1;
+      }
+      return Math.max(1, Math.floor(maxAnisotropy));
+    }
+
+    private _configureModelTextureQuality(
+      texture: THREE.Texture,
+      maxAnisotropy: integer
+    ): void {
+      if (texture.magFilter !== THREE.NearestFilter) {
+        texture.magFilter = THREE.LinearFilter;
+      }
+      if (texture.minFilter !== THREE.NearestFilter) {
+        texture.minFilter = THREE.LinearMipmapLinearFilter;
+        texture.generateMipmaps = true;
+      } else {
+        texture.generateMipmaps = false;
+      }
+      texture.anisotropy = Math.max(1, maxAnisotropy);
+      texture.needsUpdate = true;
+    }
+
+    private _applyModelTextureQuality(gltf: THREE_ADDONS.GLTF): void {
+      if (!gltf || !gltf.scene) {
+        return;
+      }
+
+      const maxAnisotropy = this._getMaxModelTextureAnisotropy();
+      const texturePropertyNames = [
+        'map',
+        'alphaMap',
+        'aoMap',
+        'bumpMap',
+        'displacementMap',
+        'emissiveMap',
+        'envMap',
+        'lightMap',
+        'metalnessMap',
+        'normalMap',
+        'roughnessMap',
+        'specularMap',
+        'clearcoatMap',
+        'clearcoatNormalMap',
+        'clearcoatRoughnessMap',
+        'iridescenceMap',
+        'iridescenceThicknessMap',
+        'sheenColorMap',
+        'sheenRoughnessMap',
+        'thicknessMap',
+        'transmissionMap',
+        'anisotropyMap',
+      ];
+      const processedTextures = new Set<THREE.Texture>();
+
+      gltf.scene.traverse((object: THREE.Object3D) => {
+        const renderableObject = object as THREE.Object3D & {
+          material?: THREE.Material | THREE.Material[] | null;
+        };
+        if (!renderableObject.material) {
+          return;
+        }
+        const materials = Array.isArray(renderableObject.material)
+          ? renderableObject.material
+          : [renderableObject.material];
+
+        for (const material of materials) {
+          if (!material) {
+            continue;
+          }
+          const materialWithTextures = material as THREE.Material & {
+            [key: string]: unknown;
+          };
+
+          for (let index = 0; index < texturePropertyNames.length; index++) {
+            const propertyName = texturePropertyNames[index];
+            const texture = materialWithTextures[propertyName];
+            if (!(texture instanceof THREE.Texture)) {
+              continue;
+            }
+            if (processedTextures.has(texture)) {
+              continue;
+            }
+            processedTextures.add(texture);
+            this._configureModelTextureQuality(texture, maxAnisotropy);
+          }
+        }
+      });
+    }
+
     getResourceKinds(): ResourceKind[] {
       return resourceKinds;
     }
@@ -328,6 +437,7 @@ namespace gdjs {
           preparedModelData.arrayBuffer,
           ''
         );
+        this._applyModelTextureQuality(gltf);
         this._loadedThreeModels.set(resource, gltf);
         this._releasePreparedModelDataForResource(resource);
       } catch (error) {

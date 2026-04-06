@@ -38,6 +38,7 @@ import {
 import { getDefaultRegisterGameProperties } from './UseGameAndBuildsManager';
 import { TutorialContext } from '../Tutorial/TutorialContext';
 import { setProjectScriptingMode } from './ScriptingMode';
+import { setProjectSceneType } from './SceneType';
 
 export type CreateProjectResult = {|
   createdProject: gdProject | null,
@@ -152,6 +153,9 @@ const useCreateProject = ({
     }
     if (newProjectSetup.scriptingMode) {
       setProjectScriptingMode(project, newProjectSetup.scriptingMode);
+    }
+    if (newProjectSetup.defaultSceneType) {
+      setProjectSceneType(project, newProjectSetup.defaultSceneType);
     }
   };
 

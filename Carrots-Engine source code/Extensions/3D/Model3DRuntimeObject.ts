@@ -639,18 +639,18 @@ namespace gdjs {
     ): boolean {
       super.updateFromObjectData(oldObjectData, newObjectData);
 
-      if (
-        oldObjectData.content.materialType !==
-        newObjectData.content.materialType
-      ) {
+      const materialTypeChanged =
+        oldObjectData.content.materialType !== newObjectData.content.materialType;
+      if (materialTypeChanged) {
         this._materialType = this._convertMaterialType(
           newObjectData.content.materialType
         );
       }
-      if (
+
+      const modelResourceChanged =
         oldObjectData.content.modelResourceName !==
-        newObjectData.content.modelResourceName
-      ) {
+        newObjectData.content.modelResourceName;
+      if (modelResourceChanged || materialTypeChanged) {
         this._reloadModel(newObjectData);
       } else if (
         oldObjectData.content.width !== newObjectData.content.width ||
@@ -661,8 +661,6 @@ namespace gdjs {
         oldObjectData.content.rotationZ !== newObjectData.content.rotationZ ||
         oldObjectData.content.keepAspectRatio !==
           newObjectData.content.keepAspectRatio ||
-        oldObjectData.content.materialType !==
-          newObjectData.content.materialType ||
         oldObjectData.content.centerLocation !==
           newObjectData.content.centerLocation
       ) {
@@ -728,8 +726,7 @@ namespace gdjs {
         }
       }
       if (
-        oldObjectData.content.modelResourceName !==
-          newObjectData.content.modelResourceName ||
+        modelResourceChanged ||
         oldObjectData.content.ikChainsJson !==
           newObjectData.content.ikChainsJson ||
         oldObjectData.content.ikPosesJson !== newObjectData.content.ikPosesJson
@@ -762,8 +759,12 @@ namespace gdjs {
     ): void {
       super.updateFromNetworkSyncData(networkSyncData, options);
 
-      if (networkSyncData.mt !== undefined) {
+      if (
+        networkSyncData.mt !== undefined &&
+        networkSyncData.mt !== this._materialType
+      ) {
         this._materialType = networkSyncData.mt;
+        this._reloadModel(this._objectData as Model3DObjectData);
       }
       if (networkSyncData.op !== undefined) {
         this._originPoint = networkSyncData.op;

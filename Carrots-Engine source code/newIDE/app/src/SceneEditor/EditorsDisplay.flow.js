@@ -24,6 +24,8 @@ import { type EditorViewPosition2D } from '../InstancesEditor';
 
 export type SceneEditorsDisplayProps = {|
   gameEditorMode: 'embedded-game' | 'instances-editor',
+  canAdd2DObjectsToScene: boolean,
+  canAdd3DObjectsToScene: boolean,
   project: gdProject,
   layout: gdLayout | null,
   eventsFunctionsExtension: gdEventsFunctionsExtension | null,

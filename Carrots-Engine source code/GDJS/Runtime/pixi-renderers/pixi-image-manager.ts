@@ -26,12 +26,21 @@ namespace gdjs {
 
   const applyThreeTextureSettings = (
     threeTexture: THREE.Texture,
-    resourceData: ResourceData | null
+    resourceData: ResourceData | null,
+    maxAnisotropy: integer
   ) => {
     if (resourceData && !resourceData.smoothed) {
       threeTexture.magFilter = THREE.NearestFilter;
       threeTexture.minFilter = THREE.NearestFilter;
+      threeTexture.generateMipmaps = false;
+      threeTexture.anisotropy = 1;
+      return;
     }
+
+    threeTexture.magFilter = THREE.LinearFilter;
+    threeTexture.minFilter = THREE.LinearMipmapLinearFilter;
+    threeTexture.generateMipmaps = true;
+    threeTexture.anisotropy = Math.max(1, maxAnisotropy);
   };
 
   const resourceKinds: Array<ResourceKind> = ['image', 'video'];
@@ -83,6 +92,31 @@ namespace gdjs {
 
     getResourceKinds(): ResourceKind[] {
       return resourceKinds;
+    }
+
+    private _getMaxTextureAnisotropy(): integer {
+      const runtimeGame = this._resourceLoader.getRuntimeGame();
+      if (!runtimeGame || !runtimeGame.getRenderer) {
+        return 1;
+      }
+      const gameRenderer = runtimeGame.getRenderer();
+      if (!gameRenderer || !gameRenderer.getThreeRenderer) {
+        return 1;
+      }
+      const threeRenderer = gameRenderer.getThreeRenderer();
+      if (
+        !threeRenderer ||
+        !threeRenderer.capabilities ||
+        typeof threeRenderer.capabilities.getMaxAnisotropy !== 'function'
+      ) {
+        return 1;
+      }
+
+      const maxAnisotropy = threeRenderer.capabilities.getMaxAnisotropy();
+      if (!Number.isFinite(maxAnisotropy) || maxAnisotropy <= 0) {
+        return 1;
+      }
+      return Math.max(1, Math.floor(maxAnisotropy));
     }
 
     /**
@@ -197,6 +231,7 @@ namespace gdjs {
       const image = this._getImageSource(resourceName, pixiTexture);
       const isPlaceholderTexture = pixiTexture === this._invalidTexture;
       const resource = this._getImageResource(resourceName);
+      const maxAnisotropy = this._getMaxTextureAnisotropy();
       const loadedThreeTexture = this._loadedThreeTextures.get(resourceName);
       if (loadedThreeTexture) {
         const hasSameImage = loadedThreeTexture.image === image;
@@ -206,11 +241,14 @@ namespace gdjs {
         if (!hasSameImage || !hasSamePlaceholderFlag) {
           loadedThreeTexture.image = image;
           loadedThreeTexture.needsUpdate = true;
-          if (resource) {
-            applyThreeTextureSettings(loadedThreeTexture, resource);
-          }
+          applyThreeTextureSettings(
+            loadedThreeTexture,
+            resource,
+            maxAnisotropy
+          );
           this._setThreeTexturePlaceholder(loadedThreeTexture, isPlaceholderTexture);
         }
+        applyThreeTextureSettings(loadedThreeTexture, resource, maxAnisotropy);
         return loadedThreeTexture;
       }
 
@@ -223,7 +261,7 @@ namespace gdjs {
       threeTexture.needsUpdate = true;
       this._setThreeTexturePlaceholder(threeTexture, isPlaceholderTexture);
 
-      applyThreeTextureSettings(threeTexture, resource);
+      applyThreeTextureSettings(threeTexture, resource, maxAnisotropy);
       this._loadedThreeTextures.put(resourceName, threeTexture);
 
       return threeTexture;
@@ -302,6 +340,7 @@ namespace gdjs {
         '|' +
         zNegativeResourceName;
       const loadedThreeTexture = this._loadedThreeCubeTextures.get(key);
+      const maxAnisotropy = this._getMaxTextureAnisotropy();
       const images = [
         this._getImageSource(
           xNegativeResourceName,
@@ -340,6 +379,12 @@ namespace gdjs {
         if (hasChanged) {
           loadedThreeTexture.needsUpdate = true;
         }
+        const resource = this._getImageResource(xPositiveResourceName);
+        applyThreeTextureSettings(
+          loadedThreeTexture,
+          resource,
+          maxAnisotropy
+        );
         return loadedThreeTexture;
       }
 
@@ -361,7 +406,7 @@ namespace gdjs {
       cubeTexture.needsUpdate = true;
 
       const resource = this._getImageResource(xPositiveResourceName);
-      applyThreeTextureSettings(cubeTexture, resource);
+      applyThreeTextureSettings(cubeTexture, resource, maxAnisotropy);
       this._loadedThreeCubeTextures.set(key, cubeTexture);
       this._loadedThreeCubeTextureKeysByResourceName.add(
         xPositiveResourceName,

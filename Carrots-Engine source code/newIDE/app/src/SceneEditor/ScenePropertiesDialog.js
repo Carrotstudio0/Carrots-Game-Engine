@@ -30,6 +30,14 @@ import SelectOption from '../UI/SelectOption';
 import SelectField from '../UI/SelectField';
 import Text from '../UI/Text';
 import { ProjectScopedContainersAccessor } from '../InstructionOrExpression/EventsScope';
+import {
+  getSceneType,
+  setSceneType,
+  SCENE_TYPE_2D,
+  SCENE_TYPE_3D,
+  SCENE_TYPE_2_5D,
+  type SceneType,
+} from '../Utils/SceneType';
 
 const gd: libGDevelop = global.gd;
 
@@ -44,6 +52,7 @@ type Props = {|
   resourceManagementProps: ResourceManagementProps,
   projectScopedContainersAccessor: ProjectScopedContainersAccessor,
   onBackgroundColorChanged: () => void,
+  onSceneTypeChanged?: SceneType => void,
 |};
 
 const ScenePropertiesDialog = ({
@@ -57,7 +66,11 @@ const ScenePropertiesDialog = ({
   resourceManagementProps,
   projectScopedContainersAccessor,
   onBackgroundColorChanged,
+  onSceneTypeChanged,
 }: Props): React.Node => {
+  const [sceneType, setSelectedSceneType] = React.useState<SceneType>(
+    getSceneType(project, layout.getName())
+  );
   const [windowTitle, setWindowTitle] = React.useState<string>(
     layout.getWindowDefaultTitle()
   );
@@ -83,6 +96,7 @@ const ScenePropertiesDialog = ({
   React.useEffect(
     () => {
       if (open && layout) {
+        setSelectedSceneType(getSceneType(project, layout.getName()));
         setWindowTitle(layout.getWindowDefaultTitle());
         setShouldStopSoundsOnStartup(layout.stopSoundsOnStartup());
         setResourcesPreloading(layout.getResourcesPreloading());
@@ -95,10 +109,16 @@ const ScenePropertiesDialog = ({
         });
       }
     },
-    [open, layout]
+    [open, layout, project]
   );
 
   const onSubmit = () => {
+    const previousSceneType = getSceneType(project, layout.getName());
+    const hasSceneTypeChanged = previousSceneType !== sceneType;
+    if (hasSceneTypeChanged) {
+      setSceneType(project, layout.getName(), sceneType);
+    }
+
     layout.setWindowDefaultTitle(windowTitle);
     layout.setStopSoundsOnStartup(shouldStopSoundsOnStartup);
     layout.setResourcesPreloading(resourcesPreloading);
@@ -114,6 +134,9 @@ const ScenePropertiesDialog = ({
       backgroundColor ? backgroundColor.b : 0
     );
     onApply();
+    if (hasSceneTypeChanged && onSceneTypeChanged) {
+      onSceneTypeChanged(sceneType);
+    }
     if (hasBackgroundColorChanged) {
       onBackgroundColorChanged();
     }
@@ -286,6 +309,25 @@ const ScenePropertiesDialog = ({
             setBackgroundColor(rgbStringAndAlphaToRGBColor(color))
           }
         />
+        <SelectField
+          floatingLabelText={<Trans>Scene type</Trans>}
+          fullWidth
+          value={sceneType}
+          onChange={e =>
+            setSelectedSceneType(
+              (e.target.value: SceneType)
+            )
+          }
+        >
+          <SelectOption value={SCENE_TYPE_2D} label={t`2D`} />
+          <SelectOption value={SCENE_TYPE_3D} label={t`3D`} />
+          <SelectOption value={SCENE_TYPE_2_5D} label={t`2.5D`} />
+        </SelectField>
+        <Text size="body2" noMargin>
+          <Trans>
+            2.5D scenes allow mixing both 2D and 3D objects in the same scene.
+          </Trans>
+        </Text>
         <Checkbox
           checked={shouldStopSoundsOnStartup}
           label={

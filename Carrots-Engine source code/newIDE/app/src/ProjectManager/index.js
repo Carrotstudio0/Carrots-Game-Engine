@@ -107,6 +107,10 @@ import { useShouldAutofocusInput } from '../UI/Responsive/ScreenTypeMeasurer';
 import { ProjectScopedContainersAccessor } from '../InstructionOrExpression/EventsScope';
 import { getSlugifiedUniqueNameFromProperty } from '../Utils/ObjectSplitter';
 import { localFileStorageProviderInternalName } from '../ProjectsStorage/LocalFileStorageProvider/LocalFileStorageProviderInternalName';
+import {
+  copySceneType,
+  ensureSceneTypeExists,
+} from '../Utils/SceneType';
 
 const electron = optionalRequire('electron');
 const childProcess = optionalRequire('child_process');
@@ -1533,6 +1537,14 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
 
     const onSceneCreated = React.useCallback(
       (scene: gdLayout, sourceSceneName?: ?string) => {
+        if (!project) return;
+
+        if (sourceSceneName) {
+          copySceneType(project, sourceSceneName, scene.getName());
+        } else {
+          ensureSceneTypeExists(project, scene.getName());
+        }
+
         const sceneName = scene.getName();
         updateSceneWorkflowMetadata(previous => {
           const defaultColumnId = previous.workflow.defaultColumnId;
@@ -1583,6 +1595,7 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
         });
       },
       [
+        project,
         updateSceneWorkflowMetadata,
         applySceneOrderToProject,
         updateSceneFoldersForSceneMove,
