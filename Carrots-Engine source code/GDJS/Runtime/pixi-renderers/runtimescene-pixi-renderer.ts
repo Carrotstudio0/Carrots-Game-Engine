@@ -675,7 +675,7 @@ namespace gdjs {
             // Determine if this layer will actually render in 3D mode.
             // Keep in sync with: `shouldRenderLayerIn3D` in `layer-pixi-renderer.ts`.
             const shouldRenderLayerIn3D =
-              runtimeGame.isInGameEdition() ||
+              runtimeLayerRenderer.is3DRenderingForced() ||
               (runtimeLayerRenderingType !==
                 gdjs.RuntimeLayerRenderingType.TWO_D &&
                 runtimeLayerRenderer.has3DObjects());

@@ -877,7 +877,6 @@ namespace gdjs {
       // Keep in sync with: `shouldRenderLayerIn3D` in `runtimescene-pixi-renderer.ts`.
       const shouldRenderLayerIn3D =
         this._force3DRendering ||
-        runtimeGame.isInGameEdition() ||
         (this._threeCamera && this._threePlaneMesh && this.has3DObjects());
 
       // Update the 2D plane in the 3D world position, size and rotation,
@@ -1142,6 +1141,10 @@ namespace gdjs {
 
     has3DObjects(): boolean {
       return !!this._threeGroup && this._threeGroup.children.length > 0;
+    }
+
+    is3DRenderingForced(): boolean {
+      return this._force3DRendering;
     }
 
     has2DObjects(): boolean {
