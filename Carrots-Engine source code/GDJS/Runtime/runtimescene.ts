@@ -38,9 +38,29 @@ namespace gdjs {
   const renderSnapshotOcclusionGridRows = 14;
   const renderSnapshotOcclusionDepthEpsilon = 0.001;
   const renderSnapshotOcclusionMinCoverageRatio = 0.08;
+  const renderSnapshotOcclusionConservativeMinObjectCount = 48;
+  const renderSnapshotOcclusionConservativeMinCoverageRatio = 0.12;
+  const renderSnapshotOcclusionConservativeRequiredOccludedCellsRatio = 0.96;
+  const renderSnapshotOcclusionConservativeMinCoveredCells = 6;
+  const renderSnapshotOcclusionConservativeDepthMarginRatio = 0.01;
+  const renderSnapshotOcclusionExtensionName = 'CarrotsEngine';
+  const renderSnapshotOcclusionPropertyName = 'renderOcclusionCullingMode';
   const renderSnapshotIsolationEnabled = true;
   const renderSnapshotEnableWorkerCulling = false;
   let hasRegisteredRenderSnapshotWorkerHandler = false;
+
+  type RenderSnapshotOcclusionCullingMode =
+    | 'conservative'
+    | 'aggressive'
+    | 'disabled';
+
+  const sanitizeRenderSnapshotOcclusionCullingMode = (
+    value: string | null | undefined
+  ): RenderSnapshotOcclusionCullingMode => {
+    if (value === 'aggressive') return 'aggressive';
+    if (value === 'disabled') return 'disabled';
+    return 'conservative';
+  };
 
   type RuntimeRenderSnapshot = {
     version: integer;
@@ -146,6 +166,7 @@ namespace gdjs {
           const renderSnapshotFlagHasRendererObject = 1 << 0;
           const renderSnapshotFlagHidden = 1 << 1;
           const renderSnapshotFlagHasAABB = 1 << 2;
+          const renderSnapshotFlagHas3DRendererObject = 1 << 3;
 
           const cullingPayload =
             payload && typeof payload === 'object'
@@ -209,11 +230,15 @@ namespace gdjs {
               (flagsValue & renderSnapshotFlagHasRendererObject) !== 0;
             const isHidden = (flagsValue & renderSnapshotFlagHidden) !== 0;
             const hasAABB = (flagsValue & renderSnapshotFlagHasAABB) !== 0;
+            const has3DRendererObject =
+              (flagsValue & renderSnapshotFlagHas3DRendererObject) !== 0;
             if (!hasRendererObject || isHidden) {
               visibilityMask[objectIndex] = 0;
               continue;
             }
-            if (!hasAABB) {
+            // 3D objects must be culled by the authoritative main-thread frustum logic.
+            // Worker culling only applies to 2D AABB checks.
+            if (!hasAABB || has3DRendererObject) {
               visibilityMask[objectIndex] = 1;
               continue;
             }
@@ -329,6 +354,8 @@ namespace gdjs {
     private _renderSnapshotTempSphere:
       | THREE.Sphere
       | null = typeof THREE !== 'undefined' ? new THREE.Sphere() : null;
+    private _renderSnapshotOcclusionCullingMode: RenderSnapshotOcclusionCullingMode =
+      'conservative';
 
     /**
      * A network ID associated to the scene to be used
@@ -360,6 +387,7 @@ namespace gdjs {
         : 0;
       this._renderSnapshotRead = this._createEmptyRenderSnapshot();
       this._renderSnapshotWrite = this._createEmptyRenderSnapshot();
+      this._refreshRenderSnapshotOptimizationSettings();
       if (renderSnapshotIsolationEnabled && renderSnapshotEnableWorkerCulling) {
         ensureRenderSnapshotWorkerHandlerRegistered();
         this._initializeRenderSnapshotCullingQueue();
@@ -376,6 +404,42 @@ namespace gdjs {
 
       // The callback function to call when the profiler is stopped.
       this.onGameResolutionResized();
+    }
+
+    private _refreshRenderSnapshotOptimizationSettings(): void {
+      const extensionPropertyValue =
+        this._runtimeGame &&
+        typeof this._runtimeGame.getExtensionProperty === 'function'
+          ? this._runtimeGame.getExtensionProperty(
+              renderSnapshotOcclusionExtensionName,
+              renderSnapshotOcclusionPropertyName
+            )
+          : null;
+
+      this._renderSnapshotOcclusionCullingMode =
+        sanitizeRenderSnapshotOcclusionCullingMode(extensionPropertyValue);
+    }
+
+    private _isRenderSnapshotCullingDisabled(): boolean {
+      return this._renderSnapshotOcclusionCullingMode === 'disabled';
+    }
+
+    private _invalidateRenderSnapshotState(): void {
+      this._renderSnapshotCullingInFlightVersion = 0;
+      this._renderSnapshotVisibilityByVersion.clear();
+      this._renderSnapshotVersion = 0;
+      this._renderSnapshotRead.version = 0;
+      this._renderSnapshotRead.objectCount = 0;
+      this._renderSnapshotWrite.version = 0;
+      this._renderSnapshotWrite.objectCount = 0;
+    }
+
+    private _refreshRenderSnapshotOptimizationSettingsAndInvalidateIfNeeded(): void {
+      const previousMode = this._renderSnapshotOcclusionCullingMode;
+      this._refreshRenderSnapshotOptimizationSettings();
+      if (previousMode !== this._renderSnapshotOcclusionCullingMode) {
+        this._invalidateRenderSnapshotState();
+      }
     }
 
     private _createEmptyRenderSnapshot(initialCapacity = 0): RuntimeRenderSnapshot {
@@ -854,22 +918,60 @@ namespace gdjs {
       return -position.z;
     }
 
+    private _isPerspectiveThreeCamera(
+      camera: unknown
+    ): camera is THREE.PerspectiveCamera {
+      return (
+        typeof THREE !== 'undefined' &&
+        !!camera &&
+        camera instanceof THREE.PerspectiveCamera
+      );
+    }
+
+    private _shouldApplyRenderSnapshotOcclusionCulling(
+      layerMetadata: RenderSnapshotLayerMetadata,
+      layer3DObjectCount: integer
+    ): boolean {
+      if (this._renderSnapshotOcclusionCullingMode === 'disabled') {
+        return false;
+      }
+      if (!this._isPerspectiveThreeCamera(layerMetadata.camera)) {
+        return false;
+      }
+      if (layerMetadata.cameraRotatedIn3D) {
+        return false;
+      }
+      const minObjectCount =
+        this._renderSnapshotOcclusionCullingMode === 'aggressive'
+          ? renderSnapshotOcclusionMinObjectCount
+          : renderSnapshotOcclusionConservativeMinObjectCount;
+      return layer3DObjectCount >= minObjectCount;
+    }
+
     private _applyRenderSnapshotOcclusionCullingForLayer(
       snapshot: RuntimeRenderSnapshot,
       layerMetadata: RenderSnapshotLayerMetadata,
       layer3DObjectIndexes: integer[]
     ): void {
       const camera = layerMetadata.camera;
-      if (!camera) {
-        return;
-      }
-      if (layer3DObjectIndexes.length < renderSnapshotOcclusionMinObjectCount) {
+      if (!this._isPerspectiveThreeCamera(camera)) {
         return;
       }
       const projectedCenter = this._renderSnapshotTempVector3A;
       if (!projectedCenter) {
         return;
       }
+      const isAggressiveCullingMode =
+        this._renderSnapshotOcclusionCullingMode === 'aggressive';
+      const coverageThresholdForDepthMapUpdate = isAggressiveCullingMode
+        ? renderSnapshotOcclusionMinCoverageRatio
+        : renderSnapshotOcclusionConservativeMinCoverageRatio;
+      const occludedCellsRatioThreshold = isAggressiveCullingMode
+        ? 1
+        : renderSnapshotOcclusionConservativeRequiredOccludedCellsRatio;
+      const minimumCoveredCellsForOcclusion = isAggressiveCullingMode
+        ? 1
+        : renderSnapshotOcclusionConservativeMinCoveredCells;
 
       type OcclusionCandidate = {
         objectIndex: integer;
@@ -886,28 +988,11 @@ namespace gdjs {
       nearestDepthByCell.fill(Number.POSITIVE_INFINITY);
       const candidates: OcclusionCandidate[] = [];
 
-      const safeCameraAspect =
-        camera instanceof THREE.PerspectiveCamera
-          ? Math.max(0.0001, camera.aspect || 1)
-          : 1;
-      const perspectiveHalfTan =
-        camera instanceof THREE.PerspectiveCamera
-          ? Math.max(0.0001, Math.tan(gdjs.toRad(camera.fov) / 2))
-          : 0;
-      const orthographicHalfWidth =
-        camera instanceof THREE.OrthographicCamera
-          ? Math.max(
-              0.0001,
-              (camera.right - camera.left) / 2 / Math.max(0.0001, camera.zoom)
-            )
-          : 0;
-      const orthographicHalfHeight =
-        camera instanceof THREE.OrthographicCamera
-          ? Math.max(
-              0.0001,
-              (camera.top - camera.bottom) / 2 / Math.max(0.0001, camera.zoom)
-            )
-          : 0;
+      const safeCameraAspect = Math.max(0.0001, camera.aspect || 1);
+      const perspectiveHalfTan = Math.max(
+        0.0001,
+        Math.tan(gdjs.toRad(camera.fov) / 2)
+      );
 
       for (
         let layerObjectIndex = 0;
@@ -940,13 +1025,8 @@ namespace gdjs {
 
         let radiusNdcX = 0;
         let radiusNdcY = 0;
-        if (camera instanceof THREE.PerspectiveCamera) {
-          radiusNdcY = radius / (depth * perspectiveHalfTan);
-          radiusNdcX = radiusNdcY / safeCameraAspect;
-        } else {
-          radiusNdcX = radius / orthographicHalfWidth;
-          radiusNdcY = radius / orthographicHalfHeight;
-        }
+        radiusNdcY = radius / (depth * perspectiveHalfTan);
+        radiusNdcX = radiusNdcY / safeCameraAspect;
 
         if (
           !Number.isFinite(radiusNdcX) ||
@@ -1037,34 +1117,37 @@ namespace gdjs {
         const candidateHeight = candidate.maxCellY - candidate.minCellY + 1;
         const coveredCellCount = candidateWidth * candidateHeight;
         const coverageRatio = coveredCellCount / gridCellCount;
-
-        let fullyOccluded = true;
-        for (
-          let cellY = candidate.minCellY;
-          cellY <= candidate.maxCellY && fullyOccluded;
-          cellY++
-        ) {
+        const depthMargin = isAggressiveCullingMode
+          ? renderSnapshotOcclusionDepthEpsilon
+          : Math.max(
+              renderSnapshotOcclusionDepthEpsilon * 2,
+              candidate.depth * renderSnapshotOcclusionConservativeDepthMarginRatio
+            );
+        let occludedCellCount = 0;
+        for (let cellY = candidate.minCellY; cellY <= candidate.maxCellY; cellY++) {
           for (let cellX = candidate.minCellX; cellX <= candidate.maxCellX; cellX++) {
             const cellIndex =
               cellY * renderSnapshotOcclusionGridColumns + cellX;
             const nearestDepth = nearestDepthByCell[cellIndex];
             if (
-              !Number.isFinite(nearestDepth) ||
-              nearestDepth + renderSnapshotOcclusionDepthEpsilon >=
-                candidate.depth
+              Number.isFinite(nearestDepth) &&
+              nearestDepth + depthMargin < candidate.depth
             ) {
-              fullyOccluded = false;
-              break;
+              occludedCellCount++;
             }
           }
         }
+        const occludedCellsRatio = occludedCellCount / coveredCellCount;
+        const occlusionStrongEnough =
+          coveredCellCount >= minimumCoveredCellsForOcclusion &&
+          occludedCellsRatio >= occludedCellsRatioThreshold;
 
-        if (fullyOccluded) {
+        if (occlusionStrongEnough) {
           snapshot.visibilityMask[candidate.objectIndex] = 0;
           continue;
         }
 
-        if (coverageRatio < renderSnapshotOcclusionMinCoverageRatio) {
+        if (coverageRatio < coverageThresholdForDepthMapUpdate) {
           continue;
         }
 
@@ -1264,7 +1347,12 @@ namespace gdjs {
           }
         }
 
-        if (camera && !layerMetadata.cameraRotatedIn3D) {
+        if (
+          this._shouldApplyRenderSnapshotOcclusionCulling(
+            layerMetadata,
+            threeDObjectIndexes.length
+          )
+        ) {
           this._applyRenderSnapshotOcclusionCullingForLayer(
             snapshot,
             layerMetadata,
@@ -1616,6 +1704,7 @@ namespace gdjs {
         logger.error('loadFromScene was called without a scene');
         return;
       }
+      this._refreshRenderSnapshotOptimizationSettings();
       const { sceneData, usedExtensionsWithVariablesData } =
         sceneAndExtensionsData;
 
@@ -1870,6 +1959,7 @@ namespace gdjs {
      * or a game stop was requested.
      */
     renderAndStep(elapsedTime: float): boolean {
+      this._refreshRenderSnapshotOptimizationSettingsAndInvalidateIfNeeded();
       if (this._profiler) {
         this._profiler.beginFrame();
       }
@@ -1924,7 +2014,10 @@ namespace gdjs {
       if (this._profiler) {
         this._profiler.end('callbacks and extensions (post-events)');
       }
-      if (renderSnapshotIsolationEnabled) {
+      if (
+        renderSnapshotIsolationEnabled &&
+        !this._isRenderSnapshotCullingDisabled()
+      ) {
         if (this._profiler) {
           this._profiler.begin('render snapshot');
         }
@@ -1951,8 +2044,10 @@ namespace gdjs {
      * Render the scene (but do not execute the game logic).
      */
     render() {
+      this._refreshRenderSnapshotOptimizationSettingsAndInvalidateIfNeeded();
       if (
         renderSnapshotIsolationEnabled &&
+        !this._isRenderSnapshotCullingDisabled() &&
         this._renderSnapshotRead.version === 0
       ) {
         this._buildRenderSnapshot();
@@ -2047,7 +2142,10 @@ namespace gdjs {
      * object is too far from the camera of its layer ("culling").
      */
     _updateObjectsPreRender() {
-      if (!renderSnapshotIsolationEnabled) {
+      if (
+        !renderSnapshotIsolationEnabled ||
+        this._isRenderSnapshotCullingDisabled()
+      ) {
         super._updateObjectsPreRender();
         return;
       }
@@ -2074,10 +2172,18 @@ namespace gdjs {
           continue;
         }
 
-        const isVisible =
+        const isVisibleFromMainThread = this._isObjectVisibleFromRenderSnapshot(
+          snapshot,
+          objectIndex
+        );
+        const isVisibleFromWorker =
           visibilityFromWorker && objectIndex < visibilityFromWorker.length
             ? visibilityFromWorker[objectIndex] === 1
-            : this._isObjectVisibleFromRenderSnapshot(snapshot, objectIndex);
+            : true;
+        // Worker culling is a 2D fast-path and should never override 3D visibility.
+        const isVisible = rendererObject3D
+          ? isVisibleFromMainThread
+          : isVisibleFromMainThread && isVisibleFromWorker;
         if (rendererObject) {
           rendererObject.visible = isVisible;
         }

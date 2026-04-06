@@ -44,6 +44,11 @@ import {
   setProjectScriptingMode,
   type ScriptingMode,
 } from '../Utils/ScriptingMode';
+import {
+  getProjectRenderOcclusionCullingMode,
+  setProjectRenderOcclusionCullingMode,
+  type RenderOcclusionCullingMode,
+} from '../Utils/RenderCullingMode';
 
 type ProjectPropertiesTab = 'properties' | 'loading-screen' | 'icons';
 
@@ -83,6 +88,7 @@ type ProjectProperties = {|
   upscalingMode: string,
   fsrQuality: string,
   fsrSharpness: number,
+  renderOcclusionCullingMode: RenderOcclusionCullingMode,
   minFPS: number,
   maxFPS: number,
   isFolderProject: boolean,
@@ -127,6 +133,7 @@ const loadPropertiesFromProject = (project: gdProject): ProjectProperties => {
       typeof project.getFsrSharpness === 'function'
         ? project.getFsrSharpness()
         : 0.2,
+    renderOcclusionCullingMode: getProjectRenderOcclusionCullingMode(project),
     minFPS: project.getMinimumFPS(),
     maxFPS: project.getMaximumFPS(),
     isFolderProject: project.isFolderProject(),
@@ -174,6 +181,7 @@ function applyPropertiesToProject(
     upscalingMode,
     fsrQuality,
     fsrSharpness,
+    renderOcclusionCullingMode,
     minFPS,
     maxFPS,
     isFolderProject,
@@ -217,6 +225,7 @@ function applyPropertiesToProject(
   if (typeof project.setFsrSharpness === 'function') {
     project.setFsrSharpness(fsrSharpness);
   }
+  setProjectRenderOcclusionCullingMode(project, renderOcclusionCullingMode);
   project.setMinimumFPS(minFPS);
   project.setMaximumFPS(maxFPS);
   project.setFolderProject(isFolderProject);
@@ -305,6 +314,10 @@ const ProjectPropertiesDialog = (props: Props) => {
   let [fsrSharpness, setFsrSharpness] = React.useState(
     initialProperties.fsrSharpness
   );
+  let [renderOcclusionCullingMode, setRenderOcclusionCullingMode] =
+    React.useState<RenderOcclusionCullingMode>(
+      initialProperties.renderOcclusionCullingMode
+    );
   let [
     isAntialisingEnabledOnMobile,
     setAntialisingEnabledOnMobile,
@@ -408,6 +421,7 @@ const ProjectPropertiesDialog = (props: Props) => {
         upscalingMode,
         fsrQuality,
         fsrSharpness,
+        renderOcclusionCullingMode,
         sizeOnStartupMode,
         minFPS,
         maxFPS,
@@ -950,6 +964,48 @@ const ProjectPropertiesDialog = (props: Props) => {
                     notifyOfChange();
                   }}
                 />
+                <SelectField
+                  fullWidth
+                  floatingLabelText={
+                    <Trans>3D occlusion culling policy</Trans>
+                  }
+                  value={renderOcclusionCullingMode}
+                  onChange={(e, i, newRenderOcclusionCullingMode: string) => {
+                    if (
+                      newRenderOcclusionCullingMode ===
+                      renderOcclusionCullingMode
+                    ) {
+                      return;
+                    }
+                    setRenderOcclusionCullingMode(
+                      newRenderOcclusionCullingMode === 'aggressive'
+                        ? 'aggressive'
+                        : newRenderOcclusionCullingMode === 'disabled'
+                        ? 'disabled'
+                        : 'conservative'
+                    );
+                    notifyOfChange();
+                  }}
+                >
+                  <SelectOption
+                    value="conservative"
+                    label={t`Conservative (recommended)`}
+                  />
+                  <SelectOption value="aggressive" label={t`Aggressive`} />
+                  <SelectOption value="disabled" label={t`Disabled`} />
+                </SelectField>
+                {renderOcclusionCullingMode === 'aggressive' && (
+                  <DismissableAlertMessage
+                    identifier="aggressive-occlusion-culling"
+                    kind="warning"
+                  >
+                    <Trans>
+                      Aggressive occlusion culling can improve performance in
+                      heavy scenes, but might hide objects too early depending
+                      on camera setup. Use Conservative for safer rendering.
+                    </Trans>
+                  </DismissableAlertMessage>
+                )}
 
                 <Text size="block-title">
                   <Trans>Project files</Trans>

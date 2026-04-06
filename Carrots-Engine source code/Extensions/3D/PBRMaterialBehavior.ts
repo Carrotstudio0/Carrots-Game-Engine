@@ -3,6 +3,24 @@ namespace gdjs {
   const pbrMaterialRoughnessUserDataKey = '__gdScene3dPbrRoughness';
   const pbrSceneEnvMapIntensityUserDataKey = '__gdScene3dPbrEnvMapIntensity';
   const pbrMaterialScanIntervalFrames = 15;
+  const pbrStableMaterialScanIntervalFrames = 120;
+  const pbrEnvironmentSyncIntervalFrames = 30;
+  const pbrDefaultMetalness = 0;
+  const pbrDefaultRoughness = 0.5;
+  const pbrDefaultEnvMapIntensity = 1.0;
+  const pbrDefaultEmissiveIntensity = 0;
+  const pbrDefaultNormalScale = 1;
+  const pbrDefaultAOMapIntensity = 1;
+
+  interface PBRSharedTextureVariantState {
+    texture: THREE.Texture;
+    refCount: number;
+  }
+
+  const pbrSharedTextureVariantsByKey = new Map<
+    string,
+    PBRSharedTextureVariantState
+  >();
 
   type RuntimeObjectWith3DRenderer = gdjs.RuntimeObject & {
     get3DRendererObject?: () => THREE.Object3D | null;
@@ -13,6 +31,11 @@ namespace gdjs {
     | THREE.MeshPhysicalMaterial;
 
   interface PBRMaterialOriginalState {
+    metalness: number;
+    roughness: number;
+    envMapIntensity: number;
+    emissiveHex: number;
+    emissiveIntensity: number;
     map: THREE.Texture | null;
     normalMap: THREE.Texture | null;
     aoMap: THREE.Texture | null;
@@ -37,8 +60,6 @@ namespace gdjs {
   interface ScenePBREnvironmentState {
     fallbackRenderTarget: THREE.WebGLRenderTarget | null;
     pmremGenerator: THREE.PMREMGenerator | null;
-    lastIntensityUpdateTimeMs: number;
-    sceneEnvMapIntensity: number;
   }
 
   const pbrEnvironmentStateByScene = new WeakMap<
@@ -69,6 +90,9 @@ namespace gdjs {
     private _patchedMeshes: Map<THREE.Mesh, PBRPatchedMeshState>;
     private _textureVariantsByKey: Map<string, THREE.Texture>;
     private _materialScanCounter: number;
+    private _materialScanIntervalFrames: number;
+    private _environmentSyncCounter: number;
+    private _hasPendingTextureResolution: boolean;
 
     constructor(
       instanceContainer: gdjs.RuntimeInstanceContainer,
@@ -124,6 +148,9 @@ namespace gdjs {
       this._patchedMeshes = new Map();
       this._textureVariantsByKey = new Map();
       this._materialScanCounter = pbrMaterialScanIntervalFrames;
+      this._materialScanIntervalFrames = pbrMaterialScanIntervalFrames;
+      this._environmentSyncCounter = pbrEnvironmentSyncIntervalFrames;
+      this._hasPendingTextureResolution = false;
     }
 
     override applyBehaviorOverriding(behaviorData): boolean {
@@ -162,12 +189,18 @@ namespace gdjs {
 
     override onCreated(): void {
       this._materialScanCounter = pbrMaterialScanIntervalFrames;
+      this._materialScanIntervalFrames = pbrMaterialScanIntervalFrames;
+      this._environmentSyncCounter = pbrEnvironmentSyncIntervalFrames;
+      this._hasPendingTextureResolution = false;
       this._patchOwnerMaterials();
       this._ensureEnvironmentFallbackAndSceneIntensity();
     }
 
     override onActivate(): void {
       this._materialScanCounter = pbrMaterialScanIntervalFrames;
+      this._materialScanIntervalFrames = pbrMaterialScanIntervalFrames;
+      this._environmentSyncCounter = pbrEnvironmentSyncIntervalFrames;
+      this._hasPendingTextureResolution = false;
       this._patchOwnerMaterials();
       this._ensureEnvironmentFallbackAndSceneIntensity();
     }
@@ -183,11 +216,22 @@ namespace gdjs {
     override doStepPreEvents(
       instanceContainer: gdjs.RuntimeInstanceContainer
     ): void {
-      this._ensureEnvironmentFallbackAndSceneIntensity();
+      if (this._environmentSyncCounter >= pbrEnvironmentSyncIntervalFrames) {
+        this._environmentSyncCounter = 0;
+        this._ensureEnvironmentFallbackAndSceneIntensity();
+      } else {
+        this._environmentSyncCounter++;
+      }
 
-      if (this._materialScanCounter >= pbrMaterialScanIntervalFrames) {
+      if (this._materialScanCounter >= this._materialScanIntervalFrames) {
         this._materialScanCounter = 0;
-        this._patchOwnerMaterials();
+        const patchResult = this._patchOwnerMaterials();
+        this._materialScanIntervalFrames =
+          patchResult.hasPatchedMeshes &&
+          !patchResult.changed &&
+          !this._hasPendingTextureResolution
+            ? pbrStableMaterialScanIntervalFrames
+            : pbrMaterialScanIntervalFrames;
       } else {
         this._materialScanCounter++;
       }
@@ -285,6 +329,28 @@ namespace gdjs {
       return this._clamp(value, 0, 1);
     }
 
+    private _isNearlyEqual(a: number, b: number, epsilon = 1e-4): boolean {
+      return Math.abs(a - b) <= epsilon;
+    }
+
+    private _hasCustomPBROverrides(): boolean {
+      return !(
+        this._isNearlyEqual(this._metalness, pbrDefaultMetalness) &&
+        this._isNearlyEqual(this._roughness, pbrDefaultRoughness) &&
+        this._isNearlyEqual(this._envMapIntensity, pbrDefaultEnvMapIntensity) &&
+        this._isNearlyEqual(
+          this._emissiveIntensity,
+          pbrDefaultEmissiveIntensity
+        ) &&
+        this._isNearlyEqual(this._normalScale, pbrDefaultNormalScale) &&
+        this._isNearlyEqual(this._aoMapIntensity, pbrDefaultAOMapIntensity) &&
+        this._emissiveColorHex === 0 &&
+        !this._normalMapAsset &&
+        !this._aoMapAsset &&
+        !this._albedoMapAsset
+      );
+    }
+
     private _isSupportedMaterial(
       material: THREE.Material
     ): material is PBRManagedMaterial {
@@ -321,7 +387,6 @@ namespace gdjs {
     private _getThreeSceneAndRenderer(): {
       scene: THREE.Scene;
       renderer: THREE.WebGLRenderer;
-      timeMs: number;
     } | null {
       const runtimeScene = this.owner.getRuntimeScene();
       if (!runtimeScene) {
@@ -347,8 +412,7 @@ namespace gdjs {
       if (!renderer) {
         return null;
       }
-      const timeMs = runtimeScene.getTimeManager().getTimeFromStart();
-      return { scene, renderer, timeMs };
+      return { scene, renderer };
     }
 
     private _getOrCreateEnvironmentState(
@@ -362,8 +426,6 @@ namespace gdjs {
       const state: ScenePBREnvironmentState = {
         fallbackRenderTarget: null,
         pmremGenerator: null,
-        lastIntensityUpdateTimeMs: -1,
-        sceneEnvMapIntensity: 0,
       };
       pbrEnvironmentStateByScene.set(scene, state);
       return state;
@@ -375,20 +437,10 @@ namespace gdjs {
         return;
       }
 
-      const { scene, renderer, timeMs } = sceneAndRenderer;
+      const { scene, renderer } = sceneAndRenderer;
       const state = this._getOrCreateEnvironmentState(scene);
-
-      if (state.lastIntensityUpdateTimeMs !== timeMs) {
-        state.lastIntensityUpdateTimeMs = timeMs;
-        state.sceneEnvMapIntensity = 0;
-      }
-      state.sceneEnvMapIntensity = Math.max(
-        state.sceneEnvMapIntensity,
-        this._envMapIntensity
-      );
       scene.userData = scene.userData || {};
-      scene.userData[pbrSceneEnvMapIntensityUserDataKey] =
-        state.sceneEnvMapIntensity;
+      scene.userData[pbrSceneEnvMapIntensityUserDataKey] = this._envMapIntensity;
 
       if (scene.environment) {
         return;
@@ -462,12 +514,25 @@ namespace gdjs {
       return imageManager;
     }
 
+    private _isPlaceholderTexture(texture: THREE.Texture | null): boolean {
+      if (!texture || !texture.userData) {
+        return false;
+      }
+      return texture.userData.__gdPlaceholderTexture === true;
+    }
+
     private _resolveNormalMapTexture(): THREE.Texture | null {
       if (!this._normalMapAsset) {
+        this._normalMapTextureAsset = '';
+        this._normalMapTexture = null;
         return null;
       }
 
-      if (this._normalMapTextureAsset === this._normalMapAsset) {
+      if (
+        this._normalMapTextureAsset === this._normalMapAsset &&
+        this._normalMapTexture &&
+        !this._isPlaceholderTexture(this._normalMapTexture)
+      ) {
         return this._normalMapTexture;
       }
 
@@ -484,15 +549,25 @@ namespace gdjs {
         this._normalMapTexture = null;
       }
 
+      if (!this._normalMapTexture || this._isPlaceholderTexture(this._normalMapTexture)) {
+        this._hasPendingTextureResolution = true;
+        return null;
+      }
       return this._normalMapTexture;
     }
 
     private _resolveAOMapTexture(): THREE.Texture | null {
       if (!this._aoMapAsset) {
+        this._aoMapTextureAsset = '';
+        this._aoMapTexture = null;
         return null;
       }
 
-      if (this._aoMapTextureAsset === this._aoMapAsset) {
+      if (
+        this._aoMapTextureAsset === this._aoMapAsset &&
+        this._aoMapTexture &&
+        !this._isPlaceholderTexture(this._aoMapTexture)
+      ) {
         return this._aoMapTexture;
       }
 
@@ -509,15 +584,25 @@ namespace gdjs {
         this._aoMapTexture = null;
       }
 
+      if (!this._aoMapTexture || this._isPlaceholderTexture(this._aoMapTexture)) {
+        this._hasPendingTextureResolution = true;
+        return null;
+      }
       return this._aoMapTexture;
     }
 
     private _resolveAlbedoMapTexture(): THREE.Texture | null {
       if (!this._albedoMapAsset) {
+        this._albedoMapTextureAsset = '';
+        this._albedoMapTexture = null;
         return null;
       }
 
-      if (this._albedoMapTextureAsset === this._albedoMapAsset) {
+      if (
+        this._albedoMapTextureAsset === this._albedoMapAsset &&
+        this._albedoMapTexture &&
+        !this._isPlaceholderTexture(this._albedoMapTexture)
+      ) {
         return this._albedoMapTexture;
       }
 
@@ -534,6 +619,10 @@ namespace gdjs {
         this._albedoMapTexture = null;
       }
 
+      if (!this._albedoMapTexture || this._isPlaceholderTexture(this._albedoMapTexture)) {
+        this._hasPendingTextureResolution = true;
+        return null;
+      }
       return this._albedoMapTexture;
     }
 
@@ -578,16 +667,36 @@ namespace gdjs {
         return existingVariant;
       }
 
+      const sharedVariantState = pbrSharedTextureVariantsByKey.get(cacheKey);
+      if (sharedVariantState) {
+        sharedVariantState.refCount += 1;
+        this._textureVariantsByKey.set(cacheKey, sharedVariantState.texture);
+        return sharedVariantState.texture;
+      }
+
       const variant = texture.clone();
       (variant as any).colorSpace = desiredColorSpace;
       variant.needsUpdate = true;
+      pbrSharedTextureVariantsByKey.set(cacheKey, {
+        texture: variant,
+        refCount: 1,
+      });
       this._textureVariantsByKey.set(cacheKey, variant);
       return variant;
     }
 
     private _disposeTextureVariants(): void {
-      for (const texture of this._textureVariantsByKey.values()) {
-        texture.dispose();
+      for (const [cacheKey, texture] of this._textureVariantsByKey.entries()) {
+        const sharedVariantState = pbrSharedTextureVariantsByKey.get(cacheKey);
+        if (sharedVariantState) {
+          sharedVariantState.refCount -= 1;
+          if (sharedVariantState.refCount <= 0) {
+            sharedVariantState.texture.dispose();
+            pbrSharedTextureVariantsByKey.delete(cacheKey);
+          }
+        } else {
+          texture.dispose();
+        }
       }
       this._textureVariantsByKey.clear();
     }
@@ -634,12 +743,21 @@ namespace gdjs {
       aoMapTexture: THREE.Texture | null,
       albedoMapTexture: THREE.Texture | null,
       maxTextureAnisotropy: number
-    ): void {
-      material.metalness = this._metalness;
-      material.roughness = this._roughness;
-      material.envMapIntensity = this._envMapIntensity;
-      material.emissive.setHex(this._emissiveColorHex);
-      material.emissiveIntensity = this._emissiveIntensity;
+    ): boolean {
+      const hasCustomOverrides = this._hasCustomPBROverrides();
+      if (hasCustomOverrides) {
+        material.metalness = this._metalness;
+        material.roughness = this._roughness;
+        material.envMapIntensity = this._envMapIntensity;
+        material.emissive.setHex(this._emissiveColorHex);
+        material.emissiveIntensity = this._emissiveIntensity;
+      } else {
+        material.metalness = originalState.metalness;
+        material.roughness = originalState.roughness;
+        material.envMapIntensity = originalState.envMapIntensity;
+        material.emissive.setHex(originalState.emissiveHex);
+        material.emissiveIntensity = originalState.emissiveIntensity;
+      }
 
       const resolvedNormalMap = this._normalMapAsset
         ? normalMapTexture
@@ -648,6 +766,10 @@ namespace gdjs {
       const resolvedAlbedoMap = this._albedoMapAsset
         ? albedoMapTexture
         : originalState.map;
+
+      const previousMap = material.map;
+      const previousNormalMap = material.normalMap;
+      const previousAOMap = material.aoMap;
 
       material.normalMap = this._getTextureVariant(resolvedNormalMap, 'data');
       material.aoMap = this._getTextureVariant(resolvedAOMap, 'data');
@@ -685,18 +807,28 @@ namespace gdjs {
 
       material.userData = material.userData || {};
       material.userData[pbrManagedMaterialUserDataKey] = true;
-      material.userData[pbrMaterialRoughnessUserDataKey] = this._roughness;
-      material.needsUpdate = true;
+      material.userData[pbrMaterialRoughnessUserDataKey] = material.roughness;
+      if (
+        previousMap !== material.map ||
+        previousNormalMap !== material.normalMap ||
+        previousAOMap !== material.aoMap
+      ) {
+        material.needsUpdate = true;
+        return true;
+      }
+
+      return false;
     }
 
     private _applyParametersToMesh(
       mesh: THREE.Mesh,
       patchState: PBRPatchedMeshState
-    ): void {
+    ): boolean {
       const normalMapTexture = this._resolveNormalMapTexture();
       const aoMapTexture = this._resolveAOMapTexture();
       const albedoMapTexture = this._resolveAlbedoMapTexture();
       const maxTextureAnisotropy = this._getMaxTextureAnisotropy();
+      let changed = false;
 
       const shouldEnsureUv2ForAO =
         (!!this._aoMapAsset && !!aoMapTexture) ||
@@ -706,7 +838,9 @@ namespace gdjs {
         });
 
       if (shouldEnsureUv2ForAO) {
+        const hadPatchedUv2 = patchState.uv2WasPatched;
         this._ensureUv2ForAO(mesh, patchState);
+        changed = changed || hadPatchedUv2 !== patchState.uv2WasPatched;
       }
 
       for (const material of patchState.clonedMaterials) {
@@ -714,20 +848,26 @@ namespace gdjs {
         if (!originalState) {
           continue;
         }
-        this._applyParametersToMaterial(
+        changed = this._applyParametersToMaterial(
           material,
           originalState,
           normalMapTexture,
           aoMapTexture,
           albedoMapTexture,
           maxTextureAnisotropy
-        );
+        ) || changed;
       }
+
+      return changed;
     }
 
     private _applyParametersToPatchedMaterials(): void {
+      this._hasPendingTextureResolution = false;
       for (const [mesh, patchState] of this._patchedMeshes.entries()) {
         this._applyParametersToMesh(mesh, patchState);
+      }
+      if (this._hasPendingTextureResolution) {
+        this._materialScanIntervalFrames = pbrMaterialScanIntervalFrames;
       }
     }
 
@@ -749,15 +889,15 @@ namespace gdjs {
       this._disposeTextureVariants();
     }
 
-    private _patchMeshMaterial(mesh: THREE.Mesh): void {
+    private _patchMeshMaterial(mesh: THREE.Mesh): boolean {
       if (!mesh.material) {
-        return;
+        return false;
       }
 
       const previousState = this._patchedMeshes.get(mesh);
       if (previousState) {
         if (mesh.material === previousState.patchedMaterial) {
-          return;
+          return this._applyParametersToMesh(mesh, previousState);
         }
         this._restorePatchedUv2(previousState);
         this._disposePatchedMeshState(previousState);
@@ -788,6 +928,11 @@ namespace gdjs {
         patchedMaterials[index] = clonedMaterial;
         clonedMaterials.push(clonedMaterial);
         materialStateByClone.set(clonedMaterial, {
+          metalness: clonedMaterial.metalness,
+          roughness: clonedMaterial.roughness,
+          envMapIntensity: clonedMaterial.envMapIntensity,
+          emissiveHex: clonedMaterial.emissive.getHex(),
+          emissiveIntensity: clonedMaterial.emissiveIntensity,
           map: clonedMaterial.map || null,
           normalMap: clonedMaterial.normalMap || null,
           aoMap: clonedMaterial.aoMap || null,
@@ -798,7 +943,7 @@ namespace gdjs {
       }
 
       if (!hasPatchedMaterial) {
-        return;
+        return false;
       }
 
       const appliedMaterial = Array.isArray(originalMaterial)
@@ -823,21 +968,42 @@ namespace gdjs {
       };
       this._patchedMeshes.set(mesh, patchState);
       this._applyParametersToMesh(mesh, patchState);
+      return true;
     }
 
-    private _patchOwnerMaterials(): void {
+    private _patchOwnerMaterials(): { hasPatchedMeshes: boolean; changed: boolean } {
       const owner3DObject = this._getOwner3DObject();
       if (!owner3DObject) {
-        return;
+        if (this._patchedMeshes.size > 0) {
+          this._restorePatchedMeshes();
+          return { hasPatchedMeshes: false, changed: true };
+        }
+        return { hasPatchedMeshes: false, changed: false };
       }
 
+      let changed = false;
+      this._hasPendingTextureResolution = false;
+      const visibleMeshes = new Set<THREE.Mesh>();
       owner3DObject.traverse((object3D) => {
         const mesh = object3D as THREE.Mesh;
         if (!mesh || !mesh.isMesh || !mesh.material) {
           return;
         }
-        this._patchMeshMaterial(mesh);
+        visibleMeshes.add(mesh);
+        changed = this._patchMeshMaterial(mesh) || changed;
       });
+
+      for (const [mesh, state] of this._patchedMeshes.entries()) {
+        if (visibleMeshes.has(mesh)) {
+          continue;
+        }
+        this._restorePatchedUv2(state);
+        this._disposePatchedMeshState(state);
+        this._patchedMeshes.delete(mesh);
+        changed = true;
+      }
+
+      return { hasPatchedMeshes: this._patchedMeshes.size > 0, changed };
     }
   }
 

@@ -15,6 +15,7 @@ import {
   rotatePolygon,
   type Polygon,
 } from '../../Utils/PolygonHelper';
+import { getProjectRenderOcclusionCullingMode } from '../../Utils/RenderCullingMode';
 import Rendered3DInstance from '../../ObjectsRendering/Renderers/Rendered3DInstance';
 import {
   type BasicProfilingCounters,
@@ -703,17 +704,34 @@ export default class LayerRenderer {
      *   should cover most of the cases.
      */
     const margin = 1000;
-    const topLeft = this.viewPosition.toSceneCoordinates(-margin, -margin);
-    const bottomRight = this.viewPosition.toSceneCoordinates(
-      this.viewPosition.getWidth() + margin,
-      this.viewPosition.getHeight() + margin
-    );
+    const viewWidth = this.viewPosition.getWidth();
+    const viewHeight = this.viewPosition.getHeight();
+    const corners = [
+      this.viewPosition.toSceneCoordinates(-margin, -margin),
+      this.viewPosition.toSceneCoordinates(viewWidth + margin, -margin),
+      this.viewPosition.toSceneCoordinates(-margin, viewHeight + margin),
+      this.viewPosition.toSceneCoordinates(viewWidth + margin, viewHeight + margin),
+    ];
 
-    const allFinite =
-      isFinite(topLeft[0]) &&
-      isFinite(topLeft[1]) &&
-      isFinite(bottomRight[0]) &&
-      isFinite(bottomRight[1]);
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    let allFinite = true;
+    for (let i = 0; i < corners.length; i++) {
+      const corner = corners[i];
+      const x = corner[0];
+      const y = corner[1];
+      if (!isFinite(x) || !isFinite(y)) {
+        allFinite = false;
+        break;
+      }
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+
     if (!allFinite) {
       // If camera/zoom becomes invalid, disable culling to avoid invisible scenes.
       this.viewTopLeft = [-1e9, -1e9];
@@ -721,14 +739,28 @@ export default class LayerRenderer {
       return;
     }
 
-    this.viewTopLeft = topLeft;
-    this.viewBottomRight = bottomRight;
+    this.viewTopLeft = [minX, minY];
+    this.viewBottomRight = [maxX, maxY];
+  }
+
+  _isEditorCullingDisabled(): boolean {
+    try {
+      return getProjectRenderOcclusionCullingMode(this.project) === 'disabled';
+    } catch (error) {
+      return false;
+    }
   }
 
   render() {
     resetBasicProfilingCounters(this._basicProfilingCounters);
 
-    this._computeViewBounds();
+    if (this._isEditorCullingDisabled()) {
+      // Mirror runtime behavior in "Disabled" mode: do not hide instances with editor culling.
+      this.viewTopLeft = [-1e9, -1e9];
+      this.viewBottomRight = [1e9, 1e9];
+    } else {
+      this._computeViewBounds();
+    }
     this.instances.iterateOverInstancesWithZOrdering(
       // $FlowFixMe[incompatible-type] - gd.castObject is not supporting typings.
       this.instancesRenderer,

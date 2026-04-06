@@ -5247,6 +5247,314 @@ module.exports = {
       .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
       .addIncludeFile('Extensions/3D/RectAreaLightRuntimeObject.js');
 
+    const SoundEmitterObject = new gd.ObjectJsImplementation();
+    SoundEmitterObject.updateProperty = function (propertyName, newValue) {
+      const objectContent = this.content;
+      if (
+        propertyName === 'width' ||
+        propertyName === 'height' ||
+        propertyName === 'depth' ||
+        propertyName === 'volume' ||
+        propertyName === 'pitch' ||
+        propertyName === 'channel' ||
+        propertyName === 'refDistance' ||
+        propertyName === 'maxDistance' ||
+        propertyName === 'rolloffFactor' ||
+        propertyName === 'coneInnerAngle' ||
+        propertyName === 'coneOuterAngle' ||
+        propertyName === 'coneOuterGain'
+      ) {
+        objectContent[propertyName] = parseFloat(newValue);
+        return true;
+      }
+      if (propertyName === 'soundResourceName') {
+        objectContent.soundResourceName = newValue;
+        return true;
+      }
+      if (propertyName === 'distanceModel') {
+        const normalizedValue = newValue.toLowerCase();
+        if (normalizedValue === 'inverse' || normalizedValue === 'linear') {
+          objectContent.distanceModel = normalizedValue;
+          return true;
+        }
+        return false;
+      }
+      if (propertyName === 'panningModel') {
+        const normalizedValue = newValue.toLowerCase();
+        if (normalizedValue === 'hrtf') {
+          objectContent.panningModel = 'HRTF';
+          return true;
+        }
+        if (normalizedValue === 'equalpower') {
+          objectContent.panningModel = 'equalpower';
+          return true;
+        }
+        return false;
+      }
+      if (
+        propertyName === 'enabled' ||
+        propertyName === 'autoPlay' ||
+        propertyName === 'loop' ||
+        propertyName === 'followObjectRotation' ||
+        propertyName === 'showDebugGizmos'
+      ) {
+        objectContent[propertyName] = newValue === '1' || newValue === 'true';
+        return true;
+      }
+      return false;
+    };
+    SoundEmitterObject.getProperties = function () {
+      const objectProperties = new gd.MapStringPropertyDescriptor();
+      const objectContent = this.content;
+
+      objectProperties
+        .getOrCreate('enabled')
+        .setValue(objectContent.enabled ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Enabled'))
+        .setGroup(_('Sound'));
+      objectProperties
+        .getOrCreate('soundResourceName')
+        .setValue(objectContent.soundResourceName || '')
+        .setType('resource')
+        .addExtraInfo('audio')
+        .setLabel(_('Sound file'))
+        .setGroup(_('Sound'));
+      objectProperties
+        .getOrCreate('autoPlay')
+        .setValue(
+          objectContent.autoPlay === undefined || objectContent.autoPlay
+            ? 'true'
+            : 'false'
+        )
+        .setType('boolean')
+        .setLabel(_('Auto play'))
+        .setGroup(_('Sound'));
+      objectProperties
+        .getOrCreate('loop')
+        .setValue(
+          objectContent.loop === undefined || objectContent.loop ? 'true' : 'false'
+        )
+        .setType('boolean')
+        .setLabel(_('Loop'))
+        .setGroup(_('Sound'));
+      objectProperties
+        .getOrCreate('volume')
+        .setValue((objectContent.volume !== undefined ? objectContent.volume : 100).toString())
+        .setType('number')
+        .setLabel(_('Volume (%)'))
+        .setGroup(_('Sound'));
+      objectProperties
+        .getOrCreate('pitch')
+        .setValue((objectContent.pitch !== undefined ? objectContent.pitch : 1).toString())
+        .setType('number')
+        .setLabel(_('Pitch'))
+        .setGroup(_('Sound'));
+      objectProperties
+        .getOrCreate('channel')
+        .setValue(
+          (objectContent.channel !== undefined ? objectContent.channel : -1).toString()
+        )
+        .setType('number')
+        .setLabel(_('Channel'))
+        .setDescription(
+          _(
+            'Use -1 for automatic dedicated channel per object. Use a fixed number to share/control a channel manually.'
+          )
+        )
+        .setGroup(_('Sound'))
+        .setAdvanced(true);
+
+      objectProperties
+        .getOrCreate('refDistance')
+        .setValue(
+          (
+            objectContent.refDistance !== undefined ? objectContent.refDistance : 180
+          ).toString()
+        )
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Reference distance'))
+        .setGroup(_('Spatial'));
+      objectProperties
+        .getOrCreate('maxDistance')
+        .setValue(
+          (
+            objectContent.maxDistance !== undefined ? objectContent.maxDistance : 1200
+          ).toString()
+        )
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Max distance'))
+        .setGroup(_('Spatial'));
+      objectProperties
+        .getOrCreate('rolloffFactor')
+        .setValue(
+          (
+            objectContent.rolloffFactor !== undefined
+              ? objectContent.rolloffFactor
+              : 1
+          ).toString()
+        )
+        .setType('number')
+        .setLabel(_('Rolloff factor'))
+        .setGroup(_('Spatial'));
+      objectProperties
+        .getOrCreate('distanceModel')
+        .setValue(objectContent.distanceModel || 'inverse')
+        .setType('choice')
+        .addChoice('inverse', _('Inverse'))
+        .addChoice('linear', _('Linear'))
+        .setLabel(_('Distance model'))
+        .setGroup(_('Spatial'));
+      objectProperties
+        .getOrCreate('panningModel')
+        .setValue(objectContent.panningModel || 'HRTF')
+        .setType('choice')
+        .addChoice('HRTF', _('HRTF (high quality)'))
+        .addChoice('equalpower', _('Equal power'))
+        .setLabel(_('Panning model'))
+        .setGroup(_('Spatial'));
+
+      objectProperties
+        .getOrCreate('followObjectRotation')
+        .setValue(objectContent.followObjectRotation ? 'true' : 'false')
+        .setType('boolean')
+        .setLabel(_('Use object rotation as sound direction'))
+        .setGroup(_('Cone'));
+      objectProperties
+        .getOrCreate('coneInnerAngle')
+        .setValue(
+          (
+            objectContent.coneInnerAngle !== undefined
+              ? objectContent.coneInnerAngle
+              : 360
+          ).toString()
+        )
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getDegreeAngle())
+        .setLabel(_('Cone inner angle'))
+        .setGroup(_('Cone'));
+      objectProperties
+        .getOrCreate('coneOuterAngle')
+        .setValue(
+          (
+            objectContent.coneOuterAngle !== undefined
+              ? objectContent.coneOuterAngle
+              : 360
+          ).toString()
+        )
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getDegreeAngle())
+        .setLabel(_('Cone outer angle'))
+        .setGroup(_('Cone'));
+      objectProperties
+        .getOrCreate('coneOuterGain')
+        .setValue(
+          (
+            objectContent.coneOuterGain !== undefined
+              ? objectContent.coneOuterGain
+              : 0
+          ).toString()
+        )
+        .setType('number')
+        .setLabel(_('Cone outer gain'))
+        .setGroup(_('Cone'));
+
+      objectProperties
+        .getOrCreate('showDebugGizmos')
+        .setValue(
+          objectContent.showDebugGizmos === undefined || objectContent.showDebugGizmos
+            ? 'true'
+            : 'false'
+        )
+        .setType('boolean')
+        .setLabel(_('Show debug gizmos'))
+        .setDescription(_('Show attenuation range wireframe in editor and preview.'))
+        .setGroup(_('Editor'))
+        .setAdvanced(true);
+
+      objectProperties
+        .getOrCreate('width')
+        .setValue((objectContent.width || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo width'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('height')
+        .setValue((objectContent.height || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo height'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+      objectProperties
+        .getOrCreate('depth')
+        .setValue((objectContent.depth || 24).toString())
+        .setType('number')
+        .setMeasurementUnit(gd.MeasurementUnit.getPixel())
+        .setLabel(_('Gizmo depth'))
+        .setGroup(_('Advanced'))
+        .setAdvanced(true);
+
+      return objectProperties;
+    };
+    SoundEmitterObject.content = {
+      width: 64,
+      height: 64,
+      depth: 64,
+      enabled: true,
+      soundResourceName: '',
+      autoPlay: true,
+      loop: true,
+      volume: 100,
+      pitch: 1,
+      channel: -1,
+      refDistance: 180,
+      maxDistance: 1200,
+      rolloffFactor: 1,
+      distanceModel: 'inverse',
+      panningModel: 'HRTF',
+      coneInnerAngle: 360,
+      coneOuterAngle: 360,
+      coneOuterGain: 0,
+      followObjectRotation: false,
+      showDebugGizmos: true,
+    };
+    SoundEmitterObject.updateInitialInstanceProperty = function (
+      instance,
+      propertyName,
+      newValue
+    ) {
+      return false;
+    };
+    SoundEmitterObject.getInitialInstanceProperties = function (instance) {
+      return new gd.MapStringPropertyDescriptor();
+    };
+
+    extension
+      .addObject(
+        'SoundEmitterObject',
+        _('3D Sound Emitter'),
+        _(
+          'A 3D sound emitter object with transform gizmos, hidden box picking and spatial audio.'
+        ),
+        'res/actions/son24.png',
+        SoundEmitterObject
+      )
+      .setCategory('General')
+      .addDefaultBehavior('ResizableCapability::ResizableBehavior')
+      .addDefaultBehavior('ScalableCapability::ScalableBehavior')
+      .addDefaultBehavior('FlippableCapability::FlippableBehavior')
+      .addDefaultBehavior('Scene3D::Base3DBehavior')
+      .markAsRenderedIn3D()
+      .setIncludeFile('Extensions/3D/A_RuntimeObject3D.js')
+      .addIncludeFile('Extensions/3D/A_RuntimeObject3DRenderer.js')
+      .addIncludeFile('Extensions/3D/SoundEmitterRuntimeObject.js')
+      .addIncludeFile('Extensions/SpatialSound/howler.spatial.min.js');
+
     extension
       .addExpressionAndConditionAndAction(
         'number',
@@ -9373,6 +9681,72 @@ module.exports = {
         logoFaceMaterial,
       };
     };
+    let soundObjectIconTexture = null;
+    const getSoundObjectIconTexture = () => {
+      if (soundObjectIconTexture) return soundObjectIconTexture;
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 128;
+      const context = canvas.getContext('2d');
+      if (context) {
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = 'rgba(0,0,0,0)';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+
+        context.fillStyle = '#ffffff';
+        context.beginPath();
+        context.moveTo(32, 50);
+        context.lineTo(52, 50);
+        context.lineTo(73, 34);
+        context.lineTo(73, 94);
+        context.lineTo(52, 78);
+        context.lineTo(32, 78);
+        context.closePath();
+        context.fill();
+
+        context.strokeStyle = '#ffffff';
+        context.lineWidth = 8;
+        context.beginPath();
+        context.arc(76, 64, 18, -0.8, 0.8);
+        context.stroke();
+        context.lineWidth = 6;
+        context.beginPath();
+        context.arc(76, 64, 30, -0.8, 0.8);
+        context.stroke();
+      }
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.needsUpdate = true;
+      texture.magFilter = THREE.LinearFilter;
+      texture.minFilter = THREE.LinearMipmapLinearFilter;
+      if ('colorSpace' in texture && THREE.SRGBColorSpace) {
+        texture.colorSpace = THREE.SRGBColorSpace;
+      }
+      soundObjectIconTexture = texture;
+      return soundObjectIconTexture;
+    };
+    const createSoundObjectBoxMaterials = () => {
+      const logoFaceMaterial = new THREE.MeshBasicMaterial({
+        map: getSoundObjectIconTexture(),
+        color: 0xffffff,
+        transparent: true,
+        alphaTest: 0.05,
+        depthWrite: false,
+        depthTest: false,
+        side: THREE.DoubleSide,
+      });
+      const materials = [
+        logoFaceMaterial,
+        createInvisibleLightFaceMaterial(),
+        createInvisibleLightFaceMaterial(),
+        createInvisibleLightFaceMaterial(),
+        createInvisibleLightFaceMaterial(),
+        createInvisibleLightFaceMaterial(),
+      ];
+      return {
+        materials,
+        logoFaceMaterial,
+      };
+    };
     const parseEditorColorToHex = (colorValue, fallback = '255;255;255') =>
       objectsRenderingService.rgbOrHexToHexNumber(
         colorValue && typeof colorValue === 'string' ? colorValue : fallback
@@ -10694,6 +11068,309 @@ module.exports = {
     objectsRenderingService.registerInstance3DRenderer(
       'Scene3D::RectAreaLightObject',
       RenderedRectAreaLightObject3DInstance
+    );
+
+    class RenderedSoundEmitterObject2DInstance extends RenderedInstance {
+      _defaultWidth = 24;
+      _defaultHeight = 24;
+      _defaultDepth = 24;
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          pixiResourcesLoader
+        );
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 24;
+        this._defaultHeight = object.content.height || 24;
+        this._defaultDepth = object.content.depth || 24;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+      }
+
+      static getThumbnail(_project, _resourcesLoader, _objectConfiguration) {
+        return 'res/actions/son24.png';
+      }
+
+      update() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const halfW = width / 2;
+        const halfH = height / 2;
+
+        this._pixiObject.clear();
+        this._pixiObject.lineStyle(2, 0xc8e6ff, 0.95);
+        this._pixiObject.beginFill(0xc8e6ff, 0.22);
+        this._pixiObject.drawRoundedRect(
+          -halfW * 0.45,
+          -halfH * 0.2,
+          Math.max(10, width * 0.32),
+          Math.max(10, height * 0.4),
+          Math.max(3, Math.min(width, height) * 0.1)
+        );
+        this._pixiObject.endFill();
+        this._pixiObject.lineStyle(2, 0xc8e6ff, 0.95);
+        this._pixiObject.moveTo(-halfW * 0.13, -halfH * 0.33);
+        this._pixiObject.lineTo(halfW * 0.18, -halfH * 0.5);
+        this._pixiObject.lineTo(halfW * 0.18, halfH * 0.5);
+        this._pixiObject.lineTo(-halfW * 0.13, halfH * 0.33);
+        this._pixiObject.lineTo(-halfW * 0.13, -halfH * 0.33);
+        this._pixiObject.arc(halfW * 0.2, 0, Math.max(6, Math.min(width, height) * 0.16), -0.8, 0.8);
+        this._pixiObject.arc(halfW * 0.22, 0, Math.max(10, Math.min(width, height) * 0.28), -0.8, 0.8);
+
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    class RenderedSoundEmitterObject3DInstance extends Rendered3DInstance {
+      _defaultWidth = 24;
+      _defaultHeight = 24;
+      _defaultDepth = 24;
+      /** @type {THREE.MeshBasicMaterial | null} */
+      _logoFaceMaterial = null;
+      /** @type {THREE.Mesh | null} */
+      _selectionProxyMesh = null;
+      /** @type {THREE.LineSegments | null} */
+      _rangeLines = null;
+      _rangeSignature = '';
+
+      constructor(
+        project,
+        instance,
+        associatedObjectConfiguration,
+        pixiContainer,
+        threeGroup,
+        pixiResourcesLoader
+      ) {
+        super(
+          project,
+          instance,
+          associatedObjectConfiguration,
+          pixiContainer,
+          threeGroup,
+          pixiResourcesLoader
+        );
+
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        this._defaultWidth = object.content.width || 24;
+        this._defaultHeight = object.content.height || 24;
+        this._defaultDepth = object.content.depth || 24;
+
+        this._pixiObject = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiObject);
+        const { materials: boxMaterials, logoFaceMaterial } =
+          createSoundObjectBoxMaterials();
+        const selectionProxyMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(1, 1, 1),
+          boxMaterials
+        );
+        selectionProxyMesh.rotation.order = 'ZYX';
+        selectionProxyMesh.userData = selectionProxyMesh.userData || {};
+        selectionProxyMesh.userData.__gdLightObjectPick = true;
+        selectionProxyMesh.userData.__gdLightObjectType = 'sound';
+        this._logoFaceMaterial = logoFaceMaterial;
+        this._selectionProxyMesh = selectionProxyMesh;
+        this._threeObject = selectionProxyMesh;
+        this._threeGroup.add(selectionProxyMesh);
+
+        const rangeLines = new THREE.LineSegments(
+          new THREE.BufferGeometry(),
+          new THREE.LineBasicMaterial({
+            color: 0x9edbff,
+            transparent: true,
+            opacity: 0.78,
+            depthWrite: false,
+            depthTest: false,
+          })
+        );
+        rangeLines.frustumCulled = false;
+        rangeLines.renderOrder = 9998;
+        this._rangeLines = rangeLines;
+        this._threeGroup.add(rangeLines);
+      }
+
+      onRemovedFromScene() {
+        super.onRemovedFromScene();
+        if (this._pixiObject) {
+          this._pixiObject.destroy({ children: true });
+        }
+        if (this._selectionProxyMesh) {
+          this._threeGroup.remove(this._selectionProxyMesh);
+        }
+        if (this._rangeLines) {
+          this._threeGroup.remove(this._rangeLines);
+        }
+        if (this._selectionProxyMesh && this._selectionProxyMesh.geometry) {
+          this._selectionProxyMesh.geometry.dispose();
+        }
+        if (this._selectionProxyMesh && this._selectionProxyMesh.material) {
+          const material = this._selectionProxyMesh.material;
+          if (Array.isArray(material)) {
+            material.forEach((entry) => entry && entry.dispose && entry.dispose());
+          } else if (material && material.dispose) {
+            material.dispose();
+          }
+        }
+        if (this._rangeLines && this._rangeLines.geometry) {
+          this._rangeLines.geometry.dispose();
+        }
+        if (this._rangeLines && this._rangeLines.material) {
+          const rangeMaterial = /** @type {any} */ (this._rangeLines.material);
+          if (rangeMaterial && rangeMaterial.dispose) {
+            rangeMaterial.dispose();
+          }
+        }
+      }
+
+      updatePixiObject() {
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const halfW = width / 2;
+        const halfH = height / 2;
+
+        this._pixiObject.clear();
+        this._pixiObject.lineStyle(2, 0xc8e6ff, 0.95);
+        this._pixiObject.beginFill(0xc8e6ff, 0.22);
+        this._pixiObject.drawRoundedRect(
+          -halfW * 0.45,
+          -halfH * 0.2,
+          Math.max(10, width * 0.32),
+          Math.max(10, height * 0.4),
+          Math.max(3, Math.min(width, height) * 0.1)
+        );
+        this._pixiObject.endFill();
+        this._pixiObject.lineStyle(2, 0xc8e6ff, 0.95);
+        this._pixiObject.moveTo(-halfW * 0.13, -halfH * 0.33);
+        this._pixiObject.lineTo(halfW * 0.18, -halfH * 0.5);
+        this._pixiObject.lineTo(halfW * 0.18, halfH * 0.5);
+        this._pixiObject.lineTo(-halfW * 0.13, halfH * 0.33);
+        this._pixiObject.lineTo(-halfW * 0.13, -halfH * 0.33);
+        this._pixiObject.arc(halfW * 0.2, 0, Math.max(6, Math.min(width, height) * 0.16), -0.8, 0.8);
+        this._pixiObject.arc(halfW * 0.22, 0, Math.max(10, Math.min(width, height) * 0.28), -0.8, 0.8);
+
+        this._pixiObject.position.x = this._instance.getX() + width / 2;
+        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.angle = this._instance.getAngle();
+      }
+
+      updateThreeObject() {
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        const content = object.content || {};
+
+        this._defaultWidth = content.width || this._defaultWidth;
+        this._defaultHeight = content.height || this._defaultHeight;
+        this._defaultDepth = content.depth || this._defaultDepth;
+
+        const width = this.getWidth();
+        const height = this.getHeight();
+        const depth = this.getDepth();
+        const scaleX = width * (this._instance.isFlippedX() ? -1 : 1);
+        const scaleY = height * (this._instance.isFlippedY() ? -1 : 1);
+        const scaleZ = depth * (this._instance.isFlippedZ() ? -1 : 1);
+        const positionX = this._instance.getX() + width / 2;
+        const positionY = this._instance.getY() + height / 2;
+        const positionZ = this._instance.getZ() + depth / 2;
+        const rotationX = (this._instance.getRotationX() * Math.PI) / 180;
+        const rotationY = (this._instance.getRotationY() * Math.PI) / 180;
+        const rotationZ = (this._instance.getAngle() * Math.PI) / 180;
+        const selectionProxyMesh = this._selectionProxyMesh;
+        if (!selectionProxyMesh) return;
+        selectionProxyMesh.position.set(positionX, positionY, positionZ);
+        selectionProxyMesh.rotation.set(rotationX, rotationY, rotationZ);
+        selectionProxyMesh.scale.set(scaleX, scaleY, scaleZ);
+
+        const safeVolume = Math.max(
+          0,
+          Math.min(100, Number.isFinite(content.volume) ? content.volume : 100)
+        );
+        const brightness = 0.55 + (safeVolume / 100) * 0.45;
+        const logoFaceMaterial = this._logoFaceMaterial;
+        if (logoFaceMaterial && logoFaceMaterial.color) {
+          logoFaceMaterial.color.setRGB(brightness, brightness, brightness);
+        }
+
+        const enabled = content.enabled === undefined ? true : !!content.enabled;
+        const showDebugGizmos =
+          content.showDebugGizmos === undefined ? true : !!content.showDebugGizmos;
+        const safeMaxDistance = Math.max(
+          10,
+          Number.isFinite(content.maxDistance) ? content.maxDistance : 1200
+        );
+
+        const rangeLines = this._rangeLines;
+        if (rangeLines) {
+          rangeLines.visible = enabled && showDebugGizmos;
+          rangeLines.position.set(positionX, positionY, positionZ);
+          const rangeSignature = safeMaxDistance.toFixed(3);
+          if (this._rangeSignature !== rangeSignature) {
+            this._rangeSignature = rangeSignature;
+            const oldGeometry = rangeLines.geometry;
+            rangeLines.geometry = createPointLightRangeWireGeometry(safeMaxDistance);
+            if (oldGeometry) {
+              oldGeometry.dispose();
+            }
+          }
+        }
+      }
+
+      update() {
+        this.updatePixiObject();
+        this.updateThreeObject();
+      }
+
+      getDefaultWidth() {
+        return this._defaultWidth;
+      }
+
+      getDefaultHeight() {
+        return this._defaultHeight;
+      }
+
+      getDefaultDepth() {
+        return this._defaultDepth;
+      }
+    }
+
+    objectsRenderingService.registerInstanceRenderer(
+      'Scene3D::SoundEmitterObject',
+      RenderedSoundEmitterObject2DInstance
+    );
+    objectsRenderingService.registerInstance3DRenderer(
+      'Scene3D::SoundEmitterObject',
+      RenderedSoundEmitterObject3DInstance
     );
 
     const epsilon = 1 / (1 << 16);

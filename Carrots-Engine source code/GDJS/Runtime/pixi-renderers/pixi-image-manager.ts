@@ -193,11 +193,26 @@ namespace gdjs {
      * @returns The requested texture, or a placeholder if not found.
      */
     getThreeTexture(resourceName: string): THREE.Texture {
+      const pixiTexture = this._getPixiTextureForThreeResource(resourceName);
+      const image = this._getImageSource(resourceName, pixiTexture);
+      const isPlaceholderTexture = pixiTexture === this._invalidTexture;
+      const resource = this._getImageResource(resourceName);
       const loadedThreeTexture = this._loadedThreeTextures.get(resourceName);
       if (loadedThreeTexture) {
+        const hasSameImage = loadedThreeTexture.image === image;
+        const hasSamePlaceholderFlag =
+          this._isThreeTexturePlaceholder(loadedThreeTexture) ===
+          isPlaceholderTexture;
+        if (!hasSameImage || !hasSamePlaceholderFlag) {
+          loadedThreeTexture.image = image;
+          loadedThreeTexture.needsUpdate = true;
+          if (resource) {
+            applyThreeTextureSettings(loadedThreeTexture, resource);
+          }
+          this._setThreeTexturePlaceholder(loadedThreeTexture, isPlaceholderTexture);
+        }
         return loadedThreeTexture;
       }
-      const image = this._getImageSource(resourceName);
 
       const threeTexture = new THREE.Texture(image);
       threeTexture.magFilter = THREE.LinearFilter;
@@ -206,8 +221,7 @@ namespace gdjs {
       threeTexture.wrapT = THREE.RepeatWrapping;
       threeTexture.colorSpace = THREE.SRGBColorSpace;
       threeTexture.needsUpdate = true;
-
-      const resource = this._getImageResource(resourceName);
+      this._setThreeTexturePlaceholder(threeTexture, isPlaceholderTexture);
 
       applyThreeTextureSettings(threeTexture, resource);
       this._loadedThreeTextures.put(resourceName, threeTexture);
@@ -215,18 +229,44 @@ namespace gdjs {
       return threeTexture;
     }
 
-    private _getImageSource(resourceName: string): HTMLImageElement {
+    private _getPixiTextureForThreeResource(resourceName: string): PIXI.Texture {
+      const resource = this._getImageResource(resourceName);
+      if (!resource) {
+        logger.warn(
+          'Unable to find texture for resource "' + resourceName + '".'
+        );
+        return this._invalidTexture;
+      }
+      const loadedTexture = this._loadedTextures.get(resource);
+      return loadedTexture || this._invalidTexture;
+    }
+
+    private _isThreeTexturePlaceholder(texture: THREE.Texture): boolean {
+      return !!(
+        texture.userData &&
+        texture.userData.__gdPlaceholderTexture === true
+      );
+    }
+
+    private _setThreeTexturePlaceholder(
+      texture: THREE.Texture,
+      isPlaceholder: boolean
+    ): void {
+      texture.userData = texture.userData || {};
+      texture.userData.__gdPlaceholderTexture = isPlaceholder;
+    }
+
+    private _getImageSource(
+      resourceName: string,
+      pixiTexture?: PIXI.Texture
+    ): HTMLImageElement {
       // Texture is not loaded, load it now from the PixiJS texture.
       // TODO (3D) - optimization: don't load the PixiJS Texture if not used by PixiJS.
       // TODO (3D) - optimization: Ideally we could even share the same WebGL texture.
-      const pixiTexture = this.getPIXITexture(resourceName);
-      const pixiRenderer = this._resourceLoader._runtimeGame
-        .getRenderer()
-        .getPIXIRenderer();
-      if (!pixiRenderer) throw new Error('No PIXI renderer was found.');
+      const sourceTexture = pixiTexture || this.getPIXITexture(resourceName);
 
       // @ts-ignore - source does exist on resource.
-      const image = pixiTexture.baseTexture.resource.source;
+      const image = sourceTexture.baseTexture.resource.source;
       if (!(image instanceof HTMLImageElement)) {
         throw new Error(
           `Can't load texture for resource "${resourceName}" as it's not an image.`
@@ -262,20 +302,57 @@ namespace gdjs {
         '|' +
         zNegativeResourceName;
       const loadedThreeTexture = this._loadedThreeCubeTextures.get(key);
+      const images = [
+        this._getImageSource(
+          xNegativeResourceName,
+          this._getPixiTextureForThreeResource(xNegativeResourceName)
+        ),
+        this._getImageSource(
+          xPositiveResourceName,
+          this._getPixiTextureForThreeResource(xPositiveResourceName)
+        ),
+        this._getImageSource(
+          yPositiveResourceName,
+          this._getPixiTextureForThreeResource(yPositiveResourceName)
+        ),
+        this._getImageSource(
+          yNegativeResourceName,
+          this._getPixiTextureForThreeResource(yNegativeResourceName)
+        ),
+        this._getImageSource(
+          zPositiveResourceName,
+          this._getPixiTextureForThreeResource(zPositiveResourceName)
+        ),
+        this._getImageSource(
+          zNegativeResourceName,
+          this._getPixiTextureForThreeResource(zNegativeResourceName)
+        ),
+      ];
       if (loadedThreeTexture) {
+        let hasChanged = false;
+        for (let index = 0; index < images.length; index++) {
+          if (loadedThreeTexture.images[index] === images[index]) {
+            continue;
+          }
+          loadedThreeTexture.images[index] = images[index];
+          hasChanged = true;
+        }
+        if (hasChanged) {
+          loadedThreeTexture.needsUpdate = true;
+        }
         return loadedThreeTexture;
       }
 
       const cubeTexture = new THREE.CubeTexture();
       // Faces on X axis need to be swapped.
-      cubeTexture.images[0] = this._getImageSource(xNegativeResourceName);
-      cubeTexture.images[1] = this._getImageSource(xPositiveResourceName);
+      cubeTexture.images[0] = images[0];
+      cubeTexture.images[1] = images[1];
       // Faces on Y keep the same order.
-      cubeTexture.images[2] = this._getImageSource(yPositiveResourceName);
-      cubeTexture.images[3] = this._getImageSource(yNegativeResourceName);
+      cubeTexture.images[2] = images[2];
+      cubeTexture.images[3] = images[3];
       // Faces on Z keep the same order.
-      cubeTexture.images[4] = this._getImageSource(zPositiveResourceName);
-      cubeTexture.images[5] = this._getImageSource(zNegativeResourceName);
+      cubeTexture.images[4] = images[4];
+      cubeTexture.images[5] = images[5];
       // The images also need to be mirrored horizontally by users.
 
       cubeTexture.magFilter = THREE.LinearFilter;

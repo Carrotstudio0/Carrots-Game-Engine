@@ -15,7 +15,6 @@ import {
 } from '../UI/Search/UseSearchStructuredItem';
 import PreferencesContext from '../MainFrame/Preferences/PreferencesContext';
 import { OBJECTS_FETCH_TIMEOUT } from '../Utils/GlobalFetchTimeouts';
-import { translateExtensionCategory } from '../Utils/Extension/ExtensionCategories';
 
 const gd: libGDevelop = global.gd;
 
@@ -24,15 +23,6 @@ const emptySearchText = '';
 // $FlowFixMe[underconstrained-implicit-instantiation]
 const noExcludedTiers = new Set();
 const excludedExperimentalTiers = new Set(['experimental']);
-
-const builtInObjectCategories = [
-  'General',
-  'Input',
-  'Text',
-  'User interface',
-  'Visual effect',
-  'Advanced',
-];
 
 const builtInObjectTypes = [
   'Sprite',
@@ -65,60 +55,180 @@ export type ObjectCategory = {
   tier: '',
 };
 
-const getCategoryId = (name: string) => `category-${name}`;
+const getSectionId = (name: string) => `section-${name}`;
 
-const getItemIdsGroupedByCategory = (
-  firstObjectShortHeaders: Array<ObjectShortHeader>,
-  installedObjectShortHeaders: Array<ObjectShortHeader>
-): Array<string> => {
-  const sortedInstalledObjectShortHeaders = [...firstObjectShortHeaders];
-  for (const installedObjectShortHeader of installedObjectShortHeaders) {
-    if (
-      !firstObjectShortHeaders.some(
-        firstObjectShortHeader =>
-          firstObjectShortHeader.type === installedObjectShortHeader.type
-      )
-    ) {
-      sortedInstalledObjectShortHeaders.push(installedObjectShortHeader);
-    }
-  }
-  const objectsByCategory = new Map<string, Array<ObjectShortHeader>>();
-  // Ensure order for categories without any built-in object.
-  for (const builtInObjectCategory of builtInObjectCategories) {
-    objectsByCategory.set(builtInObjectCategory, []);
-  }
-  for (const objectShortHeader of sortedInstalledObjectShortHeaders) {
-    const category = objectShortHeader.category;
-    let categoryObjects = objectsByCategory.get(category);
-    if (!categoryObjects) {
-      categoryObjects = [];
-      objectsByCategory.set(category, categoryObjects);
-    }
-    categoryObjects.push(objectShortHeader);
-  }
-  const itemIdsGroupedByCategory = [];
-  for (const [category, objectShortHeaders] of objectsByCategory) {
-    if (objectShortHeaders.length === 0) {
-      continue;
-    }
-    itemIdsGroupedByCategory.push(getCategoryId(category));
-    for (const objectShortHeader of objectShortHeaders) {
-      itemIdsGroupedByCategory.push(objectShortHeader.type);
-    }
-  }
-  return itemIdsGroupedByCategory;
+type ObjectSection = {|
+  key: string,
+  name: string,
+|};
+
+const getObjectSections = (i18n: I18nType): Array<ObjectSection> => [
+  { key: 'featured', name: i18n._('Most used') },
+  { key: 'scene-2d', name: i18n._('2D objects') },
+  { key: 'scene-3d', name: i18n._('3D objects') },
+  { key: 'lights-audio', name: i18n._('Lights and audio') },
+  { key: 'ui-input', name: i18n._('UI and input') },
+  { key: 'physics-gameplay', name: i18n._('Physics and gameplay') },
+  { key: 'effects', name: i18n._('Visual effects') },
+  { key: 'network', name: i18n._('Network and online') },
+  { key: 'other', name: i18n._('Other objects') },
+];
+
+const keywordMatch = (source: string, keywords: Array<string>) =>
+  keywords.some(keyword => source.includes(keyword));
+
+const getObjectSectionKey = (
+  objectShortHeader: ObjectShortHeader,
+  featuredTypes: Set<string>
+): string => {
+  if (featuredTypes.has(objectShortHeader.type)) return 'featured';
+
+  const category = (objectShortHeader.category || '').toLowerCase();
+  const tags = (objectShortHeader.tags || []).map(tag =>
+    String(tag).toLowerCase()
+  );
+  const searchableText = [
+    objectShortHeader.type || '',
+    objectShortHeader.name || '',
+    objectShortHeader.fullName || '',
+    objectShortHeader.description || '',
+    category,
+    ...tags,
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  const isNetwork =
+    category === 'network' ||
+    keywordMatch(searchableText, ['multiplayer', 'network', 'lobby', 'online']);
+  if (isNetwork) return 'network';
+
+  const hasLightsOrAudio = keywordMatch(searchableText, [
+    'light',
+    'spotlight',
+    'pointlight',
+    'directional',
+    'rectarea',
+    'audio',
+    'sound',
+    'music',
+    'listener',
+    'reverb',
+  ]);
+  if (hasLightsOrAudio) return 'lights-audio';
+
+  const is3D =
+    keywordMatch(searchableText, [' 3d', '3d ', 'scene3d::']) ||
+    tags.some(tag => tag === '3d');
+  if (is3D) return 'scene-3d';
+
+  const isUiOrInput =
+    category === 'user interface' ||
+    category === 'input' ||
+    category === 'text' ||
+    keywordMatch(searchableText, [
+      'ui',
+      'button',
+      'text',
+      'input',
+      'touch',
+      'joystick',
+      'slider',
+      'toggle',
+      'dialog',
+      'hud',
+    ]);
+  if (isUiOrInput) return 'ui-input';
+
+  const isPhysicsOrGameplay =
+    category === 'game mechanic' ||
+    keywordMatch(searchableText, [
+      'physics',
+      'collision',
+      'platformer',
+      'top-down',
+      'pathfind',
+      'character',
+      'controller',
+    ]);
+  if (isPhysicsOrGameplay) return 'physics-gameplay';
+
+  const isVisualEffect =
+    category === 'visual effect' ||
+    keywordMatch(searchableText, [
+      'particle',
+      'effect',
+      'explosion',
+      'fire',
+      'smoke',
+      'splash',
+      'vfx',
+    ]);
+  if (isVisualEffect) return 'effects';
+
+  if (category === 'general') return 'scene-2d';
+  return 'other';
 };
 
-const getCategories = (
-  objectShortHeaders: Array<ObjectShortHeader>
-): Array<string> => {
-  const categories: Set<string> = new Set();
-  for (const objectShortHeader of objectShortHeaders) {
-    if (objectShortHeader.category) {
-      categories.add(objectShortHeader.category);
+const getItemIdsGroupedBySection = ({
+  featuredObjectShortHeaders,
+  allObjectShortHeaders,
+  i18n,
+}: {|
+  featuredObjectShortHeaders: Array<ObjectShortHeader>,
+  allObjectShortHeaders: Array<ObjectShortHeader>,
+  i18n: I18nType,
+|}): Array<string> => {
+  const objectsByType: { [string]: ObjectShortHeader } = {};
+  allObjectShortHeaders.forEach(objectShortHeader => {
+    objectsByType[objectShortHeader.type] = objectShortHeader;
+  });
+
+  const featuredObjectsByType: { [string]: ObjectShortHeader } = {};
+  featuredObjectShortHeaders.forEach(objectShortHeader => {
+    if (objectsByType[objectShortHeader.type]) {
+      featuredObjectsByType[objectShortHeader.type] =
+        objectsByType[objectShortHeader.type];
     }
+  });
+
+  const featuredTypes = new Set(Object.keys(featuredObjectsByType));
+  const objectSections = getObjectSections(i18n);
+  const objectIdsBySection = new Map<string, Array<string>>(
+    objectSections.map(section => [section.key, []])
+  );
+
+  Object.keys(featuredObjectsByType).forEach(type => {
+    const featuredObjectIds = objectIdsBySection.get('featured');
+    if (featuredObjectIds) featuredObjectIds.push(type);
+  });
+
+  const nonFeaturedObjects = allObjectShortHeaders
+    .filter(objectShortHeader => !featuredTypes.has(objectShortHeader.type))
+    .sort((objectA, objectB) =>
+      objectA.fullName
+        .toLowerCase()
+        .localeCompare(objectB.fullName.toLowerCase())
+    );
+
+  nonFeaturedObjects.forEach(objectShortHeader => {
+    const sectionKey = getObjectSectionKey(objectShortHeader, featuredTypes);
+    const sectionObjectIds = objectIdsBySection.get(sectionKey);
+    if (sectionObjectIds) sectionObjectIds.push(objectShortHeader.type);
+  });
+
+  const itemIdsGroupedBySection = [];
+  for (const section of objectSections) {
+    const sectionObjectIds = objectIdsBySection.get(section.key);
+    if (!sectionObjectIds || sectionObjectIds.length === 0) {
+      continue;
+    }
+
+    itemIdsGroupedBySection.push(getSectionId(section.key));
+    itemIdsGroupedBySection.push(...sectionObjectIds);
   }
-  return [...categories];
+
+  return itemIdsGroupedBySection;
 };
 
 type ObjectStoreState = {|
@@ -448,6 +558,25 @@ export const ObjectStoreStateProvider = ({
     [allTranslatedObjects, showExperimentalExtensions]
   );
 
+  const sectionedObjectItemIds = React.useMemo(
+    () => {
+      const featuredObjectShortHeaders = [
+        ...builtInObjectTypes,
+        ...firstObjectIds,
+        ...secondObjectIds,
+      ]
+        .map(type => allTranslatedObjects[type])
+        .filter(Boolean);
+
+      return getItemIdsGroupedBySection({
+        featuredObjectShortHeaders,
+        allObjectShortHeaders: Object.values(allTranslatedObjects),
+        i18n,
+      });
+    },
+    [firstObjectIds, secondObjectIds, allTranslatedObjects, i18n]
+  );
+
   const allTranslatedObjectsAndCategories = React.useMemo(
     () => {
       const allTranslatedObjectsAndCategories: {
@@ -456,82 +585,45 @@ export const ObjectStoreStateProvider = ({
       for (const type in allTranslatedObjects) {
         allTranslatedObjectsAndCategories[type] = allTranslatedObjects[type];
       }
-      const allCategorizedObjects = [
-        ...[...builtInObjectTypes, ...firstObjectIds]
-          .map(type => {
-            const objectOrCategory: ObjectShortHeader =
-              //$FlowFixMe[incompatible-type] It can't be an ObjectCategory
-              allTranslatedObjectsAndCategories[type];
-            return objectOrCategory;
-          })
-          .filter(Boolean),
-        ...installedObjectMetadataList,
-      ];
-      for (const categoryName of getCategories(allCategorizedObjects)) {
-        const categoryId = getCategoryId(categoryName);
-        const objectCategory: ObjectCategory = {
-          categoryId,
-          name: translateExtensionCategory(categoryName, i18n),
+      const activeSectionIds = new Set(
+        sectionedObjectItemIds.filter(itemId => itemId.startsWith('section-'))
+      );
+      for (const section of getObjectSections(i18n)) {
+        const sectionId = getSectionId(section.key);
+        if (!activeSectionIds.has(sectionId)) continue;
+        const sectionCategory: ObjectCategory = {
+          categoryId: sectionId,
+          name: section.name,
           tags: [],
           tier: '',
         };
-        allTranslatedObjectsAndCategories[categoryId] = objectCategory;
-      }
-      let isRegistryEmpty = true;
-      // eslint-disable-next-line no-unused-vars
-      for (const key in translatedObjectShortHeadersByType) {
-        isRegistryEmpty = false;
-        break;
-      }
-      if (!isRegistryEmpty) {
-        const categoryId = getCategoryId('Explore');
-        const objectCategory: ObjectCategory = {
-          categoryId,
-          name: i18n._('Explore'),
-          tags: [],
-          tier: '',
-        };
-        allTranslatedObjectsAndCategories[categoryId] = objectCategory;
+        allTranslatedObjectsAndCategories[sectionId] = sectionCategory;
       }
       return allTranslatedObjectsAndCategories;
     },
     [
-      firstObjectIds,
-      installedObjectMetadataList,
       allTranslatedObjects,
       i18n,
-      translatedObjectShortHeadersByType,
+      sectionedObjectItemIds,
     ]
   );
 
   const defaultFirstSearchItemIds = React.useMemo(
     () => {
-      const defaultFirstSearchItemIds = getItemIdsGroupedByCategory(
-        [...builtInObjectTypes, ...firstObjectIds]
-          .map(type => {
-            const objectOrCategory: ObjectShortHeader =
-              //$FlowFixMe[incompatible-type] It can't be an ObjectCategory
-              allTranslatedObjectsAndCategories[type];
-            return objectOrCategory;
-          })
-          .filter(Boolean),
-        installedObjectMetadataList
-      );
-      defaultFirstSearchItemIds.push(getCategoryId('Explore'));
-      for (const secondObjectId of secondObjectIds) {
-        if (!defaultFirstSearchItemIds.includes(secondObjectId)) {
-          defaultFirstSearchItemIds.push(secondObjectId);
-        }
-      }
+      const uniqueDefaultFirstSearchItemIds = [];
+      const alreadyAddedIds = new Set<string>();
+      sectionedObjectItemIds.forEach(itemId => {
+        if (alreadyAddedIds.has(itemId)) return;
+        uniqueDefaultFirstSearchItemIds.push(itemId);
+        alreadyAddedIds.add(itemId);
+      });
       // An unknown id would make useSearchStructuredItem crash.
-      return defaultFirstSearchItemIds.filter(
+      return uniqueDefaultFirstSearchItemIds.filter(
         itemId => allTranslatedObjectsAndCategories[itemId]
       );
     },
     [
-      installedObjectMetadataList,
-      firstObjectIds,
-      secondObjectIds,
+      sectionedObjectItemIds,
       allTranslatedObjectsAndCategories,
     ]
   );
@@ -547,6 +639,7 @@ export const ObjectStoreStateProvider = ({
       ? noExcludedTiers
       : excludedExperimentalTiers,
     defaultFirstSearchItemIds: defaultFirstSearchItemIds,
+    shuffleResults: false,
   });
 
   const objectStoreState = React.useMemo(
