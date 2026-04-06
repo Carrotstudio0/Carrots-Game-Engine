@@ -119,7 +119,7 @@ namespace gdjs {
           private _distanceFromCamera: float = 1500;
           private _frustumSize: float = 4000;
           private _maxShadowDistance: float = 2000;
-          private _cascadeSplitLambda: float = 0.7;
+          private _cascadeSplitLambda: float = 0.78;
           private _shadowFollowLead: float = 0.45;
           private _shadowFollowCamera: boolean = false;
           private _shadowAutoTuningEnabled: boolean = true;
@@ -377,12 +377,15 @@ namespace gdjs {
             if (quality === 'low') {
               this._shadowMapSize = this._getClosestShadowMapSize(512);
               this._desiredCascadeCount = 1;
+              this._cascadeSplitLambda = 0.62;
             } else if (quality === 'medium') {
               this._shadowMapSize = this._getClosestShadowMapSize(1024);
               this._desiredCascadeCount = 2;
+              this._cascadeSplitLambda = 0.72;
             } else if (quality === 'high') {
               this._shadowMapSize = this._getClosestShadowMapSize(2048);
               this._desiredCascadeCount = 3;
+              this._cascadeSplitLambda = 0.8;
             }
             this._refreshActiveCascadeCount();
             this._updateShadowCameraDirtyState();
@@ -464,35 +467,33 @@ namespace gdjs {
             const baseSize = this._getClosestShadowMapSize(
               this._shadowMapSize * this._pipelineShadowQualityScale
             );
-            if (this._activeCascadeCount <= 1) {
-              if (cascadeIndex === 0) {
-                return this._clampShadowMapSizeToRenderer(baseSize * 2);
-              }
-              return this._clampShadowMapSizeToRenderer(
-                Math.max(512, Math.floor(baseSize / 2))
-              );
-            }
-            if (this._activeCascadeCount === 2) {
-              if (cascadeIndex === 0) {
-                return this._clampShadowMapSizeToRenderer(
-                  Math.floor(baseSize * 1.75)
-                );
-              }
-              if (cascadeIndex === 1) {
-                return this._clampShadowMapSizeToRenderer(baseSize);
-              }
-              return this._clampShadowMapSizeToRenderer(
-                Math.max(512, Math.floor(baseSize / 2))
-              );
-            }
-            if (cascadeIndex === 0) {
-              return this._clampShadowMapSizeToRenderer(baseSize * 2);
-            }
-            if (cascadeIndex === 1) {
-              return this._clampShadowMapSizeToRenderer(baseSize);
-            }
+            const referenceFrustumSize = Math.max(
+              64,
+              this._cascadeFrustumSizes[0] || this._frustumSize
+            );
+            const cascadeFrustumSize = Math.max(
+              64,
+              this._cascadeFrustumSizes[cascadeIndex] || referenceFrustumSize
+            );
+            const coverageRatio = referenceFrustumSize / cascadeFrustumSize;
+
+            // Keep similar world texel density between cascades while preserving
+            // sharper detail on the first cascade.
+            const detailBoost =
+              this._activeCascadeCount <= 1
+                ? 1.55
+                : cascadeIndex === 0
+                ? 1.35
+                : cascadeIndex === 1
+                ? 1
+                : 0.78;
+            const adaptiveSize = Math.max(
+              512,
+              Math.floor(baseSize * coverageRatio * detailBoost)
+            );
+
             return this._clampShadowMapSizeToRenderer(
-              Math.max(512, Math.floor(baseSize / 2))
+              this._getClosestShadowMapSize(adaptiveSize)
             );
           }
 
@@ -504,7 +505,29 @@ namespace gdjs {
             const safeSplitFactor = Math.max(0, Math.min(1, splitFactor));
             const safeNearDistance = Math.max(0.01, nearDistance);
             const safeMaxDistance = Math.max(64, maxDistance);
-            const lambda = Math.max(0, Math.min(1, this._cascadeSplitLambda));
+            const baseLambda = Math.max(0, Math.min(1, this._cascadeSplitLambda));
+            const distanceCoverageRatio = Math.max(
+              0,
+              Math.min(1, safeMaxDistance / Math.max(1, this._frustumSize))
+            );
+            const qualityPressure =
+              this._pipelineShadowQualityScale >= 1
+                ? -(this._pipelineShadowQualityScale - 1) * 0.04
+                : (1 - this._pipelineShadowQualityScale) * 0.06;
+            const cascadePressure =
+              this._activeCascadeCount >= 3 ? 0.05 : this._activeCascadeCount === 2 ? 0.02 : 0;
+            // Slightly shift split distribution toward logarithmic when distance
+            // coverage grows, to preserve close-range detail.
+            const adaptiveLambda = Math.max(
+              0,
+              Math.min(
+                1,
+                baseLambda +
+                  (distanceCoverageRatio - 0.5) * 0.18 +
+                  qualityPressure +
+                  cascadePressure
+              )
+            );
 
             const uniformSplit =
               safeNearDistance +
@@ -513,7 +536,10 @@ namespace gdjs {
               safeNearDistance *
               Math.pow(safeMaxDistance / safeNearDistance, safeSplitFactor);
 
-            return lambda * logarithmicSplit + (1 - lambda) * uniformSplit;
+            return (
+              adaptiveLambda * logarithmicSplit +
+              (1 - adaptiveLambda) * uniformSplit
+            );
           }
 
           private _updateCascadeRanges(layer: gdjs.RuntimeLayer): void {
@@ -559,6 +585,51 @@ namespace gdjs {
               previousSplit = safeSplit;
             }
 
+            if (this._activeCascadeCount > 1) {
+              const overlapStrength = Math.max(
+                0.04,
+                Math.min(
+                  0.12,
+                  0.08 +
+                    (1 - Math.max(0.35, this._pipelineShadowQualityScale)) * 0.04
+                )
+              );
+              for (
+                let cascadeIndex = 1;
+                cascadeIndex < this._activeCascadeCount;
+                cascadeIndex++
+              ) {
+                const previousRange = this._cascadeRanges[cascadeIndex - 1];
+                const currentRange = this._cascadeRanges[cascadeIndex];
+                const previousDepth = Math.max(
+                  1,
+                  previousRange.far - previousRange.near
+                );
+                const currentDepth = Math.max(
+                  1,
+                  currentRange.far - currentRange.near
+                );
+                const overlapDistance = Math.min(
+                  Math.max(8, Math.min(previousDepth, currentDepth) * overlapStrength),
+                  Math.min(previousDepth, currentDepth) * 0.3
+                );
+                const halfOverlap = overlapDistance * 0.5;
+                previousRange.far = Math.min(
+                  safeMaxShadowDistance,
+                  previousRange.far + halfOverlap
+                );
+                currentRange.near = Math.max(cameraNear, currentRange.near - halfOverlap);
+                if (previousRange.far < previousRange.near + 0.01) {
+                  previousRange.far = previousRange.near + 0.01;
+                }
+                if (currentRange.near > currentRange.far - 0.01) {
+                  currentRange.near = currentRange.far - 0.01;
+                }
+              }
+              this._cascadeRanges[this._activeCascadeCount - 1].far =
+                safeMaxShadowDistance;
+            }
+
             for (
               let cascadeIndex = this._activeCascadeCount;
               cascadeIndex < csmCascadeCount;
@@ -567,6 +638,21 @@ namespace gdjs {
               this._cascadeRanges[cascadeIndex].near = safeMaxShadowDistance;
               this._cascadeRanges[cascadeIndex].far = safeMaxShadowDistance;
             }
+          }
+
+          private _getLayerThreeCamera(
+            layer: gdjs.RuntimeLayer
+          ): THREE.Camera | null {
+            const layerRenderer = layer.getRenderer() as {
+              getThreeCamera?: () => THREE.Camera | null;
+            };
+            if (
+              !layerRenderer ||
+              typeof layerRenderer.getThreeCamera !== 'function'
+            ) {
+              return null;
+            }
+            return layerRenderer.getThreeCamera() || null;
           }
 
           private _computeCascadeFrustumSize(
@@ -578,19 +664,93 @@ namespace gdjs {
             const rangeDepth = Math.max(1, range.far - range.near);
 
             const cameraHeight = Math.max(1, layer.getCameraHeight());
-            const cameraAspect = Math.max(
-              0.1,
-              layer.getCameraWidth() / cameraHeight
-            );
-            const fovRad = gdjs.toRad(
+            let cameraAspect = Math.max(0.1, layer.getCameraWidth() / cameraHeight);
+            let fovRad = gdjs.toRad(
               Math.max(1, layer.getInitialCamera3DFieldOfView())
             );
+            const threeCamera = this._getLayerThreeCamera(layer);
+            if (threeCamera) {
+              const perspectiveCamera = threeCamera as THREE.PerspectiveCamera & {
+                isPerspectiveCamera?: boolean;
+              };
+              if (perspectiveCamera.isPerspectiveCamera) {
+                const perspectiveAspect = Number(perspectiveCamera.aspect);
+                if (Number.isFinite(perspectiveAspect) && perspectiveAspect > 0.01) {
+                  cameraAspect = Math.max(0.1, perspectiveAspect);
+                }
+                const perspectiveFov = Number(perspectiveCamera.fov);
+                if (Number.isFinite(perspectiveFov) && perspectiveFov > 0) {
+                  fovRad = THREE.MathUtils.degToRad(
+                    Math.max(1, Math.min(179, perspectiveFov))
+                  );
+                }
+              } else {
+                const orthographicCamera = threeCamera as THREE.OrthographicCamera & {
+                  isOrthographicCamera?: boolean;
+                };
+                if (orthographicCamera.isOrthographicCamera) {
+                  const zoom = Math.max(
+                    0.0001,
+                    Number(orthographicCamera.zoom) || 1
+                  );
+                  const orthographicWidth = Math.max(
+                    1,
+                    Math.abs(
+                      (Number(orthographicCamera.right) -
+                        Number(orthographicCamera.left)) /
+                        zoom
+                    )
+                  );
+                  const orthographicHeight = Math.max(
+                    1,
+                    Math.abs(
+                      (Number(orthographicCamera.top) -
+                        Number(orthographicCamera.bottom)) /
+                        zoom
+                    )
+                  );
+                  const orthographicCoverage = Math.max(
+                    orthographicWidth,
+                    orthographicHeight
+                  );
+                  const depthPadding = Math.max(24, rangeDepth * 0.35);
+
+                  const frustumScale = Math.max(0.25, this._frustumSize / 4000);
+                  let cascadeScale = 1;
+                  if (this._activeCascadeCount === 1) {
+                    cascadeScale = 1;
+                  } else if (this._activeCascadeCount === 2) {
+                    cascadeScale = cascadeIndex === 0 ? 0.9 : 1.08;
+                  } else {
+                    cascadeScale =
+                      cascadeIndex === 0 ? 0.88 : cascadeIndex === 1 ? 1 : 1.14;
+                  }
+
+                  return Math.max(
+                    64,
+                    (orthographicCoverage + depthPadding) *
+                      frustumScale *
+                      cascadeScale
+                  );
+                }
+              }
+            }
+
             const projectedHalfHeight = Math.tan(fovRad * 0.5) * safeRangeFar;
             const projectedHeight = Math.max(1, projectedHalfHeight * 2);
             const projectedWidth = projectedHeight * cameraAspect;
-
-            const visibleCoverage = Math.max(projectedHeight, projectedWidth);
-            const depthPadding = Math.max(32, rangeDepth * 0.65);
+            const sliceHalfDepth = Math.max(0.5, rangeDepth * 0.5);
+            const stabilizingSphereDiameter = Math.sqrt(
+              projectedWidth * projectedWidth +
+                projectedHeight * projectedHeight +
+                4 * sliceHalfDepth * sliceHalfDepth
+            );
+            const visibleCoverage = Math.max(
+              projectedHeight,
+              projectedWidth,
+              stabilizingSphereDiameter * 0.92
+            );
+            const depthPadding = Math.max(24, rangeDepth * 0.35);
 
             // Keep compatibility with the legacy "frustumSize" parameter as a global multiplier.
             const frustumScale = Math.max(0.25, this._frustumSize / 4000);
@@ -598,10 +758,10 @@ namespace gdjs {
             if (this._activeCascadeCount === 1) {
               cascadeScale = 1;
             } else if (this._activeCascadeCount === 2) {
-              cascadeScale = cascadeIndex === 0 ? 0.88 : 1.12;
+              cascadeScale = cascadeIndex === 0 ? 0.9 : 1.08;
             } else {
               cascadeScale =
-                cascadeIndex === 0 ? 0.85 : cascadeIndex === 1 ? 1 : 1.2;
+                cascadeIndex === 0 ? 0.88 : cascadeIndex === 1 ? 1 : 1.14;
             }
 
             return Math.max(
@@ -648,8 +808,12 @@ namespace gdjs {
                   this._cascadeRanges[cascadeIndex].near
               );
               // Tight depth range improves shadow precision and reduces acne.
-              const depthExtent =
-                rangeDepth + Math.max(100, cascadeFrustumSize * 0.7);
+              const depthExtent = Math.max(
+                96,
+                rangeDepth * 0.75 +
+                  cascadeFrustumSize * 0.32 +
+                  safeDistanceFromCamera * 0.05
+              );
 
               light.shadow.camera.near = Math.max(
                 0.5,
@@ -716,7 +880,17 @@ namespace gdjs {
             }
             const frustumSize = this._cascadeFrustumSizes[cascadeIndex];
             const shadowMapSize = this._cascadeMapSizes[cascadeIndex];
-            return Math.max(0.25, frustumSize / Math.max(1, shadowMapSize));
+            const texelWorldSize = frustumSize / Math.max(1, shadowMapSize);
+            const cascadeMultiplier =
+              cascadeIndex === 0 ? 1 : cascadeIndex === 1 ? 1.35 : 1.8;
+            const qualityMultiplier =
+              this._pipelineShadowQualityScale < 1
+                ? 1 + (1 - this._pipelineShadowQualityScale) * 0.6
+                : 1;
+            return Math.max(
+              0.1,
+              texelWorldSize * cascadeMultiplier * qualityMultiplier
+            );
           }
 
           private _getFirstObjectByName(
@@ -913,29 +1087,43 @@ namespace gdjs {
             const light = this._lights[cascadeIndex];
             const cascadeMapSize = this._cascadeMapSizes[cascadeIndex];
             const cascadeFrustumSize = this._cascadeFrustumSizes[cascadeIndex];
+            const cascadeRange = this._cascadeRanges[cascadeIndex];
             const texelWorldSize =
               cascadeFrustumSize / Math.max(1, cascadeMapSize);
-
-            const resolutionMultiplier =
-              cascadeMapSize < 1024 ? 2 : cascadeMapSize < 2048 ? 1.25 : 1;
-            const distanceMultiplier =
-              cascadeIndex === 0 ? 1 : cascadeIndex === 1 ? 1.8 : 2.8;
-            const automaticBias = Math.max(0.00005, texelWorldSize * 0.0008);
-
+            const safeMaxDistance = Math.max(64, this._maxShadowDistance);
+            const depthRatio = Math.max(
+              0.05,
+              Math.min(1, cascadeRange.far / safeMaxDistance)
+            );
+            const qualityScale = Math.max(
+              0.35,
+              Math.min(2, this._pipelineShadowQualityScale)
+            );
+            const qualityBiasMultiplier =
+              qualityScale < 1
+                ? 1 + (1 - qualityScale) * 0.45
+                : 1 / (1 + (qualityScale - 1) * 0.25);
+            const automaticBias = Math.max(
+              0.00002,
+              texelWorldSize * (0.00035 + depthRatio * 0.00055)
+            );
             const baseBias = Math.max(this._minimumShadowBias, automaticBias);
             light.shadow.bias =
-              -baseBias * resolutionMultiplier * distanceMultiplier;
+              -baseBias * qualityBiasMultiplier * (1 + depthRatio * 1.65);
 
             const baseNormalBias = Math.max(0, this._shadowNormalBias);
-            const automaticNormalBias = texelWorldSize * 0.03;
+            const automaticNormalBias =
+              texelWorldSize * (0.012 + depthRatio * 0.028);
             light.shadow.normalBias = Math.max(
-              baseNormalBias * (1 + cascadeIndex * 0.35),
+              baseNormalBias * (1 + depthRatio * 0.45),
               automaticNormalBias
             );
 
             const baseRadius = Math.max(0, this._shadowRadius);
             const radiusMultiplier =
-              cascadeIndex === 0 ? 0.75 : cascadeIndex === 1 ? 1 : 1.35;
+              0.8 +
+              depthRatio * 0.65 +
+              (qualityScale < 1 ? (1 - qualityScale) * 0.4 : 0);
             light.shadow.radius = baseRadius * radiusMultiplier;
           }
 
@@ -1670,7 +1858,7 @@ namespace gdjs {
             this._maxShadowDistance = Math.max(64, syncData.msd ?? 2000);
             this._cascadeSplitLambda = Math.max(
               0,
-              Math.min(1, syncData.csl ?? 0.7)
+              Math.min(1, syncData.csl ?? 0.78)
             );
             this._shadowMapSize = this._getClosestShadowMapSize(
               syncData.sms ?? 1024

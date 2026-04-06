@@ -6534,11 +6534,11 @@ module.exports = {
         .setAdvanced(true);
       properties
         .getOrCreate('cascadeSplitLambda')
-        .setValue('0.7')
+        .setValue('0.78')
         .setLabel(_('Cascade split lambda'))
         .setDescription(
           _(
-            'Blend between logarithmic and uniform cascade split distribution (0 to 1).'
+            'Blend between logarithmic and uniform cascade split distribution (0 to 1). Higher values keep more detail near the camera.'
           )
         )
         .setType('number')
