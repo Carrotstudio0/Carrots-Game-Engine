@@ -11,6 +11,17 @@ namespace gdjs {
   const pbrDefaultEmissiveIntensity = 0;
   const pbrDefaultNormalScale = 1;
   const pbrDefaultAOMapIntensity = 1;
+  const pbrDefaultUsePhysicalMaterial = true;
+  const pbrDefaultClearcoat = 0;
+  const pbrDefaultClearcoatRoughness = 0;
+  const pbrDefaultTransmission = 0;
+  const pbrDefaultThickness = 0;
+  const pbrDefaultIor = 1.5;
+  const pbrDefaultIridescence = 0;
+  const pbrDefaultSheen = 0;
+  const pbrDefaultSheenRoughness = 1;
+  const pbrDefaultSheenColorHex = 0xffffff;
+  const pbrDefaultSpecularIntensity = 1;
 
   interface PBRSharedTextureVariantState {
     texture: THREE.Texture;
@@ -41,6 +52,16 @@ namespace gdjs {
     aoMap: THREE.Texture | null;
     normalScale: THREE.Vector2;
     aoMapIntensity: number;
+    clearcoat: number;
+    clearcoatRoughness: number;
+    transmission: number;
+    thickness: number;
+    ior: number;
+    iridescence: number;
+    sheen: number;
+    sheenRoughness: number;
+    sheenColorHex: number;
+    specularIntensity: number;
   }
 
   interface PBRPatchedMeshState {
@@ -76,6 +97,17 @@ namespace gdjs {
     private _envMapIntensity: number;
     private _emissiveColorHex: number;
     private _emissiveIntensity: number;
+    private _usePhysicalMaterial: boolean;
+    private _clearcoat: number;
+    private _clearcoatRoughness: number;
+    private _transmission: number;
+    private _thickness: number;
+    private _ior: number;
+    private _iridescence: number;
+    private _sheen: number;
+    private _sheenRoughness: number;
+    private _sheenColorHex: number;
+    private _specularIntensity: number;
     private _normalScale: number;
     private _normalMapAsset: string;
     private _normalMapTexture: THREE.Texture | null;
@@ -124,6 +156,72 @@ namespace gdjs {
         0,
         4
       );
+      this._usePhysicalMaterial =
+        behaviorData.usePhysicalMaterial === undefined
+          ? pbrDefaultUsePhysicalMaterial
+          : !!behaviorData.usePhysicalMaterial;
+      this._clearcoat = this._clamp(
+        behaviorData.clearcoat !== undefined
+          ? behaviorData.clearcoat
+          : pbrDefaultClearcoat,
+        0,
+        1
+      );
+      this._clearcoatRoughness = this._clamp(
+        behaviorData.clearcoatRoughness !== undefined
+          ? behaviorData.clearcoatRoughness
+          : pbrDefaultClearcoatRoughness,
+        0,
+        1
+      );
+      this._transmission = this._clamp(
+        behaviorData.transmission !== undefined
+          ? behaviorData.transmission
+          : pbrDefaultTransmission,
+        0,
+        1
+      );
+      this._thickness = this._clamp(
+        behaviorData.thickness !== undefined
+          ? behaviorData.thickness
+          : pbrDefaultThickness,
+        0,
+        10
+      );
+      this._ior = this._clamp(
+        behaviorData.ior !== undefined ? behaviorData.ior : pbrDefaultIor,
+        1,
+        2.5
+      );
+      this._iridescence = this._clamp(
+        behaviorData.iridescence !== undefined
+          ? behaviorData.iridescence
+          : pbrDefaultIridescence,
+        0,
+        1
+      );
+      this._sheen = this._clamp(
+        behaviorData.sheen !== undefined ? behaviorData.sheen : pbrDefaultSheen,
+        0,
+        1
+      );
+      this._sheenRoughness = this._clamp(
+        behaviorData.sheenRoughness !== undefined
+          ? behaviorData.sheenRoughness
+          : pbrDefaultSheenRoughness,
+        0,
+        1
+      );
+      this._sheenColorHex = gdjs.rgbOrHexStringToNumber(
+        behaviorData.sheenColor || '255;255;255'
+      );
+      this._specularIntensity = this._clamp(
+        behaviorData.specularIntensity !== undefined
+          ? behaviorData.specularIntensity
+          : pbrDefaultSpecularIntensity,
+        0,
+        4
+      );
       this._normalScale = this._clamp(
         behaviorData.normalScale !== undefined ? behaviorData.normalScale : 1,
         0,
@@ -168,6 +266,39 @@ namespace gdjs {
       }
       if (behaviorData.emissiveIntensity !== undefined) {
         this.setEmissiveIntensity(behaviorData.emissiveIntensity);
+      }
+      if (behaviorData.usePhysicalMaterial !== undefined) {
+        this.setUsePhysicalMaterial(!!behaviorData.usePhysicalMaterial);
+      }
+      if (behaviorData.clearcoat !== undefined) {
+        this.setClearcoat(behaviorData.clearcoat);
+      }
+      if (behaviorData.clearcoatRoughness !== undefined) {
+        this.setClearcoatRoughness(behaviorData.clearcoatRoughness);
+      }
+      if (behaviorData.transmission !== undefined) {
+        this.setTransmission(behaviorData.transmission);
+      }
+      if (behaviorData.thickness !== undefined) {
+        this.setThickness(behaviorData.thickness);
+      }
+      if (behaviorData.ior !== undefined) {
+        this.setIor(behaviorData.ior);
+      }
+      if (behaviorData.iridescence !== undefined) {
+        this.setIridescence(behaviorData.iridescence);
+      }
+      if (behaviorData.sheen !== undefined) {
+        this.setSheen(behaviorData.sheen);
+      }
+      if (behaviorData.sheenRoughness !== undefined) {
+        this.setSheenRoughness(behaviorData.sheenRoughness);
+      }
+      if (behaviorData.sheenColor !== undefined) {
+        this.setSheenColor(behaviorData.sheenColor);
+      }
+      if (behaviorData.specularIntensity !== undefined) {
+        this.setSpecularIntensity(behaviorData.specularIntensity);
       }
       if (behaviorData.normalScale !== undefined) {
         this.setNormalScale(behaviorData.normalScale);
@@ -279,6 +410,107 @@ namespace gdjs {
       this._applyParametersToPatchedMaterials();
     }
 
+    setUsePhysicalMaterial(value: boolean): void {
+      const normalizedValue = !!value;
+      if (this._usePhysicalMaterial === normalizedValue) {
+        return;
+      }
+      this._usePhysicalMaterial = normalizedValue;
+      this._restorePatchedMeshes();
+      this._patchOwnerMaterials();
+      this._ensureEnvironmentFallbackAndSceneIntensity();
+    }
+
+    getUsePhysicalMaterial(): boolean {
+      return this._usePhysicalMaterial;
+    }
+
+    setClearcoat(value: number): void {
+      this._clearcoat = this._clamp(value, 0, 1);
+      this._applyParametersToPatchedMaterials();
+    }
+
+    getClearcoat(): number {
+      return this._clearcoat;
+    }
+
+    setClearcoatRoughness(value: number): void {
+      this._clearcoatRoughness = this._clamp(value, 0, 1);
+      this._applyParametersToPatchedMaterials();
+    }
+
+    getClearcoatRoughness(): number {
+      return this._clearcoatRoughness;
+    }
+
+    setTransmission(value: number): void {
+      this._transmission = this._clamp(value, 0, 1);
+      this._applyParametersToPatchedMaterials();
+    }
+
+    getTransmission(): number {
+      return this._transmission;
+    }
+
+    setThickness(value: number): void {
+      this._thickness = this._clamp(value, 0, 10);
+      this._applyParametersToPatchedMaterials();
+    }
+
+    getThickness(): number {
+      return this._thickness;
+    }
+
+    setIor(value: number): void {
+      this._ior = this._clamp(value, 1, 2.5);
+      this._applyParametersToPatchedMaterials();
+    }
+
+    getIor(): number {
+      return this._ior;
+    }
+
+    setIridescence(value: number): void {
+      this._iridescence = this._clamp(value, 0, 1);
+      this._applyParametersToPatchedMaterials();
+    }
+
+    getIridescence(): number {
+      return this._iridescence;
+    }
+
+    setSheen(value: number): void {
+      this._sheen = this._clamp(value, 0, 1);
+      this._applyParametersToPatchedMaterials();
+    }
+
+    getSheen(): number {
+      return this._sheen;
+    }
+
+    setSheenRoughness(value: number): void {
+      this._sheenRoughness = this._clamp(value, 0, 1);
+      this._applyParametersToPatchedMaterials();
+    }
+
+    getSheenRoughness(): number {
+      return this._sheenRoughness;
+    }
+
+    setSheenColor(color: string): void {
+      this._sheenColorHex = gdjs.rgbOrHexStringToNumber(color || '255;255;255');
+      this._applyParametersToPatchedMaterials();
+    }
+
+    setSpecularIntensity(value: number): void {
+      this._specularIntensity = this._clamp(value, 0, 4);
+      this._applyParametersToPatchedMaterials();
+    }
+
+    getSpecularIntensity(): number {
+      return this._specularIntensity;
+    }
+
     setNormalScale(value: number): void {
       this._normalScale = this._clamp(value, 0, 2);
       this._applyParametersToPatchedMaterials();
@@ -333,6 +565,28 @@ namespace gdjs {
       return Math.abs(a - b) <= epsilon;
     }
 
+    private _getMaterialNumberValue(
+      material: PBRManagedMaterial,
+      key: string,
+      fallbackValue: number
+    ): number {
+      const value = (material as unknown as Record<string, unknown>)[key];
+      return typeof value === 'number' && Number.isFinite(value)
+        ? value
+        : fallbackValue;
+    }
+
+    private _setMaterialNumberValue(
+      material: PBRManagedMaterial,
+      key: string,
+      value: number
+    ): void {
+      const typedMaterial = material as unknown as Record<string, unknown>;
+      if (typeof typedMaterial[key] === 'number') {
+        typedMaterial[key] = value;
+      }
+    }
+
     private _hasCustomPBROverrides(): boolean {
       return !(
         this._isNearlyEqual(this._metalness, pbrDefaultMetalness) &&
@@ -342,9 +596,28 @@ namespace gdjs {
           this._emissiveIntensity,
           pbrDefaultEmissiveIntensity
         ) &&
+        this._isNearlyEqual(this._clearcoat, pbrDefaultClearcoat) &&
+        this._isNearlyEqual(
+          this._clearcoatRoughness,
+          pbrDefaultClearcoatRoughness
+        ) &&
+        this._isNearlyEqual(this._transmission, pbrDefaultTransmission) &&
+        this._isNearlyEqual(this._thickness, pbrDefaultThickness) &&
+        this._isNearlyEqual(this._ior, pbrDefaultIor) &&
+        this._isNearlyEqual(this._iridescence, pbrDefaultIridescence) &&
+        this._isNearlyEqual(this._sheen, pbrDefaultSheen) &&
+        this._isNearlyEqual(
+          this._sheenRoughness,
+          pbrDefaultSheenRoughness
+        ) &&
+        this._isNearlyEqual(
+          this._specularIntensity,
+          pbrDefaultSpecularIntensity
+        ) &&
         this._isNearlyEqual(this._normalScale, pbrDefaultNormalScale) &&
         this._isNearlyEqual(this._aoMapIntensity, pbrDefaultAOMapIntensity) &&
         this._emissiveColorHex === 0 &&
+        this._sheenColorHex === pbrDefaultSheenColorHex &&
         !this._normalMapAsset &&
         !this._aoMapAsset &&
         !this._albedoMapAsset
@@ -759,6 +1032,64 @@ namespace gdjs {
         material.emissiveIntensity = originalState.emissiveIntensity;
       }
 
+      this._setMaterialNumberValue(
+        material,
+        'clearcoat',
+        hasCustomOverrides ? this._clearcoat : originalState.clearcoat
+      );
+      this._setMaterialNumberValue(
+        material,
+        'clearcoatRoughness',
+        hasCustomOverrides
+          ? this._clearcoatRoughness
+          : originalState.clearcoatRoughness
+      );
+      this._setMaterialNumberValue(
+        material,
+        'transmission',
+        hasCustomOverrides ? this._transmission : originalState.transmission
+      );
+      this._setMaterialNumberValue(
+        material,
+        'thickness',
+        hasCustomOverrides ? this._thickness : originalState.thickness
+      );
+      this._setMaterialNumberValue(
+        material,
+        'ior',
+        hasCustomOverrides ? this._ior : originalState.ior
+      );
+      this._setMaterialNumberValue(
+        material,
+        'iridescence',
+        hasCustomOverrides ? this._iridescence : originalState.iridescence
+      );
+      this._setMaterialNumberValue(
+        material,
+        'sheen',
+        hasCustomOverrides ? this._sheen : originalState.sheen
+      );
+      this._setMaterialNumberValue(
+        material,
+        'sheenRoughness',
+        hasCustomOverrides ? this._sheenRoughness : originalState.sheenRoughness
+      );
+      this._setMaterialNumberValue(
+        material,
+        'specularIntensity',
+        hasCustomOverrides
+          ? this._specularIntensity
+          : originalState.specularIntensity
+      );
+
+      const sheenColor = (material as unknown as { sheenColor?: THREE.Color })
+        .sheenColor;
+      if (sheenColor && typeof sheenColor.setHex === 'function') {
+        sheenColor.setHex(
+          hasCustomOverrides ? this._sheenColorHex : originalState.sheenColorHex
+        );
+      }
+
       const resolvedNormalMap = this._normalMapAsset
         ? normalMapTexture
         : originalState.normalMap;
@@ -924,7 +1255,17 @@ namespace gdjs {
           continue;
         }
 
-        const clonedMaterial = sourceMaterial.clone() as PBRManagedMaterial;
+        let clonedMaterial = sourceMaterial.clone() as PBRManagedMaterial;
+        if (
+          this._usePhysicalMaterial &&
+          !(clonedMaterial as unknown as { isMeshPhysicalMaterial?: boolean })
+            .isMeshPhysicalMaterial
+        ) {
+          const upgradedMaterial = new THREE.MeshPhysicalMaterial();
+          upgradedMaterial.copy(clonedMaterial as THREE.MeshStandardMaterial);
+          clonedMaterial.dispose();
+          clonedMaterial = upgradedMaterial as PBRManagedMaterial;
+        }
         patchedMaterials[index] = clonedMaterial;
         clonedMaterials.push(clonedMaterial);
         materialStateByClone.set(clonedMaterial, {
@@ -938,6 +1279,59 @@ namespace gdjs {
           aoMap: clonedMaterial.aoMap || null,
           normalScale: clonedMaterial.normalScale.clone(),
           aoMapIntensity: clonedMaterial.aoMapIntensity,
+          clearcoat: this._getMaterialNumberValue(
+            clonedMaterial,
+            'clearcoat',
+            pbrDefaultClearcoat
+          ),
+          clearcoatRoughness: this._getMaterialNumberValue(
+            clonedMaterial,
+            'clearcoatRoughness',
+            pbrDefaultClearcoatRoughness
+          ),
+          transmission: this._getMaterialNumberValue(
+            clonedMaterial,
+            'transmission',
+            pbrDefaultTransmission
+          ),
+          thickness: this._getMaterialNumberValue(
+            clonedMaterial,
+            'thickness',
+            pbrDefaultThickness
+          ),
+          ior: this._getMaterialNumberValue(
+            clonedMaterial,
+            'ior',
+            pbrDefaultIor
+          ),
+          iridescence: this._getMaterialNumberValue(
+            clonedMaterial,
+            'iridescence',
+            pbrDefaultIridescence
+          ),
+          sheen: this._getMaterialNumberValue(
+            clonedMaterial,
+            'sheen',
+            pbrDefaultSheen
+          ),
+          sheenRoughness: this._getMaterialNumberValue(
+            clonedMaterial,
+            'sheenRoughness',
+            pbrDefaultSheenRoughness
+          ),
+          sheenColorHex:
+            (clonedMaterial as unknown as { sheenColor?: THREE.Color })
+              .sheenColor &&
+            typeof (clonedMaterial as unknown as { sheenColor?: THREE.Color })
+              .sheenColor?.getHex === 'function'
+              ? (clonedMaterial as unknown as { sheenColor: THREE.Color })
+                  .sheenColor.getHex()
+              : pbrDefaultSheenColorHex,
+          specularIntensity: this._getMaterialNumberValue(
+            clonedMaterial,
+            'specularIntensity',
+            pbrDefaultSpecularIntensity
+          ),
         });
         hasPatchedMaterial = true;
       }

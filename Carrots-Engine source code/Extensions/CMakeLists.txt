@@ -15,6 +15,7 @@ set(
 	DraggableBehavior
 	Inventory
 	LinkedObjects
+	NavMeshBehavior
 	PanelSpriteObject
 	ParticleSystem
 	PathfindingBehavior

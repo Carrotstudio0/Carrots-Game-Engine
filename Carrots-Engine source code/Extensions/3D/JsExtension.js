@@ -710,7 +710,194 @@ module.exports = {
     {
       const behavior = new gd.BehaviorJsImplementation();
 
+      const ensureLightObstacleDefaults = function (behaviorContent) {
+        if (!behaviorContent.hasChild('enabled')) {
+          behaviorContent.addChild('enabled').setBoolValue(true);
+        }
+        if (!behaviorContent.hasChild('castShadow')) {
+          behaviorContent.addChild('castShadow').setBoolValue(true);
+        }
+        if (!behaviorContent.hasChild('receiveShadow')) {
+          behaviorContent.addChild('receiveShadow').setBoolValue(true);
+        }
+      };
+
+      behavior.updateProperty = function (
+        behaviorContent,
+        propertyName,
+        newValue
+      ) {
+        ensureLightObstacleDefaults(behaviorContent);
+
+        if (
+          propertyName === 'enabled' ||
+          propertyName === 'castShadow' ||
+          propertyName === 'receiveShadow'
+        ) {
+          behaviorContent
+            .getChild(propertyName)
+            .setBoolValue(newValue === '1' || newValue === 'true');
+          return true;
+        }
+
+        return false;
+      };
+
+      behavior.getProperties = function (behaviorContent) {
+        const behaviorProperties = new gd.MapStringPropertyDescriptor();
+        ensureLightObstacleDefaults(behaviorContent);
+
+        behaviorProperties
+          .getOrCreate('enabled')
+          .setValue(
+            behaviorContent.getChild('enabled').getBoolValue()
+              ? 'true'
+              : 'false'
+          )
+          .setType('Boolean')
+          .setLabel(_('Enabled'));
+        behaviorProperties
+          .getOrCreate('castShadow')
+          .setValue(
+            behaviorContent.getChild('castShadow').getBoolValue()
+              ? 'true'
+              : 'false'
+          )
+          .setType('Boolean')
+          .setLabel(_('Cast shadow'));
+        behaviorProperties
+          .getOrCreate('receiveShadow')
+          .setValue(
+            behaviorContent.getChild('receiveShadow').getBoolValue()
+              ? 'true'
+              : 'false'
+          )
+          .setType('Boolean')
+          .setLabel(_('Receive shadow'))
+          .setGroup(_('Advanced'))
+          .setAdvanced(true);
+
+        return behaviorProperties;
+      };
+
+      behavior.initializeContent = function (behaviorContent) {
+        behaviorContent.addChild('enabled').setBoolValue(true);
+        behaviorContent.addChild('castShadow').setBoolValue(true);
+        behaviorContent.addChild('receiveShadow').setBoolValue(true);
+      };
+
+      const lightObstacle = extension
+        .addBehavior(
+          'LightObstacle',
+          _('3D light obstacle'),
+          'LightObstacle',
+          _(
+            'Force this 3D object to block dynamic lights by casting shadows. Useful to stop sunlight from passing through meshes.'
+          ),
+          '',
+          'res/conditions/3d_box.svg',
+          'LightObstacle',
+          // @ts-ignore
+          behavior,
+          new gd.BehaviorsSharedData()
+        )
+        .setIncludeFile('Extensions/3D/LightObstacleBehavior.js');
+
+      lightObstacle
+        .addScopedAction(
+          'SetEnabled',
+          _('Enable/disable light obstacle'),
+          _('Enable or disable this behavior.'),
+          _('Set light obstacle of _PARAM0_ to _PARAM2_'),
+          _('Light obstacle'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('Object'), '', false)
+        .addParameter('behavior', _('Behavior'), 'LightObstacle')
+        .addParameter('yesorno', _('Enabled'))
+        .setFunctionName('setEnabled');
+
+      lightObstacle
+        .addScopedCondition(
+          'IsEnabled',
+          _('Light obstacle enabled'),
+          _('Check if the light obstacle behavior is enabled.'),
+          _('Light obstacle is enabled for _PARAM0_'),
+          _('Light obstacle'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('Object'), '', false)
+        .addParameter('behavior', _('Behavior'), 'LightObstacle')
+        .setFunctionName('isEnabled');
+
+      lightObstacle
+        .addScopedAction(
+          'SetCastShadowEnabled',
+          _('Set cast shadow'),
+          _('Enable or disable shadow casting for this obstacle.'),
+          _('Set cast shadow of _PARAM0_ to _PARAM2_'),
+          _('Light obstacle'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('Object'), '', false)
+        .addParameter('behavior', _('Behavior'), 'LightObstacle')
+        .addParameter('yesorno', _('Cast shadow'))
+        .setFunctionName('setCastShadowEnabled');
+
+      lightObstacle
+        .addScopedCondition(
+          'IsCastShadowEnabled',
+          _('Cast shadow enabled'),
+          _('Check if this obstacle currently casts shadow.'),
+          _('_PARAM0_ casts shadow'),
+          _('Light obstacle'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('Object'), '', false)
+        .addParameter('behavior', _('Behavior'), 'LightObstacle')
+        .setFunctionName('isCastShadowEnabled');
+
+      lightObstacle
+        .addScopedAction(
+          'SetReceiveShadowEnabled',
+          _('Set receive shadow'),
+          _('Enable or disable shadow receiving for this obstacle.'),
+          _('Set receive shadow of _PARAM0_ to _PARAM2_'),
+          _('Light obstacle'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('Object'), '', false)
+        .addParameter('behavior', _('Behavior'), 'LightObstacle')
+        .addParameter('yesorno', _('Receive shadow'))
+        .setFunctionName('setReceiveShadowEnabled');
+
+      lightObstacle
+        .addScopedCondition(
+          'IsReceiveShadowEnabled',
+          _('Receive shadow enabled'),
+          _('Check if this obstacle receives shadow.'),
+          _('_PARAM0_ receives shadow'),
+          _('Light obstacle'),
+          'res/conditions/3d_box.svg',
+          'res/conditions/3d_box.svg'
+        )
+        .addParameter('object', _('Object'), '', false)
+        .addParameter('behavior', _('Behavior'), 'LightObstacle')
+        .setFunctionName('isReceiveShadowEnabled');
+    }
+
+    {
+      const behavior = new gd.BehaviorJsImplementation();
+
       const ensurePBRMaterialDefaults = function (behaviorContent) {
+        if (!behaviorContent.hasChild('usePhysicalMaterial')) {
+          behaviorContent.addChild('usePhysicalMaterial').setBoolValue(true);
+        }
         if (!behaviorContent.hasChild('metalness')) {
           behaviorContent.addChild('metalness').setDoubleValue(0.0);
         }
@@ -741,6 +928,38 @@ module.exports = {
         if (!behaviorContent.hasChild('map')) {
           behaviorContent.addChild('map').setStringValue('');
         }
+        if (!behaviorContent.hasChild('clearcoat')) {
+          behaviorContent.addChild('clearcoat').setDoubleValue(0.0);
+        }
+        if (!behaviorContent.hasChild('clearcoatRoughness')) {
+          behaviorContent.addChild('clearcoatRoughness').setDoubleValue(0.0);
+        }
+        if (!behaviorContent.hasChild('transmission')) {
+          behaviorContent.addChild('transmission').setDoubleValue(0.0);
+        }
+        if (!behaviorContent.hasChild('thickness')) {
+          behaviorContent.addChild('thickness').setDoubleValue(0.0);
+        }
+        if (!behaviorContent.hasChild('ior')) {
+          behaviorContent.addChild('ior').setDoubleValue(1.5);
+        }
+        if (!behaviorContent.hasChild('iridescence')) {
+          behaviorContent.addChild('iridescence').setDoubleValue(0.0);
+        }
+        if (!behaviorContent.hasChild('sheen')) {
+          behaviorContent.addChild('sheen').setDoubleValue(0.0);
+        }
+        if (!behaviorContent.hasChild('sheenRoughness')) {
+          behaviorContent.addChild('sheenRoughness').setDoubleValue(1.0);
+        }
+        if (!behaviorContent.hasChild('sheenColor')) {
+          behaviorContent
+            .addChild('sheenColor')
+            .setStringValue('255;255;255');
+        }
+        if (!behaviorContent.hasChild('specularIntensity')) {
+          behaviorContent.addChild('specularIntensity').setDoubleValue(1.0);
+        }
       };
 
       const clampValue = function (value, min, max) {
@@ -758,6 +977,12 @@ module.exports = {
       ) {
         ensurePBRMaterialDefaults(behaviorContent);
 
+        if (propertyName === 'usePhysicalMaterial') {
+          behaviorContent
+            .getChild('usePhysicalMaterial')
+            .setBoolValue(newValue === '1' || newValue === 'true');
+          return true;
+        }
         if (propertyName === 'metalness') {
           behaviorContent
             .getChild('metalness')
@@ -806,6 +1031,64 @@ module.exports = {
             .setDoubleValue(clampValue(newValue, 0, 1));
           return true;
         }
+        if (propertyName === 'clearcoat') {
+          behaviorContent
+            .getChild('clearcoat')
+            .setDoubleValue(clampValue(newValue, 0, 1));
+          return true;
+        }
+        if (propertyName === 'clearcoatRoughness') {
+          behaviorContent
+            .getChild('clearcoatRoughness')
+            .setDoubleValue(clampValue(newValue, 0, 1));
+          return true;
+        }
+        if (propertyName === 'transmission') {
+          behaviorContent
+            .getChild('transmission')
+            .setDoubleValue(clampValue(newValue, 0, 1));
+          return true;
+        }
+        if (propertyName === 'thickness') {
+          behaviorContent
+            .getChild('thickness')
+            .setDoubleValue(clampValue(newValue, 0, 10));
+          return true;
+        }
+        if (propertyName === 'ior') {
+          behaviorContent
+            .getChild('ior')
+            .setDoubleValue(clampValue(newValue, 1, 2.5));
+          return true;
+        }
+        if (propertyName === 'iridescence') {
+          behaviorContent
+            .getChild('iridescence')
+            .setDoubleValue(clampValue(newValue, 0, 1));
+          return true;
+        }
+        if (propertyName === 'sheen') {
+          behaviorContent
+            .getChild('sheen')
+            .setDoubleValue(clampValue(newValue, 0, 1));
+          return true;
+        }
+        if (propertyName === 'sheenRoughness') {
+          behaviorContent
+            .getChild('sheenRoughness')
+            .setDoubleValue(clampValue(newValue, 0, 1));
+          return true;
+        }
+        if (propertyName === 'sheenColor') {
+          behaviorContent.getChild('sheenColor').setStringValue(newValue);
+          return true;
+        }
+        if (propertyName === 'specularIntensity') {
+          behaviorContent
+            .getChild('specularIntensity')
+            .setDoubleValue(clampValue(newValue, 0, 4));
+          return true;
+        }
         if (propertyName === 'map') {
           behaviorContent.getChild('map').setStringValue(newValue);
           return true;
@@ -817,6 +1100,21 @@ module.exports = {
       behavior.getProperties = function (behaviorContent) {
         const behaviorProperties = new gd.MapStringPropertyDescriptor();
         ensurePBRMaterialDefaults(behaviorContent);
+
+        behaviorProperties
+          .getOrCreate('usePhysicalMaterial')
+          .setValue(
+            behaviorContent.getChild('usePhysicalMaterial').getBoolValue()
+              ? 'true'
+              : 'false'
+          )
+          .setType('Boolean')
+          .setLabel(_('Use physical material'))
+          .setDescription(
+            _(
+              'Convert to MeshPhysicalMaterial for real-time premium PBR rendering (glass, coat, sheen, iridescence).'
+            )
+          );
 
         behaviorProperties
           .getOrCreate('metalness')
@@ -892,11 +1190,107 @@ module.exports = {
           .setType('resource')
           .addExtraInfo('image')
           .setLabel(_('Albedo map'));
+        behaviorProperties
+          .getOrCreate('clearcoat')
+          .setValue(
+            behaviorContent.getChild('clearcoat').getDoubleValue().toString()
+          )
+          .setType('number')
+          .setLabel(_('Clearcoat'))
+          .setGroup(_('Physical material'))
+          .setAdvanced(true);
+        behaviorProperties
+          .getOrCreate('clearcoatRoughness')
+          .setValue(
+            behaviorContent
+              .getChild('clearcoatRoughness')
+              .getDoubleValue()
+              .toString()
+          )
+          .setType('number')
+          .setLabel(_('Clearcoat roughness'))
+          .setGroup(_('Physical material'))
+          .setAdvanced(true);
+        behaviorProperties
+          .getOrCreate('transmission')
+          .setValue(
+            behaviorContent.getChild('transmission').getDoubleValue().toString()
+          )
+          .setType('number')
+          .setLabel(_('Transmission (glass)'))
+          .setGroup(_('Physical material'))
+          .setAdvanced(true);
+        behaviorProperties
+          .getOrCreate('thickness')
+          .setValue(
+            behaviorContent.getChild('thickness').getDoubleValue().toString()
+          )
+          .setType('number')
+          .setLabel(_('Thickness'))
+          .setGroup(_('Physical material'))
+          .setAdvanced(true);
+        behaviorProperties
+          .getOrCreate('ior')
+          .setValue(behaviorContent.getChild('ior').getDoubleValue().toString())
+          .setType('number')
+          .setLabel(_('IOR'))
+          .setGroup(_('Physical material'))
+          .setAdvanced(true);
+        behaviorProperties
+          .getOrCreate('iridescence')
+          .setValue(
+            behaviorContent.getChild('iridescence').getDoubleValue().toString()
+          )
+          .setType('number')
+          .setLabel(_('Iridescence'))
+          .setGroup(_('Physical material'))
+          .setAdvanced(true);
+        behaviorProperties
+          .getOrCreate('sheen')
+          .setValue(
+            behaviorContent.getChild('sheen').getDoubleValue().toString()
+          )
+          .setType('number')
+          .setLabel(_('Sheen'))
+          .setGroup(_('Physical material'))
+          .setAdvanced(true);
+        behaviorProperties
+          .getOrCreate('sheenRoughness')
+          .setValue(
+            behaviorContent
+              .getChild('sheenRoughness')
+              .getDoubleValue()
+              .toString()
+          )
+          .setType('number')
+          .setLabel(_('Sheen roughness'))
+          .setGroup(_('Physical material'))
+          .setAdvanced(true);
+        behaviorProperties
+          .getOrCreate('sheenColor')
+          .setValue(behaviorContent.getChild('sheenColor').getStringValue())
+          .setType('color')
+          .setLabel(_('Sheen color'))
+          .setGroup(_('Physical material'))
+          .setAdvanced(true);
+        behaviorProperties
+          .getOrCreate('specularIntensity')
+          .setValue(
+            behaviorContent
+              .getChild('specularIntensity')
+              .getDoubleValue()
+              .toString()
+          )
+          .setType('number')
+          .setLabel(_('Specular intensity'))
+          .setGroup(_('Physical material'))
+          .setAdvanced(true);
 
         return behaviorProperties;
       };
 
       behavior.initializeContent = function (behaviorContent) {
+        behaviorContent.addChild('usePhysicalMaterial').setBoolValue(true);
         behaviorContent.addChild('metalness').setDoubleValue(0.0);
         behaviorContent.addChild('roughness').setDoubleValue(0.5);
         behaviorContent.addChild('envMapIntensity').setDoubleValue(1.0);
@@ -907,6 +1301,16 @@ module.exports = {
         behaviorContent.addChild('aoMapAsset').setStringValue('');
         behaviorContent.addChild('aoMapIntensity').setDoubleValue(1.0);
         behaviorContent.addChild('map').setStringValue('');
+        behaviorContent.addChild('clearcoat').setDoubleValue(0.0);
+        behaviorContent.addChild('clearcoatRoughness').setDoubleValue(0.0);
+        behaviorContent.addChild('transmission').setDoubleValue(0.0);
+        behaviorContent.addChild('thickness').setDoubleValue(0.0);
+        behaviorContent.addChild('ior').setDoubleValue(1.5);
+        behaviorContent.addChild('iridescence').setDoubleValue(0.0);
+        behaviorContent.addChild('sheen').setDoubleValue(0.0);
+        behaviorContent.addChild('sheenRoughness').setDoubleValue(1.0);
+        behaviorContent.addChild('sheenColor').setStringValue('255;255;255');
+        behaviorContent.addChild('specularIntensity').setDoubleValue(1.0);
       };
 
       const pbrMaterial = extension
@@ -8341,8 +8745,13 @@ module.exports = {
           }
           return properties.get(propertyName).getValue();
         };
+        const getBooleanValue = (propertyName, fallbackValue) => {
+          const value = getValue(propertyName, fallbackValue ? 'true' : 'false');
+          return value === '1' || value === 'true';
+        };
 
         return {
+          usePhysicalMaterial: getBooleanValue('usePhysicalMaterial', true),
           metalness: clampNumber(
             parseFiniteNumber(getValue('metalness', '0'), 0),
             0,
@@ -8377,6 +8786,52 @@ module.exports = {
             1
           ),
           mapAsset: getValue('map', ''),
+          clearcoat: clampNumber(
+            parseFiniteNumber(getValue('clearcoat', '0'), 0),
+            0,
+            1
+          ),
+          clearcoatRoughness: clampNumber(
+            parseFiniteNumber(getValue('clearcoatRoughness', '0'), 0),
+            0,
+            1
+          ),
+          transmission: clampNumber(
+            parseFiniteNumber(getValue('transmission', '0'), 0),
+            0,
+            1
+          ),
+          thickness: clampNumber(
+            parseFiniteNumber(getValue('thickness', '0'), 0),
+            0,
+            10
+          ),
+          ior: clampNumber(
+            parseFiniteNumber(getValue('ior', '1.5'), 1.5),
+            1,
+            2.5
+          ),
+          iridescence: clampNumber(
+            parseFiniteNumber(getValue('iridescence', '0'), 0),
+            0,
+            1
+          ),
+          sheen: clampNumber(
+            parseFiniteNumber(getValue('sheen', '0'), 0),
+            0,
+            1
+          ),
+          sheenRoughness: clampNumber(
+            parseFiniteNumber(getValue('sheenRoughness', '1'), 1),
+            0,
+            1
+          ),
+          sheenColor: getValue('sheenColor', '255;255;255'),
+          specularIntensity: clampNumber(
+            parseFiniteNumber(getValue('specularIntensity', '1'), 1),
+            0,
+            4
+          ),
         };
       }
 
@@ -8388,6 +8843,7 @@ module.exports = {
         return '';
       }
       return [
+        pbrBehaviorData.usePhysicalMaterial ? 'physical' : 'standard',
         pbrBehaviorData.metalness,
         pbrBehaviorData.roughness,
         pbrBehaviorData.envMapIntensity,
@@ -8398,6 +8854,16 @@ module.exports = {
         pbrBehaviorData.aoMapAsset,
         pbrBehaviorData.aoMapIntensity,
         pbrBehaviorData.mapAsset,
+        pbrBehaviorData.clearcoat,
+        pbrBehaviorData.clearcoatRoughness,
+        pbrBehaviorData.transmission,
+        pbrBehaviorData.thickness,
+        pbrBehaviorData.ior,
+        pbrBehaviorData.iridescence,
+        pbrBehaviorData.sheen,
+        pbrBehaviorData.sheenRoughness,
+        pbrBehaviorData.sheenColor,
+        pbrBehaviorData.specularIntensity,
       ].join('|');
     };
 
@@ -8406,59 +8872,120 @@ module.exports = {
       pbrBehaviorData,
       { normalMapTexture, aoMapTexture, albedoMapTexture }
     ) => {
+      let targetMaterial = material;
       if (
-        !material ||
-        material.roughness === undefined ||
-        material.metalness === undefined
+        targetMaterial &&
+        pbrBehaviorData.usePhysicalMaterial &&
+        targetMaterial.roughness !== undefined &&
+        targetMaterial.metalness !== undefined &&
+        !targetMaterial.isMeshPhysicalMaterial
       ) {
-        return;
+        const upgradedMaterial = new THREE.MeshPhysicalMaterial();
+        upgradedMaterial.copy(targetMaterial);
+        if (typeof targetMaterial.dispose === 'function') {
+          targetMaterial.dispose();
+        }
+        targetMaterial = upgradedMaterial;
       }
 
-      material.metalness = pbrBehaviorData.metalness;
-      material.roughness = pbrBehaviorData.roughness;
-      if (material.envMapIntensity !== undefined) {
-        material.envMapIntensity = pbrBehaviorData.envMapIntensity;
+      if (
+        !targetMaterial ||
+        targetMaterial.roughness === undefined ||
+        targetMaterial.metalness === undefined
+      ) {
+        return targetMaterial;
       }
-      if (material.emissive && material.emissive.setHex) {
-        material.emissive.setHex(
+
+      targetMaterial.metalness = pbrBehaviorData.metalness;
+      targetMaterial.roughness = pbrBehaviorData.roughness;
+      if (targetMaterial.envMapIntensity !== undefined) {
+        targetMaterial.envMapIntensity = pbrBehaviorData.envMapIntensity;
+      }
+      if (targetMaterial.emissive && targetMaterial.emissive.setHex) {
+        targetMaterial.emissive.setHex(
           objectsRenderingService.rgbOrHexToHexNumber(
             pbrBehaviorData.emissiveColor || '0;0;0'
           )
         );
       }
-      if (material.emissiveIntensity !== undefined) {
-        material.emissiveIntensity = pbrBehaviorData.emissiveIntensity;
+      if (targetMaterial.emissiveIntensity !== undefined) {
+        targetMaterial.emissiveIntensity = pbrBehaviorData.emissiveIntensity;
+      }
+
+      if (targetMaterial.clearcoat !== undefined) {
+        targetMaterial.clearcoat = pbrBehaviorData.clearcoat;
+      }
+      if (targetMaterial.clearcoatRoughness !== undefined) {
+        targetMaterial.clearcoatRoughness = pbrBehaviorData.clearcoatRoughness;
+      }
+      if (targetMaterial.transmission !== undefined) {
+        targetMaterial.transmission = pbrBehaviorData.transmission;
+      }
+      if (targetMaterial.thickness !== undefined) {
+        targetMaterial.thickness = pbrBehaviorData.thickness;
+      }
+      if (targetMaterial.ior !== undefined) {
+        targetMaterial.ior = pbrBehaviorData.ior;
+      }
+      if (targetMaterial.iridescence !== undefined) {
+        targetMaterial.iridescence = pbrBehaviorData.iridescence;
+      }
+      if (targetMaterial.sheen !== undefined) {
+        targetMaterial.sheen = pbrBehaviorData.sheen;
+      }
+      if (targetMaterial.sheenRoughness !== undefined) {
+        targetMaterial.sheenRoughness = pbrBehaviorData.sheenRoughness;
+      }
+      if (
+        targetMaterial.sheenColor &&
+        typeof targetMaterial.sheenColor.setHex === 'function'
+      ) {
+        targetMaterial.sheenColor.setHex(
+          objectsRenderingService.rgbOrHexToHexNumber(
+            pbrBehaviorData.sheenColor || '255;255;255'
+          )
+        );
+      }
+      if (targetMaterial.specularIntensity !== undefined) {
+        targetMaterial.specularIntensity = pbrBehaviorData.specularIntensity;
       }
 
       if (normalMapTexture) {
-        material.normalMap = normalMapTexture;
-        if (material.normalScale && material.normalScale.set) {
-          material.normalScale.set(
+        targetMaterial.normalMap = normalMapTexture;
+        if (targetMaterial.normalScale && targetMaterial.normalScale.set) {
+          targetMaterial.normalScale.set(
             pbrBehaviorData.normalScale,
             pbrBehaviorData.normalScale
           );
         }
-      } else if (pbrBehaviorData.normalMapAsset && material.normalMap !== undefined) {
-        material.normalMap = null;
+      } else if (
+        pbrBehaviorData.normalMapAsset &&
+        targetMaterial.normalMap !== undefined
+      ) {
+        targetMaterial.normalMap = null;
       }
 
       if (aoMapTexture) {
-        material.aoMap = aoMapTexture;
-        if (material.aoMapIntensity !== undefined) {
-          material.aoMapIntensity = pbrBehaviorData.aoMapIntensity;
+        targetMaterial.aoMap = aoMapTexture;
+        if (targetMaterial.aoMapIntensity !== undefined) {
+          targetMaterial.aoMapIntensity = pbrBehaviorData.aoMapIntensity;
         }
-      } else if (pbrBehaviorData.aoMapAsset && material.aoMap !== undefined) {
-        material.aoMap = null;
-        if (material.aoMapIntensity !== undefined) {
-          material.aoMapIntensity = pbrBehaviorData.aoMapIntensity;
+      } else if (
+        pbrBehaviorData.aoMapAsset &&
+        targetMaterial.aoMap !== undefined
+      ) {
+        targetMaterial.aoMap = null;
+        if (targetMaterial.aoMapIntensity !== undefined) {
+          targetMaterial.aoMapIntensity = pbrBehaviorData.aoMapIntensity;
         }
       }
 
-      if (albedoMapTexture && material.map !== undefined) {
-        material.map = albedoMapTexture;
+      if (albedoMapTexture && targetMaterial.map !== undefined) {
+        targetMaterial.map = albedoMapTexture;
       }
 
-      material.needsUpdate = true;
+      targetMaterial.needsUpdate = true;
+      return targetMaterial;
     };
 
     class RenderedCube3DObject2DInstance extends RenderedInstance {
@@ -12302,10 +12829,10 @@ module.exports = {
 
               if (Array.isArray(mesh.material)) {
                 for (let index = 0; index < mesh.material.length; index++) {
-                  apply(mesh.material[index]);
+                  mesh.material[index] = apply(mesh.material[index]);
                 }
               } else {
-                apply(mesh.material);
+                mesh.material = apply(mesh.material);
               }
             });
           })
@@ -12648,5 +13175,6 @@ module.exports = {
     );
   },
 };
+
 
 
