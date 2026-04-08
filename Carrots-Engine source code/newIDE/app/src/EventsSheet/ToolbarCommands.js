@@ -26,6 +26,7 @@ type Props = {|
   redo: () => void,
   canRedo: boolean,
   onToggleSearchPanel: () => void,
+  isBlueprintMode: boolean,
   onOpenSettings?: ?() => void,
   moveEventsIntoNewGroup: () => void,
   canMoveEventsIntoNewGroup: boolean,
@@ -88,7 +89,7 @@ const ToolbarCommands = (props: Props): null => {
     handler: props.redo,
   });
 
-  useCommand('SEARCH_EVENTS', true, {
+  useCommand('SEARCH_EVENTS', !props.isBlueprintMode, {
     handler: props.onToggleSearchPanel,
   });
 

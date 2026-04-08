@@ -45,6 +45,7 @@ type Props = {|
   resourceManagementProps: ResourceManagementProps,
   style?: Object,
   anchorEl: ?HTMLElement,
+  initialInstructionMenuTab?: TabName,
   isNewInstruction: boolean,
   onCancel: () => void,
   onSubmit: () => void,
@@ -75,6 +76,7 @@ const InstructionEditorMenu = ({
   isCondition,
   isNewInstruction,
   anchorEl,
+  initialInstructionMenuTab,
   scope,
   onSubmit,
   canPasteInstructions,
@@ -113,8 +115,15 @@ const InstructionEditorMenu = ({
   const [
     currentInstructionOrObjectSelectorTab,
     setCurrentInstructionOrObjectSelectorTab,
-  ] = React.useState<TabName>('objects');
+  ] = React.useState<TabName>(initialInstructionMenuTab || 'objects');
   const instructionType: string = instruction.getType();
+
+  React.useEffect(() => {
+    if (open) {
+      setCurrentInstructionOrObjectSelectorTab(initialInstructionMenuTab || 'objects');
+      setStep('object-or-free-instructions');
+    }
+  }, [initialInstructionMenuTab, open]);
 
   const submitInstruction = ({
     instruction,

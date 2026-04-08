@@ -95,6 +95,7 @@ type Props = {|
   ) => void,
   i18n: I18nType,
   anchorEl?: any, // Unused
+  initialInstructionMenuTab?: 'objects' | 'free-instructions', // Unused
   canPasteInstructions: boolean, // Unused
   onPasteInstructions: () => void, // Unused
   onWillInstallExtension: (extensionNames: Array<string>) => void,

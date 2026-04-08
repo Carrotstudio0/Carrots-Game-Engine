@@ -18,6 +18,8 @@ import ToolbarSearchIcon from '../UI/CustomSvgIcons/ToolbarSearch';
 import EditSceneIcon from '../UI/CustomSvgIcons/EditScene';
 import { getShortcutDisplayName, useShortcutMap } from '../KeyboardShortcuts';
 import AddLocalVariableIcon from '../UI/CustomSvgIcons/LocalVariable';
+import EventsIcon from '../UI/CustomSvgIcons/Events';
+import GraphViewIcon from '../UI/CustomSvgIcons/GraphView';
 
 type Props = {|
   onAddStandardEvent: () => void,
@@ -39,6 +41,8 @@ type Props = {|
   redo: () => void,
   canRedo: boolean,
   onToggleSearchPanel: () => void,
+  isBlueprintMode: boolean,
+  onToggleBlueprintMode: () => void,
   onOpenSettings?: ?() => void,
   settingsIcon?: React.Node,
   moveEventsIntoNewGroup: () => void,
@@ -66,6 +70,8 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar({
   redo,
   canRedo,
   onToggleSearchPanel,
+  isBlueprintMode,
+  onToggleBlueprintMode,
   onOpenSettings,
   settingsIcon,
   moveEventsIntoNewGroup,
@@ -96,6 +102,7 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar({
         redo={redo}
         canRedo={canRedo}
         onToggleSearchPanel={onToggleSearchPanel}
+        isBlueprintMode={isBlueprintMode}
         onOpenSettings={onOpenSettings}
         moveEventsIntoNewGroup={moveEventsIntoNewGroup}
         canMoveEventsIntoNewGroup={canMoveEventsIntoNewGroup}
@@ -218,7 +225,22 @@ const Toolbar: React.ComponentType<Props> = React.memo<Props>(function Toolbar({
         <IconButton
           size="small"
           color="default"
+          selected={isBlueprintMode}
+          onClick={onToggleBlueprintMode}
+          tooltip={
+            isBlueprintMode
+              ? t`Switch to classic Event Sheet view`
+              : t`Switch to Blueprint view`
+          }
+        >
+          {isBlueprintMode ? <EventsIcon /> : <GraphViewIcon />}
+        </IconButton>
+
+        <IconButton
+          size="small"
+          color="default"
           onClick={() => onToggleSearchPanel()}
+          disabled={isBlueprintMode}
           tooltip={t`Search in events`}
           acceleratorString={'CmdOrCtrl+F'}
         >

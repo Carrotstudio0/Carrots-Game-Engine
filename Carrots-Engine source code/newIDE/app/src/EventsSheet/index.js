@@ -128,6 +128,7 @@ import { useHighlightedAiGeneratedEvent } from './UseHighlightedAiGeneratedEvent
 import { findEventByPath } from '../Utils/EventsValidationScanner';
 import { isElseEventValid } from './EventsTree/helpers';
 import EventInspectorPanel from './EventInspectorPanel';
+import EventsBlueprintView from './BlueprintView';
 
 const gd: libGDevelop = global.gd;
 
@@ -138,6 +139,12 @@ const loopEventTypes = [
   'BuiltinCommonInstructions::ForEach',
   'BuiltinCommonInstructions::ForEachChildVariable',
 ];
+
+type BlueprintQuickStartEventPreset =
+  | 'start'
+  | 'update'
+  | 'fixed-update'
+  | 'key-pressed';
 
 export type ChangeContext = {|
   events?: Array<EventContext>,
@@ -194,6 +201,7 @@ type State = {|
     instrsList: ?gdInstructionsList,
     indexInList: ?number,
     eventContext: ?EventContext,
+    initialInstructionMenuTab: ?('objects' | 'free-instructions'),
   },
   editedParameter: {
     // TODO: This could be adapted to be a ParameterContext
@@ -233,6 +241,7 @@ type State = {|
   allEventsMetadata: Array<EventMetadata>,
 
   fontSize: number,
+  eventsViewMode: 'sheet' | 'blueprint',
 |};
 
 type EventInsertionContext = {|
@@ -316,6 +325,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
       instrsList: null,
       indexInList: 0,
       eventContext: null,
+      initialInstructionMenuTab: null,
     },
     editedParameter: {
       isCondition: true,
@@ -349,6 +359,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
     textEditedEvent: null,
 
     fontSize: 14,
+    eventsViewMode: 'sheet',
   };
 
   constructor(props: ComponentProps) {
@@ -482,6 +493,8 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
         canRedo={canRedo(this.state.eventsHistory)}
         undo={this.undo}
         redo={this.redo}
+        isBlueprintMode={this.state.eventsViewMode === 'blueprint'}
+        onToggleBlueprintMode={this.toggleEventsViewMode}
         onOpenSettings={this.props.onOpenSettings}
         settingsIcon={this.props.settingsIcon}
         onToggleSearchPanel={this._toggleSearchPanel}
@@ -500,7 +513,27 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
     this.addNewEvent('BuiltinCommonInstructions::Comment');
   };
 
+  toggleEventsViewMode = () => {
+    this.setState(
+      state => {
+        const nextViewMode =
+          state.eventsViewMode === 'sheet' ? 'blueprint' : 'sheet';
+        return {
+          eventsViewMode: nextViewMode,
+          showSearchPanel:
+            nextViewMode === 'blueprint' ? false : state.showSearchPanel,
+        };
+      },
+      () => {
+        this.updateToolbar();
+        this._ensureFocused();
+      }
+    );
+  };
+
   _toggleSearchPanel = () => {
+    if (this.state.eventsViewMode === 'blueprint') return;
+
     this.setState(
       state => {
         if (
@@ -552,7 +585,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
         eventContext.event.getSubEvents().getEventsCount()
       );
 
-    this._eventsTree &&
+    if (this._eventsTree) {
       this._eventsTree.forceEventsUpdate(() => {
         const positions = this._getChangedEventRows([newSubEvent]);
         this._saveChangesToHistory('ADD', {
@@ -560,6 +593,14 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
           positionAfterAction: positions,
         });
       });
+      return;
+    }
+
+    const positions = this._getChangedEventRows([newSubEvent]);
+    this._saveChangesToHistory('ADD', {
+      positionsBeforeAction: positions,
+      positionAfterAction: positions,
+    });
   };
 
   _selectionCanHaveSubEvents = (): any => {
@@ -688,7 +729,14 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
           if (clickableElement) clickableElement.click();
         }
       });
+      return [newEvent];
     }
+
+    const positions = this._getChangedEventRows([newEvent]);
+    this._saveChangesToHistory('ADD', {
+      positionsBeforeAction: positions,
+      positionAfterAction: positions,
+    });
 
     return [newEvent];
   };
@@ -761,15 +809,22 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
   openAddInstructionContextMenu = (
     eventContext: EventContext,
     button: HTMLButtonElement,
-    instructionsListContext: InstructionsListContext
+    instructionsListContext: InstructionsListContext,
+    initialInstructionMenuTab?: 'objects' | 'free-instructions'
   ) => {
-    this.openInstructionEditor(eventContext, instructionsListContext, button);
+    this.openInstructionEditor(
+      eventContext,
+      instructionsListContext,
+      button,
+      initialInstructionMenuTab
+    );
   };
 
   openInstructionEditor = (
     eventContext: EventContext,
     instructionContext: InstructionContext | InstructionsListContext,
-    inlineInstructionEditorAnchorEl?: ?HTMLButtonElement = null
+    inlineInstructionEditorAnchorEl?: ?HTMLButtonElement = null,
+    initialInstructionMenuTab?: ?('objects' | 'free-instructions') = null
   ) => {
     if (this.state.editedInstruction.instruction) {
       this.state.editedInstruction.instruction.delete();
@@ -791,6 +846,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
             ? instructionContext.indexInList
             : undefined,
         eventContext,
+        initialInstructionMenuTab,
       },
     });
   };
@@ -825,6 +881,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
           instrsList: null,
           indexInList: 0,
           eventContext: null,
+          initialInstructionMenuTab: null,
         },
       },
       () => {
@@ -1226,16 +1283,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
     const objectPrefix = objectName || '<Object>';
     forEachEvent.setOrderBy(`${objectPrefix}.`);
     forEachEvent.setOrder('asc');
-
-    if (this._eventsTree) {
-      this._eventsTree.forceEventsUpdate(() => {
-        const positions = this._getChangedEventRows([eventContext.event]);
-        this._saveChangesToHistory('EDIT', {
-          positionsBeforeAction: positions,
-          positionAfterAction: positions,
-        });
-      });
-    }
+    this._forceUpdateEventAndSaveInHistory(eventContext.event);
   };
 
   _removeOrdering = () => {
@@ -1250,16 +1298,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
     const forEachEvent = gd.asForEachEvent(eventContext.event);
     forEachEvent.setOrderBy('');
     forEachEvent.setLimit('');
-
-    if (this._eventsTree) {
-      this._eventsTree.forceEventsUpdate(() => {
-        const positions = this._getChangedEventRows([eventContext.event]);
-        this._saveChangesToHistory('EDIT', {
-          positionsBeforeAction: positions,
-          positionAfterAction: positions,
-        });
-      });
-    }
+    this._forceUpdateEventAndSaveInHistory(eventContext.event);
   };
 
   _addLoopIndexVariable = () => {
@@ -1283,16 +1322,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
       .insertNew(generatedName, variablesContainer.count())
       .setValue(0);
     loopEvent.setLoopIndexVariableName(generatedName);
-
-    if (this._eventsTree) {
-      this._eventsTree.forceEventsUpdate(() => {
-        const positions = this._getChangedEventRows([eventContext.event]);
-        this._saveChangesToHistory('EDIT', {
-          positionsBeforeAction: positions,
-          positionAfterAction: positions,
-        });
-      });
-    }
+    this._forceUpdateEventAndSaveInHistory(eventContext.event);
   };
 
   _removeLoopIndexVariable = () => {
@@ -1310,16 +1340,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
       variablesContainer.remove(loopIndexVariableName);
     }
     loopEvent.setLoopIndexVariableName('');
-
-    if (this._eventsTree) {
-      this._eventsTree.forceEventsUpdate(() => {
-        const positions = this._getChangedEventRows([eventContext.event]);
-        this._saveChangesToHistory('EDIT', {
-          positionsBeforeAction: positions,
-          positionAfterAction: positions,
-        });
-      });
-    }
+    this._forceUpdateEventAndSaveInHistory(eventContext.event);
   };
 
   _forceUpdateEventAndSaveInHistory = (event: gdBaseEvent) => {
@@ -1349,6 +1370,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
 
     eventContext.event.setFolded(folded);
     if (this._eventsTree) this._eventsTree.forceEventsUpdate();
+    else this.forceUpdate();
   };
 
   _toggleSelectedEventDisabled = () => {
@@ -1536,6 +1558,295 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
     this._forceUpdateEventAndSaveInHistory(
       instructionContext.eventContext.event
     );
+  };
+
+  _setInstructionParameterValueFromBlueprint = (
+    eventContext: EventContext,
+    instructionContext: InstructionContext,
+    parameterIndex: number,
+    valueAsString: string
+  ) => {
+    const instruction = instructionContext.instruction;
+    if (
+      parameterIndex < 0 ||
+      parameterIndex >= instruction.getParametersCount()
+    ) {
+      return;
+    }
+    if (
+      instruction.getParameter(parameterIndex).getPlainString() ===
+      valueAsString
+    ) {
+      return;
+    }
+
+    instruction.setParameter(parameterIndex, valueAsString);
+    gd.VariableInstructionSwitcher.switchBetweenUnifiedInstructionIfNeeded(
+      this.props.project.getCurrentPlatform(),
+      eventContext.projectScopedContainersAccessor.get(),
+      instruction
+    );
+
+    if (this._searchPanel) this._searchPanel.markSearchResultsDirty();
+    this._forceUpdateEventAndSaveInHistory(eventContext.event);
+  };
+
+  _getBlueprintInstructionListsFromEvent = (
+    event: gdBaseEvent
+  ): ?{|
+    conditionInstructionsList: ?gdInstructionsList,
+    actionInstructionsList: ?gdInstructionsList,
+  |} => {
+    const eventType = event.getType();
+    if (eventType === 'BuiltinCommonInstructions::Standard') {
+      const standardEvent = gd.asStandardEvent(event);
+      return {
+        conditionInstructionsList: standardEvent.getConditions(),
+        actionInstructionsList: standardEvent.getActions(),
+      };
+    }
+    if (eventType === 'BuiltinCommonInstructions::Else') {
+      const elseEvent = gd.asElseEvent(event);
+      return {
+        conditionInstructionsList: elseEvent.getConditions(),
+        actionInstructionsList: elseEvent.getActions(),
+      };
+    }
+    if (eventType === 'BuiltinCommonInstructions::Repeat') {
+      const repeatEvent = gd.asRepeatEvent(event);
+      return {
+        conditionInstructionsList: repeatEvent.getConditions(),
+        actionInstructionsList: repeatEvent.getActions(),
+      };
+    }
+    if (eventType === 'BuiltinCommonInstructions::ForEach') {
+      const forEachEvent = gd.asForEachEvent(event);
+      return {
+        conditionInstructionsList: forEachEvent.getConditions(),
+        actionInstructionsList: forEachEvent.getActions(),
+      };
+    }
+    if (eventType === 'BuiltinCommonInstructions::ForEachChildVariable') {
+      const forEachChildVariableEvent = gd.asForEachChildVariableEvent(event);
+      return {
+        conditionInstructionsList: forEachChildVariableEvent.getConditions(),
+        actionInstructionsList: forEachChildVariableEvent.getActions(),
+      };
+    }
+    if (eventType === 'BuiltinCommonInstructions::While') {
+      const whileEvent = gd.asWhileEvent(event);
+      return {
+        // Keep parity with Blueprint graph which adds to the first condition lane.
+        conditionInstructionsList: whileEvent.getWhileConditions(),
+        actionInstructionsList: whileEvent.getActions(),
+      };
+    }
+
+    return null;
+  };
+
+  _insertBlueprintInstruction = (
+    instructionsList: gdInstructionsList,
+    instructionType: string,
+    defaultParameters: Array<string> = []
+  ) => {
+    const instruction = new gd.Instruction();
+    instruction.setType(instructionType);
+
+    const parameterCount = instruction.getParametersCount();
+    defaultParameters.forEach((value, index) => {
+      if (index >= 0 && index < parameterCount) {
+        instruction.setParameter(index, value);
+      }
+    });
+
+    instructionsList.insert(instruction, instructionsList.size());
+    instruction.delete();
+  };
+
+  _createBlueprintTemplateNode = (
+    eventContext: EventContext,
+    templateId: 'add-force' | 'set-velocity' | 'lerp' | 'branch' | 'sequence'
+  ) => {
+    const event = eventContext.event;
+    const instructionLists = this._getBlueprintInstructionListsFromEvent(event);
+    if (!instructionLists && templateId !== 'sequence') return;
+
+    let didMutate = false;
+
+    if (templateId === 'add-force' && instructionLists) {
+      if (!instructionLists.actionInstructionsList) return;
+      this._insertBlueprintInstruction(
+        instructionLists.actionInstructionsList,
+        'Physics3D::Physics3DBehavior::ApplyForceAtCenter',
+        ['', '', '0', '12', '0']
+      );
+      didMutate = true;
+    } else if (templateId === 'set-velocity' && instructionLists) {
+      if (!instructionLists.actionInstructionsList) return;
+      this._insertBlueprintInstruction(
+        instructionLists.actionInstructionsList,
+        'Physics3D::Physics3DBehavior::SetLinearVelocityX',
+        ['', '', '0']
+      );
+      this._insertBlueprintInstruction(
+        instructionLists.actionInstructionsList,
+        'Physics3D::Physics3DBehavior::SetLinearVelocityY',
+        ['', '', '12']
+      );
+      this._insertBlueprintInstruction(
+        instructionLists.actionInstructionsList,
+        'Physics3D::Physics3DBehavior::SetLinearVelocityZ',
+        ['', '', '0']
+      );
+      didMutate = true;
+    } else if (templateId === 'lerp' && instructionLists) {
+      if (!instructionLists.actionInstructionsList) return;
+      this._insertBlueprintInstruction(
+        instructionLists.actionInstructionsList,
+        'Tween::TweenBehavior::AddObjectPositionTween2',
+        ['', '', '0', '0', '0.35', '"easeOutQuad"']
+      );
+      didMutate = true;
+    } else if (templateId === 'branch' && instructionLists) {
+      if (!instructionLists.conditionInstructionsList) return;
+      this._insertBlueprintInstruction(
+        instructionLists.conditionInstructionsList,
+        'BuiltinCommonInstructions::CompareNumbers',
+        ['1', '=', '1']
+      );
+      didMutate = true;
+    } else if (templateId === 'sequence') {
+      if (!event.canHaveSubEvents()) return;
+      const subEvents = event.getSubEvents();
+      const insertionIndex = subEvents.getEventsCount();
+      subEvents.insertNewEvent(
+        this.props.project,
+        'BuiltinCommonInstructions::Standard',
+        insertionIndex
+      );
+      subEvents.insertNewEvent(
+        this.props.project,
+        'BuiltinCommonInstructions::Standard',
+        insertionIndex + 1
+      );
+      didMutate = true;
+    }
+
+    if (!didMutate) return;
+    if (this._searchPanel) this._searchPanel.markSearchResultsDirty();
+    this._forceUpdateEventAndSaveInHistory(eventContext.event);
+  };
+
+  _createBlueprintQuickStartEvent = (
+    eventPreset: BlueprintQuickStartEventPreset,
+    eventsList: gdEventsList
+  ) => {
+    const createStandardEvent = (): ?gdBaseEvent => {
+      const createdEvents = this.addNewEvent('BuiltinCommonInstructions::Standard', {
+        eventsList,
+        indexInList: eventsList.getEventsCount(),
+      });
+      if (!createdEvents.length) return null;
+      return createdEvents[createdEvents.length - 1];
+    };
+
+    const addCondition = (
+      event: gdBaseEvent,
+      conditionType: string,
+      defaultParameters: Array<string>
+    ): boolean => {
+      const instructionLists = this._getBlueprintInstructionListsFromEvent(event);
+      if (!instructionLists || !instructionLists.conditionInstructionsList) {
+        return false;
+      }
+      this._insertBlueprintInstruction(
+        instructionLists.conditionInstructionsList,
+        conditionType,
+        defaultParameters
+      );
+      return true;
+    };
+
+    const addAction = (
+      event: gdBaseEvent,
+      actionType: string,
+      defaultParameters: Array<string>
+    ): boolean => {
+      const instructionLists = this._getBlueprintInstructionListsFromEvent(event);
+      if (!instructionLists || !instructionLists.actionInstructionsList) {
+        return false;
+      }
+      this._insertBlueprintInstruction(
+        instructionLists.actionInstructionsList,
+        actionType,
+        defaultParameters
+      );
+      return true;
+    };
+
+    const commitEventChanges = (event: gdBaseEvent) => {
+      if (this._searchPanel) this._searchPanel.markSearchResultsDirty();
+      this._forceUpdateEventAndSaveInHistory(event);
+    };
+
+    if (eventPreset === 'update') {
+      createStandardEvent();
+      return;
+    }
+
+    if (eventPreset === 'start') {
+      const startEvent = createStandardEvent();
+      if (!startEvent) return;
+      let didMutate = false;
+      didMutate =
+        addCondition(startEvent, 'SceneJustBegins', ['']) || didMutate;
+      if (didMutate) commitEventChanges(startEvent);
+      return;
+    }
+
+    if (eventPreset === 'key-pressed') {
+      const keyPressedEvent = createStandardEvent();
+      if (!keyPressedEvent) return;
+      let didMutate = false;
+      didMutate =
+        addCondition(keyPressedEvent, 'KeyFromTextPressed', ['', '"Space"']) ||
+        didMutate;
+      if (didMutate) commitEventChanges(keyPressedEvent);
+      return;
+    }
+
+    const fixedUpdateTimerName = '"__BlueprintFixedUpdate"';
+
+    const fixedUpdateInitEvent = createStandardEvent();
+    if (!fixedUpdateInitEvent) return;
+    let didMutateInitEvent = false;
+    didMutateInitEvent =
+      addCondition(fixedUpdateInitEvent, 'SceneJustBegins', ['']) ||
+      didMutateInitEvent;
+    didMutateInitEvent =
+      addAction(fixedUpdateInitEvent, 'ResetTimer', [
+        '',
+        fixedUpdateTimerName,
+      ]) || didMutateInitEvent;
+    if (didMutateInitEvent) commitEventChanges(fixedUpdateInitEvent);
+
+    const fixedUpdateLoopEvent = createStandardEvent();
+    if (!fixedUpdateLoopEvent) return;
+    let didMutateLoopEvent = false;
+    didMutateLoopEvent =
+      addCondition(fixedUpdateLoopEvent, 'CompareTimer', [
+        '',
+        fixedUpdateTimerName,
+        '>=',
+        '0.0166667',
+      ]) || didMutateLoopEvent;
+    didMutateLoopEvent =
+      addAction(fixedUpdateLoopEvent, 'ResetTimer', [
+        '',
+        fixedUpdateTimerName,
+      ]) || didMutateLoopEvent;
+    if (didMutateLoopEvent) commitEventChanges(fixedUpdateLoopEvent);
   };
 
   _openSelectedInstructionEditorFromInspector = () => {
@@ -2371,6 +2682,9 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
               this.state.editedInstruction.indexInList === undefined
             }
             anchorEl={this.state.inlineInstructionEditorAnchorEl}
+            initialInstructionMenuTab={
+              this.state.editedInstruction.initialInstructionMenuTab
+            }
             open={true}
             onCancel={() => this.closeInstructionEditor()}
             onSubmit={() => {
@@ -2633,83 +2947,130 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
                       </Column>
                     </Line>
                   )}
-                  {this._containerDivLastKnownSize && (
-                    <EventsTree
-                      ref={eventsTree => (this._eventsTree = eventsTree)}
-                      key={events.ptr}
-                      indentScale={preferences.values.eventsSheetIndentScale}
-                      onScroll={this._ensureFocused}
-                      events={events}
-                      project={project}
-                      scope={scope}
-                      globalObjectsContainer={globalObjectsContainer}
-                      objectsContainer={objectsContainer}
-                      projectScopedContainersAccessor={
-                        projectScopedContainersAccessor
-                      }
-                      selection={this.state.selection}
-                      onInstructionClick={this.selectInstruction}
-                      onInstructionDoubleClick={this.openInstructionEditor}
-                      onInstructionContextMenu={this.openInstructionContextMenu}
-                      onAddInstructionContextMenu={
-                        this.openAddInstructionContextMenu
-                      }
-                      onAddNewInstruction={this.openInstructionEditor}
-                      onPasteInstructions={
-                        this.pasteInstructionsInInstructionsList
-                      }
-                      onMoveToInstruction={this.moveSelectionToInstruction}
-                      onMoveToInstructionsList={
-                        this.moveSelectionToInstructionsList
-                      }
-                      onParameterClick={this.openParameterEditor}
-                      onVariableDeclarationClick={() => {
-                        // Nothing to do.
-                      }}
-                      onVariableDeclarationDoubleClick={
-                        this.openVariablesEditor
-                      }
-                      onEventClick={this.selectEvent}
-                      onEventContextMenu={this.openEventContextMenu}
-                      onAddNewEvent={(
-                        eventType: string,
-                        eventsList: gdEventsList
-                      ) => {
-                        this.addNewEvent(eventType, {
-                          eventsList,
-                          indexInList: eventsList.getEventsCount(),
-                        });
-                      }}
-                      onOpenExternalEvents={onOpenExternalEvents}
-                      onOpenLayout={onOpenLayout}
-                      searchResults={
-                        this.state.navigationHighlightEvent
-                          ? [this.state.navigationHighlightEvent]
-                          : eventsSearchResultEvents
-                      }
-                      searchFocusOffset={
-                        this.state.navigationHighlightEvent
-                          ? 0
-                          : searchFocusOffset
-                      }
-                      onEventMoved={this._onEventMoved}
-                      onEndEditingEvent={this._onEndEditingStringEvent}
-                      showObjectThumbnails={
-                        preferences.values.eventsSheetShowObjectThumbnails
-                      }
-                      screenType={screenType}
-                      windowSize={windowSize}
-                      eventsSheetWidth={this._containerDivLastKnownSize.width}
-                      eventsSheetHeight={this._containerDivLastKnownSize.height}
-                      fontSize={preferences.values.eventsSheetZoomLevel}
-                      preferences={preferences}
-                      tutorials={tutorials}
-                      highlightedAiGeneratedEventIds={
-                        highlightedAiGeneratedEventIds
-                      }
-                    />
-                  )}
-                  {this.state.showSearchPanel && (
+                  {this._containerDivLastKnownSize &&
+                    this.state.eventsViewMode === 'sheet' && (
+                      <EventsTree
+                        ref={eventsTree => (this._eventsTree = eventsTree)}
+                        key={events.ptr}
+                        indentScale={preferences.values.eventsSheetIndentScale}
+                        onScroll={this._ensureFocused}
+                        events={events}
+                        project={project}
+                        scope={scope}
+                        globalObjectsContainer={globalObjectsContainer}
+                        objectsContainer={objectsContainer}
+                        projectScopedContainersAccessor={
+                          projectScopedContainersAccessor
+                        }
+                        selection={this.state.selection}
+                        onInstructionClick={this.selectInstruction}
+                        onInstructionDoubleClick={this.openInstructionEditor}
+                        onInstructionContextMenu={
+                          this.openInstructionContextMenu
+                        }
+                        onSetInstructionParameterValue={
+                          this._setInstructionParameterValueFromBlueprint
+                        }
+                        onAddInstructionContextMenu={
+                          this.openAddInstructionContextMenu
+                        }
+                        onAddNewInstruction={this.openInstructionEditor}
+                        onPasteInstructions={
+                          this.pasteInstructionsInInstructionsList
+                        }
+                        onMoveToInstruction={this.moveSelectionToInstruction}
+                        onMoveToInstructionsList={
+                          this.moveSelectionToInstructionsList
+                        }
+                        onParameterClick={this.openParameterEditor}
+                        onVariableDeclarationClick={() => {
+                          // Nothing to do.
+                        }}
+                        onVariableDeclarationDoubleClick={
+                          this.openVariablesEditor
+                        }
+                        onEventClick={this.selectEvent}
+                        onEventContextMenu={this.openEventContextMenu}
+                        onAddNewEvent={(
+                          eventType: string,
+                          eventsList: gdEventsList
+                        ) => {
+                          this.addNewEvent(eventType, {
+                            eventsList,
+                            indexInList: eventsList.getEventsCount(),
+                          });
+                        }}
+                        onOpenExternalEvents={onOpenExternalEvents}
+                        onOpenLayout={onOpenLayout}
+                        searchResults={
+                          this.state.navigationHighlightEvent
+                            ? [this.state.navigationHighlightEvent]
+                            : eventsSearchResultEvents
+                        }
+                        searchFocusOffset={
+                          this.state.navigationHighlightEvent
+                            ? 0
+                            : searchFocusOffset
+                        }
+                        onEventMoved={this._onEventMoved}
+                        onEndEditingEvent={this._onEndEditingStringEvent}
+                        showObjectThumbnails={
+                          preferences.values.eventsSheetShowObjectThumbnails
+                        }
+                        screenType={screenType}
+                        windowSize={windowSize}
+                        eventsSheetWidth={this._containerDivLastKnownSize.width}
+                        eventsSheetHeight={
+                          this._containerDivLastKnownSize.height
+                        }
+                        fontSize={preferences.values.eventsSheetZoomLevel}
+                        preferences={preferences}
+                        tutorials={tutorials}
+                        highlightedAiGeneratedEventIds={
+                          highlightedAiGeneratedEventIds
+                        }
+                      />
+                    )}
+                  {this._containerDivLastKnownSize &&
+                    this.state.eventsViewMode === 'blueprint' && (
+                      <EventsBlueprintView
+                        project={project}
+                        events={events}
+                        projectScopedContainersAccessor={
+                          projectScopedContainersAccessor
+                        }
+                        selection={this.state.selection}
+                        eventMetadataByType={eventMetadataByType}
+                        onEventClick={this.selectEvent}
+                        onEventContextMenu={this.openEventContextMenu}
+                        onInstructionClick={this.selectInstruction}
+                        onInstructionDoubleClick={this.openInstructionEditor}
+                        onInstructionContextMenu={
+                          this.openInstructionContextMenu
+                        }
+                        onSetInstructionParameterValue={
+                          this._setInstructionParameterValueFromBlueprint
+                        }
+                        onAddInstructionContextMenu={
+                          this.openAddInstructionContextMenu
+                        }
+                        onCreateTemplateNode={this._createBlueprintTemplateNode}
+                        onCreateQuickStartEvent={
+                          this._createBlueprintQuickStartEvent
+                        }
+                        onAddNewEvent={(
+                          eventType: string,
+                          eventsList: gdEventsList
+                        ) => {
+                          this.addNewEvent(eventType, {
+                            eventsList,
+                            indexInList: eventsList.getEventsCount(),
+                          });
+                        }}
+                      />
+                    )}
+                  {this.state.eventsViewMode === 'sheet' &&
+                    this.state.showSearchPanel && (
                     <ErrorBoundary
                       componentTitle={<Trans>Search panel</Trans>}
                       scope="scene-events-search"
@@ -2913,7 +3274,9 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
               this.setState({
                 editedVariable: null,
               });
-              if (this._eventsTree && eventContext) {
+              if (!eventContext) return;
+
+              if (this._eventsTree) {
                 this._eventsTree.forceEventsUpdate(() => {
                   const positions = this._getChangedEventRows([
                     eventContext.event,
@@ -2923,7 +3286,14 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
                     positionAfterAction: positions,
                   });
                 });
+                return;
               }
+
+              const positions = this._getChangedEventRows([eventContext.event]);
+              this._saveChangesToHistory('ADD', {
+                positionsBeforeAction: positions,
+                positionAfterAction: positions,
+              });
             }}
             variablesContainer={this.state.editedVariable.variablesContainer}
             initiallySelectedVariableName={
