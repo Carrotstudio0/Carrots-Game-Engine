@@ -1,7 +1,8 @@
 namespace gdjs {
-  interface RuntimeInstanceContainer {
+  type RuntimeInstanceContainerWithNavMesh3DManager =
+    gdjs.RuntimeInstanceContainer & {
     navMesh3DManager?: NavMesh3DManager;
-  }
+  };
 
   type RuntimeObjectWith3DRenderer = gdjs.RuntimeObject & {
     get3DRendererObject?: () => THREE.Object3D | null;
@@ -48,12 +49,20 @@ namespace gdjs {
     viaByNode: Map<number, ResolvedLinkEdge>;
   };
 
+  type NavMeshLayerDebugState = {
+    lineSegments: THREE.LineSegments;
+    data: LayerNavData | null;
+    attachedLayerRenderer: RuntimeLayerRendererWithRequired3D | null;
+  };
+
   const navMeshTriangleAreaEpsilon = 1e-4;
   const navMeshPointEpsilonSq = 0.0001;
 
   const navMeshSurfaceDefaultMaxSlope = 60;
   const navMeshSurfaceDefaultAreaCost = 1;
   const navMeshSurfaceDefaultRefreshFrames = 20;
+  const navMeshSurfaceDefaultDebugMeshColor = 0x33ccff;
+  const navMeshSurfaceDebugMeshOpacity = 0.42;
 
   const navMeshObstacleDefaultMargin = 8;
   const navMeshObstacleDefaultRefreshFrames = 10;
@@ -100,6 +109,7 @@ namespace gdjs {
     private _agents = new Set<NavMeshAgentRuntimeBehavior>();
     private _dirtyLayers = new Set<string>();
     private _layerData = new Map<string, LayerNavData>();
+    private _layerDebugState = new Map<string, NavMeshLayerDebugState>();
 
     private static _up = new THREE.Vector3(0, 0, 1);
     private static _triangle = new THREE.Triangle();
@@ -109,10 +119,12 @@ namespace gdjs {
     static getManager(
       instanceContainer: gdjs.RuntimeInstanceContainer
     ): NavMesh3DManager {
-      if (!instanceContainer.navMesh3DManager) {
-        instanceContainer.navMesh3DManager = new gdjs.NavMesh3DManager();
+      const containerWithNavMesh =
+        instanceContainer as RuntimeInstanceContainerWithNavMesh3DManager;
+      if (!containerWithNavMesh.navMesh3DManager) {
+        containerWithNavMesh.navMesh3DManager = new gdjs.NavMesh3DManager();
       }
-      return instanceContainer.navMesh3DManager;
+      return containerWithNavMesh.navMesh3DManager;
     }
 
     addSurface(surface: NavMeshSurfaceRuntimeBehavior): void {
@@ -157,6 +169,20 @@ namespace gdjs {
       this._dirtyLayers.add(layerName || '');
     }
 
+    refreshLayerDebugVisualization(layerName: string): void {
+      const normalizedLayer = layerName || '';
+      const data = this._getLayerData(normalizedLayer);
+      if (!data) {
+        this._disposeLayerDebugState(normalizedLayer);
+        return;
+      }
+      this._syncLayerDebugVisualization(normalizedLayer, data);
+    }
+
+    hasLayerDebugVisualization(layerName: string): boolean {
+      return this._layerDebugState.has(layerName || '');
+    }
+
     findPath(
       layerName: string,
       start: THREE.Vector3,
@@ -165,6 +191,7 @@ namespace gdjs {
       const normalizedLayer = layerName || '';
       const data = this._getLayerData(normalizedLayer);
       if (!data || data.triangles.length === 0) return null;
+      this._syncLayerDebugVisualization(normalizedLayer, data);
 
       const startMatch = this._closestTriangle(data.triangles, start);
       const endMatch = this._closestTriangle(data.triangles, end);
@@ -239,6 +266,155 @@ namespace gdjs {
         this._layerData.set(layerName, this._buildLayer(layerName));
       }
       return this._layerData.get(layerName) || null;
+    }
+
+    private _getLayerDebugSettings(layerName: string): {
+      enabled: boolean;
+      color: number;
+    } {
+      let enabled = false;
+      let color = navMeshSurfaceDefaultDebugMeshColor;
+
+      for (const surface of this._surfaces.values()) {
+        if (!surface.isEnabled()) continue;
+        if (surface.getOwnerLayerName() !== layerName) continue;
+        if (!surface.isDebugMeshEnabled()) continue;
+        enabled = true;
+        color = surface.getDebugMeshColor();
+        break;
+      }
+
+      return {
+        enabled,
+        color: clamp(Math.round(color), 0, 0xffffff),
+      };
+    }
+
+    private _getLayerRendererWith3D(
+      layerName: string
+    ): RuntimeLayerRendererWithRequired3D | null {
+      for (const surface of this._surfaces.values()) {
+        if (surface.getOwnerLayerName() !== layerName) continue;
+        const layerRenderer = surface.getOwnerLayerRendererWith3D();
+        if (layerRenderer) return layerRenderer;
+      }
+      return null;
+    }
+
+    private _getOrCreateLayerDebugState(layerName: string): NavMeshLayerDebugState {
+      const existingState = this._layerDebugState.get(layerName);
+      if (existingState) return existingState;
+
+      const lineSegments = new THREE.LineSegments(
+        new THREE.BufferGeometry(),
+        new THREE.LineBasicMaterial({
+          color: navMeshSurfaceDefaultDebugMeshColor,
+          transparent: true,
+          opacity: navMeshSurfaceDebugMeshOpacity,
+          depthTest: false,
+          depthWrite: false,
+        })
+      );
+      lineSegments.frustumCulled = false;
+      lineSegments.renderOrder = 9996;
+      lineSegments.visible = false;
+
+      const state: NavMeshLayerDebugState = {
+        lineSegments,
+        data: null,
+        attachedLayerRenderer: null,
+      };
+      this._layerDebugState.set(layerName, state);
+      return state;
+    }
+
+    private _detachLayerDebugState(state: NavMeshLayerDebugState): void {
+      if (state.attachedLayerRenderer) {
+        state.attachedLayerRenderer.remove3DRendererObject(state.lineSegments);
+      }
+      state.lineSegments.removeFromParent();
+      state.attachedLayerRenderer = null;
+      state.lineSegments.visible = false;
+    }
+
+    private _disposeLayerDebugState(layerName: string): void {
+      const state = this._layerDebugState.get(layerName);
+      if (!state) return;
+      this._detachLayerDebugState(state);
+      state.lineSegments.geometry.dispose();
+      const material = state.lineSegments.material as THREE.LineBasicMaterial;
+      material.dispose();
+      this._layerDebugState.delete(layerName);
+    }
+
+    private _buildLayerDebugEdgePoints(triangles: NavTriangle[]): THREE.Vector3[] {
+      const uniqueEdges = new Set<string>();
+      const points: THREE.Vector3[] = [];
+
+      for (const triangle of triangles) {
+        const tryPushEdge = (from: THREE.Vector3, to: THREE.Vector3) => {
+          const key = edgeKey(from, to);
+          if (uniqueEdges.has(key)) return;
+          uniqueEdges.add(key);
+          points.push(from.clone(), to.clone());
+        };
+
+        tryPushEdge(triangle.a, triangle.b);
+        tryPushEdge(triangle.b, triangle.c);
+        tryPushEdge(triangle.c, triangle.a);
+      }
+
+      return points;
+    }
+
+    private _syncLayerDebugVisualization(
+      layerName: string,
+      data: LayerNavData
+    ): void {
+      const debugSettings = this._getLayerDebugSettings(layerName);
+      const shouldDisplay = debugSettings.enabled && data.triangles.length > 0;
+      if (!shouldDisplay) {
+        this._disposeLayerDebugState(layerName);
+        return;
+      }
+
+      const layerRenderer = this._getLayerRendererWith3D(layerName);
+      const state = this._getOrCreateLayerDebugState(layerName);
+
+      const material = state.lineSegments.material as THREE.LineBasicMaterial;
+      if (material.color.getHex() !== debugSettings.color) {
+        material.color.setHex(debugSettings.color);
+      }
+
+      if (state.data !== data) {
+        const points = this._buildLayerDebugEdgePoints(data.triangles);
+        const oldGeometry = state.lineSegments.geometry;
+        state.lineSegments.geometry = new THREE.BufferGeometry().setFromPoints(points);
+        oldGeometry.dispose();
+        state.data = data;
+      }
+
+      if (!layerRenderer) {
+        this._detachLayerDebugState(state);
+        return;
+      }
+
+      if (
+        state.attachedLayerRenderer &&
+        state.attachedLayerRenderer !== layerRenderer
+      ) {
+        state.attachedLayerRenderer.remove3DRendererObject(state.lineSegments);
+      }
+
+      if (
+        state.lineSegments.parent === null ||
+        state.attachedLayerRenderer !== layerRenderer
+      ) {
+        layerRenderer.add3DRendererObject(state.lineSegments);
+      }
+
+      state.attachedLayerRenderer = layerRenderer;
+      state.lineSegments.visible = true;
     }
 
     private _buildLayer(layerName: string): LayerNavData {
@@ -627,6 +803,8 @@ namespace gdjs {
     private _lastSignature: string;
     private _registeredInManager: boolean;
     private _manager: NavMesh3DManager;
+    private _debugMeshEnabled: boolean;
+    private _debugMeshColor: number;
 
     constructor(
       instanceContainer: gdjs.RuntimeInstanceContainer,
@@ -663,6 +841,19 @@ namespace gdjs {
       this._lastSignature = '';
       this._registeredInManager = false;
       this._manager = gdjs.NavMesh3DManager.getManager(instanceContainer);
+      this._debugMeshEnabled =
+        behaviorData.debugMeshEnabled === undefined
+          ? false
+          : !!behaviorData.debugMeshEnabled;
+      this._debugMeshColor = clamp(
+        Math.round(
+          behaviorData.debugMeshColor !== undefined
+            ? behaviorData.debugMeshColor
+            : navMeshSurfaceDefaultDebugMeshColor
+        ),
+        0,
+        0xffffff
+      );
     }
 
     override applyBehaviorOverriding(behaviorData): boolean {
@@ -672,6 +863,12 @@ namespace gdjs {
       if (behaviorData.dynamic !== undefined) this.setDynamic(!!behaviorData.dynamic);
       if (behaviorData.refreshIntervalFrames !== undefined) {
         this.setRefreshIntervalFrames(behaviorData.refreshIntervalFrames);
+      }
+      if (behaviorData.debugMeshEnabled !== undefined) {
+        this.setDebugMeshEnabled(!!behaviorData.debugMeshEnabled);
+      }
+      if (behaviorData.debugMeshColor !== undefined) {
+        this.setDebugMeshColor(behaviorData.debugMeshColor);
       }
       return true;
     }
@@ -686,27 +883,36 @@ namespace gdjs {
       this._manager.addSurface(this);
       this._registeredInManager = true;
       this._manager.markDirty(this.getOwnerLayerName());
+      if (this._debugMeshEnabled) {
+        this._manager.refreshLayerDebugVisualization(this.getOwnerLayerName());
+      }
     }
 
     override onDeActivate(): void {
       if (!this._registeredInManager) return;
       this._manager.removeSurface(this);
       this._registeredInManager = false;
+      this._manager.refreshLayerDebugVisualization(this.getOwnerLayerName());
     }
 
     override onDestroy(): void {
       if (!this._registeredInManager) return;
       this._manager.removeSurface(this);
       this._registeredInManager = false;
+      this._manager.refreshLayerDebugVisualization(this.getOwnerLayerName());
     }
 
     override doStepPreEvents(
       instanceContainer: gdjs.RuntimeInstanceContainer
     ): void {
+      const layerName = this.getOwnerLayerName();
       if (!this.activated()) {
         if (this._registeredInManager) {
           this._manager.removeSurface(this);
           this._registeredInManager = false;
+        }
+        if (this._debugMeshEnabled) {
+          this._manager.refreshLayerDebugVisualization(layerName);
         }
         return;
       }
@@ -716,19 +922,24 @@ namespace gdjs {
         this._refreshCounter = this._refreshIntervalFrames;
         this._manager.addSurface(this);
         this._registeredInManager = true;
-        this._manager.markDirty(this.getOwnerLayerName());
+        this._manager.markDirty(layerName);
       }
 
-      if (!this._enabled || !this._dynamic) return;
-      if (this._refreshCounter >= this._refreshIntervalFrames) {
-        this._refreshCounter = 0;
-        const nextSignature = this._computeSignature();
-        if (nextSignature !== this._lastSignature) {
-          this._lastSignature = nextSignature;
-          this._manager.markDirty(this.getOwnerLayerName());
+      if (this._enabled && this._dynamic) {
+        if (this._refreshCounter >= this._refreshIntervalFrames) {
+          this._refreshCounter = 0;
+          const nextSignature = this._computeSignature();
+          if (nextSignature !== this._lastSignature) {
+            this._lastSignature = nextSignature;
+            this._manager.markDirty(layerName);
+          }
+        } else {
+          this._refreshCounter++;
         }
-      } else {
-        this._refreshCounter++;
+      }
+
+      if (this._debugMeshEnabled) {
+        this._manager.refreshLayerDebugVisualization(layerName);
       }
     }
 
@@ -783,8 +994,51 @@ namespace gdjs {
       this._refreshCounter = this._refreshIntervalFrames;
     }
 
+    isDebugMeshEnabled(): boolean {
+      return this._debugMeshEnabled;
+    }
+
+    setDebugMeshEnabled(enabled: boolean): void {
+      const normalized = !!enabled;
+      if (normalized === this._debugMeshEnabled) return;
+      this._debugMeshEnabled = normalized;
+      this._manager.refreshLayerDebugVisualization(this.getOwnerLayerName());
+    }
+
+    getDebugMeshColor(): number {
+      return this._debugMeshColor;
+    }
+
+    setDebugMeshColor(color: number): void {
+      const nextColor = clamp(Math.round(color), 0, 0xffffff);
+      if (nextColor === this._debugMeshColor) return;
+      this._debugMeshColor = nextColor;
+      this._manager.refreshLayerDebugVisualization(this.getOwnerLayerName());
+    }
+
     getOwnerLayerName(): string {
       return this.owner.getLayer ? this.owner.getLayer() : '';
+    }
+
+    getOwnerLayerRendererWith3D():
+      | RuntimeLayerRendererWithRequired3D
+      | null {
+      const runtimeScene = this.owner.getRuntimeScene();
+      if (!runtimeScene) return null;
+
+      const layer = runtimeScene.getLayer(this.getOwnerLayerName());
+      if (!layer) return null;
+
+      const layerRenderer = layer.getRenderer() as RuntimeLayerRendererWith3D;
+      if (
+        !layerRenderer ||
+        typeof layerRenderer.add3DRendererObject !== 'function' ||
+        typeof layerRenderer.remove3DRendererObject !== 'function'
+      ) {
+        return null;
+      }
+
+      return layerRenderer as RuntimeLayerRendererWithRequired3D;
     }
 
     getOwner3DObject(): THREE.Object3D | null {

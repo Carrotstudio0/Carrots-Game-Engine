@@ -144,6 +144,51 @@ void DeclareNavMeshBehaviorExtension(gd::PlatformExtension& extension) {
                 _("Frames between dynamic transform checks (minimum 1).")))
         .SetFunctionName("setRefreshIntervalFrames")
         .SetGetter("getRefreshIntervalFrames");
+
+    surface
+        .AddScopedAction("SetDebugMeshEnabled",
+                         _("Set debug mesh"),
+                         _("Enable or disable navmesh debug mesh rendering for "
+                           "this layer."),
+                         _("Set debug mesh of _PARAM0_ to _PARAM2_"),
+                         _("NavMesh surface"),
+                         "CppPlatform/Extensions/AStaricon24.png",
+                         "CppPlatform/Extensions/AStaricon16.png")
+        .AddParameter("object", _("Object"))
+        .AddParameter("behavior", _("Behavior"), "NavMeshSurfaceBehavior")
+        .AddParameter("yesorno", _("Debug mesh"))
+        .SetFunctionName("setDebugMeshEnabled");
+
+    surface
+        .AddScopedCondition("IsDebugMeshEnabled",
+                            _("Debug mesh enabled"),
+                            _("Check if navmesh debug mesh rendering is "
+                              "enabled."),
+                            _("_PARAM0_ debug mesh is enabled"),
+                            _("NavMesh surface"),
+                            "CppPlatform/Extensions/AStaricon24.png",
+                            "CppPlatform/Extensions/AStaricon16.png")
+        .AddParameter("object", _("Object"))
+        .AddParameter("behavior", _("Behavior"), "NavMeshSurfaceBehavior")
+        .SetFunctionName("isDebugMeshEnabled");
+
+    surface
+        .AddExpressionAndConditionAndAction(
+            "number",
+            "DebugMeshColor",
+            _("Debug mesh color"),
+            _("the debug mesh color as RGB integer"),
+            _("the debug mesh color"),
+            _("NavMesh surface"),
+            "CppPlatform/Extensions/AStaricon24.png")
+        .AddParameter("object", _("Object"))
+        .AddParameter("behavior", _("Behavior"), "NavMeshSurfaceBehavior")
+        .UseStandardParameters(
+            "number",
+            gd::ParameterOptions::MakeNewOptions().SetDescription(
+                _("RGB integer color (for example 3394815 for light blue).")))
+        .SetFunctionName("setDebugMeshColor")
+        .SetGetter("getDebugMeshColor");
   }
 
   {

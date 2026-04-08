@@ -1,5 +1,15 @@
 // @ts-check
 describe('gdjs.NavMeshRuntimeBehavior', function () {
+  /**
+   * @typedef {gdjs.RuntimeObject & {
+   *   get3DRendererObject: () => THREE.Object3D,
+   *   getZ: () => number,
+   *   setZ: (z: number) => void,
+   *   getRotationX: () => number,
+   *   getRotationY: () => number
+   * }} NavMeshTestRuntimeObject
+   */
+
   const createScene = () => {
     const runtimeGame = gdjs.getPixiRuntimeGame();
     const runtimeScene = new gdjs.RuntimeScene(runtimeGame);
@@ -58,16 +68,19 @@ describe('gdjs.NavMeshRuntimeBehavior', function () {
     behaviorData,
     object3D
   ) => {
-    const runtimeObject = new gdjs.RuntimeObject(
-      runtimeScene,
-      {
-        name: objectName,
-        type: '',
-        behaviors: [behaviorData],
-        effects: [],
-        variables: [],
-      },
-      undefined
+    /** @type {NavMeshTestRuntimeObject} */
+    const runtimeObject = /** @type {any} */ (
+      new gdjs.RuntimeObject(
+        runtimeScene,
+        {
+          name: objectName,
+          type: '',
+          behaviors: [behaviorData],
+          effects: [],
+          variables: [],
+        },
+        undefined
+      )
     );
 
     let z = object3D.position.z;
@@ -126,6 +139,8 @@ describe('gdjs.NavMeshRuntimeBehavior', function () {
         areaCost: 1,
         dynamic: true,
         refreshIntervalFrames: 5,
+        debugMeshEnabled: false,
+        debugMeshColor: 0x33ccff,
       },
       mesh
     );
@@ -190,7 +205,7 @@ describe('gdjs.NavMeshRuntimeBehavior', function () {
     agent.setZ(0);
 
     /** @type {gdjs.NavMeshAgentRuntimeBehavior} */
-    const behavior = agent.getBehavior('agent');
+    const behavior = /** @type {any} */ (agent.getBehavior('agent'));
     behavior.setDestination(240, 0, 0);
     for (let i = 0; i < 30 && !behavior.isPathFound(); i++) {
       runtimeScene.renderAndStep(1000 / 60);
@@ -221,7 +236,7 @@ describe('gdjs.NavMeshRuntimeBehavior', function () {
     agent.setZ(0);
 
     /** @type {gdjs.NavMeshAgentRuntimeBehavior} */
-    const behavior = agent.getBehavior('agent');
+    const behavior = /** @type {any} */ (agent.getBehavior('agent'));
     behavior.setDestination(260, -40, 0);
     for (let i = 0; i < 30 && !behavior.isPathFound(); i++) {
       runtimeScene.renderAndStep(1000 / 60);
@@ -256,12 +271,35 @@ describe('gdjs.NavMeshRuntimeBehavior', function () {
     agent.setZ(0);
 
     /** @type {gdjs.NavMeshAgentRuntimeBehavior} */
-    const behavior = agent.getBehavior('agent');
+    const behavior = /** @type {any} */ (agent.getBehavior('agent'));
     behavior.setDestination(100, 0, 0);
 
     expect(behavior.isPathFound()).to.be(false);
     expect(behavior.getNodeCount()).to.be(0);
     expect(behavior.destinationReached()).to.be(false);
+  });
+
+  it('updates debug mesh settings for navmesh surface visualization', function () {
+    const runtimeScene = createScene();
+    const surface = addSurface(runtimeScene, 'surface', 800);
+    runtimeScene.renderAndStep(1000 / 60);
+
+    /** @type {gdjs.NavMeshSurfaceRuntimeBehavior} */
+    const behavior = /** @type {any} */ (surface.getBehavior('surface'));
+    behavior.setDebugMeshEnabled(true);
+    behavior.setDebugMeshColor(0x22ffaa);
+    runtimeScene.renderAndStep(1000 / 60);
+
+    expect(behavior.isDebugMeshEnabled()).to.be(true);
+    expect(behavior.getDebugMeshColor()).to.be(0x22ffaa);
+
+    const manager = gdjs.NavMesh3DManager.getManager(runtimeScene);
+    expect(!!manager).to.be(true);
+    expect(manager.hasLayerDebugVisualization('')).to.be(true);
+
+    behavior.setDebugMeshEnabled(false);
+    runtimeScene.renderAndStep(1000 / 60);
+    expect(manager.hasLayerDebugVisualization('')).to.be(false);
   });
 
   it('updates debug painter settings for the current path', function () {
@@ -274,7 +312,7 @@ describe('gdjs.NavMeshRuntimeBehavior', function () {
     agent.setZ(0);
 
     /** @type {gdjs.NavMeshAgentRuntimeBehavior} */
-    const behavior = agent.getBehavior('agent');
+    const behavior = /** @type {any} */ (agent.getBehavior('agent'));
     behavior.setDebugPathEnabled(true);
     behavior.setDebugPathColor(0xff2200);
     behavior.setDestination(180, 10, 0);

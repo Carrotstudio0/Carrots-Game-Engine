@@ -13,6 +13,8 @@ void NavMeshSurfaceBehavior::InitializeContent(
   behaviorContent.SetAttribute("areaCost", 1);
   behaviorContent.SetAttribute("dynamic", true);
   behaviorContent.SetAttribute("refreshIntervalFrames", 20);
+  behaviorContent.SetAttribute("debugMeshEnabled", false);
+  behaviorContent.SetAttribute("debugMeshColor", 3394815);
 }
 
 #if defined(GD_IDE_ONLY)
@@ -46,6 +48,20 @@ std::map<gd::String, gd::PropertyDescriptor> NavMeshSurfaceBehavior::GetProperti
       .SetType("Number")
       .SetValue(gd::String::From(
           behaviorContent.GetDoubleAttribute("refreshIntervalFrames")));
+  properties["DebugMeshEnabled"]
+      .SetLabel(_("Debug mesh"))
+      .SetGroup(_("Debug"))
+      .SetAdvanced()
+      .SetValue(
+          behaviorContent.GetBoolAttribute("debugMeshEnabled") ? "true" : "false")
+      .SetType("Boolean");
+  properties["DebugMeshColor"]
+      .SetLabel(_("Debug mesh color"))
+      .SetGroup(_("Debug"))
+      .SetAdvanced()
+      .SetType("Number")
+      .SetValue(
+          gd::String::From(behaviorContent.GetDoubleAttribute("debugMeshColor")));
 
   return properties;
 }
@@ -61,6 +77,10 @@ bool NavMeshSurfaceBehavior::UpdateProperty(gd::SerializerElement& behaviorConte
     behaviorContent.SetAttribute("dynamic", (value != "0"));
     return true;
   }
+  if (name == "DebugMeshEnabled") {
+    behaviorContent.SetAttribute("debugMeshEnabled", (value != "0"));
+    return true;
+  }
 
   const float numericValue = value.To<float>();
   if (name == "MaxSlope") {
@@ -73,6 +93,12 @@ bool NavMeshSurfaceBehavior::UpdateProperty(gd::SerializerElement& behaviorConte
   }
   if (name == "RefreshIntervalFrames") {
     behaviorContent.SetAttribute("refreshIntervalFrames", std::max(1.f, numericValue));
+    return true;
+  }
+  if (name == "DebugMeshColor") {
+    behaviorContent.SetAttribute(
+        "debugMeshColor",
+        static_cast<int>(std::max(0.f, std::min(16777215.f, numericValue))));
     return true;
   }
 

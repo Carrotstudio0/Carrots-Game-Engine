@@ -229,6 +229,13 @@ const jsExtensions = [
     objectsRenderingServiceModules: {},
   },
   {
+    name: 'NavMeshBehavior',
+    // $FlowFixMe[incompatible-type] - this path is ignored for Flow.
+    // $FlowFixMe[cannot-resolve-module]
+    extensionModule: require('GDJS-for-web-app-only/Runtime/Extensions/NavMeshBehavior/JsExtension.js'),
+    objectsRenderingServiceModules: {},
+  },
+  {
     name: 'SpineObject',
     // $FlowFixMe[incompatible-type] - this path is ignored for Flow.
     // $FlowFixMe[cannot-resolve-module]

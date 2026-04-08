@@ -61,6 +61,16 @@ class NavMeshBehaviorJsExtension : public gd::PlatformExtension {
           "getRefreshIntervalFrames");
       expressions["RefreshIntervalFrames"].SetFunctionName(
           "getRefreshIntervalFrames");
+      actions["NavMeshBehavior::SetDebugMeshEnabled"].SetFunctionName(
+          "setDebugMeshEnabled");
+      conditions["NavMeshBehavior::IsDebugMeshEnabled"].SetFunctionName(
+          "isDebugMeshEnabled");
+      actions["NavMeshBehavior::DebugMeshColor"]
+          .SetFunctionName("setDebugMeshColor")
+          .SetGetter("getDebugMeshColor");
+      conditions["NavMeshBehavior::DebugMeshColor"].SetFunctionName(
+          "getDebugMeshColor");
+      expressions["DebugMeshColor"].SetFunctionName("getDebugMeshColor");
     }
 
     {
