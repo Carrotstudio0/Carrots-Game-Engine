@@ -646,6 +646,139 @@ namespace gdjs {
       );
     }
 
+    private _createPBRCompatibleMaterialFromSource(
+      sourceMaterial: THREE.Material
+    ): PBRManagedMaterial | null {
+      const typedSourceMaterial = sourceMaterial as THREE.Material & {
+        isShaderMaterial?: boolean;
+        color?: THREE.Color;
+        map?: THREE.Texture | null;
+        normalMap?: THREE.Texture | null;
+        aoMap?: THREE.Texture | null;
+        normalScale?: THREE.Vector2;
+        aoMapIntensity?: number;
+        emissive?: THREE.Color;
+        emissiveMap?: THREE.Texture | null;
+        emissiveIntensity?: number;
+        metalness?: number;
+        roughness?: number;
+        envMapIntensity?: number;
+        transparent?: boolean;
+        opacity?: number;
+        alphaTest?: number;
+        side?: THREE.Side;
+        wireframe?: boolean;
+        vertexColors?: boolean;
+        flatShading?: boolean;
+        depthWrite?: boolean;
+        depthTest?: boolean;
+        blending?: THREE.Blending;
+        fog?: boolean;
+      };
+
+      if (typedSourceMaterial.isShaderMaterial) {
+        return null;
+      }
+
+      const pbrMaterial = this._usePhysicalMaterial
+        ? (new THREE.MeshPhysicalMaterial() as PBRManagedMaterial)
+        : (new THREE.MeshStandardMaterial() as PBRManagedMaterial);
+
+      pbrMaterial.name = sourceMaterial.name || '';
+      if (typedSourceMaterial.color) {
+        pbrMaterial.color.copy(typedSourceMaterial.color);
+      }
+      if (typedSourceMaterial.map) {
+        pbrMaterial.map = typedSourceMaterial.map;
+      }
+      if (typedSourceMaterial.normalMap) {
+        pbrMaterial.normalMap = typedSourceMaterial.normalMap;
+      }
+      if (typedSourceMaterial.aoMap) {
+        pbrMaterial.aoMap = typedSourceMaterial.aoMap;
+      }
+      if (typedSourceMaterial.normalScale) {
+        pbrMaterial.normalScale.copy(typedSourceMaterial.normalScale);
+      }
+      if (typeof typedSourceMaterial.aoMapIntensity === 'number') {
+        pbrMaterial.aoMapIntensity = this._clamp(
+          typedSourceMaterial.aoMapIntensity,
+          0,
+          1
+        );
+      }
+      if (typedSourceMaterial.emissive) {
+        pbrMaterial.emissive.copy(typedSourceMaterial.emissive);
+      }
+      const pbrMaterialWithOptionalTextures = pbrMaterial as PBRManagedMaterial & {
+        emissiveMap?: THREE.Texture | null;
+      };
+      if (
+        typedSourceMaterial.emissiveMap &&
+        pbrMaterialWithOptionalTextures.emissiveMap !== undefined
+      ) {
+        pbrMaterialWithOptionalTextures.emissiveMap =
+          typedSourceMaterial.emissiveMap;
+      }
+      if (typeof typedSourceMaterial.emissiveIntensity === 'number') {
+        pbrMaterial.emissiveIntensity = this._clamp(
+          typedSourceMaterial.emissiveIntensity,
+          0,
+          4
+        );
+      }
+
+      pbrMaterial.metalness =
+        typeof typedSourceMaterial.metalness === 'number'
+          ? this._clamp01(typedSourceMaterial.metalness)
+          : pbrDefaultMetalness;
+      pbrMaterial.roughness =
+        typeof typedSourceMaterial.roughness === 'number'
+          ? this._clamp01(typedSourceMaterial.roughness)
+          : pbrDefaultRoughness;
+      pbrMaterial.envMapIntensity =
+        typeof typedSourceMaterial.envMapIntensity === 'number'
+          ? this._clamp(typedSourceMaterial.envMapIntensity, 0, 4)
+          : pbrDefaultEnvMapIntensity;
+
+      if (typeof typedSourceMaterial.transparent === 'boolean') {
+        pbrMaterial.transparent = typedSourceMaterial.transparent;
+      }
+      if (typeof typedSourceMaterial.opacity === 'number') {
+        pbrMaterial.opacity = this._clamp(typedSourceMaterial.opacity, 0, 1);
+      }
+      if (typeof typedSourceMaterial.alphaTest === 'number') {
+        pbrMaterial.alphaTest = this._clamp(typedSourceMaterial.alphaTest, 0, 1);
+      }
+      if (typedSourceMaterial.side !== undefined) {
+        pbrMaterial.side = typedSourceMaterial.side;
+      }
+      if (typeof typedSourceMaterial.wireframe === 'boolean') {
+        pbrMaterial.wireframe = typedSourceMaterial.wireframe;
+      }
+      if (typeof typedSourceMaterial.vertexColors === 'boolean') {
+        pbrMaterial.vertexColors = typedSourceMaterial.vertexColors;
+      }
+      if (typeof typedSourceMaterial.flatShading === 'boolean') {
+        pbrMaterial.flatShading = typedSourceMaterial.flatShading;
+      }
+      if (typeof typedSourceMaterial.depthWrite === 'boolean') {
+        pbrMaterial.depthWrite = typedSourceMaterial.depthWrite;
+      }
+      if (typeof typedSourceMaterial.depthTest === 'boolean') {
+        pbrMaterial.depthTest = typedSourceMaterial.depthTest;
+      }
+      if (typedSourceMaterial.blending !== undefined) {
+        pbrMaterial.blending = typedSourceMaterial.blending;
+      }
+      if (typeof typedSourceMaterial.fog === 'boolean') {
+        pbrMaterial.fog = typedSourceMaterial.fog;
+      }
+
+      pbrMaterial.needsUpdate = true;
+      return pbrMaterial;
+    }
+
     private _getOwner3DObject(): THREE.Object3D | null {
       const owner3DObject = this.owner as RuntimeObjectWith3DRenderer;
       if (
@@ -908,8 +1041,107 @@ namespace gdjs {
         1,
         sceneAndRenderer.renderer.capabilities.getMaxAnisotropy()
       );
-      // Cap anisotropy to keep texture quality high without a large GPU cost spike.
-      return Math.min(4, rendererMaxAnisotropy);
+      return rendererMaxAnisotropy;
+    }
+
+    private _applyTextureAnisotropy(
+      texture: THREE.Texture | null | undefined,
+      maxTextureAnisotropy: number
+    ): void {
+      if (!texture) {
+        return;
+      }
+      texture.anisotropy = Math.max(
+        texture.anisotropy || 1,
+        maxTextureAnisotropy
+      );
+    }
+
+    private _applyTextureAnisotropyToPBRMaps(
+      material: PBRManagedMaterial,
+      maxTextureAnisotropy: number
+    ): void {
+      this._applyTextureAnisotropy(material.map, maxTextureAnisotropy);
+      this._applyTextureAnisotropy(material.normalMap, maxTextureAnisotropy);
+      this._applyTextureAnisotropy(material.aoMap, maxTextureAnisotropy);
+
+      const materialWithOptionalMaps = material as unknown as {
+        emissiveMap?: THREE.Texture | null;
+        metalnessMap?: THREE.Texture | null;
+        roughnessMap?: THREE.Texture | null;
+        bumpMap?: THREE.Texture | null;
+        displacementMap?: THREE.Texture | null;
+        clearcoatMap?: THREE.Texture | null;
+        clearcoatNormalMap?: THREE.Texture | null;
+        clearcoatRoughnessMap?: THREE.Texture | null;
+        iridescenceMap?: THREE.Texture | null;
+        iridescenceThicknessMap?: THREE.Texture | null;
+        sheenColorMap?: THREE.Texture | null;
+        sheenRoughnessMap?: THREE.Texture | null;
+        thicknessMap?: THREE.Texture | null;
+        transmissionMap?: THREE.Texture | null;
+        anisotropyMap?: THREE.Texture | null;
+      };
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.emissiveMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.metalnessMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.roughnessMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.bumpMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.displacementMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.clearcoatMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.clearcoatNormalMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.clearcoatRoughnessMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.iridescenceMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.iridescenceThicknessMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.sheenColorMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.sheenRoughnessMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.thicknessMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.transmissionMap,
+        maxTextureAnisotropy
+      );
+      this._applyTextureAnisotropy(
+        materialWithOptionalMaps.anisotropyMap,
+        maxTextureAnisotropy
+      );
     }
 
     private _getTextureVariant(
@@ -1117,24 +1349,7 @@ namespace gdjs {
         ? this._aoMapIntensity
         : originalState.aoMapIntensity;
 
-      if (material.map) {
-        material.map.anisotropy = Math.max(
-          material.map.anisotropy || 1,
-          maxTextureAnisotropy
-        );
-      }
-      if (material.normalMap) {
-        material.normalMap.anisotropy = Math.max(
-          material.normalMap.anisotropy || 1,
-          maxTextureAnisotropy
-        );
-      }
-      if (material.aoMap) {
-        material.aoMap.anisotropy = Math.max(
-          material.aoMap.anisotropy || 1,
-          maxTextureAnisotropy
-        );
-      }
+      this._applyTextureAnisotropyToPBRMaps(material, maxTextureAnisotropy);
 
       material.userData = material.userData || {};
       material.userData[pbrManagedMaterialUserDataKey] = true;
@@ -1251,11 +1466,21 @@ namespace gdjs {
 
       for (let index = 0; index < sourceMaterials.length; index++) {
         const sourceMaterial = sourceMaterials[index];
-        if (!sourceMaterial || !this._isSupportedMaterial(sourceMaterial)) {
+        if (!sourceMaterial) {
           continue;
         }
 
-        let clonedMaterial = sourceMaterial.clone() as PBRManagedMaterial;
+        let clonedMaterial: PBRManagedMaterial | null = null;
+        if (this._isSupportedMaterial(sourceMaterial)) {
+          clonedMaterial = sourceMaterial.clone() as PBRManagedMaterial;
+        } else {
+          clonedMaterial =
+            this._createPBRCompatibleMaterialFromSource(sourceMaterial);
+        }
+        if (!clonedMaterial) {
+          continue;
+        }
+
         if (
           this._usePhysicalMaterial &&
           !(clonedMaterial as unknown as { isMeshPhysicalMaterial?: boolean })

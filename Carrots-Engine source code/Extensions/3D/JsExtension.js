@@ -8867,12 +8867,173 @@ module.exports = {
       ].join('|');
     };
 
+    const getEditorMaxTextureAnisotropy = () => {
+      const editorGlobal = typeof window !== 'undefined' ? window : {};
+      const globalRenderer = editorGlobal.__gdEditorThreeRenderer;
+      if (
+        globalRenderer &&
+        globalRenderer.capabilities &&
+        typeof globalRenderer.capabilities.getMaxAnisotropy === 'function'
+      ) {
+        return Math.max(1, globalRenderer.capabilities.getMaxAnisotropy());
+      }
+      return 8;
+    };
+
+    const applyPreviewTextureAnisotropy = (texture, maxAnisotropy) => {
+      if (!texture) return;
+      texture.anisotropy = Math.max(texture.anisotropy || 1, maxAnisotropy);
+    };
+
+    const applyPreviewMaterialTextureAnisotropy = material => {
+      if (!material) return;
+      const maxAnisotropy = getEditorMaxTextureAnisotropy();
+      const texturePropertyNames = [
+        'map',
+        'normalMap',
+        'aoMap',
+        'emissiveMap',
+        'metalnessMap',
+        'roughnessMap',
+        'bumpMap',
+        'displacementMap',
+        'clearcoatMap',
+        'clearcoatNormalMap',
+        'clearcoatRoughnessMap',
+        'iridescenceMap',
+        'iridescenceThicknessMap',
+        'sheenColorMap',
+        'sheenRoughnessMap',
+        'thicknessMap',
+        'transmissionMap',
+        'anisotropyMap',
+      ];
+
+      texturePropertyNames.forEach(propertyName => {
+        applyPreviewTextureAnisotropy(material[propertyName], maxAnisotropy);
+      });
+    };
+
+    const createPBRPreviewMaterialFromSource = (
+      sourceMaterial,
+      usePhysicalMaterial
+    ) => {
+      if (!sourceMaterial || sourceMaterial.isShaderMaterial) {
+        return null;
+      }
+
+      const targetMaterial = usePhysicalMaterial
+        ? new THREE.MeshPhysicalMaterial()
+        : new THREE.MeshStandardMaterial();
+      targetMaterial.name = sourceMaterial.name || '';
+      if (sourceMaterial.color) {
+        targetMaterial.color.copy(sourceMaterial.color);
+      }
+      if (sourceMaterial.map) {
+        targetMaterial.map = sourceMaterial.map;
+      }
+      if (sourceMaterial.normalMap) {
+        targetMaterial.normalMap = sourceMaterial.normalMap;
+      }
+      if (sourceMaterial.aoMap) {
+        targetMaterial.aoMap = sourceMaterial.aoMap;
+      }
+      if (sourceMaterial.normalScale && targetMaterial.normalScale) {
+        targetMaterial.normalScale.copy(sourceMaterial.normalScale);
+      }
+      if (sourceMaterial.aoMapIntensity !== undefined) {
+        targetMaterial.aoMapIntensity = clampNumber(
+          sourceMaterial.aoMapIntensity,
+          0,
+          1
+        );
+      }
+      if (sourceMaterial.emissive) {
+        targetMaterial.emissive.copy(sourceMaterial.emissive);
+      }
+      if (
+        sourceMaterial.emissiveMap &&
+        targetMaterial.emissiveMap !== undefined
+      ) {
+        targetMaterial.emissiveMap = sourceMaterial.emissiveMap;
+      }
+      if (sourceMaterial.emissiveIntensity !== undefined) {
+        targetMaterial.emissiveIntensity = clampNumber(
+          sourceMaterial.emissiveIntensity,
+          0,
+          4
+        );
+      }
+
+      targetMaterial.metalness =
+        sourceMaterial.metalness !== undefined
+          ? clampNumber(sourceMaterial.metalness, 0, 1)
+          : 0;
+      targetMaterial.roughness =
+        sourceMaterial.roughness !== undefined
+          ? clampNumber(sourceMaterial.roughness, 0, 1)
+          : 0.5;
+      if (targetMaterial.envMapIntensity !== undefined) {
+        targetMaterial.envMapIntensity =
+          sourceMaterial.envMapIntensity !== undefined
+            ? clampNumber(sourceMaterial.envMapIntensity, 0, 4)
+            : 1;
+      }
+
+      if (sourceMaterial.transparent !== undefined) {
+        targetMaterial.transparent = !!sourceMaterial.transparent;
+      }
+      if (sourceMaterial.opacity !== undefined) {
+        targetMaterial.opacity = clampNumber(sourceMaterial.opacity, 0, 1);
+      }
+      if (sourceMaterial.alphaTest !== undefined) {
+        targetMaterial.alphaTest = clampNumber(sourceMaterial.alphaTest, 0, 1);
+      }
+      if (sourceMaterial.side !== undefined) {
+        targetMaterial.side = sourceMaterial.side;
+      }
+      if (sourceMaterial.wireframe !== undefined) {
+        targetMaterial.wireframe = !!sourceMaterial.wireframe;
+      }
+      if (sourceMaterial.vertexColors !== undefined) {
+        targetMaterial.vertexColors = !!sourceMaterial.vertexColors;
+      }
+      if (sourceMaterial.flatShading !== undefined) {
+        targetMaterial.flatShading = !!sourceMaterial.flatShading;
+      }
+      if (sourceMaterial.depthWrite !== undefined) {
+        targetMaterial.depthWrite = !!sourceMaterial.depthWrite;
+      }
+      if (sourceMaterial.depthTest !== undefined) {
+        targetMaterial.depthTest = !!sourceMaterial.depthTest;
+      }
+      if (sourceMaterial.blending !== undefined) {
+        targetMaterial.blending = sourceMaterial.blending;
+      }
+      if (sourceMaterial.fog !== undefined) {
+        targetMaterial.fog = !!sourceMaterial.fog;
+      }
+
+      targetMaterial.needsUpdate = true;
+      return targetMaterial;
+    };
+
     const applyPBRBehaviorDataToMaterial = (
       material,
       pbrBehaviorData,
       { normalMapTexture, aoMapTexture, albedoMapTexture }
     ) => {
       let targetMaterial = material;
+      if (
+        targetMaterial &&
+        (targetMaterial.roughness === undefined ||
+          targetMaterial.metalness === undefined)
+      ) {
+        targetMaterial = createPBRPreviewMaterialFromSource(
+          targetMaterial,
+          pbrBehaviorData.usePhysicalMaterial
+        );
+      }
       if (
         targetMaterial &&
         pbrBehaviorData.usePhysicalMaterial &&
@@ -8952,6 +9113,7 @@ module.exports = {
 
       if (normalMapTexture) {
         targetMaterial.normalMap = normalMapTexture;
+        targetMaterial.normalMapType = THREE.TangentSpaceNormalMap;
         if (targetMaterial.normalScale && targetMaterial.normalScale.set) {
           targetMaterial.normalScale.set(
             pbrBehaviorData.normalScale,
@@ -8984,6 +9146,7 @@ module.exports = {
         targetMaterial.map = albedoMapTexture;
       }
 
+      applyPreviewMaterialTextureAnisotropy(targetMaterial);
       targetMaterial.needsUpdate = true;
       return targetMaterial;
     };
