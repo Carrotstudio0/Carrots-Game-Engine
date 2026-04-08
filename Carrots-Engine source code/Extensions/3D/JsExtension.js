@@ -5723,7 +5723,7 @@ module.exports = {
         .getOrCreate('refDistance')
         .setValue(
           (
-            objectContent.refDistance !== undefined ? objectContent.refDistance : 120
+            objectContent.refDistance !== undefined ? objectContent.refDistance : 80
           ).toString()
         )
         .setType('number')
@@ -5734,7 +5734,7 @@ module.exports = {
         .getOrCreate('maxDistance')
         .setValue(
           (
-            objectContent.maxDistance !== undefined ? objectContent.maxDistance : 1800
+            objectContent.maxDistance !== undefined ? objectContent.maxDistance : 900
           ).toString()
         )
         .setType('number')
@@ -5747,7 +5747,7 @@ module.exports = {
           (
             objectContent.rolloffFactor !== undefined
               ? objectContent.rolloffFactor
-              : 1.15
+              : 1.35
           ).toString()
         )
         .setType('number')
@@ -5853,9 +5853,9 @@ module.exports = {
       volume: 100,
       pitch: 1,
       channel: -1,
-      refDistance: 120,
-      maxDistance: 1800,
-      rolloffFactor: 1.15,
+      refDistance: 80,
+      maxDistance: 900,
+      rolloffFactor: 1.35,
       distanceModel: 'inverse',
       panningModel: 'HRTF',
       coneInnerAngle: 360,
@@ -5900,9 +5900,24 @@ module.exports = {
         'PlayNow',
         _('Play sound emitter now'),
         _(
-          'Start playback immediately for this 3D sound emitter from its current world position.'
+          'Start playback immediately for this 3D sound emitter from its current world position (runtime audition).'
         ),
         _('Play _PARAM0_ now'),
+        _('Sound'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .setFunctionName('play');
+
+    soundEmitterObject
+      .addAction(
+        'AuditionNow',
+        _('Audition sound emitter (runtime)'),
+        _(
+          'Trigger the emitter immediately for runtime audition/testing from its current 3D position.'
+        ),
+        _('Audition _PARAM0_ now'),
         _('Sound'),
         'res/actions/son24.png',
         'res/actions/son.png'
@@ -5951,6 +5966,380 @@ module.exports = {
       )
       .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
       .setFunctionName('isPlaying');
+
+    soundEmitterObject
+      .addScopedAction(
+        'SetEnabled',
+        _('Enable/disable sound emitter'),
+        _('Enable or disable this sound emitter at runtime.'),
+        _('Set enabled state of _PARAM0_ to _PARAM1_'),
+        _('Sound'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .addParameter('yesorno', _('Enabled'))
+      .setFunctionName('setEnabled');
+
+    soundEmitterObject
+      .addScopedCondition(
+        'IsEnabled',
+        _('Emitter is enabled'),
+        _('Check if this sound emitter is enabled.'),
+        _('_PARAM0_ is enabled'),
+        _('Sound'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .setFunctionName('isEnabled');
+
+    soundEmitterObject
+      .addScopedAction(
+        'SetSoundResourceName',
+        _('Set sound resource'),
+        _('Change the sound resource used by this emitter.'),
+        _('Set sound of _PARAM0_ to _PARAM1_'),
+        _('Sound'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .addParameter('string', _('Sound resource name'))
+      .setFunctionName('setSoundResourceName');
+
+    soundEmitterObject
+      .addExpressionAndCondition(
+        'string',
+        'SoundResourceName',
+        _('Sound resource name'),
+        _('the sound resource name used by this emitter'),
+        _('the sound resource name'),
+        _('Sound'),
+        'res/actions/son24.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .useStandardParameters('string', gd.ParameterOptions.makeNewOptions())
+      .setFunctionName('getSoundResourceName');
+
+    soundEmitterObject
+      .addScopedAction(
+        'SetAutoPlay',
+        _('Enable/disable auto play'),
+        _('Enable or disable automatic playback when the emitter is active.'),
+        _('Set auto play of _PARAM0_ to _PARAM1_'),
+        _('Sound'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .addParameter('yesorno', _('Auto play'))
+      .setFunctionName('setAutoPlay');
+
+    soundEmitterObject
+      .addScopedCondition(
+        'IsAutoPlayEnabled',
+        _('Auto play is enabled'),
+        _('Check if auto play is enabled for this emitter.'),
+        _('Auto play is enabled for _PARAM0_'),
+        _('Sound'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .setFunctionName('isAutoPlayEnabled');
+
+    soundEmitterObject
+      .addScopedAction(
+        'SetLoop',
+        _('Enable/disable looping'),
+        _('Enable or disable loop playback for this emitter.'),
+        _('Set looping of _PARAM0_ to _PARAM1_'),
+        _('Sound'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .addParameter('yesorno', _('Loop'))
+      .setFunctionName('setLoop');
+
+    soundEmitterObject
+      .addScopedCondition(
+        'IsLoopEnabled',
+        _('Looping is enabled'),
+        _('Check if this emitter is configured to loop.'),
+        _('_PARAM0_ is looping'),
+        _('Sound'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .setFunctionName('isLoopEnabled');
+
+    soundEmitterObject
+      .addExpressionAndConditionAndAction(
+        'number',
+        'Volume',
+        _('Volume'),
+        _('the volume (0 to 100)'),
+        _('the volume'),
+        _('Sound'),
+        'res/actions/son24.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .useStandardParameters(
+        'number',
+        gd.ParameterOptions.makeNewOptions().setDescription(_('Volume (0-100)'))
+      )
+      .setFunctionName('setVolume')
+      .setGetter('getVolume');
+
+    soundEmitterObject
+      .addExpressionAndConditionAndAction(
+        'number',
+        'Pitch',
+        _('Pitch'),
+        _('the pitch (playback rate)'),
+        _('the pitch'),
+        _('Sound'),
+        'res/actions/son24.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .useStandardParameters(
+        'number',
+        gd.ParameterOptions.makeNewOptions().setDescription(_('Pitch (> 0)'))
+      )
+      .setFunctionName('setPitch')
+      .setGetter('getPitch');
+
+    soundEmitterObject
+      .addExpressionAndConditionAndAction(
+        'number',
+        'Channel',
+        _('Channel'),
+        _('the playback channel (-1 means automatic dedicated channel)'),
+        _('the channel'),
+        _('Sound'),
+        'res/actions/son24.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .useStandardParameters(
+        'number',
+        gd.ParameterOptions.makeNewOptions().setDescription(
+          _('Channel index (-1 for automatic channel)')
+        )
+      )
+      .markAsAdvanced()
+      .setFunctionName('setChannel')
+      .setGetter('getChannel');
+
+    soundEmitterObject
+      .addExpressionAndConditionAndAction(
+        'number',
+        'RefDistance',
+        _('Reference distance'),
+        _('the reference distance for attenuation'),
+        _('the reference distance'),
+        _('Spatial'),
+        'res/actions/son24.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .useStandardParameters(
+        'number',
+        gd.ParameterOptions.makeNewOptions().setDescription(
+          _('Reference distance in pixels')
+        )
+      )
+      .setFunctionName('setRefDistance')
+      .setGetter('getRefDistance');
+
+    soundEmitterObject
+      .addExpressionAndConditionAndAction(
+        'number',
+        'MaxDistance',
+        _('Max distance'),
+        _('the max distance where this emitter can be heard'),
+        _('the max distance'),
+        _('Spatial'),
+        'res/actions/son24.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .useStandardParameters(
+        'number',
+        gd.ParameterOptions.makeNewOptions().setDescription(
+          _('Max distance in pixels')
+        )
+      )
+      .setFunctionName('setMaxDistance')
+      .setGetter('getMaxDistance');
+
+    soundEmitterObject
+      .addExpressionAndConditionAndAction(
+        'number',
+        'RolloffFactor',
+        _('Rolloff factor'),
+        _('the rolloff factor controlling attenuation steepness'),
+        _('the rolloff factor'),
+        _('Spatial'),
+        'res/actions/son24.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .useStandardParameters(
+        'number',
+        gd.ParameterOptions.makeNewOptions().setDescription(_('Rolloff factor'))
+      )
+      .setFunctionName('setRolloffFactor')
+      .setGetter('getRolloffFactor');
+
+    soundEmitterObject
+      .addExpressionAndConditionAndAction(
+        'string',
+        'DistanceModel',
+        _('Distance model'),
+        _('the distance attenuation model'),
+        _('the distance model'),
+        _('Spatial'),
+        'res/actions/son24.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .useStandardParameters(
+        'stringWithSelector',
+        gd.ParameterOptions.makeNewOptions()
+          .setDescription(_('Distance model'))
+          .setTypeExtraInfo(JSON.stringify(['inverse', 'linear']))
+      )
+      .setFunctionName('setDistanceModel')
+      .setGetter('getDistanceModel');
+
+    soundEmitterObject
+      .addExpressionAndConditionAndAction(
+        'string',
+        'PanningModel',
+        _('Panning model'),
+        _('the panning model'),
+        _('the panning model'),
+        _('Spatial'),
+        'res/actions/son24.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .useStandardParameters(
+        'stringWithSelector',
+        gd.ParameterOptions.makeNewOptions()
+          .setDescription(_('Panning model'))
+          .setTypeExtraInfo(JSON.stringify(['HRTF', 'equalpower']))
+      )
+      .setFunctionName('setPanningModel')
+      .setGetter('getPanningModel');
+
+    soundEmitterObject
+      .addExpressionAndConditionAndAction(
+        'number',
+        'ConeInnerAngle',
+        _('Cone inner angle'),
+        _('the inner cone angle in degrees'),
+        _('the inner cone angle'),
+        _('Cone'),
+        'res/actions/son24.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .useStandardParameters(
+        'number',
+        gd.ParameterOptions.makeNewOptions().setDescription(_('Angle in degrees'))
+      )
+      .setFunctionName('setConeInnerAngle')
+      .setGetter('getConeInnerAngle');
+
+    soundEmitterObject
+      .addExpressionAndConditionAndAction(
+        'number',
+        'ConeOuterAngle',
+        _('Cone outer angle'),
+        _('the outer cone angle in degrees'),
+        _('the outer cone angle'),
+        _('Cone'),
+        'res/actions/son24.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .useStandardParameters(
+        'number',
+        gd.ParameterOptions.makeNewOptions().setDescription(_('Angle in degrees'))
+      )
+      .setFunctionName('setConeOuterAngle')
+      .setGetter('getConeOuterAngle');
+
+    soundEmitterObject
+      .addExpressionAndConditionAndAction(
+        'number',
+        'ConeOuterGain',
+        _('Cone outer gain'),
+        _('the outer cone gain (0 to 1)'),
+        _('the outer cone gain'),
+        _('Cone'),
+        'res/actions/son24.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .useStandardParameters(
+        'number',
+        gd.ParameterOptions.makeNewOptions().setDescription(_('Gain (0-1)'))
+      )
+      .setFunctionName('setConeOuterGain')
+      .setGetter('getConeOuterGain');
+
+    soundEmitterObject
+      .addScopedAction(
+        'SetFollowObjectRotation',
+        _('Enable/disable directional follow rotation'),
+        _('Enable or disable using the object rotation as sound orientation.'),
+        _('Set follow rotation of _PARAM0_ to _PARAM1_'),
+        _('Cone'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .addParameter('yesorno', _('Follow object rotation'))
+      .setFunctionName('setFollowObjectRotation');
+
+    soundEmitterObject
+      .addScopedCondition(
+        'IsFollowingObjectRotation',
+        _('Uses object rotation'),
+        _('Check if this emitter uses object rotation as directional orientation.'),
+        _('_PARAM0_ uses object rotation'),
+        _('Cone'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .setFunctionName('isFollowingObjectRotation');
+
+    soundEmitterObject
+      .addScopedAction(
+        'SetShowDebugGizmos',
+        _('Show/hide debug gizmos'),
+        _('Show or hide debug helper gizmos for this emitter.'),
+        _('Set debug gizmos of _PARAM0_ to _PARAM1_'),
+        _('Advanced'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .addParameter('yesorno', _('Show debug gizmos'))
+      .setFunctionName('setShowDebugGizmos')
+      .markAsAdvanced();
+
+    soundEmitterObject
+      .addScopedCondition(
+        'AreDebugGizmosShown',
+        _('Debug gizmos are shown'),
+        _('Check if debug helper gizmos are enabled for this emitter.'),
+        _('Debug gizmos are enabled for _PARAM0_'),
+        _('Advanced'),
+        'res/actions/son24.png',
+        'res/actions/son.png'
+      )
+      .addParameter('object', _('3D sound emitter'), 'SoundEmitterObject', false)
+      .setFunctionName('areDebugGizmosShown')
+      .markAsAdvanced();
 
     extension
       .addExpressionAndConditionAndAction(
@@ -6355,13 +6744,13 @@ module.exports = {
         .setAdvanced(true);
       properties
         .getOrCreate('probeEnabled')
-        .setValue('true')
+        .setValue('false')
         .setLabel(_('Enable probes'))
         .setType('boolean')
         .setGroup(_('Probes'));
       properties
         .getOrCreate('probeIntensity')
-        .setValue('0.5')
+        .setValue('0.2')
         .setLabel(_('Probe intensity'))
         .setDescription(_('Intensity of probe-based indirect fill lighting.'))
         .setType('number')
@@ -6406,7 +6795,7 @@ module.exports = {
         .setAdvanced(true);
       properties
         .getOrCreate('attenuationModel')
-        .setValue('balanced')
+        .setValue('physical')
         .addChoice('physical', _('Physical'))
         .addChoice('balanced', _('Balanced'))
         .addChoice('cinematic', _('Cinematic'))
@@ -6819,7 +7208,7 @@ module.exports = {
         .setAdvanced(true);
       properties
         .getOrCreate('physicallyCorrectLights')
-        .setValue('false')
+        .setValue('true')
         .setLabel(_('Physically correct light units'))
         .setDescription(
           _(
@@ -10426,23 +10815,23 @@ module.exports = {
 
         context.fillStyle = '#ffffff';
         context.beginPath();
-        context.moveTo(32, 50);
-        context.lineTo(52, 50);
-        context.lineTo(73, 34);
-        context.lineTo(73, 94);
-        context.lineTo(52, 78);
-        context.lineTo(32, 78);
+        context.moveTo(18, 42);
+        context.lineTo(44, 42);
+        context.lineTo(80, 16);
+        context.lineTo(80, 112);
+        context.lineTo(44, 86);
+        context.lineTo(18, 86);
         context.closePath();
         context.fill();
 
         context.strokeStyle = '#ffffff';
+        context.lineWidth = 10;
+        context.beginPath();
+        context.arc(84, 64, 24, -0.8, 0.8);
+        context.stroke();
         context.lineWidth = 8;
         context.beginPath();
-        context.arc(76, 64, 18, -0.8, 0.8);
-        context.stroke();
-        context.lineWidth = 6;
-        context.beginPath();
-        context.arc(76, 64, 30, -0.8, 0.8);
+        context.arc(84, 64, 38, -0.8, 0.8);
         context.stroke();
       }
       const texture = new THREE.CanvasTexture(canvas);
@@ -10592,126 +10981,13 @@ module.exports = {
     const createAudioRangeWaveWireGeometry = (distance) => {
       const safeDistance = Math.max(
         10,
-        Number.isFinite(distance) ? distance : 1200
+        Number.isFinite(distance) ? distance : 900
       );
-      const points = [];
-      const segmentCount = 36;
-      const ringScales = [0.36, 0.68, 1];
-      const arcStart = -0.95;
-      const arcLength = 1.9;
-
-      for (let ringIndex = 0; ringIndex < ringScales.length; ringIndex++) {
-        const radius = safeDistance * ringScales[ringIndex];
-        for (let i = 0; i < segmentCount; i++) {
-          const theta = arcStart + (i / segmentCount) * arcLength * Math.PI;
-          const nextTheta =
-            arcStart + ((i + 1) / segmentCount) * arcLength * Math.PI;
-
-          points.push(
-            new THREE.Vector3(0, Math.sin(theta) * radius, -Math.cos(theta) * radius),
-            new THREE.Vector3(
-              0,
-              Math.sin(nextTheta) * radius,
-              -Math.cos(nextTheta) * radius
-            )
-          );
-          points.push(
-            new THREE.Vector3(Math.sin(theta) * radius, 0, -Math.cos(theta) * radius),
-            new THREE.Vector3(
-              Math.sin(nextTheta) * radius,
-              0,
-              -Math.cos(nextTheta) * radius
-            )
-          );
-        }
-      }
-
-      for (let i = 0; i < segmentCount; i++) {
-        const theta = (i / segmentCount) * Math.PI * 2;
-        const nextTheta = ((i + 1) / segmentCount) * Math.PI * 2;
-        points.push(
-          new THREE.Vector3(
-            Math.cos(theta) * safeDistance,
-            Math.sin(theta) * safeDistance,
-            0
-          ),
-          new THREE.Vector3(
-            Math.cos(nextTheta) * safeDistance,
-            Math.sin(nextTheta) * safeDistance,
-            0
-          )
-        );
-      }
-
-      points.push(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -safeDistance));
-      return new THREE.BufferGeometry().setFromPoints(points);
-    };
-    const createAudioDirectionalConeWireGeometry = (distance, angleDegrees) => {
-      const safeDistance = Math.max(
-        10,
-        Number.isFinite(distance) ? distance : 950
-      );
-      const safeAngleDegrees = Math.min(
-        89,
-        Math.max(1, Number.isFinite(angleDegrees) ? angleDegrees : 45)
-      );
-      const halfAngleRadians = (safeAngleDegrees * Math.PI) / 180;
-      const segmentCount = 24;
-      const radialCount = 8;
-      const ringSteps = [0.35, 0.68, 1];
-      const points = [];
-      const origin = new THREE.Vector3(0, 0, 0);
-
-      for (let ringIndex = 0; ringIndex < ringSteps.length; ringIndex++) {
-        const step = ringSteps[ringIndex];
-        const ringDistance = safeDistance * step;
-        const ringRadius = Math.max(2, Math.tan(halfAngleRadians) * ringDistance);
-        for (let i = 0; i < segmentCount; i++) {
-          const theta = (i / segmentCount) * Math.PI * 2;
-          const nextTheta = ((i + 1) / segmentCount) * Math.PI * 2;
-          points.push(
-            new THREE.Vector3(
-              Math.cos(theta) * ringRadius,
-              Math.sin(theta) * ringRadius,
-              -ringDistance
-            ),
-            new THREE.Vector3(
-              Math.cos(nextTheta) * ringRadius,
-              Math.sin(nextTheta) * ringRadius,
-              -ringDistance
-            )
-          );
-        }
-      }
-
-      const outerRadius = Math.max(2, Math.tan(halfAngleRadians) * safeDistance);
-      for (let i = 0; i < radialCount; i++) {
-        const theta = (i / radialCount) * Math.PI * 2;
-        points.push(
-          origin,
-          new THREE.Vector3(
-            Math.cos(theta) * outerRadius,
-            Math.sin(theta) * outerRadius,
-            -safeDistance
-          )
-        );
-      }
-      points.push(origin, new THREE.Vector3(0, 0, -safeDistance));
-
-      return new THREE.BufferGeometry().setFromPoints(points);
-    };
-    const createAudioOmniConeWireGeometry = (distance) =>
-      createAudioRangeWaveWireGeometry(distance);
-    const getAudioConeHalfAngleForEditor = (coneAngle, fallback = 360) => {
-      const safeFullAngle = Math.max(
-        0,
-        Math.min(
-          360,
-          Number.isFinite(coneAngle) ? coneAngle : fallback
-        )
-      );
-      if (safeFullAngle >= 359.5) return null;
-      return Math.max(1, Math.min(89, safeFullAngle * 0.5));
+      const sideSize = safeDistance * 2;
+      const boxGeometry = new THREE.BoxGeometry(sideSize, sideSize, sideSize);
+      const edgesGeometry = new THREE.EdgesGeometry(boxGeometry);
+      boxGeometry.dispose();
+      return edgesGeometry;
     };
     const createRectAreaLightConeWireGeometry = (
       lightWidth,
@@ -12211,6 +12487,7 @@ module.exports = {
         );
         rangeLines.frustumCulled = false;
         rangeLines.renderOrder = 9998;
+        rangeLines.raycast = () => {};
         this._rangeLines = rangeLines;
         this._threeGroup.add(rangeLines);
 
@@ -12226,6 +12503,7 @@ module.exports = {
         );
         outerConeLines.frustumCulled = false;
         outerConeLines.renderOrder = 9999;
+        outerConeLines.raycast = () => {};
         this._outerConeLines = outerConeLines;
         this._threeGroup.add(outerConeLines);
 
@@ -12241,6 +12519,7 @@ module.exports = {
         );
         innerConeLines.frustumCulled = false;
         innerConeLines.renderOrder = 10000;
+        innerConeLines.raycast = () => {};
         this._innerConeLines = innerConeLines;
         this._threeGroup.add(innerConeLines);
       }
@@ -12303,8 +12582,27 @@ module.exports = {
       }
 
       updatePixiObject() {
-        const width = this.getWidth();
-        const height = this.getHeight();
+        const object = gd.castObject(
+          this._associatedObjectConfiguration,
+          gd.ObjectJsImplementation
+        );
+        const content = object.content || {};
+        const width = Math.max(
+          18,
+          Math.min(
+            54,
+            Number.isFinite(content.width) ? content.width : this._defaultWidth
+          )
+        );
+        const height = Math.max(
+          18,
+          Math.min(
+            54,
+            Number.isFinite(content.height) ? content.height : this._defaultHeight
+          )
+        );
+        const instanceWidth = this.getWidth();
+        const instanceHeight = this.getHeight();
         const halfW = width / 2;
         const halfH = height / 2;
 
@@ -12328,8 +12626,8 @@ module.exports = {
         this._pixiObject.arc(halfW * 0.2, 0, Math.max(6, Math.min(width, height) * 0.16), -0.8, 0.8);
         this._pixiObject.arc(halfW * 0.22, 0, Math.max(10, Math.min(width, height) * 0.28), -0.8, 0.8);
 
-        this._pixiObject.position.x = this._instance.getX() + width / 2;
-        this._pixiObject.position.y = this._instance.getY() + height / 2;
+        this._pixiObject.position.x = this._instance.getX() + instanceWidth / 2;
+        this._pixiObject.position.y = this._instance.getY() + instanceHeight / 2;
         this._pixiObject.angle = this._instance.getAngle();
       }
 
@@ -12344,15 +12642,36 @@ module.exports = {
         this._defaultHeight = content.height || this._defaultHeight;
         this._defaultDepth = content.depth || this._defaultDepth;
 
-        const width = this.getWidth();
-        const height = this.getHeight();
-        const depth = this.getDepth();
-        const scaleX = width * (this._instance.isFlippedX() ? -1 : 1);
-        const scaleY = height * (this._instance.isFlippedY() ? -1 : 1);
-        const scaleZ = depth * (this._instance.isFlippedZ() ? -1 : 1);
-        const positionX = this._instance.getX() + width / 2;
-        const positionY = this._instance.getY() + height / 2;
-        const positionZ = this._instance.getZ() + depth / 2;
+        const instanceWidth = this.getWidth();
+        const instanceHeight = this.getHeight();
+        const instanceDepth = this.getDepth();
+        const helperWidth = Math.max(
+          18,
+          Math.min(
+            42,
+            Number.isFinite(content.width) ? content.width : this._defaultWidth
+          )
+        );
+        const helperHeight = Math.max(
+          18,
+          Math.min(
+            42,
+            Number.isFinite(content.height) ? content.height : this._defaultHeight
+          )
+        );
+        const helperDepth = Math.max(
+          18,
+          Math.min(
+            42,
+            Number.isFinite(content.depth) ? content.depth : this._defaultDepth
+          )
+        );
+        const scaleX = helperWidth * (this._instance.isFlippedX() ? -1 : 1);
+        const scaleY = helperHeight * (this._instance.isFlippedY() ? -1 : 1);
+        const scaleZ = helperDepth * (this._instance.isFlippedZ() ? -1 : 1);
+        const positionX = this._instance.getX() + instanceWidth / 2;
+        const positionY = this._instance.getY() + instanceHeight / 2;
+        const positionZ = this._instance.getZ() + instanceDepth / 2;
         const rotationX = (this._instance.getRotationX() * Math.PI) / 180;
         const rotationY = (this._instance.getRotationY() * Math.PI) / 180;
         const rotationZ = (this._instance.getAngle() * Math.PI) / 180;
@@ -12375,27 +12694,25 @@ module.exports = {
         const enabled = content.enabled === undefined ? true : !!content.enabled;
         const safeMaxDistance = Math.max(
           10,
-          Number.isFinite(content.maxDistance) ? content.maxDistance : 1800
+          Number.isFinite(content.maxDistance) ? content.maxDistance : 900
+        );
+        const visualizedDistance = Math.max(
+          24,
+          Math.min(180, safeMaxDistance * 0.12)
         );
         const helperOpacity = enabled ? 0.82 : 0.42;
-        const coneInnerHalfAngle = getAudioConeHalfAngleForEditor(
-          content.coneInnerAngle,
-          360
-        );
-        const coneOuterHalfAngle = getAudioConeHalfAngleForEditor(
-          content.coneOuterAngle,
-          360
-        );
 
         const rangeLines = this._rangeLines;
         if (rangeLines) {
           rangeLines.visible = true;
           rangeLines.position.set(positionX, positionY, positionZ);
-          const rangeSignature = safeMaxDistance.toFixed(3);
+          const rangeSignature = visualizedDistance.toFixed(3);
           if (this._rangeSignature !== rangeSignature) {
             this._rangeSignature = rangeSignature;
             const oldGeometry = rangeLines.geometry;
-            rangeLines.geometry = createAudioRangeWaveWireGeometry(safeMaxDistance);
+            rangeLines.geometry = createAudioRangeWaveWireGeometry(
+              visualizedDistance
+            );
             if (oldGeometry) {
               oldGeometry.dispose();
             }
@@ -12408,62 +12725,12 @@ module.exports = {
 
         const outerConeLines = this._outerConeLines;
         if (outerConeLines) {
-          outerConeLines.visible = true;
-          outerConeLines.position.set(positionX, positionY, positionZ);
-          outerConeLines.rotation.set(rotationX, rotationY, rotationZ);
-          const outerConeSignature =
-            coneOuterHalfAngle === null
-              ? `omni|${safeMaxDistance.toFixed(3)}`
-              : `${safeMaxDistance.toFixed(3)}|${coneOuterHalfAngle.toFixed(3)}`;
-          if (this._outerConeSignature !== outerConeSignature) {
-            this._outerConeSignature = outerConeSignature;
-            const oldGeometry = outerConeLines.geometry;
-            outerConeLines.geometry =
-              coneOuterHalfAngle === null
-                ? createAudioOmniConeWireGeometry(safeMaxDistance)
-                : createAudioDirectionalConeWireGeometry(
-                    safeMaxDistance,
-                    coneOuterHalfAngle
-                  );
-            if (oldGeometry) {
-              oldGeometry.dispose();
-            }
-          }
-          const outerConeMaterial = /** @type {any} */ (outerConeLines.material);
-          if (outerConeMaterial && outerConeMaterial.opacity !== undefined) {
-            outerConeMaterial.opacity = enabled ? 0.86 : 0.44;
-          }
+          outerConeLines.visible = false;
         }
 
         const innerConeLines = this._innerConeLines;
         if (innerConeLines) {
-          const hasInnerCone =
-            coneInnerHalfAngle !== null &&
-            coneOuterHalfAngle !== null &&
-            coneInnerHalfAngle < coneOuterHalfAngle - 0.1;
-          innerConeLines.visible = hasInnerCone;
-          if (hasInnerCone) {
-            innerConeLines.position.set(positionX, positionY, positionZ);
-            innerConeLines.rotation.set(rotationX, rotationY, rotationZ);
-            const innerConeSignature = `${safeMaxDistance.toFixed(
-              3
-            )}|${coneInnerHalfAngle.toFixed(3)}`;
-            if (this._innerConeSignature !== innerConeSignature) {
-              this._innerConeSignature = innerConeSignature;
-              const oldGeometry = innerConeLines.geometry;
-              innerConeLines.geometry = createAudioDirectionalConeWireGeometry(
-                safeMaxDistance,
-                coneInnerHalfAngle
-              );
-              if (oldGeometry) {
-                oldGeometry.dispose();
-              }
-            }
-            const innerConeMaterial = /** @type {any} */ (innerConeLines.material);
-            if (innerConeMaterial && innerConeMaterial.opacity !== undefined) {
-              innerConeMaterial.opacity = enabled ? 0.64 : 0.34;
-            }
-          }
+          innerConeLines.visible = false;
         }
       }
 

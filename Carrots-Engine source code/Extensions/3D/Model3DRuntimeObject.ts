@@ -764,7 +764,7 @@ namespace gdjs {
         networkSyncData.mt !== this._materialType
       ) {
         this._materialType = networkSyncData.mt;
-        this._reloadModel(this._objectData as Model3DObjectData);
+        this._reloadModel(this._data);
       }
       if (networkSyncData.op !== undefined) {
         this._originPoint = networkSyncData.op;

@@ -17,9 +17,9 @@ namespace gdjs {
     Math.max(0, Math.min(360, Number.isFinite(value) ? value : fallback));
   const clampConeOuterGain = (value: number): number =>
     Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
-  const defaultSoundEmitterRefDistance = 120;
-  const defaultSoundEmitterMaxDistance = 1800;
-  const defaultSoundEmitterRolloffFactor = 1.15;
+  const defaultSoundEmitterRefDistance = 80;
+  const defaultSoundEmitterMaxDistance = 900;
+  const defaultSoundEmitterRolloffFactor = 1.35;
   const defaultSoundEmitterHelperSize = 24;
   const minSoundEmitterHelperSize = 12;
   const maxSoundEmitterHelperSize = 96;
@@ -45,6 +45,59 @@ namespace gdjs {
     return [safeRefDistance, safeMaxDistance];
   };
 
+  // Keep attenuation behavior aligned with WebAudio/Unity-like expectations:
+  // - Listener inside refDistance hears full loudness.
+  // - Volume falls with distance using selected model.
+  // - Beyond maxDistance, sound is considered out of audible range.
+  const computeSoundEmitterDistanceGain = (
+    distance: number,
+    distanceModel: 'inverse' | 'linear',
+    refDistance: number,
+    maxDistance: number,
+    rolloffFactor: number
+  ): number => {
+    const safeDistance = Math.max(0, Number.isFinite(distance) ? distance : 0);
+    const safeRefDistance = Math.max(1, Number.isFinite(refDistance) ? refDistance : 1);
+    const safeMaxDistance = Math.max(
+      safeRefDistance + 1,
+      Number.isFinite(maxDistance) ? maxDistance : safeRefDistance + 1
+    );
+    const safeRolloff = Math.max(
+      0,
+      Number.isFinite(rolloffFactor) ? rolloffFactor : 1
+    );
+
+    if (safeDistance >= safeMaxDistance) {
+      return 0;
+    }
+
+    if (safeDistance <= safeRefDistance || safeRolloff <= 0) {
+      return 1;
+    }
+
+    if (distanceModel === 'linear') {
+      const distanceSpan = Math.max(0.0001, safeMaxDistance - safeRefDistance);
+      return Math.max(
+        0,
+        Math.min(
+          1,
+          1 - (safeRolloff * (safeDistance - safeRefDistance)) / distanceSpan
+        )
+      );
+    }
+
+    // WebAudio inverse distance model:
+    // refDistance / (refDistance + rolloffFactor * (d - refDistance))
+    return Math.max(
+      0,
+      Math.min(
+        1,
+        safeRefDistance /
+          (safeRefDistance + safeRolloff * (safeDistance - safeRefDistance))
+      )
+    );
+  };
+
   let soundSelectionIconTexture: THREE.Texture | null = null;
   const getSoundSelectionIconTexture = (): THREE.Texture => {
     if (soundSelectionIconTexture) {
@@ -63,23 +116,23 @@ namespace gdjs {
 
         context.fillStyle = '#ffffff';
         context.beginPath();
-        context.moveTo(32, 50);
-        context.lineTo(52, 50);
-        context.lineTo(73, 34);
-        context.lineTo(73, 94);
-        context.lineTo(52, 78);
-        context.lineTo(32, 78);
+        context.moveTo(18, 42);
+        context.lineTo(44, 42);
+        context.lineTo(80, 16);
+        context.lineTo(80, 112);
+        context.lineTo(44, 86);
+        context.lineTo(18, 86);
         context.closePath();
         context.fill();
 
         context.strokeStyle = '#ffffff';
+        context.lineWidth = 10;
+        context.beginPath();
+        context.arc(84, 64, 24, -0.8, 0.8);
+        context.stroke();
         context.lineWidth = 8;
         context.beginPath();
-        context.arc(76, 64, 18, -0.8, 0.8);
-        context.stroke();
-        context.lineWidth = 6;
-        context.beginPath();
-        context.arc(76, 64, 30, -0.8, 0.8);
+        context.arc(84, 64, 38, -0.8, 0.8);
         context.stroke();
       }
       const texture = new THREE.CanvasTexture(canvas);
@@ -142,72 +195,16 @@ namespace gdjs {
   };
 
   const createSoundRangeWireGeometry = (distance: number): THREE.BufferGeometry => {
-    const safeDistance = Math.max(10, Number.isFinite(distance) ? distance : 1200);
-    const points: THREE.Vector3[] = [];
-    const segmentCount = 36;
-    const arcStart = -0.95;
-    const arcLength = 1.9;
-    const ringScales = [0.36, 0.68, 1];
-
-    for (let ringIndex = 0; ringIndex < ringScales.length; ringIndex++) {
-      const radius = safeDistance * ringScales[ringIndex];
-      for (let i = 0; i < segmentCount; i++) {
-        const theta = arcStart + (i / segmentCount) * arcLength * Math.PI;
-        const nextTheta =
-          arcStart + ((i + 1) / segmentCount) * arcLength * Math.PI;
-
-        // Audio wave arcs on YZ plane (front hemisphere around -Z).
-        points.push(
-          new THREE.Vector3(
-            0,
-            Math.sin(theta) * radius,
-            -Math.cos(theta) * radius
-          ),
-          new THREE.Vector3(
-            0,
-            Math.sin(nextTheta) * radius,
-            -Math.cos(nextTheta) * radius
-          )
-        );
-
-        // Audio wave arcs on XZ plane.
-        points.push(
-          new THREE.Vector3(
-            Math.sin(theta) * radius,
-            0,
-            -Math.cos(theta) * radius
-          ),
-          new THREE.Vector3(
-            Math.sin(nextTheta) * radius,
-            0,
-            -Math.cos(nextTheta) * radius
-          )
-        );
-      }
-    }
-
-    // Outer reference ring for max audible distance.
-    for (let i = 0; i < segmentCount; i++) {
-      const theta = (i / segmentCount) * Math.PI * 2;
-      const nextTheta = ((i + 1) / segmentCount) * Math.PI * 2;
-      points.push(
-        new THREE.Vector3(
-          Math.cos(theta) * safeDistance,
-          Math.sin(theta) * safeDistance,
-          0
-        ),
-        new THREE.Vector3(
-          Math.cos(nextTheta) * safeDistance,
-          Math.sin(nextTheta) * safeDistance,
-          0
-        )
-      );
-    }
-
-    // Small forward axis hint.
-    points.push(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -safeDistance));
-
-    return new THREE.BufferGeometry().setFromPoints(points);
+    const safeDistance = Math.max(
+      10,
+      Number.isFinite(distance) ? distance : defaultSoundEmitterMaxDistance
+    );
+    const visualizedDistance = Math.max(24, Math.min(180, safeDistance * 0.12));
+    const sideSize = visualizedDistance * 2;
+    const boxGeometry = new THREE.BoxGeometry(sideSize, sideSize, sideSize);
+    const edgesGeometry = new THREE.EdgesGeometry(boxGeometry);
+    boxGeometry.dispose();
+    return edgesGeometry;
   };
 
   export interface SoundEmitterObjectData extends Object3DData {
@@ -766,6 +763,8 @@ namespace gdjs {
     private _tempCameraPosition: THREE.Vector3;
     private _tempCameraDirection: THREE.Vector3;
     private _tempCameraUp: THREE.Vector3;
+    private _tempSoundPosition: THREE.Vector3;
+    private _tempListenerPosition: THREE.Vector3;
     private _manualPlayRequested: boolean;
 
     constructor(
@@ -829,6 +828,8 @@ namespace gdjs {
       this._tempCameraPosition = new THREE.Vector3();
       this._tempCameraDirection = new THREE.Vector3();
       this._tempCameraUp = new THREE.Vector3(0, 1, 0);
+      this._tempSoundPosition = new THREE.Vector3();
+      this._tempListenerPosition = new THREE.Vector3();
       this._manualPlayRequested = false;
 
       this.updateSize();
@@ -1058,12 +1059,15 @@ namespace gdjs {
       ) {
         return;
       }
+      if (!this._resolveSoundPosition(this._tempSoundPosition)) {
+        return;
+      }
       const effectiveChannel = this._getEffectiveChannel();
       soundManager.setSoundSpatialPositionOnChannel(
         effectiveChannel,
-        this._object.getCenterXInScene(),
-        this._object.getCenterYInScene(),
-        this._object.getCenterZInScene()
+        this._tempSoundPosition.x,
+        this._tempSoundPosition.y,
+        this._tempSoundPosition.z
       );
     }
 
@@ -1084,8 +1088,18 @@ namespace gdjs {
         return;
       }
 
-      const howl = sound ? sound._howl : null;
-      const id = sound ? sound._id : undefined;
+      const soundWithInternalHowler = sound as unknown as
+        | {
+            _howl?: {
+              orientation?: (...args: any[]) => void;
+            };
+            _id?: number | null;
+          }
+        | null;
+      const howl = soundWithInternalHowler ? soundWithInternalHowler._howl : null;
+      const id = soundWithInternalHowler
+        ? soundWithInternalHowler._id
+        : undefined;
       if (!howl || typeof howl.orientation !== 'function') {
         return;
       }
@@ -1114,10 +1128,11 @@ namespace gdjs {
       }
     }
 
-    private _getLayerThreeCamera(
-      runtimeScene: gdjs.RuntimeScene
+    private _getLayerThreeCameraByName(
+      runtimeScene: gdjs.RuntimeScene,
+      layerName: string
     ): THREE.Camera | null {
-      const layer = runtimeScene.getLayer(this._object.getLayer());
+      const layer = runtimeScene.getLayer(layerName);
       if (!layer || typeof layer.getRenderer !== 'function') {
         return null;
       }
@@ -1130,6 +1145,129 @@ namespace gdjs {
       return layerRenderer.getThreeCamera() || null;
     }
 
+    private _getListenerThreeCamera(
+      runtimeScene: gdjs.RuntimeScene
+    ): THREE.Camera | null {
+      // 3D renderer objects are attached to the base layer renderer, so the base
+      // layer camera is the authoritative listener for 3D spatial audio.
+      const baseLayerCamera = this._getLayerThreeCameraByName(runtimeScene, '');
+      if (baseLayerCamera) {
+        return baseLayerCamera;
+      }
+      return this._getLayerThreeCameraByName(runtimeScene, this._object.getLayer());
+    }
+
+    private _resolveSoundPosition(target: THREE.Vector3): boolean {
+      const sourceObject3D = this._object.get3DRendererObject();
+      if (sourceObject3D) {
+        sourceObject3D.updateMatrixWorld();
+        sourceObject3D.getWorldPosition(target);
+      } else {
+        target.set(
+          this._object.getCenterXInScene(),
+          this._object.getCenterYInScene(),
+          this._object.getCenterZInScene()
+        );
+      }
+      return (
+        Number.isFinite(target.x) &&
+        Number.isFinite(target.y) &&
+        Number.isFinite(target.z)
+      );
+    }
+
+    private _resolveListenerPosition(
+      runtimeScene: gdjs.RuntimeScene,
+      target: THREE.Vector3
+    ): boolean {
+      const camera = this._getListenerThreeCamera(runtimeScene);
+      if (camera) {
+        camera.updateMatrixWorld();
+        camera.getWorldPosition(target);
+      } else {
+        const baseLayer = runtimeScene.getLayer('');
+        target.set(
+          baseLayer.getCameraX(),
+          baseLayer.getCameraY(),
+          baseLayer.getCameraZ(null)
+        );
+      }
+      return (
+        Number.isFinite(target.x) &&
+        Number.isFinite(target.y) &&
+        Number.isFinite(target.z)
+      );
+    }
+
+    private _computeDistanceAttenuationGain(
+      runtimeScene: gdjs.RuntimeScene
+    ): number | null {
+      if (!this._resolveSoundPosition(this._tempSoundPosition)) {
+        return null;
+      }
+      if (!this._resolveListenerPosition(runtimeScene, this._tempListenerPosition)) {
+        return null;
+      }
+      const distance = this._tempSoundPosition.distanceTo(
+        this._tempListenerPosition
+      );
+      return computeSoundEmitterDistanceGain(
+        distance,
+        this._distanceModel,
+        this._refDistance,
+        this._maxDistance,
+        this._rolloffFactor
+      );
+    }
+
+    private _hasNativeSpatialAttenuation(sound: any): boolean {
+      if (typeof Howler === 'undefined' || !Howler || !Howler.usingWebAudio) {
+        return false;
+      }
+      const soundWithInternalHowler = sound as unknown as {
+        _howl?: {
+          _webAudio?: boolean;
+          pannerAttr?: (...args: any[]) => void;
+          pos?: (...args: any[]) => void;
+        };
+      } | null;
+      const howl = soundWithInternalHowler ? soundWithInternalHowler._howl : null;
+      if (!howl || howl._webAudio === false) {
+        return false;
+      }
+      return (
+        typeof howl.pannerAttr === 'function' && typeof howl.pos === 'function'
+      );
+    }
+
+    private _updateDistanceAttenuation(runtimeScene: gdjs.RuntimeScene): void {
+      const soundManager = this._getSoundManager(runtimeScene);
+      if (!soundManager || typeof soundManager.getSoundOnChannel !== 'function') {
+        return;
+      }
+      const sound = soundManager.getSoundOnChannel(this._getEffectiveChannel());
+      if (!sound || !this._isOurSound(sound) || typeof sound.setVolume !== 'function') {
+        return;
+      }
+
+      const distanceGain = this._computeDistanceAttenuationGain(runtimeScene);
+      if (distanceGain === null) {
+        sound.setVolume(this._volume);
+        return;
+      }
+
+      // Prefer native WebAudio attenuation when available, but still enforce a
+      // hard out-of-range cutoff so sounds do not leak through the whole project.
+      const attenuationGain = this._hasNativeSpatialAttenuation(sound)
+        ? distanceGain <= 0
+          ? 0
+          : 1
+        : distanceGain;
+      sound.setVolume(
+        Math.max(0, Math.min(1, this._volume * attenuationGain))
+      );
+    }
+
     private _updateSpatialListener(runtimeScene: gdjs.RuntimeScene): void {
       const soundManager = this._getSoundManager(runtimeScene);
       if (
@@ -1140,7 +1278,7 @@ namespace gdjs {
         return;
       }
 
-      const camera = this._getLayerThreeCamera(runtimeScene);
+      const camera = this._getListenerThreeCamera(runtimeScene);
       if (!camera) {
         return;
       }
@@ -1170,6 +1308,7 @@ namespace gdjs {
       this._ensurePlayback(runtimeScene);
       this._updateSoundPosition(runtimeScene);
       this._updateSoundOrientation(runtimeScene);
+      this._updateDistanceAttenuation(runtimeScene);
       this._refreshDebugRangeGeometry();
       this._updateVisibility();
     }
@@ -1183,6 +1322,7 @@ namespace gdjs {
       this._ensurePlayback(runtimeScene);
       this._updateSoundPosition(runtimeScene);
       this._updateSoundOrientation(runtimeScene);
+      this._updateDistanceAttenuation(runtimeScene);
     }
 
     disposeManagedSound(runtimeScene: gdjs.RuntimeScene | null | undefined): void {
@@ -1339,6 +1479,7 @@ namespace gdjs {
       }
       this._updateSoundPosition(runtimeScene);
       this._updateSoundOrientation(runtimeScene);
+      this._updateDistanceAttenuation(runtimeScene);
     }
 
     isPlaying(): boolean {

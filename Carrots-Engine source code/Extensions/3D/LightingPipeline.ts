@@ -233,19 +233,19 @@ namespace gdjs {
       mode: 'hybrid',
       realtimeWeight: 1,
       bakedWeight: 1,
-      probeEnabled: true,
-      probeIntensity: 0.5,
+      probeEnabled: false,
+      probeIntensity: 0.2,
       probeSmoothing: 2.5,
       probeSkyColorHex: 0xbfd7ff,
       probeGroundColorHex: 0x6d7356,
       probeUseSceneColors: true,
-      attenuationModel: 'balanced',
+      attenuationModel: 'physical',
       attenuationDistanceScale: 1,
       attenuationDecayScale: 1,
       shadowQualityScale: 1.2,
       lodDistanceScale: 1,
       realtimeShadowsOnly: true,
-      physicallyCorrectLights: false,
+      physicallyCorrectLights: true,
       adaptivePerformanceScale: 1,
       lodUpdateIntervalScale: 1,
       probeLight: null,
@@ -585,17 +585,15 @@ const updateProbeLighting = (
     };
   };
 
-  interface ClusteredLocalLight extends THREE.Light {
+  type ClusteredLocalLight = THREE.Light & {
     isPointLight?: boolean;
     isSpotLight?: boolean;
     isRectAreaLight?: boolean;
-    intensity?: number;
     distance?: number;
-    castShadow?: boolean;
     width?: number;
     height?: number;
     userData?: { [key: string]: any };
-  }
+  };
 
   interface ClusteredLocalLightCandidate {
     light: ClusteredLocalLight;
@@ -713,9 +711,10 @@ const updateProbeLighting = (
     }
 
     const runtimeScene = target.getRuntimeScene ? target.getRuntimeScene() : null;
-    const nowMs = runtimeScene
-      ? runtimeScene.getTimeManager().getTimeFromStart()
-      : Date.now();
+    const nowMs =
+      runtimeScene && runtimeScene instanceof gdjs.RuntimeScene
+        ? runtimeScene.getTimeManager().getTimeFromStart()
+        : Date.now();
     if (
       state.clusteredLastUpdateTimeMs >= 0 &&
       nowMs - state.clusteredLastUpdateTimeMs < state.clusteredUpdateCadenceMs
@@ -1077,12 +1076,12 @@ const updateProbeLighting = (
             );
             this._probeEnabled =
               effectData.booleanParameters.probeEnabled === undefined
-                ? true
+                ? false
                 : !!effectData.booleanParameters.probeEnabled;
             this._probeIntensity = clampNonNegative(
               effectData.doubleParameters.probeIntensity !== undefined
                 ? effectData.doubleParameters.probeIntensity
-                : 0.5
+                : 0.2
             );
             this._probeSmoothing = clampNonNegative(
               effectData.doubleParameters.probeSmoothing !== undefined
@@ -1100,7 +1099,7 @@ const updateProbeLighting = (
                 ? true
                 : !!effectData.booleanParameters.probeUseSceneColors;
             this._attenuationModel = parseAttenuationModel(
-              effectData.stringParameters.attenuationModel || 'balanced'
+              effectData.stringParameters.attenuationModel || 'physical'
             );
             this._attenuationDistanceScale = clampNonNegative(
               effectData.doubleParameters.attenuationDistanceScale !== undefined
@@ -1132,7 +1131,7 @@ const updateProbeLighting = (
                 : !!effectData.booleanParameters.realtimeShadowsOnly;
             this._physicallyCorrectLights =
               effectData.booleanParameters.physicallyCorrectLights === undefined
-                ? false
+                ? true
                 : !!effectData.booleanParameters.physicallyCorrectLights;
             this._adaptivePerformanceEnabled =
               effectData.booleanParameters.adaptivePerformanceEnabled === undefined

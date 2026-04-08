@@ -140,62 +140,44 @@ namespace gdjs {
       if (!(this._runtimeScene instanceof gdjs.RuntimeScene)) return;
 
       const effects = layerData.effects || [];
-      const hasDirectionalLight = effects.some(
-        effect => effect.effectType === 'Scene3D::DirectionalLight'
+      const scene3DLightEffectTypes = new Set([
+        'Scene3D::DirectionalLight',
+        'Scene3D::HemisphereLight',
+        'Scene3D::AmbientLight',
+        'Scene3D::PointLight',
+        'Scene3D::SpotLight',
+        'Scene3D::RectAreaLight',
+      ]);
+      const hasExplicitScene3DLighting = effects.some(effect =>
+        scene3DLightEffectTypes.has(effect.effectType)
       );
-      const hasHemisphereLight = effects.some(
-        effect => effect.effectType === 'Scene3D::HemisphereLight'
-      );
-      if (hasDirectionalLight && hasHemisphereLight) return;
+      if (hasExplicitScene3DLighting) return;
 
       const existingNames = new Set(effects.map(effect => effect.name));
-      if (!hasDirectionalLight) {
-        const sunLightName = existingNames.has('3D Sun Light')
-          ? '__auto_3d_sun_light'
-          : '3D Sun Light';
-        existingNames.add(sunLightName);
-        this.addEffect({
-          effectType: 'Scene3D::DirectionalLight',
-          name: sunLightName,
-          doubleParameters: {
-            intensity: 2.2,
-            elevation: 40,
-            rotation: 300,
-            minimumShadowBias: 0,
-            distanceFromCamera: 1500,
-            frustumSize: 4000,
-          },
-          stringParameters: {
-            color: '255;244;214',
-            top: 'Z+',
-            shadowQuality: 'high',
-          },
-          booleanParameters: {
-            isCastingShadow: true,
-          },
-        });
-      }
-
-      if (!hasHemisphereLight) {
-        const skyLightName = existingNames.has('3D Ambient Hemisphere Light')
-          ? '__auto_3d_sky_light'
-          : '3D Ambient Hemisphere Light';
-        this.addEffect({
-          effectType: 'Scene3D::HemisphereLight',
-          name: skyLightName,
-          doubleParameters: {
-            intensity: 0.35,
-            elevation: 40,
-            rotation: 300,
-          },
-          stringParameters: {
-            skyColor: '198;219;255',
-            groundColor: '116;104;92',
-            top: 'Z+',
-          },
-          booleanParameters: {},
-        });
-      }
+      const sunLightName = existingNames.has('3D Sun Light')
+        ? '__auto_3d_sun_light'
+        : '3D Sun Light';
+      existingNames.add(sunLightName);
+      this.addEffect({
+        effectType: 'Scene3D::DirectionalLight',
+        name: sunLightName,
+        doubleParameters: {
+          intensity: 2.2,
+          elevation: 40,
+          rotation: 300,
+          minimumShadowBias: 0,
+          distanceFromCamera: 1500,
+          frustumSize: 4000,
+        },
+        stringParameters: {
+          color: '255;244;214',
+          top: 'Z+',
+          shadowQuality: 'high',
+        },
+        booleanParameters: {
+          isCastingShadow: true,
+        },
+      });
     }
 
     getNetworkSyncData(): LayerNetworkSyncData {

@@ -13,7 +13,7 @@ namespace gdjs {
   /**
    * @category Behaviors > 3D
    */
-  export class LightObstacleRuntimeBehavior extends gdjs.RuntimeBehavior {
+  export class Scene3DLightObstacleRuntimeBehavior extends gdjs.RuntimeBehavior {
     private _enabled: boolean;
     private _castShadow: boolean;
     private _receiveShadow: boolean;
@@ -190,6 +190,6 @@ namespace gdjs {
 
   gdjs.registerBehavior(
     'Scene3D::LightObstacle',
-    gdjs.LightObstacleRuntimeBehavior
+    gdjs.Scene3DLightObstacleRuntimeBehavior
   );
 }
