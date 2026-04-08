@@ -8,7 +8,7 @@
 
 namespace gd {
 
-class QuickCustomizationVisibilitiesContainer {
+class GD_CORE_API QuickCustomizationVisibilitiesContainer {
  public:
   QuickCustomizationVisibilitiesContainer();
 

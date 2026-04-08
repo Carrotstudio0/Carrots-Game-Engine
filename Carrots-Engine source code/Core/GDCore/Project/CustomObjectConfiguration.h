@@ -28,7 +28,7 @@ namespace gd {
  * It also implements "ExposeResources" to expose the properties of type
  * "resource".
  */
-class CustomObjectConfiguration : public gd::ObjectConfiguration {
+class GD_CORE_API CustomObjectConfiguration : public gd::ObjectConfiguration {
 public:
   CustomObjectConfiguration(const Project &project_, const String &type_)
       : project(&project_) {

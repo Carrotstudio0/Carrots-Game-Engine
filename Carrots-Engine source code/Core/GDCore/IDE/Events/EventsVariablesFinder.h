@@ -29,7 +29,7 @@ namespace gd {
  *
  * \ingroup IDE
  */
-class EventsVariablesFinder {
+class GD_CORE_API EventsVariablesFinder {
  public:
   EventsVariablesFinder(){};
   virtual ~EventsVariablesFinder(){};

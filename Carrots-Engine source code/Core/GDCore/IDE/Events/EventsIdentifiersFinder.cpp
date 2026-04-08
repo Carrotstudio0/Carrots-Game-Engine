@@ -29,7 +29,7 @@ namespace {
  *
  * \see gd::ExpressionParser2
  */
-class GD_CORE_API IdentifierFinderExpressionNodeWorker
+class IdentifierFinderExpressionNodeWorker
     : public ExpressionParser2NodeWorker {
  public:
   IdentifierFinderExpressionNodeWorker(std::set<gd::String>& results_,
@@ -123,7 +123,7 @@ class GD_CORE_API IdentifierFinderExpressionNodeWorker
 /**
  * \brief Go through the events to search for identifier occurrences.
  */
-class GD_CORE_API IdentifierFinderEventWorker
+class IdentifierFinderEventWorker
     : public ReadOnlyArbitraryEventsWorkerWithContext {
  public:
   IdentifierFinderEventWorker(std::set<gd::String>& results_,

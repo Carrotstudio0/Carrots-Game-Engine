@@ -27,7 +27,7 @@ namespace gd {
  *
  * \ingroup IDE
  */
-class EventsIdentifiersFinder {
+class GD_CORE_API EventsIdentifiersFinder {
  public:
   EventsIdentifiersFinder(){};
   virtual ~EventsIdentifiersFinder(){};

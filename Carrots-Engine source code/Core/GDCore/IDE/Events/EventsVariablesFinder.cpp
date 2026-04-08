@@ -30,7 +30,7 @@ namespace {
  *
  * \see gd::ExpressionParser2
  */
-class GD_CORE_API VariableFinderExpressionNodeWorker
+class VariableFinderExpressionNodeWorker
     : public ExpressionParser2NodeWorker {
  public:
   VariableFinderExpressionNodeWorker(std::set<gd::String>& results_,
@@ -129,7 +129,7 @@ class GD_CORE_API VariableFinderExpressionNodeWorker
 /**
  * \brief Go through the events to search for variable occurrences.
  */
-class GD_CORE_API VariableFinderEventWorker
+class VariableFinderEventWorker
     : public ReadOnlyArbitraryEventsWorkerWithContext {
  public:
   VariableFinderEventWorker(std::set<gd::String>& results_,

@@ -14,7 +14,7 @@ namespace gd {
  *
  * \ingroup PlatformDefinition
  */
-class PropertiesContainer {
+class GD_CORE_API PropertiesContainer {
 public:
   PropertiesContainer(EventsFunctionsContainer::FunctionOwner owner);
 

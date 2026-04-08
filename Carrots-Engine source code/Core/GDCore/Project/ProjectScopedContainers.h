@@ -32,7 +32,7 @@ namespace gd {
  * For example, in an expression, when an identifier is written, this class is
  * used to know what this identifier refers too.
  */
-class ProjectScopedContainers {
+class GD_CORE_API ProjectScopedContainers {
  public:
   ProjectScopedContainers(
       const gd::ObjectsContainersList &objectsContainersList_,
