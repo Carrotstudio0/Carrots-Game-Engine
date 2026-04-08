@@ -95,9 +95,7 @@ export class CustomObjectEditorContainer extends React.Component<RenderEditorCon
     this._setPreviewedLayout();
     if (
       this.props.gameEditorMode === 'embedded-game' &&
-      projectItemName &&
-      // Avoid to hot-reload the editor every time an image is edited with Pixi.
-      (!this.editor || !this.editor.isEditingObject())
+      projectItemName
     ) {
       switchToSceneEdition({
         ...hotReloadSteps,
