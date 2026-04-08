@@ -12,7 +12,7 @@ void DeclareNavMeshBehaviorExtension(gd::PlatformExtension& extension) {
   extension
       .SetExtensionInformation(
           "NavMeshBehavior",
-          _("NavMesh behavior"),
+          _("3D Navmesh"),
           _(
               "3D runtime navmesh with surfaces, obstacles, links and agents."),
           "Carrots Engine Team",
@@ -25,13 +25,13 @@ void DeclareNavMeshBehaviorExtension(gd::PlatformExtension& extension) {
       .SetTags("navmesh, pathfinding, 3d, ai")
       .SetExtensionHelpPath("/behaviors/navmesh");
 
-  extension.AddInstructionOrExpressionGroupMetadata(_("NavMesh behavior"))
+  extension.AddInstructionOrExpressionGroupMetadata(_("3D Navmesh"))
       .SetIcon("CppPlatform/Extensions/AStaricon16.png");
 
   {
     gd::BehaviorMetadata& surface = extension.AddBehavior(
         "NavMeshSurfaceBehavior",
-        _("NavMesh surface"),
+        _("3D Navmesh surface"),
         "NavMeshSurface",
         _("Contribute this 3D object mesh to navmesh generation."),
         "",
@@ -149,7 +149,7 @@ void DeclareNavMeshBehaviorExtension(gd::PlatformExtension& extension) {
   {
     gd::BehaviorMetadata& obstacle = extension.AddBehavior(
         "NavMeshObstacleBehavior",
-        _("NavMesh obstacle"),
+        _("3D Navmesh obstacle"),
         "NavMeshObstacle",
         _("Block navmesh triangles using this object 3D bounds."),
         "",
@@ -248,7 +248,7 @@ void DeclareNavMeshBehaviorExtension(gd::PlatformExtension& extension) {
   {
     gd::BehaviorMetadata& link = extension.AddBehavior(
         "NavMeshLinkBehavior",
-        _("NavMesh link"),
+        _("3D Navmesh link"),
         "NavMeshLink",
         _("Create an off-mesh link connecting two 3D positions for agents."),
         "",
@@ -416,7 +416,7 @@ void DeclareNavMeshBehaviorExtension(gd::PlatformExtension& extension) {
   {
     gd::BehaviorMetadata& agent = extension.AddBehavior(
         "NavMeshAgentBehavior",
-        _("NavMesh agent"),
+        _("3D Navmesh agent"),
         "NavMeshAgent",
         _("Move this object across 3D navmesh surfaces at runtime."),
         "",

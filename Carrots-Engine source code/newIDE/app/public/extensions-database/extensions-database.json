@@ -16885,26 +16885,6 @@
     {
       "tier": "community",
       "authorIds": [
-        "IWykYNRvhCZBN3vEgKEbBPOR3Oc2"
-      ],
-      "extensionNamespace": "",
-      "fullName": "Navigation mesh pathfinding (experimental)",
-      "name": "NavMeshPathfinding",
-      "version": "0.3.0",
-      "url": "https://resources.gdevelop-app.com/extensions/NavMeshPathfinding.json",
-      "headerUrl": "https://resources.gdevelop-app.com/extensions/NavMeshPathfinding-header.json",
-      "tags": "navmesh,pathfinding,obstacle,solid,path,detour,recast",
-      "category": "Movement",
-      "previewIconUrl": "https://resources.gdevelop-app.com/assets/Icons/Line Hero Pack/Master/SVG/Maps and Navigation/Maps and Navigation_map_find_search.svg",
-      "gdevelopVersion": ">=5.5.222",
-      "shortDescription": "Pathfinding allows to compute an efficient path for objects, avoiding obstacles on the way.",
-      "eventsBasedBehaviorsCount": 3,
-      "eventsFunctionsCount": 0,
-      "helpPath": "/extensions/nav-mesh-pathfinding"
-    },
-    {
-      "tier": "community",
-      "authorIds": [
         "rotBq28wITdtfsrE7McHQri4k2w2"
       ],
       "extensionNamespace": "",
@@ -20653,69 +20633,6 @@
         "description": "Adds wind-based swaying to 3D foliage objects — grass, bushes, trees.",
         "objectType": "Scene3D::Model3DObject",
         "allRequiredBehaviorTypes": []
-      },
-      {
-        "tier": "community",
-        "authorIds": [
-          "IWykYNRvhCZBN3vEgKEbBPOR3Oc2"
-        ],
-        "extensionNamespace": "",
-        "fullName": "Navigation mesh pathfinding (experimental)",
-        "name": "NavMeshPathfindingBehavior",
-        "version": "0.3.0",
-        "url": "https://resources.gdevelop-app.com/extensions/NavMeshPathfinding.json",
-        "headerUrl": "https://resources.gdevelop-app.com/extensions/NavMeshPathfinding-header.json",
-        "tags": "navmesh,pathfinding,obstacle,solid,path,detour,recast",
-        "category": "Movement",
-        "previewIconUrl": "https://resources.gdevelop-app.com/assets/Icons/Line Hero Pack/Master/SVG/Maps and Navigation/Maps and Navigation_map_find_search.svg",
-        "gdevelopVersion": ">=5.5.222",
-        "extensionName": "NavMeshPathfinding",
-        "description": "Move objects to a target in straight lines while avoiding all objects that are flagged as obstacles.",
-        "objectType": "",
-        "allRequiredBehaviorTypes": []
-      },
-      {
-        "tier": "community",
-        "authorIds": [
-          "IWykYNRvhCZBN3vEgKEbBPOR3Oc2"
-        ],
-        "extensionNamespace": "",
-        "fullName": "Obstacle for navigation mesh pathfinding (experimental)",
-        "name": "NavMeshPathfindingObstacleBehavior",
-        "version": "0.3.0",
-        "url": "https://resources.gdevelop-app.com/extensions/NavMeshPathfinding.json",
-        "headerUrl": "https://resources.gdevelop-app.com/extensions/NavMeshPathfinding-header.json",
-        "tags": "navmesh,pathfinding,obstacle,solid,path,detour,recast",
-        "category": "Movement",
-        "previewIconUrl": "https://resources.gdevelop-app.com/assets/Icons/Line Hero Pack/Master/SVG/Maps and Navigation/Maps and Navigation_map_find_search.svg",
-        "gdevelopVersion": ">=5.5.222",
-        "extensionName": "NavMeshPathfinding",
-        "description": "Flag objects as being an obstacle for pathfinding.",
-        "objectType": "",
-        "allRequiredBehaviorTypes": []
-      },
-      {
-        "tier": "community",
-        "authorIds": [
-          "IWykYNRvhCZBN3vEgKEbBPOR3Oc2"
-        ],
-        "extensionNamespace": "",
-        "fullName": "Navigation mesh pathfinding animator",
-        "name": "NavMeshPathfindingAnimator",
-        "version": "0.3.0",
-        "url": "https://resources.gdevelop-app.com/extensions/NavMeshPathfinding.json",
-        "headerUrl": "https://resources.gdevelop-app.com/extensions/NavMeshPathfinding-header.json",
-        "tags": "navmesh,pathfinding,obstacle,solid,path,detour,recast",
-        "category": "Movement",
-        "previewIconUrl": "https://resources.gdevelop-app.com/assets/Icons/Line Hero Pack/Master/SVG/Maps and Navigation/Maps and Navigation_map_find_search.svg",
-        "gdevelopVersion": ">=5.5.222",
-        "extensionName": "NavMeshPathfinding",
-        "description": "Change the animation according to the movement direction.",
-        "objectType": "",
-        "allRequiredBehaviorTypes": [
-          "AnimatableCapability::AnimatableBehavior",
-          "NavMeshPathfinding::NavMeshPathfindingBehavior"
-        ]
       },
       {
         "tier": "community",
