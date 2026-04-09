@@ -42,8 +42,12 @@ Carrots Engine is composed of an editor, a game engine, and a set of extensions.
 - Discussions: https://github.com/Carrotstudio0/Carrots-Engine/discussions
 
 ## License
+  
+The Core library, native and HTML5 game engines, IDE, and all extensions (including the Core, GDJS, newIDE, and Extensions directories) are derived from the GDevelop project source code, originally distributed under the MIT License by the GDevelop team.
 
-- The Core library, the native and HTML5 game engines, the IDE, and all extensions (respectively `Core`, `GDJS`, `newIDE` and `Extensions` folders) are Develop by Gdevelop Team and under the MIT license.
+This project is an independent implementation built upon that codebase and is not a fork of the original repository. As such, it is not connected to, maintained by, or updated in sync with the official GDevelop project. All subsequent modifications, maintenance, and development are carried out independently.
+
+Full credit is given to the GDevelop team for their original work, in accordance with the terms and spirit of the MIT License.
 - The name, Carrots Engine, and its logo are the exclusive property of Carrots Team.
 
 Games exported with Carrots Engine are based on the Carrots Engine game engine (see `Core` and `GDJS` folders): this engine is distributed under the MIT license so that you can distribute, sell or do anything with the games you create. In particular, you are not forced to make your game open-source.
