@@ -12,6 +12,15 @@ namespace gdjs {
   const logger = new gdjs.Logger('Engine runtime');
   const hexStringRegex = /^(#{0,1}[A-Fa-f0-9]{6})$/;
   const shorthandHexStringRegex = /^(#{0,1}[A-Fa-f0-9]{3})$/;
+  const behaviorWarningsAlreadyLogged = new Set<string>();
+
+  const warnBehaviorIssueOnce = (warningKey: string, message: string): void => {
+    if (behaviorWarningsAlreadyLogged.has(warningKey)) {
+      return;
+    }
+    behaviorWarningsAlreadyLogged.add(warningKey);
+    logger.warn(message);
+  };
 
   /**
    * Contains functions used by events (this is a convention only, functions can actually
@@ -659,7 +668,43 @@ namespace gdjs {
     if (name !== undefined && gdjs.behaviorsTypes.containsKey(name))
       return gdjs.behaviorsTypes.get(name);
 
-    logger.warn('Behavior type "' + name + '" was not found.');
+    const candidateNames = new Set<string>();
+    const normalizedName = typeof name === 'string' ? name.trim() : '';
+    if (normalizedName && normalizedName !== name) {
+      candidateNames.add(normalizedName);
+    }
+    if (normalizedName.includes('.')) {
+      candidateNames.add(normalizedName.replace(/\./g, '::'));
+    }
+
+    const separatorIndex = normalizedName.lastIndexOf('::');
+    if (separatorIndex > 0 && separatorIndex < normalizedName.length - 2) {
+      const behaviorShortName = normalizedName.substring(separatorIndex + 2);
+      const registeredBehaviorTypes = gdjs.getRegisteredBehaviorTypes();
+      const matchingBehaviorTypes = registeredBehaviorTypes.filter(
+        (registeredBehaviorType) =>
+          registeredBehaviorType === behaviorShortName ||
+          registeredBehaviorType.endsWith('::' + behaviorShortName)
+      );
+      if (matchingBehaviorTypes.length === 1) {
+        candidateNames.add(matchingBehaviorTypes[0]);
+      }
+    }
+
+    for (const candidateName of candidateNames) {
+      if (gdjs.behaviorsTypes.containsKey(candidateName)) {
+        warnBehaviorIssueOnce(
+          `fallback:${name}->${candidateName}`,
+          `Behavior type "${name}" was not found. Falling back to "${candidateName}".`
+        );
+        return gdjs.behaviorsTypes.get(candidateName);
+      }
+    }
+
+    warnBehaviorIssueOnce(
+      `missing:${name}`,
+      'Behavior type "' + name + '" was not found.'
+    );
     return gdjs.behaviorsTypes.get(''); //Create a base empty runtime behavior.
   };
 

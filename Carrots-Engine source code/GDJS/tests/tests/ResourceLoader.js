@@ -357,4 +357,29 @@ describe('gdjs.ResourceLoader', () => {
     // Progress should be complete (1.0)
     expect(resourceLoader.getSceneLoadingProgress('Scene2')).to.be(1);
   });
+
+  it('should normalize local filesystem paths to valid URLs', () => {
+    const runtimeGame = gdjs.getPixiRuntimeGame(gameSettingsWithThreeScenes);
+    const resourceLoader = runtimeGame.getResourceLoader();
+
+    expect(
+      resourceLoader.getFullUrl('C:\\Users\\Tech Shop\\Models\\Car(1).glb')
+    ).to.be('file:///C:/Users/Tech%20Shop/Models/Car(1).glb');
+
+    expect(resourceLoader.getFullUrl('\\\\NAS\\Assets\\car model.glb')).to.be(
+      'file://NAS/Assets/car%20model.glb'
+    );
+  });
+
+  it('should normalize relative Windows separators without changing web URLs', () => {
+    const runtimeGame = gdjs.getPixiRuntimeGame(gameSettingsWithThreeScenes);
+    const resourceLoader = runtimeGame.getResourceLoader();
+
+    expect(resourceLoader.getFullUrl('Models\\car model.glb')).to.be(
+      'Models/car model.glb'
+    );
+    expect(resourceLoader.getFullUrl('https://example.com/a\\b.glb')).to.be(
+      'https://example.com/a\\b.glb'
+    );
+  });
 });
