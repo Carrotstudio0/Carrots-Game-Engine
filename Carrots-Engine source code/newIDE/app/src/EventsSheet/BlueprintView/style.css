@@ -73,6 +73,12 @@
   letter-spacing: 0.2px;
 }
 
+.gd-blueprint-zoom-button-overview {
+  min-width: 74px;
+  padding: 0 8px;
+  font-size: 10px;
+}
+
 .gd-blueprint-zoom-hint {
   font-size: 10px;
   color: #a8bfdc;

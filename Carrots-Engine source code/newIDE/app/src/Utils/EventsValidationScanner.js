@@ -1,6 +1,7 @@
 // @flow
 // Scanner for validation errors in events (missing instructions, invalid parameters)
 import { mapFor } from './MapFor';
+import { safeCanHaveSubEvents, safeGetSubEvents } from './GDevelopEventHelpers';
 import { getFunctionNameFromType } from '../EventsFunctionsExtensionsLoader';
 
 const gd: libGDevelop = global.gd;
@@ -50,9 +51,10 @@ const buildEventPtrToPathMap = (
     // $FlowFixMe[incompatible-type] - ptr is a number identifying the C++ object
     map.set(event.ptr, currentPath);
 
-    if (event.canHaveSubEvents()) {
+    const subEvents = safeGetSubEvents(event);
+    if (subEvents) {
       const subEventsMap = buildEventPtrToPathMap(
-        event.getSubEvents(),
+        subEvents,
         currentPath
       );
       subEventsMap.forEach((path, ptr) => map.set(ptr, path));
@@ -283,7 +285,7 @@ export const findEventByPath = (
 
     // If not at the last index, go to sub-events
     if (i < path.length - 1) {
-      if (!event.canHaveSubEvents()) {
+      if (!safeCanHaveSubEvents(event)) {
         return null;
       }
       currentEventsList = event.getSubEvents();

@@ -126,6 +126,10 @@ import GlobalAndSceneVariablesDialog from '../VariablesList/GlobalAndSceneVariab
 import { type HotReloadPreviewButtonProps } from '../HotReload/HotReloadPreviewButton';
 import { useHighlightedAiGeneratedEvent } from './UseHighlightedAiGeneratedEvent';
 import { findEventByPath } from '../Utils/EventsValidationScanner';
+import {
+  safeCanHaveSubEvents,
+  safeCanHaveVariables,
+} from '../Utils/GDevelopEventHelpers';
 import { isElseEventValid } from './EventsTree/helpers';
 import EventInspectorPanel from './EventInspectorPanel';
 import EventsBlueprintView from './BlueprintView';
@@ -1365,7 +1369,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
   _setSelectedEventFolded = (folded: boolean) => {
     const eventContext = getLastSelectedEventContext(this.state.selection);
     if (!eventContext) return;
-    if (!eventContext.event.canHaveSubEvents()) return;
+    if (!safeCanHaveSubEvents(eventContext.event)) return;
     if (eventContext.event.isFolded() === folded) return;
 
     eventContext.event.setFolded(folded);
@@ -1420,7 +1424,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
   ) => {
     const eventContext = getLastSelectedEventContext(this.state.selection);
     if (!eventContext) return;
-    if (!eventContext.event.canHaveVariables()) return;
+    if (!safeCanHaveVariables(eventContext.event)) return;
 
     const variablesContainer = eventContext.event.getVariables();
     if (!variablesContainer.has(variableName)) return;
@@ -1460,7 +1464,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
 
     const eventContext = getLastSelectedEventContext(this.state.selection);
     if (!eventContext) return;
-    if (!eventContext.event.canHaveVariables()) return;
+    if (!safeCanHaveVariables(eventContext.event)) return;
 
     const variablesContainer = eventContext.event.getVariables();
     const safeName = newNameGenerator(trimmedName, variableName =>
@@ -1717,7 +1721,7 @@ export class EventsSheetComponentWithoutHandle extends React.Component<
       );
       didMutate = true;
     } else if (templateId === 'sequence') {
-      if (!event.canHaveSubEvents()) return;
+      if (!safeCanHaveSubEvents(event)) return;
       const subEvents = event.getSubEvents();
       const insertionIndex = subEvents.getEventsCount();
       subEvents.insertNewEvent(

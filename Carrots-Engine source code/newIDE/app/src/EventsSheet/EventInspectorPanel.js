@@ -12,6 +12,11 @@ import {
 } from './SelectionHandler';
 import { type EventMetadata } from './EnumerateEventsMetadata';
 import { getInstructionMetadata } from './InstructionEditor/InstructionEditor';
+import {
+  safeCanHaveSubEvents,
+  safeCanHaveVariables,
+  safeGetSubEvents,
+} from '../Utils/GDevelopEventHelpers';
 
 const gd: libGDevelop = global.gd;
 
@@ -113,8 +118,9 @@ const countSubEventsRecursively = (eventsList: gdEventsList): number => {
   mapFor(0, eventsList.getEventsCount(), i => {
     const event = eventsList.getEventAt(i);
     count += 1;
-    if (event.canHaveSubEvents()) {
-      count += countSubEventsRecursively(event.getSubEvents());
+    const subEvents = safeGetSubEvents(event);
+    if (subEvents) {
+      count += countSubEventsRecursively(subEvents);
     }
   });
   return count;
@@ -377,9 +383,12 @@ const EventInspectorPanel = ({
           .getKeyIteratorVariableName()
       : '';
   const variablesContainer =
-    selectedEvent && selectedEvent.canHaveVariables()
+    selectedEvent && safeCanHaveVariables(selectedEvent)
       ? selectedEvent.getVariables()
       : null;
+  const selectedEventSubEvents = selectedEvent
+    ? safeGetSubEvents(selectedEvent)
+    : null;
   const selectedEventInstructionStats = selectedEvent
     ? getEventInstructionStats(selectedEvent, selectedEventType)
     : {
@@ -388,14 +397,12 @@ const EventInspectorPanel = ({
         actionsCount: 0,
         totalInstructionsCount: 0,
       };
-  const selectedEventDirectSubEventsCount =
-    selectedEvent && selectedEvent.canHaveSubEvents()
-      ? selectedEvent.getSubEvents().getEventsCount()
-      : 0;
-  const selectedEventTotalSubEventsCount =
-    selectedEvent && selectedEvent.canHaveSubEvents()
-      ? countSubEventsRecursively(selectedEvent.getSubEvents())
-      : 0;
+  const selectedEventDirectSubEventsCount = selectedEventSubEvents
+    ? selectedEventSubEvents.getEventsCount()
+    : 0;
+  const selectedEventTotalSubEventsCount = selectedEventSubEvents
+    ? countSubEventsRecursively(selectedEventSubEvents)
+    : 0;
   const selectedEventVariablesCount = variablesContainer
     ? variablesContainer.count()
     : 0;
@@ -472,8 +479,9 @@ const EventInspectorPanel = ({
 
   const canToggleFolded =
     !!selectedEvent &&
-    selectedEvent.canHaveSubEvents() &&
-    selectedEvent.getSubEvents().getEventsCount() > 0;
+    safeCanHaveSubEvents(selectedEvent) &&
+    !!selectedEventSubEvents &&
+    selectedEventSubEvents.getEventsCount() > 0;
   const quickParameterCount = selectedInstruction
     ? selectedInstruction.getParametersCount()
     : 0;
@@ -785,7 +793,7 @@ const EventInspectorPanel = ({
               )}
             </span>
             <span className="events-inspector-badge">
-              {selectedEvent.canHaveVariables() ? (
+              {safeCanHaveVariables(selectedEvent) ? (
                 <Trans>Supports local variables</Trans>
               ) : (
                 <Trans>No local variables</Trans>

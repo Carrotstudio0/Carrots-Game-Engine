@@ -2,6 +2,11 @@
 
 import values from 'lodash/values';
 import { ProjectScopedContainersAccessor } from '../InstructionOrExpression/EventsScope';
+import {
+  safeCanHaveSubEvents,
+  safeCanHaveVariables,
+  safeGetSubEvents,
+} from '../Utils/GDevelopEventHelpers';
 
 export type InstructionsListContext = {|
   isCondition: boolean,
@@ -94,7 +99,7 @@ export const getLastSelectedEventContextWhichCanHaveSubEvents = (
   selection: SelectionState
 ): EventContext | null => {
   const candidates = selection.selectedEvents.filter(({ event }) =>
-    event.canHaveSubEvents()
+    safeCanHaveSubEvents(event)
   );
   if (!candidates.length) return null;
 
@@ -105,7 +110,7 @@ export const getLastSelectedEventContextWhichCanHaveVariables = (
   selection: SelectionState
 ): EventContext | null => {
   const candidates = selection.selectedEvents.filter(({ event }) =>
-    event.canHaveVariables()
+    safeCanHaveVariables(event)
   );
   if (!candidates.length) return null;
 
@@ -124,10 +129,9 @@ export const getSelectedTopMostOnlyEventContexts = (
       otherSelectedEventContext => {
         if (otherSelectedEventContext === eventContext) return false;
 
-        if (otherSelectedEventContext.event.canHaveSubEvents()) {
-          return otherSelectedEventContext.event
-            .getSubEvents()
-            .contains(eventContext.event, /*recursive=*/ true);
+        const subEvents = safeGetSubEvents(otherSelectedEventContext.event);
+        if (subEvents) {
+          return subEvents.contains(eventContext.event, /*recursive=*/ true);
         }
 
         return false;
@@ -195,7 +199,7 @@ export const getLastSelectedInstructionEventContextWhichCanHaveSubEvents = (
   selection: SelectionState
 ): EventContext | null => {
   const candidates = selection.selectedInstructions.filter(({ eventContext }) =>
-    eventContext.event.canHaveSubEvents()
+    safeCanHaveSubEvents(eventContext.event)
   );
   if (!candidates.length) return null;
 
@@ -206,7 +210,7 @@ export const getLastSelectedInstructionEventContextWhichCanHaveVariables = (
   selection: SelectionState
 ): EventContext | null => {
   const candidates = selection.selectedInstructions.filter(({ eventContext }) =>
-    eventContext.event.canHaveVariables()
+    safeCanHaveVariables(eventContext.event)
   );
   if (!candidates.length) return null;
 

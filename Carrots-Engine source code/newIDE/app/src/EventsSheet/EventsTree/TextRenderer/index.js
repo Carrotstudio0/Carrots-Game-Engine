@@ -1,5 +1,9 @@
 // @flow
 import { mapFor, mapVector } from '../../../Utils/MapFor';
+import {
+  safeCanHaveVariables,
+  safeGetSubEvents,
+} from '../../../Utils/GDevelopEventHelpers';
 import { isElseEventValid, getPreviousExecutableEventIndex } from '../helpers';
 
 const gd: libGDevelop = global.gd;
@@ -323,7 +327,7 @@ const renderEventAsText = ({
   isAncestorDisabled: boolean,
 |}) => {
   const localVariablesText =
-    event.canHaveVariables() && event.hasVariables()
+    safeCanHaveVariables(event) && event.hasVariables()
       ? renderLocalVariablesAsText({
           variables: event.getVariables(),
           padding: padding,
@@ -352,9 +356,10 @@ const renderEventAsText = ({
   const eventText = [prefixAndVariables, content].filter(Boolean).join('\n\n');
 
   let subEvents = '';
-  if (event.canHaveSubEvents()) {
+  const eventSubEvents = safeGetSubEvents(event);
+  if (eventSubEvents) {
     subEvents = renderEventsAsText({
-      eventsList: event.getSubEvents(),
+      eventsList: eventSubEvents,
       parentPath: eventPath,
       padding: padding + ' ',
       isAncestorDisabled: isAncestorDisabled || event.isDisabled(),

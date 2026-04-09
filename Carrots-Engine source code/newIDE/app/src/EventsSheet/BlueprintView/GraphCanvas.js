@@ -5,6 +5,7 @@ import { type I18n as I18nType } from '@lingui/core';
 import * as React from 'react';
 import classNames from 'classnames';
 import { mapFor } from '../../Utils/MapFor';
+import { safeGetSubEvents } from '../../Utils/GDevelopEventHelpers';
 import {
   type EventContext,
   type InstructionContext,
@@ -30,6 +31,7 @@ const BLUEPRINT_WORLD_MIN_HEIGHT = 7200;
 const BLUEPRINT_ZOOM_MIN = 0.45;
 const BLUEPRINT_ZOOM_MAX = 1.9;
 const BLUEPRINT_ZOOM_STEP = 0.12;
+const BLUEPRINT_OVERVIEW_PADDING = 160;
 
 type QuickStartEventPreset = 'start' | 'update' | 'fixed-update' | 'key-pressed';
 
@@ -342,10 +344,11 @@ const collectEventNodes = (
       isAncestorDisabled,
     });
 
-    if (event.canHaveSubEvents() && event.getSubEvents().getEventsCount() > 0) {
+    const subEvents = safeGetSubEvents(event);
+    if (subEvents && subEvents.getEventsCount() > 0) {
       nodes.push(
         ...collectEventNodes(
-          event.getSubEvents(),
+          subEvents,
           projectScopedContainersAccessor,
           depth + 1,
           isAncestorDisabled || event.isDisabled()
@@ -1256,9 +1259,10 @@ const buildGraphModel = ({
     }
 
     const subEvents = [];
-    if (event.canHaveSubEvents() && event.getSubEvents().getEventsCount() > 0) {
-      mapFor(0, event.getSubEvents().getEventsCount(), subEventIndex => {
-        subEvents.push(event.getSubEvents().getEventAt(subEventIndex));
+    const nestedSubEvents = safeGetSubEvents(event);
+    if (nestedSubEvents && nestedSubEvents.getEventsCount() > 0) {
+      mapFor(0, nestedSubEvents.getEventsCount(), subEventIndex => {
+        subEvents.push(nestedSubEvents.getEventAt(subEventIndex));
       });
     }
 
@@ -1581,6 +1585,100 @@ const BlueprintGraphCanvas = ({
   const resetZoom = React.useCallback(() => {
     zoomFromViewportCenter(1);
   }, [zoomFromViewportCenter]);
+
+  const showOverview = React.useCallback(() => {
+    const rootElement = rootRef.current;
+    if (!rootElement) return;
+
+    const latestGraphModel = latestGraphModelRef.current;
+    if (!latestGraphModel || !latestGraphModel.nodes.length) {
+      const fallbackZoom = 1;
+      setZoomLevel(fallbackZoom);
+      requestAnimationFrame(() => {
+        const refreshedRootElement = rootRef.current;
+        if (!refreshedRootElement) return;
+        refreshedRootElement.scrollLeft = Math.max(
+          0,
+          BLUEPRINT_WORLD_OFFSET_X * fallbackZoom -
+            refreshedRootElement.clientWidth * 0.38
+        );
+        refreshedRootElement.scrollTop = Math.max(
+          0,
+          BLUEPRINT_WORLD_OFFSET_Y * fallbackZoom -
+            refreshedRootElement.clientHeight * 0.32
+        );
+      });
+      return;
+    }
+
+    const positionedNodes = latestGraphModel.nodes.map(node => {
+      const customPosition = nodePositionsById[node.id];
+      return customPosition
+        ? {
+            x: customPosition.x,
+            y: customPosition.y,
+            width: node.width,
+            height: node.height,
+          }
+        : {
+            x: node.x + BLUEPRINT_WORLD_OFFSET_X,
+            y: node.y + BLUEPRINT_WORLD_OFFSET_Y,
+            width: node.width,
+            height: node.height,
+          };
+    });
+
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    positionedNodes.forEach(node => {
+      minX = Math.min(minX, node.x);
+      minY = Math.min(minY, node.y);
+      maxX = Math.max(maxX, node.x + node.width);
+      maxY = Math.max(maxY, node.y + node.height);
+    });
+
+    if (
+      !Number.isFinite(minX) ||
+      !Number.isFinite(minY) ||
+      !Number.isFinite(maxX) ||
+      !Number.isFinite(maxY)
+    ) {
+      return;
+    }
+
+    const paddedWidth = Math.max(
+      1,
+      maxX - minX + BLUEPRINT_OVERVIEW_PADDING * 2
+    );
+    const paddedHeight = Math.max(
+      1,
+      maxY - minY + BLUEPRINT_OVERVIEW_PADDING * 2
+    );
+    const targetZoom = clampZoomLevel(
+      Math.min(
+        rootElement.clientWidth / paddedWidth,
+        rootElement.clientHeight / paddedHeight
+      )
+    );
+
+    setZoomLevel(targetZoom);
+    requestAnimationFrame(() => {
+      const refreshedRootElement = rootRef.current;
+      if (!refreshedRootElement) return;
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      refreshedRootElement.scrollLeft = Math.max(
+        0,
+        centerX * targetZoom - refreshedRootElement.clientWidth / 2
+      );
+      refreshedRootElement.scrollTop = Math.max(
+        0,
+        centerY * targetZoom - refreshedRootElement.clientHeight / 2
+      );
+    });
+  }, [nodePositionsById]);
 
   React.useEffect(() => {
     const onKeyDown = (keyboardEvent: KeyboardEvent) => {
@@ -2490,6 +2588,14 @@ const BlueprintGraphCanvas = ({
               onPointerDown={domEvent => domEvent.stopPropagation()}
               onClick={domEvent => domEvent.stopPropagation()}
             >
+              <button
+                type="button"
+                className="gd-blueprint-zoom-button gd-blueprint-zoom-button-overview"
+                onClick={showOverview}
+                title={i18n._(t`Show overview (fit all nodes)`)}
+              >
+                {i18n._(t`Overview`)}
+              </button>
               <button
                 type="button"
                 className="gd-blueprint-zoom-button"

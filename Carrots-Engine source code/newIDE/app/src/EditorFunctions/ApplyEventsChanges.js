@@ -6,6 +6,10 @@ import {
   type AiGeneratedEventMissingObjectBehavior,
 } from '../Utils/GDevelopServices/Generation';
 import { mapFor } from '../Utils/MapFor';
+import {
+  safeCanHaveSubEvents,
+  safeGetSubEvents,
+} from '../Utils/GDevelopEventHelpers';
 import { isBehaviorDefaultCapability } from '../BehaviorsEditor/EnumerateBehaviorsMetadata';
 
 const gd: libGDevelop = global.gd;
@@ -27,8 +31,8 @@ const findEventPathByAiGeneratedEventId = (
       return eventPath;
     }
 
-    if (event.canHaveSubEvents()) {
-      const subEvents = event.getSubEvents();
+    const subEvents = safeGetSubEvents(event);
+    if (subEvents) {
       const foundPath = findEventPathByAiGeneratedEventId(
         subEvents,
         targetId,
@@ -114,7 +118,7 @@ const getParentListAndIndex = (
       );
     }
     const event = currentList.getEventAt(eventIndex);
-    if (!event.canHaveSubEvents()) {
+    if (!safeCanHaveSubEvents(event)) {
       throw new Error(
         `Event at path segment ${i +
           1} (index ${eventIndex}) cannot have sub-events. Path: ${pathForErrorMessage}`
@@ -585,7 +589,7 @@ export const applyEventsChanges = (
       } else if (op.type === 'insertAsSub') {
         // op.path is the path to the PARENT event
         const parentEvent = getEventByPath(sceneEvents, op.path);
-        if (!parentEvent.canHaveSubEvents()) {
+        if (!safeCanHaveSubEvents(parentEvent)) {
           errors.push(
             `Cannot insert sub-events: Event at path [${pathForLog}] does not support sub-events. Skipping.`
           );
@@ -618,7 +622,7 @@ export const applyEventsChanges = (
 
         // Get existing sub-events from target event before replacement
         let existingSubEvents: gdEventsList | null = null;
-        if (targetEvent.canHaveSubEvents()) {
+        if (safeCanHaveSubEvents(targetEvent)) {
           existingSubEvents = new gd.EventsList();
           const targetSubEvents = targetEvent.getSubEvents();
           existingSubEvents.insertEvents(
@@ -646,7 +650,7 @@ export const applyEventsChanges = (
           // If there were existing sub-events, add them to the first new event
           if (existingSubEvents && existingSubEvents.getEventsCount() > 0) {
             const firstNewEvent = parentList.getEventAt(eventIndexInParentList);
-            if (firstNewEvent.canHaveSubEvents()) {
+            if (safeCanHaveSubEvents(firstNewEvent)) {
               const newSubEvents = firstNewEvent.getSubEvents();
               // Insert existing sub-events at the beginning
               newSubEvents.insertEvents(

@@ -8,6 +8,7 @@ import SortableEventsTree, {
 } from './SortableEventsTree';
 import { type ConnectDragSource } from 'react-dnd';
 import { mapFor } from '../../Utils/MapFor';
+import { safeCanHaveVariables } from '../../Utils/GDevelopEventHelpers';
 import { isEventSelected } from '../SelectionHandler';
 import EventsRenderingService from './EventsRenderingService';
 import EventHeightsCache from './EventHeightsCache';
@@ -833,7 +834,7 @@ const EventsTree: React.ComponentType<{
         flattenedList.length - 1
       );
       const currentRelativePath = [...(parentRelativePath || []), i];
-      const projectScopedContainersAccessor = event.canHaveVariables()
+      const projectScopedContainersAccessor = safeCanHaveVariables(event)
         ? parentProjectScopedContainersAccessor.makeNewProjectScopedContainersWithLocalVariables(
             event
           )

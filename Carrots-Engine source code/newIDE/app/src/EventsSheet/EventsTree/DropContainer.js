@@ -9,6 +9,7 @@ import {
   isJustBelow,
   isSibling,
 } from './helpers';
+import { safeCanHaveSubEvents } from '../../Utils/GDevelopEventHelpers';
 import { type WindowSizeType } from '../../UI/Responsive/ResponsiveWindowMeasurer';
 import './style.css';
 import GDevelopThemeContext from '../../UI/Theme/GDevelopThemeContext';
@@ -236,7 +237,8 @@ export function DropContainer({
   const isDraggedNodeJustBelow = isJustBelow(node, draggedNode);
   // We want to allow dropping below if the event has no children OR if the only
   // child of the event is the dragged one.
-  const canHaveSubEvents = !!node.event && node.event.canHaveSubEvents();
+  const canHaveSubEvents =
+    !!node.event && safeCanHaveSubEvents(node.event);
 
   const indentWidth = getIndentWidth(windowSize) * indentScale;
   const dropAreaStyles = getTargetPositionStyles(
