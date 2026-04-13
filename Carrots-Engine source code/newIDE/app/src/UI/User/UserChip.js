@@ -12,6 +12,7 @@ import UserAvatar from './UserAvatar';
 import { useResponsiveWindowSize } from '../Responsive/ResponsiveWindowMeasurer';
 import IconButton from '../IconButton';
 import FlatButton from '../FlatButton';
+import { isGDevelopAccountSystemDisabled } from '../../Utils/AccountSecurityPolicy';
 
 const styles = {
   buttonContainer: { flexShrink: 0 },
@@ -24,6 +25,8 @@ type Props = {|
 const UserChip = ({
   onOpenProfile,
 }: Props): React.MixedElement | React.Node => {
+  const accountSystemDisabled = isGDevelopAccountSystemDisabled();
+
   const authenticatedUser = React.useContext(AuthenticatedUserContext);
   const {
     profile,
@@ -33,6 +36,8 @@ const UserChip = ({
   } = authenticatedUser;
 
   const { isMobile } = useResponsiveWindowSize();
+
+  if (accountSystemDisabled) return null;
 
   return !profile && loginState === 'loggingIn' ? (
     <CircularProgress size={25} />

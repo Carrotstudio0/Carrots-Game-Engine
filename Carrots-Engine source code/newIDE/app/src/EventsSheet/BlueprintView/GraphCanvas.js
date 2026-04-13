@@ -19,6 +19,20 @@ import { type EventMetadata } from '../EnumerateEventsMetadata';
 import { type ProjectScopedContainersAccessor } from '../../InstructionOrExpression/EventsScope';
 import FlatButton from '../../UI/FlatButton';
 import AddEventIcon from '../../UI/CustomSvgIcons/AddEvent';
+import AddIcon from '../../UI/CustomSvgIcons/Add';
+import ArrowRightIcon from '../../UI/CustomSvgIcons/ArrowRight';
+import CheckCircleIcon from '../../UI/CustomSvgIcons/CheckCircle';
+import CrossIcon from '../../UI/CustomSvgIcons/Cross';
+import EventsIcon from '../../UI/CustomSvgIcons/Events';
+import ExtensionIcon from '../../UI/CustomSvgIcons/Extension';
+import GlobalVariableIcon from '../../UI/CustomSvgIcons/GlobalVariable';
+import HammerIcon from '../../UI/CustomSvgIcons/Hammer';
+import KeyIcon from '../../UI/CustomSvgIcons/Key';
+import LightningIcon from '../../UI/CustomSvgIcons/Lightning';
+import ObjectIcon from '../../UI/CustomSvgIcons/Object';
+import RemoveIcon from '../../UI/CustomSvgIcons/Remove';
+import TreeLeavesIcon from '../../UI/CustomSvgIcons/TreeLeaves';
+import UpdateIcon from '../../UI/CustomSvgIcons/Update';
 import GDevelopThemeContext from '../../UI/Theme/GDevelopThemeContext';
 import './style.css';
 
@@ -81,6 +95,10 @@ type Props = {|
       | 'lerp'
       | 'branch'
       | 'sequence'
+      | 'math-add'
+      | 'math-subtract'
+      | 'math-multiply'
+      | 'math-divide'
   ) => void,
   onCreateQuickStartEvent: (
     eventPreset: QuickStartEventPreset,
@@ -141,7 +159,13 @@ type GraphNode = {|
   isSelected: boolean,
   disabled: boolean,
   pins: Array<PinDef>,
-  parameters: Array<{| index: number, label: string, value: string, pinType: DataPinType |}>,
+  parameters: Array<{|
+    index: number,
+    label: string,
+    value: string,
+    pinType: DataPinType,
+    isOperator: boolean,
+  |}>,
   badges: Array<{| text: string, tone: 'condition' | 'action' | 'meta' |}>,
   addConditionContext: ?InstructionsListContext,
   addActionContext: ?InstructionsListContext,
@@ -218,7 +242,13 @@ type QuickAddMode =
   | 'template-lerp'
   | 'template-branch'
   | 'template-sequence'
+  | 'template-math-add'
+  | 'template-math-subtract'
+  | 'template-math-multiply'
+  | 'template-math-divide'
   | 'event';
+
+type IconComponentType = React.ComponentType<any>;
 
 type GraphContextMenuState = {|
   x: number,
@@ -237,6 +267,8 @@ type InstructionEntry = {|
 
 const clampText = (text: string, maxLength: number): string =>
   text.length > maxLength ? text.slice(0, maxLength - 3) + '...' : text;
+
+const MATH_OPERATOR_VALUES = ['=', '+', '-', '*', '/'];
 
 const getPinDirection = (pinId: string): ?PinDirection => {
   if (pinId.endsWith('-in')) return 'in';
@@ -643,20 +675,37 @@ const getInstructionNodeParameters = ({
   metadata: any,
   i18n: I18nType,
   maxCount?: number,
-|}): Array<{| index: number, label: string, value: string, pinType: DataPinType |}> => {
+|}): Array<{|
+  index: number,
+  label: string,
+  value: string,
+  pinType: DataPinType,
+  isOperator: boolean,
+|}> => {
   const parameterCount = Math.min(instruction.getParametersCount(), maxCount);
   return mapFor(0, parameterCount, index => {
     const label = getInstructionParameterLabel({ metadata, index, i18n });
+    const value = instruction.getParameter(index).getPlainString();
+    const metadataParameterType =
+      metadata && metadata.getParameter
+        ? (metadata.getParameter(index).getType() || '').toLowerCase()
+        : '';
+    const normalizedLabel = (label || '').trim().toLowerCase();
+    const normalizedValue = (value || '').trim();
     return {
       index,
       label,
-      value: instruction.getParameter(index).getPlainString(),
+      value,
       pinType: getInstructionParameterPinType({
         instruction,
         metadata,
         index,
         label,
       }),
+      isOperator:
+        metadataParameterType.includes('operator') ||
+        normalizedLabel.includes('operator') ||
+        MATH_OPERATOR_VALUES.includes(normalizedValue),
     };
   });
 };
@@ -1033,11 +1082,18 @@ const buildGraphModel = ({
           isCondition: true,
           project,
         });
+        const isConditionSelected = isInstructionSelected(selection, instruction);
+        const maxVisibleConditionParameters = isConditionSelected ? 3 : 2;
         const parameters = getInstructionNodeParameters({
           instruction,
           metadata,
           i18n,
+          maxCount: maxVisibleConditionParameters,
         });
+        const hiddenConditionParametersCount = Math.max(
+          0,
+          instruction.getParametersCount() - parameters.length
+        );
         const conditionNodeHeight = 92 + parameters.length * 26;
         const conditionDataPinOffsetStart = 72;
 
@@ -1064,7 +1120,7 @@ const buildGraphModel = ({
           }),
           eventContext,
           instructionContext: entry.instructionContext,
-          isSelected: isInstructionSelected(selection, instruction),
+          isSelected: isConditionSelected,
           disabled,
           pins: [
             {
@@ -1090,7 +1146,15 @@ const buildGraphModel = ({
             })),
           ],
           parameters,
-          badges: [],
+          badges:
+            hiddenConditionParametersCount > 0
+              ? [
+                  {
+                    text: `+${hiddenConditionParametersCount} ${i18n._(t`more`)}`,
+                    tone: ('meta': 'condition' | 'action' | 'meta'),
+                  },
+                ]
+              : [],
           addConditionContext: null,
           addActionContext: null,
         });
@@ -1115,6 +1179,9 @@ const buildGraphModel = ({
 
     if (actionEntries.length > 0) {
       let previousActionOutPinId = execSourcePinId;
+      const actionColumns =
+        actionEntries.length <= 2 ? 1 : actionEntries.length <= 6 ? 2 : 4;
+      const actionColumnSpacing = actionColumns === 1 ? 0 : 272;
       const actionRowSpacing = 196;
 
       actionEntries.forEach((entry, index) => {
@@ -1122,9 +1189,9 @@ const buildGraphModel = ({
         const instructionId = instruction.ptr;
         const actionNodeId = `action-node-${instructionId}`;
 
-        const row = Math.floor(index / 4);
-        const column = index % 4;
-        const actionNodeX = actionsBaseX + column * 272;
+        const row = Math.floor(index / actionColumns);
+        const column = index % actionColumns;
+        const actionNodeX = actionsBaseX + column * actionColumnSpacing;
         const actionNodeY = eventNodeY + row * actionRowSpacing;
 
         const actionInPinId = `${actionNodeId}-exec-in`;
@@ -1135,11 +1202,18 @@ const buildGraphModel = ({
           isCondition: false,
           project,
         });
+        const isActionSelected = isInstructionSelected(selection, instruction);
+        const maxVisibleActionParameters = isActionSelected ? 3 : 2;
         const parameters = getInstructionNodeParameters({
           instruction,
           metadata,
           i18n,
+          maxCount: maxVisibleActionParameters,
         });
+        const hiddenActionParametersCount = Math.max(
+          0,
+          instruction.getParametersCount() - parameters.length
+        );
         const actionNodeHeight = 92 + parameters.length * 26;
         const actionDataPinOffsetStart = 72;
 
@@ -1166,7 +1240,7 @@ const buildGraphModel = ({
           }),
           eventContext,
           instructionContext: entry.instructionContext,
-          isSelected: isInstructionSelected(selection, instruction),
+          isSelected: isActionSelected,
           disabled,
           pins: [
             {
@@ -1192,7 +1266,15 @@ const buildGraphModel = ({
             })),
           ],
           parameters,
-          badges: [],
+          badges:
+            hiddenActionParametersCount > 0
+              ? [
+                  {
+                    text: `+${hiddenActionParametersCount} ${i18n._(t`more`)}`,
+                    tone: ('meta': 'condition' | 'action' | 'meta'),
+                  },
+                ]
+              : [],
           addConditionContext: null,
           addActionContext: null,
         });
@@ -1403,6 +1485,39 @@ const getNodeClass = (node: GraphNode): string =>
     'gd-blueprint-node-selected': node.isSelected,
     'gd-blueprint-node-disabled': node.disabled,
   });
+
+const getNodeIcon = (node: GraphNode): IconComponentType => {
+  if (node.tone === 'physics') return HammerIcon;
+  if (node.tone === 'tween') return UpdateIcon;
+
+  if (node.kind === 'event') return EventsIcon;
+  if (node.kind === 'branch') return TreeLeavesIcon;
+  if (node.kind === 'sequence') return ArrowRightIcon;
+  if (node.kind === 'condition') return CheckCircleIcon;
+  if (node.kind === 'action') return LightningIcon;
+  return AddIcon;
+};
+
+const getQuickAddItemIcon = (mode: QuickAddMode): IconComponentType => {
+  if (mode === 'event-start') return EventsIcon;
+  if (mode === 'event-update') return UpdateIcon;
+  if (mode === 'event-fixed-update') return UpdateIcon;
+  if (mode === 'event-key-pressed') return KeyIcon;
+  if (mode === 'event') return AddEventIcon;
+  if (mode === 'condition-player' || mode === 'action-player') return ObjectIcon;
+  if (mode === 'condition-global' || mode === 'action-global')
+    return GlobalVariableIcon;
+  if (mode === 'template-add-force' || mode === 'template-set-velocity')
+    return HammerIcon;
+  if (mode === 'template-math-add') return AddIcon;
+  if (mode === 'template-math-subtract') return RemoveIcon;
+  if (mode === 'template-math-multiply') return CrossIcon;
+  if (mode === 'template-math-divide') return ExtensionIcon;
+  if (mode === 'template-branch') return TreeLeavesIcon;
+  if (mode === 'template-sequence') return ArrowRightIcon;
+  if (mode === 'template-lerp') return UpdateIcon;
+  return ExtensionIcon;
+};
 
 const getWireClass = ({
   kind,
@@ -2110,7 +2225,11 @@ const BlueprintGraphCanvas = ({
         mode === 'template-set-velocity' ||
         mode === 'template-lerp' ||
         mode === 'template-branch' ||
-        mode === 'template-sequence'
+        mode === 'template-sequence' ||
+        mode === 'template-math-add' ||
+        mode === 'template-math-subtract' ||
+        mode === 'template-math-multiply' ||
+        mode === 'template-math-divide'
       ) {
         if (!eventContext) return;
         const templateId =
@@ -2122,7 +2241,15 @@ const BlueprintGraphCanvas = ({
             ? 'lerp'
             : mode === 'template-branch'
             ? 'branch'
-            : 'sequence';
+            : mode === 'template-sequence'
+            ? 'sequence'
+            : mode === 'template-math-add'
+            ? 'math-add'
+            : mode === 'template-math-subtract'
+            ? 'math-subtract'
+            : mode === 'template-math-multiply'
+            ? 'math-multiply'
+            : 'math-divide';
         closeGraphContextMenu();
         onCreateTemplateNode(eventContext, templateId);
         return;
@@ -2450,6 +2577,50 @@ const BlueprintGraphCanvas = ({
               t`Create 2 sub-events and sequence outputs for parallel build`
             ),
             keywords: 'template sequence outputs flow split',
+          },
+          {
+            id: 'template-math-add',
+            mode: ('template-math-add': QuickAddMode),
+            itemType: 'template',
+            enabled: !!graphContextMenu && !!graphContextMenu.eventContext,
+            title: i18n._(t`Template - Math Add`),
+            subtitle: i18n._(
+              t`Create scene variable add operation (Variable += value)`
+            ),
+            keywords: 'template math add plus variable score',
+          },
+          {
+            id: 'template-math-subtract',
+            mode: ('template-math-subtract': QuickAddMode),
+            itemType: 'template',
+            enabled: !!graphContextMenu && !!graphContextMenu.eventContext,
+            title: i18n._(t`Template - Math Subtract`),
+            subtitle: i18n._(
+              t`Create scene variable subtract operation (Variable -= value)`
+            ),
+            keywords: 'template math subtract minus variable score',
+          },
+          {
+            id: 'template-math-multiply',
+            mode: ('template-math-multiply': QuickAddMode),
+            itemType: 'template',
+            enabled: !!graphContextMenu && !!graphContextMenu.eventContext,
+            title: i18n._(t`Template - Math Multiply`),
+            subtitle: i18n._(
+              t`Create scene variable multiply operation (Variable *= value)`
+            ),
+            keywords: 'template math multiply variable score',
+          },
+          {
+            id: 'template-math-divide',
+            mode: ('template-math-divide': QuickAddMode),
+            itemType: 'template',
+            enabled: !!graphContextMenu && !!graphContextMenu.eventContext,
+            title: i18n._(t`Template - Math Divide`),
+            subtitle: i18n._(
+              t`Create scene variable divide operation (Variable /= value)`
+            ),
+            keywords: 'template math divide variable score',
           },
         ];
 
@@ -2781,7 +2952,12 @@ const BlueprintGraphCanvas = ({
                     }}
                   >
                     <div className="gd-blueprint-node-header gd-blueprint-node-drag-handle">
-                      <span className="gd-blueprint-node-title">{node.title}</span>
+                      <div className="gd-blueprint-node-title-row">
+                        {React.createElement(getNodeIcon(node), {
+                          className: 'gd-blueprint-node-icon',
+                        })}
+                        <span className="gd-blueprint-node-title">{node.title}</span>
+                      </div>
                       {!!node.badges.length && (
                         <div className="gd-blueprint-node-badges">
                           {node.badges.map((badge, index) => (
@@ -2813,6 +2989,26 @@ const BlueprintGraphCanvas = ({
                                 undefined
                                 ? nodeParameterDraftValues[node.id][parameter.index]
                                 : parameter.value;
+                            const normalizedDraftValue = (draftValue || '').trim();
+                            const normalizedParameterValue = (
+                              parameter.value || ''
+                            ).trim();
+                            const shouldUseOperatorPicker =
+                              parameter.isOperator &&
+                              (!normalizedDraftValue ||
+                                MATH_OPERATOR_VALUES.includes(normalizedDraftValue) ||
+                                MATH_OPERATOR_VALUES.includes(
+                                  normalizedParameterValue
+                                ));
+                            const safeOperatorValue = MATH_OPERATOR_VALUES.includes(
+                              normalizedDraftValue
+                            )
+                              ? normalizedDraftValue
+                              : MATH_OPERATOR_VALUES.includes(
+                                  normalizedParameterValue
+                                )
+                              ? normalizedParameterValue
+                              : '=';
 
                             return (
                               <label
@@ -2822,48 +3018,89 @@ const BlueprintGraphCanvas = ({
                                 <span className="gd-blueprint-parameter-label">
                                   {parameter.label}
                                 </span>
-                                <input
-                                  type="text"
-                                  className="gd-blueprint-parameter-input"
-                                  value={draftValue}
-                                  onPointerDown={domEvent => domEvent.stopPropagation()}
-                                  onClick={domEvent => domEvent.stopPropagation()}
-                                  onChange={domEvent => {
-                                    setNodeParameterDraftValue(
-                                      node.id,
-                                      parameter.index,
-                                      domEvent.currentTarget.value
-                                    );
-                                  }}
-                                  onBlur={domEvent => {
-                                    if (!node.instructionContext) return;
-                                    const nextValue = domEvent.currentTarget.value;
-                                    if (nextValue !== parameter.value) {
-                                      onSetInstructionParameterValue(
-                                        node.eventContext,
-                                        node.instructionContext,
+                                {shouldUseOperatorPicker ? (
+                                  <select
+                                    className="gd-blueprint-parameter-input gd-blueprint-parameter-select"
+                                    value={safeOperatorValue}
+                                    onPointerDown={domEvent => domEvent.stopPropagation()}
+                                    onClick={domEvent => domEvent.stopPropagation()}
+                                    onChange={domEvent => {
+                                      setNodeParameterDraftValue(
+                                        node.id,
                                         parameter.index,
-                                        nextValue
+                                        domEvent.currentTarget.value
                                       );
-                                    }
-                                    clearNodeParameterDraftValue(
-                                      node.id,
-                                      parameter.index
-                                    );
-                                  }}
-                                  onKeyDown={domEvent => {
-                                    if (domEvent.key === 'Escape') {
+                                    }}
+                                    onBlur={domEvent => {
+                                      if (!node.instructionContext) return;
+                                      const nextValue = domEvent.currentTarget.value;
+                                      if (nextValue !== parameter.value) {
+                                        onSetInstructionParameterValue(
+                                          node.eventContext,
+                                          node.instructionContext,
+                                          parameter.index,
+                                          nextValue
+                                        );
+                                      }
                                       clearNodeParameterDraftValue(
                                         node.id,
                                         parameter.index
                                       );
-                                      domEvent.currentTarget.blur();
-                                    }
-                                    if (domEvent.key === 'Enter') {
-                                      domEvent.currentTarget.blur();
-                                    }
-                                  }}
-                                />
+                                    }}
+                                  >
+                                    {MATH_OPERATOR_VALUES.map(operator => (
+                                      <option
+                                        key={`${node.id}-operator-${parameter.index}-${operator}`}
+                                        value={operator}
+                                      >
+                                        {operator}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    className="gd-blueprint-parameter-input"
+                                    value={draftValue}
+                                    onPointerDown={domEvent => domEvent.stopPropagation()}
+                                    onClick={domEvent => domEvent.stopPropagation()}
+                                    onChange={domEvent => {
+                                      setNodeParameterDraftValue(
+                                        node.id,
+                                        parameter.index,
+                                        domEvent.currentTarget.value
+                                      );
+                                    }}
+                                    onBlur={domEvent => {
+                                      if (!node.instructionContext) return;
+                                      const nextValue = domEvent.currentTarget.value;
+                                      if (nextValue !== parameter.value) {
+                                        onSetInstructionParameterValue(
+                                          node.eventContext,
+                                          node.instructionContext,
+                                          parameter.index,
+                                          nextValue
+                                        );
+                                      }
+                                      clearNodeParameterDraftValue(
+                                        node.id,
+                                        parameter.index
+                                      );
+                                    }}
+                                    onKeyDown={domEvent => {
+                                      if (domEvent.key === 'Escape') {
+                                        clearNodeParameterDraftValue(
+                                          node.id,
+                                          parameter.index
+                                        );
+                                        domEvent.currentTarget.blur();
+                                      }
+                                      if (domEvent.key === 'Enter') {
+                                        domEvent.currentTarget.blur();
+                                      }
+                                    }}
+                                  />
+                                )}
                               </label>
                             );
                           })}
@@ -3001,11 +3238,18 @@ const BlueprintGraphCanvas = ({
                                   })
                                 }
                               >
-                                <span className="gd-blueprint-context-menu-item-title">
-                                  {item.title}
-                                </span>
-                                <span className="gd-blueprint-context-menu-item-subtitle">
-                                  {item.subtitle}
+                                <span className="gd-blueprint-context-menu-item-content">
+                                  {React.createElement(getQuickAddItemIcon(item.mode), {
+                                    className: 'gd-blueprint-context-menu-item-icon',
+                                  })}
+                                  <span className="gd-blueprint-context-menu-item-text">
+                                    <span className="gd-blueprint-context-menu-item-title">
+                                      {item.title}
+                                    </span>
+                                    <span className="gd-blueprint-context-menu-item-subtitle">
+                                      {item.subtitle}
+                                    </span>
+                                  </span>
                                 </span>
                               </button>
                             ))}
@@ -3043,11 +3287,18 @@ const BlueprintGraphCanvas = ({
                                   })
                                 }
                               >
-                                <span className="gd-blueprint-context-menu-item-title">
-                                  {item.title}
-                                </span>
-                                <span className="gd-blueprint-context-menu-item-subtitle">
-                                  {item.subtitle}
+                                <span className="gd-blueprint-context-menu-item-content">
+                                  {React.createElement(getQuickAddItemIcon(item.mode), {
+                                    className: 'gd-blueprint-context-menu-item-icon',
+                                  })}
+                                  <span className="gd-blueprint-context-menu-item-text">
+                                    <span className="gd-blueprint-context-menu-item-title">
+                                      {item.title}
+                                    </span>
+                                    <span className="gd-blueprint-context-menu-item-subtitle">
+                                      {item.subtitle}
+                                    </span>
+                                  </span>
                                 </span>
                               </button>
                             ))}
@@ -3077,11 +3328,18 @@ const BlueprintGraphCanvas = ({
                                   })
                                 }
                               >
-                                <span className="gd-blueprint-context-menu-item-title">
-                                  {item.title}
-                                </span>
-                                <span className="gd-blueprint-context-menu-item-subtitle">
-                                  {item.subtitle}
+                                <span className="gd-blueprint-context-menu-item-content">
+                                  {React.createElement(getQuickAddItemIcon(item.mode), {
+                                    className: 'gd-blueprint-context-menu-item-icon',
+                                  })}
+                                  <span className="gd-blueprint-context-menu-item-text">
+                                    <span className="gd-blueprint-context-menu-item-title">
+                                      {item.title}
+                                    </span>
+                                    <span className="gd-blueprint-context-menu-item-subtitle">
+                                      {item.subtitle}
+                                    </span>
+                                  </span>
                                 </span>
                               </button>
                             ))}

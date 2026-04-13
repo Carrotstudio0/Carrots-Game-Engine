@@ -150,6 +150,7 @@ import { findAndLogProjectPreviewErrors } from '../Utils/ProjectErrorsChecker';
 import { renameResourcesInProject } from '../ResourcesList/ResourceUtils';
 import { ensureProjectResourcesHaveGuids } from '../ResourcesList/AssetDatabase';
 import { ensureProjectResourcesHaveImportSettings } from '../ResourcesList/AssetImportPipeline';
+import { importDroppedFilesToAssets } from '../ResourcesList/ExternalFileDropImporter';
 import { NewResourceDialog } from '../ResourcesList/NewResourceDialog';
 import {
   addCreateBadgePreHookIfNotClaimed,
@@ -157,6 +158,7 @@ import {
   TRIVIAL_FIRST_PREVIEW,
 } from '../Utils/GDevelopServices/Badge';
 import AuthenticatedUserContext from '../Profile/AuthenticatedUserContext';
+import { isGDevelopAccountSystemDisabled } from '../Utils/AccountSecurityPolicy';
 import StartInAppTutorialDialog from './EditorContainers/HomePage/InAppTutorials/StartInAppTutorialDialog';
 import LeaderboardProvider from '../Leaderboard/LeaderboardProvider';
 import {
@@ -443,6 +445,7 @@ const MainFrame = (props: Props): React.MixedElement => {
     }: State)
   );
   const authenticatedUser = React.useContext(AuthenticatedUserContext);
+  const accountSystemDisabled = isGDevelopAccountSystemDisabled();
   const [
     cloudProjectFileMetadataToRecover,
     setCloudProjectFileMetadataToRecover,
@@ -1556,9 +1559,10 @@ const MainFrame = (props: Props): React.MixedElement => {
 
   const onOpenProfileDialog = React.useCallback(
     () => {
+      if (accountSystemDisabled) return;
       openProfileDialog(true);
     },
-    [openProfileDialog]
+    [accountSystemDisabled, openProfileDialog]
   );
 
   const closeApp = React.useCallback((): void => {
@@ -4779,6 +4783,118 @@ const MainFrame = (props: Props): React.MixedElement => {
     ]
   );
 
+  const importDroppedFilesIntoCurrentProject = React.useCallback(
+    async (droppedFilePaths: Array<string>) => {
+      if (!currentProject || !currentFileMetadata) {
+        _replaceSnackMessage(
+          'Open and save a local project before dropping files into Assets.'
+        );
+        return;
+      }
+
+      const storageProvider = getStorageProvider();
+      if (
+        storageProvider.internalName !== localFileStorageProviderInternalName
+      ) {
+        _replaceSnackMessage(
+          'Dropping files into Assets is available for local projects only.'
+        );
+        return;
+      }
+      if (!currentProject.getProjectFile()) {
+        _replaceSnackMessage(
+          'Save the project locally before dropping files into Assets.'
+        );
+        return;
+      }
+
+      const summary = await importDroppedFilesToAssets({
+        project: currentProject,
+        droppedFilePaths,
+      });
+
+      const importedCount = summary.importedResourceNames.length;
+      const unsupportedCount = summary.unsupportedFilePaths.length;
+      const failedCount = summary.failedFilePaths.length;
+
+      if (importedCount > 0) {
+        await onFetchNewlyAddedResources();
+        onNewResourcesAdded();
+        onResourceUsageChanged();
+        forceUpdate();
+      }
+
+      const resultParts = [];
+      if (importedCount > 0) {
+        resultParts.push(`${importedCount} file(s) imported into Assets.`);
+      }
+      if (unsupportedCount > 0) {
+        resultParts.push(`${unsupportedCount} unsupported file(s) skipped.`);
+      }
+      if (failedCount > 0) {
+        resultParts.push(`${failedCount} file(s) failed to import.`);
+      }
+
+      if (resultParts.length > 0) {
+        _replaceSnackMessage(
+          resultParts.join(' '),
+          failedCount > 0 ? null : undefined
+        );
+      } else {
+        _replaceSnackMessage('No supported files were found in the drop.');
+      }
+    },
+    [
+      currentProject,
+      currentFileMetadata,
+      getStorageProvider,
+      onFetchNewlyAddedResources,
+      onNewResourcesAdded,
+      onResourceUsageChanged,
+      forceUpdate,
+      _replaceSnackMessage,
+    ]
+  );
+
+  const onMainFrameDragOver = React.useCallback(event => {
+    if (!event.dataTransfer) return;
+    const hasFiles = Array.from(event.dataTransfer.types || []).includes(
+      'Files'
+    );
+    if (!hasFiles) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'copy';
+  }, []);
+
+  const onMainFrameDrop = React.useCallback(
+    async event => {
+      if (!event.dataTransfer) return;
+      const hasFiles = Array.from(event.dataTransfer.types || []).includes(
+        'Files'
+      );
+      if (!hasFiles) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const droppedFilePaths = [];
+      const droppedFiles = event.dataTransfer.files;
+      for (let i = 0; i < droppedFiles.length; i++) {
+        const droppedFile = droppedFiles[i];
+        // $FlowFixMe[prop-missing] Electron provides "path" for dropped local files.
+        const droppedFilePath = droppedFile.path;
+        if (typeof droppedFilePath === 'string' && droppedFilePath) {
+          droppedFilePaths.push(droppedFilePath);
+        }
+      }
+
+      if (!droppedFilePaths.length) return;
+      await importDroppedFilesIntoCurrentProject(droppedFilePaths);
+    },
+    [importDroppedFilesIntoCurrentProject]
+  );
+
   useKeyboardShortcuts({
     previewDebuggerServer,
     onRunCommand: commandPaletteRef.current
@@ -5166,6 +5282,8 @@ const MainFrame = (props: Props): React.MixedElement => {
       className={
         'main-frame' /* The root styling, done in CSS to read some CSS variables. */
       }
+      onDragOver={onMainFrameDragOver}
+      onDrop={onMainFrameDrop}
     >
       {!!renderPreviewLauncher &&
         renderPreviewLauncher(
@@ -5348,7 +5466,7 @@ const MainFrame = (props: Props): React.MixedElement => {
           options={chooseResourceOptions}
         />
       )}
-      {profileDialogOpen && (
+      {!accountSystemDisabled && profileDialogOpen && (
         // ProfileDialog is dependent on multiple contexts,
         // which are dependent of AuthenticatedUserContext.
         // So it cannot be moved inside the AuthenticatedUserProvider,
@@ -5360,7 +5478,7 @@ const MainFrame = (props: Props): React.MixedElement => {
           }}
         />
       )}
-      {authenticatedUser.claimedProductOptions && (
+      {!accountSystemDisabled && authenticatedUser.claimedProductOptions && (
         // PurchaseClaimDialog is dependent on SubscriptionContext,
         // which is defined after the AuthenticatedUserProvider in Providers.js.
         // So it cannot be rendered inside the AuthenticatedUserProvider.

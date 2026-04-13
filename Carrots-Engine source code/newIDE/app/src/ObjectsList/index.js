@@ -23,6 +23,7 @@ import { type UnsavedChanges } from '../MainFrame/UnsavedChangesContext';
 import { type HotReloadPreviewButtonProps } from '../HotReload/HotReloadPreviewButton';
 import useForceUpdate from '../Utils/UseForceUpdate';
 import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
+import { importDroppedFilesToAssets } from '../ResourcesList/ExternalFileDropImporter';
 import { Column } from '../UI/Grid';
 import Add from '../UI/CustomSvgIcons/Add';
 import InAppTutorialContext from '../InAppTutorial/InAppTutorialContext';
@@ -429,6 +430,71 @@ const objectTypeToDefaultName = {
   'Video::VideoObject': 'NewVideo',
 };
 
+const getObjectTypeForResourceKind = (resourceKind: string): ?string => {
+  if (resourceKind === 'image') return 'Sprite';
+  if (resourceKind === 'model3D') return 'Scene3D::Model3DObject';
+  if (resourceKind === 'video') return 'Video::VideoObject';
+  if (resourceKind === 'spine') return 'SpineObject::SpineObject';
+  if (resourceKind === 'tilemap') return 'TileMap::TileMap';
+  return null;
+};
+
+const getBaseNameWithoutExtension = (filename: string): string => {
+  const pathSegments = filename.split(/[/\\]/);
+  const fullName = pathSegments[pathSegments.length - 1] || filename;
+  return fullName.replace(/\.[^/.]+$/, '');
+};
+
+const assignMainResourceToObject = ({
+  object,
+  resourceName,
+}: {|
+  object: gdObject,
+  resourceName: string,
+|}) => {
+  if (object.getType() === 'Sprite') {
+    const spriteConfiguration = gd.asSpriteConfiguration(object.getConfiguration());
+    const animations = spriteConfiguration.getAnimations();
+
+    if (animations.getAnimationsCount() === 0) {
+      const animation = new gd.Animation();
+      animation.setDirectionsCount(1);
+      animations.addAnimation(animation);
+      animation.delete();
+    }
+
+    const firstAnimation = animations.getAnimation(0);
+    firstAnimation.setDirectionsCount(1);
+    const direction = firstAnimation.getDirection(0);
+    if (direction.getSpritesCount() === 0) {
+      const sprite = new gd.Sprite();
+      sprite.setImageName(resourceName);
+      direction.addSprite(sprite);
+      sprite.delete();
+    } else {
+      direction.getSprite(0).setImageName(resourceName);
+    }
+    return;
+  }
+
+  const objectConfiguration = object.getConfiguration();
+  if (object.getType() === 'Scene3D::Model3DObject') {
+    objectConfiguration.updateProperty('modelResourceName', resourceName);
+    return;
+  }
+  if (object.getType() === 'Video::VideoObject') {
+    objectConfiguration.updateProperty('videoResource', resourceName);
+    return;
+  }
+  if (object.getType() === 'SpineObject::SpineObject') {
+    objectConfiguration.updateProperty('spineResourceName', resourceName);
+    return;
+  }
+  if (object.getType() === 'TileMap::TileMap') {
+    objectConfiguration.updateProperty('tilemapJsonFile', resourceName);
+  }
+};
+
 export type ObjectsListInterface = {|
   forceUpdateList: () => void,
   openNewObjectDialog: () => void,
@@ -723,6 +789,156 @@ const ObjectsList = React.forwardRef<Props, ObjectsListInterface>(
         setNewObjectDialogOpen({ from: item });
       },
       []
+    );
+
+    const createObjectFromImportedResource = React.useCallback(
+      (
+        resource: gdResource
+      ): ?{|
+        object: gdObject,
+        isTheFirstOfItsTypeInProject: boolean,
+      |} => {
+        const objectType = getObjectTypeForResourceKind(resource.getKind());
+        if (!objectType) return null;
+
+        const resourceBaseName = gd.Project.getSafeName(
+          getBaseNameWithoutExtension(resource.getName())
+        );
+        const fallbackDefaultName =
+          // $FlowFixMe[invalid-computed-prop]
+          objectTypeToDefaultName[objectType] || 'NewObject';
+        const defaultObjectName = resourceBaseName || fallbackDefaultName;
+        const objectName = newNameGenerator(
+          defaultObjectName,
+          name =>
+            objectsContainer.hasObjectNamed(name) ||
+            (!!globalObjectsContainer &&
+              globalObjectsContainer.hasObjectNamed(name))
+        );
+
+        const isTheFirstOfItsTypeInProject = !gd.UsedObjectTypeFinder.scanProject(
+          project,
+          objectType
+        );
+        const object = objectsContainer.insertNewObject(
+          project,
+          objectType,
+          objectName,
+          objectsContainer.getObjectsCount()
+        );
+
+        assignMainResourceToObject({
+          object,
+          resourceName: resource.getName(),
+        });
+
+        return { object, isTheFirstOfItsTypeInProject };
+      },
+      [project, objectsContainer, globalObjectsContainer]
+    );
+
+    const onObjectsListDragOver = React.useCallback(event => {
+      if (!event.dataTransfer) return;
+      const hasFiles = Array.from(event.dataTransfer.types || []).includes(
+        'Files'
+      );
+      if (!hasFiles) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = 'copy';
+    }, []);
+
+    const onObjectsListDrop = React.useCallback(
+      async event => {
+        if (!event.dataTransfer) return;
+        const hasFiles = Array.from(event.dataTransfer.types || []).includes(
+          'Files'
+        );
+        if (!hasFiles) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const droppedFilePaths = [];
+        const droppedFiles = event.dataTransfer.files;
+        for (let i = 0; i < droppedFiles.length; i++) {
+          const droppedFile = droppedFiles[i];
+          // $FlowFixMe[prop-missing] Electron provides "path" for dropped local files.
+          const droppedFilePath = droppedFile.path;
+          if (typeof droppedFilePath === 'string' && droppedFilePath) {
+            droppedFilePaths.push(droppedFilePath);
+          }
+        }
+
+        if (!droppedFilePaths.length) return;
+        if (!project.getProjectFile()) {
+          showWarningBox(
+            'Save the project locally before dropping files in Objects.'
+          );
+          return;
+        }
+
+        const summary = await importDroppedFilesToAssets({
+          project,
+          droppedFilePaths,
+        });
+
+        const resourcesManager = project.getResourcesManager();
+        const createdObjects = summary.importedResourceNames
+          .map(resourceName => {
+            if (!resourcesManager.hasResource(resourceName)) return null;
+            return createObjectFromImportedResource(
+              resourcesManager.getResource(resourceName)
+            );
+          })
+          .filter(Boolean);
+
+        if (createdObjects.length > 0) {
+          createdObjects.forEach(
+            ({ object, isTheFirstOfItsTypeInProject }) => {
+              onObjectCreated([object], isTheFirstOfItsTypeInProject);
+            }
+          );
+
+          if (treeViewRef.current) {
+            treeViewRef.current.openItems([sceneObjectsRootFolderId]);
+          }
+
+          const lastCreatedObject = createdObjects[createdObjects.length - 1]
+            .object;
+          onObjectFolderOrObjectWithContextSelected({
+            objectFolderOrObject: objectsContainer
+              .getRootFolder()
+              .getObjectChild(lastCreatedObject.getName()),
+            global: false,
+          });
+
+          forceUpdateList();
+          setTimeout(() => {
+            scrollToItem(getObjectTreeViewItemId(lastCreatedObject));
+          }, 100);
+        }
+
+        if (
+          summary.unsupportedFilePaths.length > 0 ||
+          summary.failedFilePaths.length > 0
+        ) {
+          showWarningBox(
+            `Imported ${summary.importedResourceNames.length} file(s), created ${createdObjects.length} object(s), skipped ${summary.unsupportedFilePaths.length}, failed ${summary.failedFilePaths.length}.`,
+            { delayToNextTick: true }
+          );
+        }
+      },
+      [
+        project,
+        createObjectFromImportedResource,
+        onObjectCreated,
+        onObjectFolderOrObjectWithContextSelected,
+        forceUpdateList,
+        scrollToItem,
+        objectsContainer,
+      ]
     );
 
     const onObjectModified = React.useCallback(
@@ -1516,6 +1732,8 @@ const ObjectsList = React.forwardRef<Props, ObjectsListInterface>(
           style={styles.listContainer}
           onKeyDown={keyboardShortcutsRef.current.onKeyDown}
           onKeyUp={keyboardShortcutsRef.current.onKeyUp}
+          onDragOver={onObjectsListDragOver}
+          onDrop={onObjectsListDrop}
           id="objects-list"
         >
           <I18n>

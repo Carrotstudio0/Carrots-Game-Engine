@@ -5,6 +5,7 @@ import URLSearchParams from 'url-search-params';
 import { isWindows } from './Platform';
 import debounce from 'lodash/debounce';
 import { hexToRGBColor, isLightRgbColor } from './ColorTransformer';
+import { shouldBlockExternalNavigation } from './AccountSecurityPolicy';
 const electron = optionalRequire('electron');
 const remote = optionalRequire('@electron/remote');
 const shell = electron ? electron.shell : null;
@@ -363,6 +364,13 @@ export default class Window {
     |} = {}
   ) {
     if (!url) return;
+    if (shouldBlockExternalNavigation(url)) {
+      console.warn(
+        'Blocked external navigation to protected host by policy:',
+        url
+      );
+      return;
+    }
 
     if (electron) {
       if (shell) shell.openExternal(url);
