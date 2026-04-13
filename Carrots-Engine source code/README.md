@@ -172,7 +172,5 @@ Games exported with Carrots Engine are based on the Carrots Engine game engine (
 
 Help us spread the word about Carrots Engine by starring the repository on GitHub.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Carrotstudio0/Carrots-Engine&type=Date)](https://star-history.com/#Carrotstudio0/Carrots-Engine&Date)
-
 
 
