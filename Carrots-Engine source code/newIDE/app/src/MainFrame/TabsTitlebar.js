@@ -1,6 +1,7 @@
 // @flow
 import * as React from 'react';
-import { t } from '@lingui/macro';
+import { t, Trans } from '@lingui/macro';
+import Drawer from '@material-ui/core/Drawer';
 
 import {
   TitleBarLeftSafeMargins,
@@ -9,13 +10,17 @@ import {
 import { type EditorTab } from './EditorTabs/EditorTabsHandler';
 import { getTabId } from './EditorTabs/DraggableEditorTabs';
 import { useScreenType } from '../UI/Responsive/ScreenTypeMeasurer';
+import { useResponsiveWindowSize } from '../UI/Responsive/ResponsiveWindowMeasurer';
 import TabsTitlebarTooltip from './TabsTitlebarTooltip';
 import Window from '../Utils/Window';
 import { isMacLike } from '../Utils/Platform';
 import GDevelopThemeContext from '../UI/Theme/GDevelopThemeContext';
 import ElementWithMenu from '../UI/Menu/ElementWithMenu';
 import TextButton from '../UI/TextButton';
+import IconButton from '../UI/IconButton';
 import CompactSearchBar from '../UI/CompactSearchBar';
+import MenuIcon from '../UI/CustomSvgIcons/Menu';
+import DoubleChevronArrowLeft from '../UI/CustomSvgIcons/DoubleChevronArrowLeft';
 import { type MenuItemTemplate } from '../UI/Menu/Menu.flow';
 import {
   adaptFromDeclarativeTemplate,
@@ -86,9 +91,56 @@ const styles = {
     whiteSpace: 'nowrap',
   },
   headerMenuButton: {
-    minWidth: 40,
+    minWidth: 36,
     marginLeft: 1,
     marginRight: 1,
+  },
+  compactMenuTrigger: {
+    padding: 2,
+    marginLeft: 0,
+    marginRight: 0,
+  },
+  compactDrawerContent: {
+    width: 248,
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    background:
+      'linear-gradient(180deg, rgba(22, 29, 25, 0.98) 0%, rgba(12, 17, 14, 0.99) 100%)',
+    borderRight: '1px solid rgba(255, 177, 92, 0.2)',
+  },
+  compactDrawerTopBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 'calc(var(--safe-area-inset-top) + 6px)',
+    paddingBottom: 8,
+    paddingLeft: 8,
+    paddingRight: 8,
+    borderBottom: '1px solid rgba(255, 177, 92, 0.18)',
+    flexShrink: 0,
+  },
+  compactDrawerTitle: {
+    color: '#ffe0b7',
+    fontSize: 13,
+    fontWeight: 700,
+    letterSpacing: '0.01em',
+  },
+  compactDrawerMenus: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    padding: '8px 6px calc(var(--safe-area-inset-bottom) + 8px)',
+    overflowY: 'auto',
+  },
+  compactDrawerMenuRow: {
+    width: '100%',
+  },
+  compactDrawerMenuButton: {
+    minWidth: 0,
+    marginLeft: 0,
+    marginRight: 0,
   },
 };
 
@@ -136,7 +188,13 @@ export default function TabsTitlebar({
 
   const gdevelopTheme = React.useContext(GDevelopThemeContext);
   const isTouchscreen = useScreenType() === 'touch';
+  const { isMobile, isMediumScreen, isLandscape } = useResponsiveWindowSize();
+  const isCompactHeader = (isMobile || isMediumScreen) && isLandscape;
   const [projectSearch, setProjectSearch] = React.useState('');
+  const [
+    isCompactNavigationOpen,
+    setIsCompactNavigationOpen,
+  ] = React.useState(false);
   const topHeaderMenus = React.useMemo(
     () => {
       const allMenus = adaptFromDeclarativeTemplate(
@@ -152,6 +210,29 @@ export default function TabsTitlebar({
     },
     [buildMainMenuProps, mainMenuCallbacks]
   );
+  const topHeaderMenusToDisplay = React.useMemo(() => topHeaderMenus, [
+    topHeaderMenus,
+  ]);
+  const quickAccessMenusToDisplay = React.useMemo(() => quickAccessMenus, [
+    quickAccessMenus,
+  ]);
+  const compactNavigationMenus = React.useMemo<Array<TabsTitlebarQuickAccessMenu>>(
+    () =>
+      [
+        ...topHeaderMenus
+          // $FlowFixMe[prop-missing] - Menus displayed in titlebar always have labels/submenus.
+          .filter(menuItem => menuItem && menuItem.submenu)
+          .map(menuItem => ({
+            // $FlowFixMe[prop-missing]
+            label: menuItem.label || '',
+            // $FlowFixMe[prop-missing]
+            submenu: menuItem.submenu || [],
+          })),
+        ...quickAccessMenus,
+      ],
+    [quickAccessMenus, topHeaderMenus]
+  );
+  const showProjectSearch = !isCompactHeader && !isMobile;
   const currentProjectName =
     buildMainMenuProps.project && buildMainMenuProps.project.getName
       ? buildMainMenuProps.project.getName()
@@ -235,6 +316,15 @@ export default function TabsTitlebar({
     [onSearchInProject, projectSearch]
   );
 
+  React.useEffect(
+    () => {
+      if (!isCompactHeader && isCompactNavigationOpen) {
+        setIsCompactNavigationOpen(false);
+      }
+    },
+    [isCompactHeader, isCompactNavigationOpen]
+  );
+
   return (
     <div
       style={{
@@ -244,11 +334,15 @@ export default function TabsTitlebar({
         } 0%, ${gdevelopTheme.paper.backgroundColor.medium} 130%)`,
         borderBottom: `1px solid ${gdevelopTheme.toolbar.separatorColor}`,
         boxShadow: '0 4px 10px rgba(0, 0, 0, 0.16)',
+        minHeight: isCompactHeader ? 28 : styles.container.minHeight,
+        paddingRight: isCompactHeader ? 1 : styles.container.paddingRight,
         // Hiding the titlebar should still keep its position in the layout to avoid layout shifts:
         visibility: hidden ? 'hidden' : 'visible',
         pointerEvents: hidden ? undefined : 'all',
       }}
-      className={`${WINDOW_DRAGGABLE_PART_CLASS_NAME} carrots-tabs-titlebar`}
+      className={`${WINDOW_DRAGGABLE_PART_CLASS_NAME} carrots-tabs-titlebar${
+        isCompactHeader ? ' carrots-tabs-titlebar--compact' : ''
+      }`}
       onDoubleClick={handleDoubleClick}
     >
       <span
@@ -262,62 +356,140 @@ export default function TabsTitlebar({
       {displayMenuIcon && (
         <span
           className={WINDOW_NON_DRAGGABLE_PART_CLASS_NAME}
-          style={styles.headerMenusContainer}
+          style={{
+            ...styles.headerMenusContainer,
+            marginLeft: isCompactHeader ? 2 : styles.headerMenusContainer.marginLeft,
+            marginRight: isCompactHeader
+              ? 2
+              : styles.headerMenusContainer.marginRight,
+            gap: isCompactHeader ? 1 : styles.headerMenusContainer.gap,
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            scrollbarWidth: 'none',
+            WebkitOverflowScrolling: 'touch',
+          }}
         >
-          {currentProjectName ? (
-            <span
-              style={{
-                ...styles.headerProjectName,
-                color: '#ffd29a',
-                background: 'rgba(201, 106, 18, 0.18)',
-                border: '1px solid rgba(255, 177, 92, 0.34)',
-                boxShadow: '0 1px 8px rgba(0, 0, 0, 0.16)',
-              }}
-              title={currentProjectName}
-            >
-              {currentProjectName}
-            </span>
-          ) : null}
-          <span style={styles.headerPrimaryMenus}>
-            {topHeaderMenus.map((menuItem, index) => (
-              <ElementWithMenu
-                key={`main-menu-${index}`}
-                element={
-                  <TextButton
+          {isCompactHeader ? (
+            <>
+              <IconButton
+                size="small"
+                color="default"
+                style={styles.compactMenuTrigger}
+                onClick={() => setIsCompactNavigationOpen(true)}
+                tooltip={t`Open project menus`}
+              >
+                <MenuIcon />
+              </IconButton>
+              <Drawer
+                anchor={isRightMostPane ? 'right' : 'left'}
+                open={isCompactNavigationOpen}
+                onClose={() => setIsCompactNavigationOpen(false)}
+                ModalProps={{
+                  keepMounted: true,
+                }}
+                PaperProps={{
+                  style: styles.compactDrawerContent,
+                  className:
+                    isRightMostPane
+                      ? 'safe-area-aware-container'
+                      : 'safe-area-aware-left-container',
+                }}
+              >
+                <div style={styles.compactDrawerTopBar}>
+                  <span style={styles.compactDrawerTitle}>
+                    <Trans>Navigation</Trans>
+                  </span>
+                  <IconButton
+                    size="small"
+                    color="default"
+                    onClick={() => setIsCompactNavigationOpen(false)}
+                    tooltip={t`Close menu`}
+                  >
+                    <DoubleChevronArrowLeft />
+                  </IconButton>
+                </div>
+                <div style={styles.compactDrawerMenus}>
+                  {compactNavigationMenus.map((menu, index) => (
+                    <div
+                      key={`compact-header-menu-${menu.label}-${index}`}
+                      style={styles.compactDrawerMenuRow}
+                    >
+                      <ElementWithMenu
+                        element={
+                          <TextButton
+                            label={menu.label}
+                            onClick={() => {}}
+                            fullWidth
+                            style={styles.compactDrawerMenuButton}
+                          />
+                        }
+                        buildMenuTemplate={() => menu.submenu}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </Drawer>
+            </>
+          ) : (
+            <>
+              {currentProjectName ? (
+                <span
+                  style={{
+                    ...styles.headerProjectName,
+                    color: '#ffd29a',
+                    background: 'rgba(201, 106, 18, 0.18)',
+                    border: '1px solid rgba(255, 177, 92, 0.34)',
+                    boxShadow: '0 1px 8px rgba(0, 0, 0, 0.16)',
+                  }}
+                  title={currentProjectName}
+                >
+                  {currentProjectName}
+                </span>
+              ) : null}
+              <span style={styles.headerPrimaryMenus}>
+                {topHeaderMenusToDisplay.map((menuItem, index) => (
+                  <ElementWithMenu
+                    key={`main-menu-${index}`}
+                    element={
+                      <TextButton
+                        // $FlowFixMe[prop-missing]
+                        label={menuItem.label || ''}
+                        onClick={() => {}}
+                        style={styles.headerMenuButton}
+                      />
+                    }
                     // $FlowFixMe[prop-missing]
-                    label={menuItem.label || ''}
-                    onClick={() => {}}
-                    style={styles.headerMenuButton}
+                    buildMenuTemplate={() => menuItem.submenu || []}
                   />
-                }
-                // $FlowFixMe[prop-missing]
-                buildMenuTemplate={() => menuItem.submenu || []}
-              />
-            ))}
-          </span>
-          <span style={styles.headerSearchContainer}>
-            <CompactSearchBar
-              value={projectSearch}
-              onChange={setProjectSearch}
-              onRequestSearch={triggerSearchInProject}
-              placeholder={t`Search in project`}
-            />
-          </span>
-          <span style={styles.headerQuickMenus}>
-            {quickAccessMenus.map((menu, index) => (
-              <ElementWithMenu
-                key={`quick-menu-${menu.label}-${index}`}
-                element={
-                  <TextButton
-                    label={menu.label}
-                    onClick={() => {}}
-                    style={styles.headerMenuButton}
+                ))}
+              </span>
+              {showProjectSearch ? (
+                <span style={styles.headerSearchContainer}>
+                  <CompactSearchBar
+                    value={projectSearch}
+                    onChange={setProjectSearch}
+                    onRequestSearch={triggerSearchInProject}
+                    placeholder={t`Search in project`}
                   />
-                }
-                buildMenuTemplate={() => menu.submenu}
-              />
-            ))}
-          </span>
+                </span>
+              ) : null}
+              <span style={styles.headerQuickMenus}>
+                {quickAccessMenusToDisplay.map((menu, index) => (
+                  <ElementWithMenu
+                    key={`quick-menu-${menu.label}-${index}`}
+                    element={
+                      <TextButton
+                        label={menu.label}
+                        onClick={() => {}}
+                        style={styles.headerMenuButton}
+                      />
+                    }
+                    buildMenuTemplate={() => menu.submenu}
+                  />
+                ))}
+              </span>
+            </>
+          )}
         </span>
       )}
       {renderTabs(onEditorTabHovered, onEditorTabClosing)}

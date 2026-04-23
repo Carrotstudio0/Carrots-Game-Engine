@@ -248,6 +248,7 @@ import StandaloneDialog from './StandAloneDialog';
 import { useInGameEditorSettings } from '../EmbeddedGame/InGameEditorSettings';
 import { ProjectScopedContainersAccessor } from '../InstructionOrExpression/EventsScope';
 import { useAutomatedRegularInGameEditorRestart } from '../EmbeddedGame/UseAutomatedRegularInGameEditorRestart';
+import MobileLandscapeOnlyGuard from './MobileLandscapeOnlyGuard';
 
 const GD_STARTUP_TIMES = global.GD_STARTUP_TIMES || [];
 
@@ -5285,6 +5286,7 @@ const MainFrame = (props: Props): React.MixedElement => {
       onDragOver={onMainFrameDragOver}
       onDrop={onMainFrameDrop}
     >
+      <MobileLandscapeOnlyGuard />
       {!!renderPreviewLauncher &&
         renderPreviewLauncher(
           {

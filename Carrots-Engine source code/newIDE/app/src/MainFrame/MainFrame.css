@@ -30,8 +30,8 @@ html {
 
 body {
   overflow: hidden;
-  font-size: 15px;
-  line-height: 1.45;
+  font-size: 14px;
+  line-height: 1.4;
   font-family: var(--gdevelop-modern-font-family);
   letter-spacing: 0.01em;
   text-rendering: optimizeLegibility;
@@ -43,6 +43,7 @@ body {
 
 #root {
   height: 100%;
+  width: 100%;
   display: flex;
   flex: 1;
   overflow: hidden;
@@ -60,6 +61,9 @@ body {
   /* Support portrait and landscape right only */
   padding-top: var(--safe-area-inset-top);
   padding-left: var(--safe-area-inset-left);
+  padding-right: var(--safe-area-inset-right);
+  padding-bottom: var(--safe-area-inset-bottom);
+  min-height: 100dvh;
 
   /* Smoother startup */
   animation: fade-in 0.5s;
@@ -145,6 +149,16 @@ select {
   min-height: 26px;
 }
 
+.carrots-tabs-titlebar .MuiButton-root {
+  min-height: 24px;
+  min-width: 30px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.004em;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
 .carrots-main-toolbar .MuiButton-root {
   border-radius: 8px;
   font-weight: 600;
@@ -164,7 +178,76 @@ select {
   padding: 4px;
 }
 
+.carrots-tabs-titlebar--compact .MuiButton-root {
+  min-height: 22px;
+  min-width: 26px;
+  font-size: 10.5px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+.carrots-main-toolbar--compact .MuiButton-root {
+  min-height: 22px;
+  font-size: 10.5px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-radius: 6px;
+}
+
+.carrots-main-toolbar--compact .MuiButtonGroup-root .MuiButton-root {
+  min-height: 22px;
+}
+
+.carrots-main-toolbar--compact .MuiIconButton-root,
+.carrots-tabs-titlebar--compact .MuiIconButton-root {
+  padding: 2px;
+}
+
+.carrots-main-toolbar--compact .MuiButton-startIcon {
+  margin-right: 4px;
+}
+
+.carrots-main-toolbar--compact .MuiButton-endIcon {
+  margin-left: 4px;
+}
+
 .carrots-main-toolbar .MuiIconButton-root:hover,
 .carrots-tabs-titlebar .MuiIconButton-root:hover {
   background-color: rgba(255, 177, 92, 0.14);
+}
+
+.carrots-mobile-side-panel .MuiTypography-root,
+.carrots-mobile-side-panel .MuiInputBase-input,
+.carrots-mobile-side-panel .MuiButton-root,
+.carrots-mobile-side-panel .MuiListItemText-primary,
+.carrots-mobile-side-panel .MuiListItemText-secondary {
+  font-size: 11px;
+}
+
+.carrots-mobile-side-panel .MuiIconButton-root {
+  padding: 2px;
+}
+
+.carrots-mobile-side-panel .MuiButton-root {
+  min-height: 22px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+@media (max-width: 1150px) and (orientation: landscape) {
+  .carrots-main-toolbar .MuiButton-root {
+    min-height: 22px;
+    font-size: 10.5px;
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+
+  .carrots-main-toolbar .MuiButtonGroup-root .MuiButton-root {
+    min-height: 22px;
+  }
+
+  .carrots-main-toolbar .MuiIconButton-root,
+  .carrots-tabs-titlebar .MuiIconButton-root {
+    padding: 2px;
+  }
 }

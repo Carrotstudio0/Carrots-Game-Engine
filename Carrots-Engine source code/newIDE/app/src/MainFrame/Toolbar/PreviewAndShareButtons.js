@@ -49,7 +49,8 @@ const PreviewAndShareButtons: React.ComponentType<PreviewAndShareButtonsProps> =
     isSharingEnabled,
   }: PreviewAndShareButtonsProps) {
     const preferences = React.useContext(PreferencesContext);
-    const { isMobile } = useResponsiveWindowSize();
+    const { isMobile, isMediumScreen, isLandscape } = useResponsiveWindowSize();
+    const isCompactActionButtons = (isMobile || isMediumScreen) && isLandscape;
 
     const previewBuildMenuTemplate = React.useCallback(
       (i18n: I18nType) =>
@@ -191,7 +192,7 @@ const PreviewAndShareButtons: React.ComponentType<PreviewAndShareButtonsProps> =
           disabled={!isPreviewEnabled}
           icon={hasPreviewsRunning ? <UpdateIcon /> : <PreviewIcon />}
           label={
-            !isMobile ? (
+            !isCompactActionButtons ? (
               hasPreviewsRunning ? (
                 <Trans>Update</Trans>
               ) : (
@@ -209,7 +210,7 @@ const PreviewAndShareButtons: React.ComponentType<PreviewAndShareButtonsProps> =
           onClick={onShareClick}
           disabled={!isSharingEnabled}
           icon={<PublishIcon />}
-          label={<Trans>Build</Trans>}
+          label={isCompactActionButtons ? null : <Trans>Build</Trans>}
           // This ID is used for guided lessons, let's keep it stable.
           id="toolbar-publish-button"
         />

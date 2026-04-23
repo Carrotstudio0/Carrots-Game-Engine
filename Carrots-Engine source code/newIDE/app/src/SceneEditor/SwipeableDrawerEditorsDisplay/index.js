@@ -19,7 +19,6 @@ import EditorConsolePanel from '../EditorConsolePanel';
 import BuildPanel from '../BuildPanel';
 
 import Rectangle from '../../Utils/Rectangle';
-import SwipeableDrawer from './SwipeableDrawer';
 import BottomToolbar from './BottomToolbar';
 import { FullSizeMeasurer } from '../../UI/FullSizeMeasurer';
 import PreferencesContext from '../../MainFrame/Preferences/PreferencesContext';
@@ -40,21 +39,37 @@ import { EmbeddedGameFrameHole } from '../../EmbeddedGame/EmbeddedGameFrameHole'
 
 export const swipeableDrawerContainerId = 'swipeable-drawer-container';
 
-const editorTitleById = {
-  'objects-list': <Trans>Hierarchy</Trans>,
-  properties: <Trans>Inspector</Trans>,
-  'object-groups-list': <Trans>Objects groups</Trans>,
-  'instances-list': <Trans>Scene Objects</Trans>,
-  'layers-list': <Trans>Layers</Trans>,
-  'project-resources': <Trans>Project</Trans>,
-  console: <Trans>Console</Trans>,
-  build: <Trans>Build</Trans>,
-};
-
 const noop = () => {};
 
 const styles = {
   container: { width: '100%' },
+  sidePanel: {
+    position: 'absolute',
+    top: 8,
+    display: 'flex',
+    flexDirection: 'column',
+    borderRadius: 10,
+    overflow: 'hidden',
+    background: 'rgba(15, 21, 18, 0.97)',
+    border: '1px solid rgba(255, 177, 92, 0.2)',
+    boxShadow: '0 10px 24px rgba(0, 0, 0, 0.32)',
+    pointerEvents: 'all',
+    fontSize: 12,
+    lineHeight: 1.2,
+    zIndex: 6,
+  },
+  sidePanelLeft: {
+    left: 8,
+  },
+  sidePanelRight: {
+    right: 8,
+  },
+  sidePanelContent: {
+    display: 'flex',
+    flex: 1,
+    minHeight: 0,
+    overflow: 'hidden',
+  },
   bottomContainer: {
     position: 'absolute',
     bottom: 0,
@@ -114,30 +129,28 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
     const bottomContainerRef = React.useRef<?HTMLDivElement>(null);
     const [bottomContainerHeight, setBottomContainerHeight] = React.useState(0);
 
-    const [selectedEditorId, setSelectedEditorId] = React.useState<?EditorId>(
-      null
+    const [openedEditors, setOpenedEditors] = React.useState<Array<EditorId>>(
+      []
     );
 
-    const [drawerOpeningState, setDrawerOpeningState] = React.useState<
-      'closed' | 'halfOpen' | 'open'
-    >('closed');
+    const toggleEditorSidePanel = React.useCallback((editorId: ?EditorId) => {
+      if (!editorId) return;
 
-    const halfOpenOrCloseDrawerOnEditor = React.useCallback(
-      (editorId: ?EditorId) => {
-        if (selectedEditorId === editorId) {
-          if (drawerOpeningState === 'closed') {
-            setDrawerOpeningState('halfOpen');
-          } else {
-            setDrawerOpeningState('closed');
-          }
-        } else {
-          setSelectedEditorId(editorId || null);
-          if (drawerOpeningState === 'closed')
-            setDrawerOpeningState('halfOpen');
+      setOpenedEditors(previousOpenedEditors => {
+        if (previousOpenedEditors.includes(editorId)) {
+          return previousOpenedEditors.filter(
+            openedEditorId => openedEditorId !== editorId
+          );
         }
-      },
-      [selectedEditorId, drawerOpeningState]
-    );
+
+        if (previousOpenedEditors.length === 0) return [editorId];
+        if (previousOpenedEditors.length === 1)
+          return [previousOpenedEditors[0], editorId];
+
+        // Keep only the two most recent editors visible.
+        return [previousOpenedEditors[1], editorId];
+      });
+    }, []);
 
     const forceUpdatePropertiesEditor = React.useCallback(() => {
       if (instanceOrObjectPropertiesEditorRef.current)
@@ -174,23 +187,23 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
     }, []);
     const isEditorVisible = React.useCallback(
       (editorId: EditorId) => {
-        return editorId === selectedEditorId && drawerOpeningState !== 'closed';
+        return openedEditors.includes(editorId);
       },
-      [selectedEditorId, drawerOpeningState]
+      [openedEditors]
     );
     const ensureEditorVisible = React.useCallback(
       (editorId: EditorId) => {
         if (!isEditorVisible(editorId)) {
-          halfOpenOrCloseDrawerOnEditor(editorId);
+          toggleEditorSidePanel(editorId);
         }
       },
-      [halfOpenOrCloseDrawerOnEditor, isEditorVisible]
+      [toggleEditorSidePanel, isEditorVisible]
     );
     const openNewObjectDialog = React.useCallback(
       () => {
         if (!isEditorVisible('objects-list')) {
           // Objects list is not opened. Open it now.
-          halfOpenOrCloseDrawerOnEditor('objects-list');
+          toggleEditorSidePanel('objects-list');
         }
 
         // Open the new object dialog when the objects list is opened.
@@ -199,7 +212,7 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
         });
       },
       [
-        halfOpenOrCloseDrawerOnEditor,
+        toggleEditorSidePanel,
         isEditorVisible,
         objectsListDoNowOrAfterRender,
       ]
@@ -221,7 +234,7 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
           );
         }
       },
-      [drawerOpeningState]
+      [openedEditors]
     );
 
     // $FlowFixMe[incompatible-type]
@@ -237,7 +250,7 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
         scrollObjectGroupsListToObjectGroup,
         forceUpdateLayersList,
         openNewObjectDialog,
-        toggleEditorView: halfOpenOrCloseDrawerOnEditor,
+        toggleEditorView: toggleEditorSidePanel,
         isEditorVisible,
         ensureEditorVisible,
         startSceneRendering,
@@ -298,17 +311,229 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
       .filter(Boolean);
 
     const selectedObjectNames = selectedObjects.map(object => object.getName());
-    const title =
-      selectedEditorId === 'properties' &&
-      instanceOrObjectPropertiesEditorRef.current
-        ? instanceOrObjectPropertiesEditorRef.current.getEditorTitle()
-        : !!selectedEditorId
-        ? editorTitleById[selectedEditorId]
-        : null;
+    const leftEditorId =
+      openedEditors.length > 1 ? openedEditors[openedEditors.length - 2] : null;
+    const rightEditorId =
+      openedEditors.length > 0 ? openedEditors[openedEditors.length - 1] : null;
 
     const isCustomVariant = eventsBasedObject
       ? eventsBasedObject.getDefaultVariant() !== eventsBasedObjectVariant
       : false;
+
+    const renderEditorPanelContent = (editorId: EditorId): React.Node => {
+      if (editorId === 'objects-list') {
+        return (
+          <I18n>
+            {({ i18n }) => (
+              <ObjectsList
+                getThumbnail={ObjectsRenderingService.getThumbnail.bind(
+                  ObjectsRenderingService
+                )}
+                project={project}
+                projectScopedContainersAccessor={projectScopedContainersAccessor}
+                globalObjectsContainer={globalObjectsContainer}
+                objectsContainer={objectsContainer}
+                layout={layout}
+                eventsFunctionsExtension={eventsFunctionsExtension}
+                eventsBasedObject={eventsBasedObject}
+                initialInstances={initialInstances}
+                onSelectAllInstancesOfObjectInLayout={
+                  props.onSelectAllInstancesOfObjectInLayout
+                }
+                resourceManagementProps={props.resourceManagementProps}
+                selectedObjectFolderOrObjectsWithContext={
+                  props.selectedObjectFolderOrObjectsWithContext
+                }
+                onEditObject={props.onEditObject}
+                onOpenEventBasedObjectEditor={props.onOpenEventBasedObjectEditor}
+                onOpenEventBasedObjectVariantEditor={
+                  props.onOpenEventBasedObjectVariantEditor
+                }
+                onOpenTypeScriptScripts={props.onOpenTypeScriptScripts}
+                onExportAssets={props.onExportAssets}
+                onImportAssets={props.onImportAssets}
+                onDeleteObjects={(objectWithContext, cb) =>
+                  props.onDeleteObjects(i18n, objectWithContext, cb)
+                }
+                getValidatedObjectOrGroupName={(newName, global) =>
+                  props.getValidatedObjectOrGroupName(newName, global, i18n)
+                }
+                onObjectCreated={props.onObjectCreated}
+                onObjectEdited={props.onObjectEdited}
+                onObjectFolderOrObjectWithContextSelected={
+                  props.onObjectFolderOrObjectWithContextSelected
+                }
+                onRenameObjectFolderOrObjectWithContextFinish={
+                  props.onRenameObjectFolderOrObjectWithContextFinish
+                }
+                onAddObjectInstance={objectName =>
+                  props.onAddObjectInstance(objectName, 'upperCenter')
+                }
+                onObjectPasted={props.updateBehaviorsSharedData}
+                beforeSetAsGlobalObject={objectName =>
+                  props.canObjectOrGroupBeGlobal(i18n, objectName)
+                }
+                onSetAsGlobalObject={props.onSetAsGlobalObject}
+                ref={objectsListRef}
+                unsavedChanges={props.unsavedChanges}
+                hotReloadPreviewButtonProps={props.hotReloadPreviewButtonProps}
+                isListLocked={isCustomVariant}
+                onWillInstallExtension={onWillInstallExtension}
+                onExtensionInstalled={onExtensionInstalled}
+              />
+            )}
+          </I18n>
+        );
+      }
+
+      if (editorId === 'properties') {
+        return (
+          <I18n>
+            {({ i18n }) => (
+              <InstanceOrObjectPropertiesEditorContainer
+                i18n={i18n}
+                project={project}
+                resourceManagementProps={resourceManagementProps}
+                layout={layout}
+                eventsFunctionsExtension={eventsFunctionsExtension}
+                onUpdateBehaviorsSharedData={updateBehaviorsSharedData}
+                objectsContainer={objectsContainer}
+                globalObjectsContainer={globalObjectsContainer}
+                layersContainer={layersContainer}
+                projectScopedContainersAccessor={projectScopedContainersAccessor}
+                initialInstances={initialInstances}
+                objects={selectedObjects}
+                instances={selectedInstances}
+                layer={selectedLayer}
+                editInstanceVariables={props.editInstanceVariables}
+                editObjectInPropertiesPanel={props.editObjectInPropertiesPanel}
+                onEditObject={props.onEditObject}
+                onObjectsModified={props.onObjectsModified}
+                onEffectAdded={props.onEffectAdded}
+                onInstancesModified={forceUpdateInstancesList}
+                onGetInstanceSize={getInstanceSize}
+                ref={instanceOrObjectPropertiesEditorRef}
+                historyHandler={props.historyHandler}
+                tileMapTileSelection={props.tileMapTileSelection}
+                onSelectTileMapTile={props.onSelectTileMapTile}
+                lastSelectionType={props.lastSelectionType}
+                onWillInstallExtension={props.onWillInstallExtension}
+                onExtensionInstalled={props.onExtensionInstalled}
+                onOpenEventBasedObjectVariantEditor={
+                  props.onOpenEventBasedObjectVariantEditor
+                }
+                onDeleteEventsBasedObjectVariant={
+                  props.onDeleteEventsBasedObjectVariant
+                }
+                isVariableListLocked={isCustomVariant}
+                isBehaviorListLocked={isCustomVariant}
+                onEditLayerEffects={props.editLayerEffects}
+                onEditLayer={props.editLayer}
+                onLayersModified={props.onLayersModified}
+                eventsBasedObject={props.eventsBasedObject}
+                eventsBasedObjectVariant={props.eventsBasedObjectVariant}
+                getContentAABB={
+                  editorRef.current
+                    ? editorRef.current.getContentAABB
+                    : () => null
+                }
+                onEventsBasedObjectChildrenEdited={
+                  props.onEventsBasedObjectChildrenEdited
+                }
+              />
+            )}
+          </I18n>
+        );
+      }
+
+      if (editorId === 'object-groups-list') {
+        return (
+          <I18n>
+            {({ i18n }) => (
+              <ObjectGroupsList
+                ref={objectGroupsListRef}
+                globalObjectGroups={
+                  globalObjectsContainer &&
+                  globalObjectsContainer.getObjectGroups()
+                }
+                projectScopedContainersAccessor={projectScopedContainersAccessor}
+                objectGroups={objectsContainer.getObjectGroups()}
+                onCreateGroup={props.onCreateObjectGroup}
+                onEditGroup={props.onEditObjectGroup}
+                onDeleteGroup={props.onDeleteObjectGroup}
+                onRenameGroup={props.onRenameObjectGroup}
+                getValidatedObjectOrGroupName={(newName, global) =>
+                  props.getValidatedObjectOrGroupName(newName, global, i18n)
+                }
+                beforeSetAsGlobalGroup={groupName =>
+                  props.canObjectOrGroupBeGlobal(i18n, groupName)
+                }
+                unsavedChanges={props.unsavedChanges}
+                isListLocked={isCustomVariant}
+              />
+            )}
+          </I18n>
+        );
+      }
+
+      if (editorId === 'instances-list') {
+        return (
+          <Paper background="medium" square style={styles.instancesListContainer}>
+            <InstancesList
+              instances={initialInstances}
+              selectedInstances={selectedInstances}
+              onSelectInstances={selectInstances}
+              onInstancesModified={onInstancesModified || noop}
+              ref={instancesListRef}
+            />
+          </Paper>
+        );
+      }
+
+      if (editorId === 'layers-list') {
+        return (
+          <LayersList
+            project={project}
+            layout={layout}
+            eventsFunctionsExtension={eventsFunctionsExtension}
+            eventsBasedObject={eventsBasedObject}
+            chosenLayer={chosenLayer}
+            onChooseLayer={props.onChooseLayer}
+            selectedLayer={selectedLayer}
+            onSelectLayer={props.onSelectLayer}
+            onEditLayerEffects={props.editLayerEffects}
+            onLayersModified={props.onLayersModified}
+            onLayersVisibilityInEditorChanged={
+              props.onLayersVisibilityInEditorChanged
+            }
+            onEditLayer={props.editLayer}
+            onRemoveLayer={props.onRemoveLayer}
+            onLayerRenamed={props.onLayerRenamed}
+            onCreateLayer={forceUpdatePropertiesEditor}
+            layersContainer={layersContainer}
+            ref={layersListRef}
+            hotReloadPreviewButtonProps={props.hotReloadPreviewButtonProps}
+            onBackgroundColorChanged={props.onBackgroundColorChanged}
+            gameEditorMode={props.gameEditorMode}
+          />
+        );
+      }
+
+      if (editorId === 'project-resources') {
+        return (
+          <ProjectResourcesPanel
+            project={project}
+            resourceManagementProps={resourceManagementProps}
+            fileMetadata={null}
+            unsavedChanges={props.unsavedChanges}
+          />
+        );
+      }
+
+      if (editorId === 'console') return <EditorConsolePanel />;
+      if (editorId === 'build') return <BuildPanel />;
+      return null;
+    };
 
     return (
       <FullSizeMeasurer>
@@ -382,244 +607,44 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
                 />
               )}
             </ErrorBoundary>
+            {leftEditorId && (
+              <div
+                className="carrots-mobile-side-panel"
+                style={{
+                  ...styles.sidePanel,
+                  ...styles.sidePanelLeft,
+                  width: Math.max(190, Math.min(280, Math.round(width * 0.32))),
+                  bottom: bottomContainerHeight + 8,
+                }}
+              >
+                <div style={styles.sidePanelContent}>
+                  {renderEditorPanelContent(leftEditorId)}
+                </div>
+              </div>
+            )}
+            {rightEditorId && (
+              <div
+                className="carrots-mobile-side-panel"
+                style={{
+                  ...styles.sidePanel,
+                  ...styles.sidePanelRight,
+                  width: Math.max(190, Math.min(280, Math.round(width * 0.32))),
+                  bottom: bottomContainerHeight + 8,
+                }}
+              >
+                <div style={styles.sidePanelContent}>
+                  {renderEditorPanelContent(rightEditorId)}
+                </div>
+              </div>
+            )}
             <div
               style={styles.bottomContainer}
               id={swipeableDrawerContainerId}
               ref={bottomContainerRef}
             >
-              <SwipeableDrawer
-                maxHeight={height}
-                title={title}
-                openingState={drawerOpeningState}
-                setOpeningState={setDrawerOpeningState}
-              >
-                {selectedEditorId === 'objects-list' && (
-                  <I18n>
-                    {({ i18n }) => (
-                      <ObjectsList
-                        getThumbnail={ObjectsRenderingService.getThumbnail.bind(
-                          ObjectsRenderingService
-                        )}
-                        project={project}
-                        projectScopedContainersAccessor={
-                          projectScopedContainersAccessor
-                        }
-                        globalObjectsContainer={globalObjectsContainer}
-                        objectsContainer={objectsContainer}
-                        layout={layout}
-                        eventsFunctionsExtension={eventsFunctionsExtension}
-                        eventsBasedObject={eventsBasedObject}
-                        initialInstances={initialInstances}
-                        onSelectAllInstancesOfObjectInLayout={
-                          props.onSelectAllInstancesOfObjectInLayout
-                        }
-                        resourceManagementProps={props.resourceManagementProps}
-                        selectedObjectFolderOrObjectsWithContext={
-                          props.selectedObjectFolderOrObjectsWithContext
-                        }
-                        onEditObject={props.onEditObject}
-                        onOpenEventBasedObjectEditor={
-                          props.onOpenEventBasedObjectEditor
-                        }
-                        onOpenEventBasedObjectVariantEditor={
-                          props.onOpenEventBasedObjectVariantEditor
-                        }
-                        onOpenTypeScriptScripts={props.onOpenTypeScriptScripts}
-                        onExportAssets={props.onExportAssets}
-                        onImportAssets={props.onImportAssets}
-                        onDeleteObjects={(objectWithContext, cb) =>
-                          props.onDeleteObjects(i18n, objectWithContext, cb)
-                        }
-                        getValidatedObjectOrGroupName={(newName, global) =>
-                          props.getValidatedObjectOrGroupName(
-                            newName,
-                            global,
-                            i18n
-                          )
-                        }
-                        onObjectCreated={props.onObjectCreated}
-                        onObjectEdited={props.onObjectEdited}
-                        onObjectFolderOrObjectWithContextSelected={
-                          props.onObjectFolderOrObjectWithContextSelected
-                        }
-                        onRenameObjectFolderOrObjectWithContextFinish={
-                          props.onRenameObjectFolderOrObjectWithContextFinish
-                        }
-                        onAddObjectInstance={objectName =>
-                          props.onAddObjectInstance(objectName, 'upperCenter')
-                        }
-                        onObjectPasted={props.updateBehaviorsSharedData}
-                        beforeSetAsGlobalObject={objectName =>
-                          props.canObjectOrGroupBeGlobal(i18n, objectName)
-                        }
-                        onSetAsGlobalObject={props.onSetAsGlobalObject}
-                        ref={objectsListRef}
-                        unsavedChanges={props.unsavedChanges}
-                        hotReloadPreviewButtonProps={
-                          props.hotReloadPreviewButtonProps
-                        }
-                        isListLocked={isCustomVariant}
-                        onWillInstallExtension={onWillInstallExtension}
-                        onExtensionInstalled={onExtensionInstalled}
-                      />
-                    )}
-                  </I18n>
-                )}
-                {selectedEditorId === 'properties' && (
-                  <I18n>
-                    {({ i18n }) => (
-                      <InstanceOrObjectPropertiesEditorContainer
-                        i18n={i18n}
-                        project={project}
-                        resourceManagementProps={resourceManagementProps}
-                        layout={layout}
-                        eventsFunctionsExtension={eventsFunctionsExtension}
-                        onUpdateBehaviorsSharedData={updateBehaviorsSharedData}
-                        objectsContainer={objectsContainer}
-                        globalObjectsContainer={globalObjectsContainer}
-                        layersContainer={layersContainer}
-                        projectScopedContainersAccessor={
-                          projectScopedContainersAccessor
-                        }
-                        initialInstances={initialInstances}
-                        objects={selectedObjects}
-                        instances={selectedInstances}
-                        layer={selectedLayer}
-                        editInstanceVariables={props.editInstanceVariables}
-                        editObjectInPropertiesPanel={
-                          props.editObjectInPropertiesPanel
-                        }
-                        onEditObject={props.onEditObject}
-                        onObjectsModified={props.onObjectsModified}
-                        onEffectAdded={props.onEffectAdded}
-                        onInstancesModified={forceUpdateInstancesList}
-                        onGetInstanceSize={getInstanceSize}
-                        ref={instanceOrObjectPropertiesEditorRef}
-                        historyHandler={props.historyHandler}
-                        tileMapTileSelection={props.tileMapTileSelection}
-                        onSelectTileMapTile={props.onSelectTileMapTile}
-                        lastSelectionType={props.lastSelectionType}
-                        onWillInstallExtension={props.onWillInstallExtension}
-                        onExtensionInstalled={props.onExtensionInstalled}
-                        onOpenEventBasedObjectVariantEditor={
-                          props.onOpenEventBasedObjectVariantEditor
-                        }
-                        onDeleteEventsBasedObjectVariant={
-                          props.onDeleteEventsBasedObjectVariant
-                        }
-                        isVariableListLocked={isCustomVariant}
-                        isBehaviorListLocked={isCustomVariant}
-                        onEditLayerEffects={props.editLayerEffects}
-                        onEditLayer={props.editLayer}
-                        onLayersModified={props.onLayersModified}
-                        eventsBasedObject={props.eventsBasedObject}
-                        eventsBasedObjectVariant={
-                          props.eventsBasedObjectVariant
-                        }
-                        getContentAABB={
-                          editorRef.current
-                            ? editorRef.current.getContentAABB
-                            : () => null
-                        }
-                        onEventsBasedObjectChildrenEdited={
-                          props.onEventsBasedObjectChildrenEdited
-                        }
-                      />
-                    )}
-                  </I18n>
-                )}
-                {selectedEditorId === 'object-groups-list' && (
-                  <I18n>
-                    {({ i18n }) => (
-                      <ObjectGroupsList
-                        ref={objectGroupsListRef}
-                        globalObjectGroups={
-                          globalObjectsContainer &&
-                          globalObjectsContainer.getObjectGroups()
-                        }
-                        projectScopedContainersAccessor={
-                          projectScopedContainersAccessor
-                        }
-                        objectGroups={objectsContainer.getObjectGroups()}
-                        onCreateGroup={props.onCreateObjectGroup}
-                        onEditGroup={props.onEditObjectGroup}
-                        onDeleteGroup={props.onDeleteObjectGroup}
-                        onRenameGroup={props.onRenameObjectGroup}
-                        getValidatedObjectOrGroupName={(newName, global) =>
-                          props.getValidatedObjectOrGroupName(
-                            newName,
-                            global,
-                            i18n
-                          )
-                        }
-                        beforeSetAsGlobalGroup={groupName =>
-                          props.canObjectOrGroupBeGlobal(i18n, groupName)
-                        }
-                        unsavedChanges={props.unsavedChanges}
-                        isListLocked={isCustomVariant}
-                      />
-                    )}
-                  </I18n>
-                )}
-                {selectedEditorId === 'instances-list' && (
-                  <Paper
-                    background="medium"
-                    square
-                    style={styles.instancesListContainer}
-                  >
-                    <InstancesList
-                      instances={initialInstances}
-                      selectedInstances={selectedInstances}
-                      onSelectInstances={selectInstances}
-                      onInstancesModified={onInstancesModified || noop}
-                      ref={instancesListRef}
-                    />
-                  </Paper>
-                )}
-                {selectedEditorId === 'layers-list' && (
-                  <LayersList
-                    project={project}
-                    layout={layout}
-                    eventsFunctionsExtension={eventsFunctionsExtension}
-                    eventsBasedObject={eventsBasedObject}
-                    chosenLayer={chosenLayer}
-                    onChooseLayer={props.onChooseLayer}
-                    selectedLayer={selectedLayer}
-                    onSelectLayer={props.onSelectLayer}
-                    onEditLayerEffects={props.editLayerEffects}
-                    onLayersModified={props.onLayersModified}
-                    onLayersVisibilityInEditorChanged={
-                      props.onLayersVisibilityInEditorChanged
-                    }
-                    onEditLayer={props.editLayer}
-                    onRemoveLayer={props.onRemoveLayer}
-                    onLayerRenamed={props.onLayerRenamed}
-                    onCreateLayer={forceUpdatePropertiesEditor}
-                    layersContainer={layersContainer}
-                    ref={layersListRef}
-                    hotReloadPreviewButtonProps={
-                      props.hotReloadPreviewButtonProps
-                    }
-                    onBackgroundColorChanged={props.onBackgroundColorChanged}
-                    gameEditorMode={props.gameEditorMode}
-                  />
-                )}
-                {selectedEditorId === 'project-resources' && (
-                  <ProjectResourcesPanel
-                    project={project}
-                    resourceManagementProps={resourceManagementProps}
-                    fileMetadata={null}
-                    unsavedChanges={props.unsavedChanges}
-                  />
-                )}
-                {selectedEditorId === 'console' && <EditorConsolePanel />}
-                {selectedEditorId === 'build' && <BuildPanel />}
-              </SwipeableDrawer>
               <BottomToolbar
-                selectedEditorId={
-                  drawerOpeningState === 'closed' ? null : selectedEditorId
-                }
-                onSelectEditor={halfOpenOrCloseDrawerOnEditor}
+                selectedEditorIds={openedEditors}
+                onSelectEditor={toggleEditorSidePanel}
               />
             </div>
           </div>

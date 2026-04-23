@@ -53,7 +53,10 @@ import {
 import { type EventsFunctionsExtensionsState } from '../EventsFunctionsExtensionsLoader/EventsFunctionsExtensionsContext';
 import { type ObjectWithContext } from '../ObjectsList/EnumerateObjects';
 import { type ShareTab } from '../ExportAndShare/ShareDialog';
-import { SpecificDimensionsWindowSizeProvider } from '../UI/Responsive/ResponsiveWindowMeasurer';
+import {
+  SpecificDimensionsWindowSizeProvider,
+  useResponsiveWindowSize,
+} from '../UI/Responsive/ResponsiveWindowMeasurer';
 import { MuiThemeOnlyProvider } from '../UI/Theme/FullThemeProvider';
 import useForceUpdate from '../Utils/UseForceUpdate';
 import useOnResize from '../Utils/UseOnResize';
@@ -424,6 +427,9 @@ const EditorTabsPane: React.ComponentType<{
   const unsavedChanges = React.useContext(UnsavedChangesContext);
   const askAiPaneIdentifier = getEditorTabOpenedWithKey(editorTabs, 'ask-ai');
   const containerRef = React.useRef<?HTMLDivElement>(null);
+  const { isMobile, isMediumScreen, isLandscape } = useResponsiveWindowSize();
+  const useCompactQuickAccessLabels =
+    (isMobile || isMediumScreen) && isLandscape;
 
   const [
     tabsTitleBarAndEditorToolbarHidden,
@@ -688,7 +694,7 @@ const EditorTabsPane: React.ComponentType<{
 
     return [
       {
-        label: 'Game settings',
+        label: useCompactQuickAccessLabels ? 'Game' : 'Game settings',
         submenu: [
           {
             label: 'Project manager',
@@ -752,7 +758,7 @@ const EditorTabsPane: React.ComponentType<{
         ],
       },
       {
-        label: 'Extensions',
+        label: useCompactQuickAccessLabels ? 'Ext' : 'Extensions',
         submenu: [
           {
             label: 'Search/import extensions',
@@ -766,7 +772,7 @@ const EditorTabsPane: React.ComponentType<{
         ],
       },
       {
-        label: 'External Layout',
+        label: useCompactQuickAccessLabels ? 'X Layout' : 'External Layout',
         submenu: [
           {
             label: 'Open project manager',
@@ -780,7 +786,7 @@ const EditorTabsPane: React.ComponentType<{
         ],
       },
       {
-        label: 'External Events',
+        label: useCompactQuickAccessLabels ? 'X Events' : 'External Events',
         submenu: [
           {
             label: 'Open project manager',
@@ -804,6 +810,7 @@ const EditorTabsPane: React.ComponentType<{
     openSceneEventsFromHeader,
     openSceneFromHeader,
     triggerProjectCommand,
+    useCompactQuickAccessLabels,
   ]);
 
   const searchInProjectFromHeader = React.useCallback(

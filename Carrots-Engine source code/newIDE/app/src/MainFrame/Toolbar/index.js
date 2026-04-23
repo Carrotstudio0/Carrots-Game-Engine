@@ -19,6 +19,7 @@ import { runNpmScript } from '../../Utils/NpmScriptExecutor';
 import { type FileMetadata } from '../../ProjectsStorage';
 import PreferencesContext from '../Preferences/PreferencesContext';
 import NpmScriptConfirmDialog from './NpmScriptConfirmDialog';
+import { useResponsiveWindowSize } from '../../UI/Responsive/ResponsiveWindowMeasurer';
 
 export type MainFrameToolbarProps = {|
   showProjectButtons: boolean,
@@ -167,6 +168,8 @@ export default (React.forwardRef<MainFrameToolbarProps, ToolbarInterface>(
   function MainframeToolbar(props: MainFrameToolbarProps, ref) {
     const gdevelopTheme = React.useContext(GDevelopThemeContext);
     const [editorToolbar, setEditorToolbar] = React.useState<?React.Node>(null);
+    const { isMobile, isMediumScreen, isLandscape } = useResponsiveWindowSize();
+    const isCompactToolbar = (isMobile || isMediumScreen) && isLandscape;
 
     // $FlowFixMe[incompatible-type]
     React.useImperativeHandle(ref, () => ({
@@ -204,19 +207,23 @@ export default (React.forwardRef<MainFrameToolbarProps, ToolbarInterface>(
                 minWidth: 0,
                 display: 'flex',
                 alignItems: 'center',
-                marginLeft: 6,
+                marginLeft: isCompactToolbar ? 2 : 6,
+                overflowX: isCompactToolbar ? 'auto' : 'visible',
+                overflowY: 'hidden',
+                WebkitOverflowScrolling: 'touch',
               }}
             >
               {editorToolbar || <ToolbarGroup />}
             </span>
             <span
               style={{
-                position: 'absolute',
-                left: '50%',
-                transform: 'translateX(-50%)',
+                position: isCompactToolbar ? 'static' : 'absolute',
+                left: isCompactToolbar ? undefined : '50%',
+                transform: isCompactToolbar ? undefined : 'translateX(-50%)',
                 display: 'flex',
                 alignItems: 'center',
                 zIndex: 2,
+                marginLeft: isCompactToolbar ? 2 : 0,
               }}
             >
               <PreviewAndShareButtons

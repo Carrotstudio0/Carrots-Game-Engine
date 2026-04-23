@@ -36,11 +36,23 @@ const shouldNeverBeCalled = () => {
 
 const styles = {
   mainButton: { flex: 1 },
+  mainButtonCompact: {
+    flex: 1,
+    minWidth: 0,
+    paddingLeft: 8,
+    paddingRight: 8,
+  },
   arrowDropDownButton: {
     // Reduce the size forced by Material UI to avoid making the arrow
     // too big.
     minWidth: 30,
     maxWidth: 30,
+    paddingLeft: 0,
+    paddingRight: 0,
+  },
+  arrowDropDownButtonCompact: {
+    minWidth: 24,
+    maxWidth: 24,
     paddingLeft: 0,
     paddingRight: 0,
   },
@@ -62,6 +74,7 @@ const FlatButtonWithSplitMenu = (props: Props): React.Node => {
     disabled,
     fullWidth,
   } = props;
+  const compactMode = !label;
 
   // In theory, focus ripple is only shown after a keyboard interaction
   // (see https://github.com/mui-org/material-ui/issues/12067). However, as
@@ -83,7 +96,7 @@ const FlatButtonWithSplitMenu = (props: Props): React.Node => {
         id={id}
         focusRipple={focusRipple}
         onClick={onClick}
-        style={styles.mainButton}
+        style={compactMode ? styles.mainButtonCompact : styles.mainButton}
       >
         {icon}
         {!!icon && !!label && <Spacer />}
@@ -98,7 +111,11 @@ const FlatButtonWithSplitMenu = (props: Props): React.Node => {
             id={splitMenuButtonId}
             onClick={shouldNeverBeCalled}
             focusRipple={focusRipple}
-            style={styles.arrowDropDownButton}
+            style={
+              compactMode
+                ? styles.arrowDropDownButtonCompact
+                : styles.arrowDropDownButton
+            }
           >
             <ChevronArrowBottom />
           </Button>
