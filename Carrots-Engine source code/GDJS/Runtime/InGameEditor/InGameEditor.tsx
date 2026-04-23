@@ -526,6 +526,7 @@ namespace gdjs {
       toolbarSeparatorColor: string;
       textColorPrimary: string;
     };
+    mobile3DJoystickEnabled?: boolean;
   };
 
   const defaultInGameEditorSettings: InGameEditorSettings = {
@@ -536,6 +537,7 @@ namespace gdjs {
       toolbarSeparatorColor: 'black',
       textColorPrimary: 'black',
     },
+    mobile3DJoystickEnabled: true,
   };
 
   let hasWindowFocus = true;
@@ -550,6 +552,285 @@ namespace gdjs {
 
   function isDefined<T>(value: T | null | undefined): value is NonNullable<T> {
     return value !== null && value !== undefined;
+  }
+
+  type Mobile3DCameraJoystickState = {
+    moveX: float;
+    moveY: float;
+    lookX: float;
+    lookY: float;
+    hasInput: boolean;
+  };
+
+  const mobileJoystickPadSize = 108;
+  const mobileJoystickThumbSize = 42;
+  const mobileJoystickTravelRadius = 34;
+  const mobileJoystickDeadZone = 0.08;
+
+  class Mobile3DCameraJoystickOverlay {
+    private _parent: HTMLElement | null = null;
+    private _root: HTMLDivElement | null = null;
+    private _leftPad: HTMLDivElement | null = null;
+    private _leftThumb: HTMLDivElement | null = null;
+    private _rightPad: HTMLDivElement | null = null;
+    private _rightThumb: HTMLDivElement | null = null;
+    private _leftPointerId: integer | null = null;
+    private _rightPointerId: integer | null = null;
+    private _isVisible = false;
+    private _state: Mobile3DCameraJoystickState = {
+      moveX: 0,
+      moveY: 0,
+      lookX: 0,
+      lookY: 0,
+      hasInput: false,
+    };
+
+    render(parent: HTMLElement): void {
+      if (!this._root) {
+        this._createRoot();
+      }
+      if (!this._root) return;
+
+      if (this._parent !== parent || this._root.parentElement !== parent) {
+        this._parent = parent;
+        parent.appendChild(this._root);
+      }
+
+      this._root.style.display = this._isVisible ? 'block' : 'none';
+    }
+
+    dispose(): void {
+      this._clearPointersAndCenterThumbs();
+      this._root?.remove();
+      this._root = null;
+      this._parent = null;
+      this._leftPad = null;
+      this._leftThumb = null;
+      this._rightPad = null;
+      this._rightThumb = null;
+    }
+
+    setVisible(visible: boolean): void {
+      this._isVisible = visible;
+      if (!visible) {
+        this._clearPointersAndCenterThumbs();
+      }
+      if (this._root) {
+        this._root.style.display = this._isVisible ? 'block' : 'none';
+      }
+    }
+
+    getState(): Mobile3DCameraJoystickState {
+      return { ...this._state };
+    }
+
+    private _setStateForSide(
+      side: 'left' | 'right',
+      normalizedX: float,
+      normalizedY: float
+    ): void {
+      if (side === 'left') {
+        this._state.moveX = normalizedX;
+        this._state.moveY = -normalizedY;
+      } else {
+        this._state.lookX = normalizedX;
+        this._state.lookY = -normalizedY;
+      }
+      this._state.hasInput =
+        Math.abs(this._state.moveX) > 0.01 ||
+        Math.abs(this._state.moveY) > 0.01 ||
+        Math.abs(this._state.lookX) > 0.01 ||
+        Math.abs(this._state.lookY) > 0.01;
+    }
+
+    private _resetSide(side: 'left' | 'right'): void {
+      this._setStateForSide(side, 0, 0);
+      if (side === 'left') {
+        this._leftPointerId = null;
+        this._updateThumb('left', 0, 0);
+      } else {
+        this._rightPointerId = null;
+        this._updateThumb('right', 0, 0);
+      }
+    }
+
+    private _updateThumb(
+      side: 'left' | 'right',
+      normalizedX: float,
+      normalizedY: float
+    ): void {
+      const thumb = side === 'left' ? this._leftThumb : this._rightThumb;
+      if (!thumb) return;
+
+      const offsetX = normalizedX * mobileJoystickTravelRadius;
+      const offsetY = normalizedY * mobileJoystickTravelRadius;
+      thumb.style.transform = `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`;
+    }
+
+    private _updateFromClientPosition(
+      side: 'left' | 'right',
+      clientX: number,
+      clientY: number
+    ): void {
+      const pad = side === 'left' ? this._leftPad : this._rightPad;
+      if (!pad) return;
+
+      const rect = pad.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const rawX = (clientX - centerX) / mobileJoystickTravelRadius;
+      const rawY = (clientY - centerY) / mobileJoystickTravelRadius;
+      const length = Math.sqrt(rawX * rawX + rawY * rawY);
+      const clampFactor = length > 1 ? 1 / length : 1;
+      let normalizedX = rawX * clampFactor;
+      let normalizedY = rawY * clampFactor;
+      const clampedLength = Math.sqrt(
+        normalizedX * normalizedX + normalizedY * normalizedY
+      );
+
+      if (clampedLength < mobileJoystickDeadZone) {
+        normalizedX = 0;
+        normalizedY = 0;
+      }
+
+      this._setStateForSide(side, normalizedX, normalizedY);
+      this._updateThumb(side, normalizedX, normalizedY);
+    }
+
+    private _clearPointersAndCenterThumbs(): void {
+      this._leftPointerId = null;
+      this._rightPointerId = null;
+      this._setStateForSide('left', 0, 0);
+      this._setStateForSide('right', 0, 0);
+      this._updateThumb('left', 0, 0);
+      this._updateThumb('right', 0, 0);
+    }
+
+    private _createRoot(): void {
+      const root = document.createElement('div');
+      root.style.position = 'absolute';
+      root.style.left = '0';
+      root.style.top = '0';
+      root.style.width = '100%';
+      root.style.height = '100%';
+      root.style.pointerEvents = 'none';
+      root.style.zIndex = '8';
+      root.style.display = this._isVisible ? 'block' : 'none';
+
+      const left = this._createPad('left', 'Move');
+      const right = this._createPad('right', 'Look');
+
+      this._leftPad = left.pad;
+      this._leftThumb = left.thumb;
+      this._rightPad = right.pad;
+      this._rightThumb = right.thumb;
+
+      root.appendChild(left.pad);
+      root.appendChild(right.pad);
+      this._root = root;
+    }
+
+    private _createPad(
+      side: 'left' | 'right',
+      label: string
+    ): { pad: HTMLDivElement; thumb: HTMLDivElement } {
+      const pad = document.createElement('div');
+      pad.style.position = 'absolute';
+      pad.style.bottom = 'calc(env(safe-area-inset-bottom, 0px) + 14px)';
+      if (side === 'left') {
+        pad.style.left = 'calc(env(safe-area-inset-left, 0px) + 14px)';
+      } else {
+        pad.style.right = 'calc(env(safe-area-inset-right, 0px) + 14px)';
+      }
+      pad.style.width = `${mobileJoystickPadSize}px`;
+      pad.style.height = `${mobileJoystickPadSize}px`;
+      pad.style.borderRadius = '999px';
+      pad.style.background = 'rgba(14, 18, 17, 0.34)';
+      pad.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+      pad.style.boxShadow = 'inset 0 0 0 1px rgba(255, 255, 255, 0.06)';
+      pad.style.backdropFilter = 'blur(2px)';
+      pad.style.touchAction = 'none';
+      pad.style.pointerEvents = 'auto';
+      pad.style.userSelect = 'none';
+
+      const thumb = document.createElement('div');
+      thumb.style.position = 'absolute';
+      thumb.style.left = '50%';
+      thumb.style.top = '50%';
+      thumb.style.width = `${mobileJoystickThumbSize}px`;
+      thumb.style.height = `${mobileJoystickThumbSize}px`;
+      thumb.style.borderRadius = '999px';
+      thumb.style.transform = 'translate(-50%, -50%)';
+      thumb.style.background = 'rgba(255, 177, 92, 0.3)';
+      thumb.style.border = '1px solid rgba(255, 210, 154, 0.72)';
+      thumb.style.boxShadow = '0 3px 10px rgba(0, 0, 0, 0.24)';
+      thumb.style.pointerEvents = 'none';
+
+      const labelElement = document.createElement('div');
+      labelElement.textContent = label;
+      labelElement.style.position = 'absolute';
+      labelElement.style.left = '50%';
+      labelElement.style.bottom = '-18px';
+      labelElement.style.transform = 'translateX(-50%)';
+      labelElement.style.fontFamily = 'sans-serif';
+      labelElement.style.fontSize = '10px';
+      labelElement.style.letterSpacing = '0.03em';
+      labelElement.style.textTransform = 'uppercase';
+      labelElement.style.color = 'rgba(255, 255, 255, 0.72)';
+      labelElement.style.pointerEvents = 'none';
+
+      const handlePointerDown = (event: PointerEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (side === 'left') {
+          if (this._leftPointerId !== null) return;
+          this._leftPointerId = event.pointerId;
+        } else {
+          if (this._rightPointerId !== null) return;
+          this._rightPointerId = event.pointerId;
+        }
+
+        try {
+          pad.setPointerCapture(event.pointerId);
+        } catch (_) {}
+        this._updateFromClientPosition(side, event.clientX, event.clientY);
+      };
+
+      const handlePointerMove = (event: PointerEvent) => {
+        const trackedPointerId =
+          side === 'left' ? this._leftPointerId : this._rightPointerId;
+        if (trackedPointerId !== event.pointerId) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        this._updateFromClientPosition(side, event.clientX, event.clientY);
+      };
+
+      const handlePointerEnd = (event: PointerEvent) => {
+        const trackedPointerId =
+          side === 'left' ? this._leftPointerId : this._rightPointerId;
+        if (trackedPointerId !== event.pointerId) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        this._resetSide(side);
+        try {
+          pad.releasePointerCapture(event.pointerId);
+        } catch (_) {}
+      };
+
+      pad.addEventListener('pointerdown', handlePointerDown);
+      pad.addEventListener('pointermove', handlePointerMove);
+      pad.addEventListener('pointerup', handlePointerEnd);
+      pad.addEventListener('pointercancel', handlePointerEnd);
+      pad.addEventListener('pointerleave', handlePointerEnd);
+
+      pad.appendChild(thumb);
+      pad.appendChild(labelElement);
+
+      return { pad, thumb };
+    }
   }
 
   type Point3D = [float, float, float];
@@ -1171,6 +1452,7 @@ namespace gdjs {
     };
     private _instancesEditorSettings: InstancesEditorSettings | null = null;
     private _toolbar: Toolbar;
+    private _mobile3DCameraJoystick: Mobile3DCameraJoystickOverlay;
     private _ikSettingsPanel: IKSettingsPanel;
     private _inGameEditorSettings: InGameEditorSettings;
 
@@ -1233,6 +1515,7 @@ namespace gdjs {
         hasEditableSelection: () => this._hasEditableSelection(),
         getSelectionTransformValues: () => this._getSelectionTransformValues(),
       });
+      this._mobile3DCameraJoystick = new Mobile3DCameraJoystickOverlay();
       this._ikSettingsPanel = new IKSettingsPanel({
         getActiveIKObject: () => this._getActiveIKObject(),
         getSelectedBoneName: () =>
@@ -1291,6 +1574,7 @@ namespace gdjs {
         this._unregisterContextLostListener();
         this._unregisterContextLostListener = null;
       }
+      this._mobile3DCameraJoystick.dispose();
       this._ikSettingsPanel.dispose();
     }
 
@@ -1332,6 +1616,41 @@ namespace gdjs {
 
     getRuntimeGame() {
       return this._runtimeGame;
+    }
+
+    getMobile3DCameraJoystickState(): Mobile3DCameraJoystickState {
+      return this._mobile3DCameraJoystick.getState();
+    }
+
+    private _isLikelyTouchDevice(): boolean {
+      if (typeof navigator === 'undefined' || typeof window === 'undefined') {
+        return false;
+      }
+      const maxTouchPoints =
+        typeof navigator.maxTouchPoints === 'number'
+          ? navigator.maxTouchPoints
+          : 0;
+      const hasCoarsePointer =
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(pointer: coarse)').matches;
+      const hasTouchEvent = 'ontouchstart' in window;
+      const userAgent = (navigator.userAgent || '').toLowerCase();
+      const hasMobileUserAgent =
+        /android|iphone|ipad|ipod|mobile|tablet/.test(userAgent);
+
+      return (
+        (maxTouchPoints > 0 && hasCoarsePointer) ||
+        hasTouchEvent ||
+        hasMobileUserAgent
+      );
+    }
+
+    private _shouldShowMobile3DCameraJoystick(): boolean {
+      return (
+        this._inGameEditorSettings.mobile3DJoystickEnabled !== false &&
+        this._isLikelyTouchDevice() &&
+        doesRuntimeSceneTypeAllow3DObjects(this._currentSceneType)
+      );
     }
 
     onProjectDataChange(projectData: ProjectData): void {
@@ -4943,8 +5262,14 @@ namespace gdjs {
         .getRenderer()
         .getDomElementContainer();
       if (domElementContainer) {
+        this._mobile3DCameraJoystick.setVisible(
+          this._shouldShowMobile3DCameraJoystick()
+        );
+        this._mobile3DCameraJoystick.render(domElementContainer);
         this._toolbar.render(domElementContainer);
         this._ikSettingsPanel.render(domElementContainer);
+      } else {
+        this._mobile3DCameraJoystick.setVisible(false);
       }
 
       // Prepare state of the mouse/cursor for the next frame.
@@ -7767,6 +8092,7 @@ namespace gdjs {
 
       const touchIds = getCurrentTouchIdentifiers(inputManager);
       const touchCount = touchIds.length;
+      const mobileJoystickState = this.editor.getMobile3DCameraJoystickState();
 
       this._mouseCursor = null;
       // Alt + mouse emulates orbit controls of most 3D engines.
@@ -7817,6 +8143,9 @@ namespace gdjs {
       ) {
         const maxDistance = 4000; // Large enough to orbit quickly on most parts of a level.
         this.switchToOrbitAroundZ0(maxDistance);
+      }
+      if (mobileJoystickState.hasInput && !this.isFreeCamera()) {
+        this.switchToFreeCamera();
       }
       // With touches, 2 touches will always pan/zoom the camera with the free camera.
       if (touchCount === 2 && !this.isFreeCamera()) {
@@ -8492,8 +8821,19 @@ namespace gdjs {
       const frameRateCompensationFactor =
         getFrameRateCompensationFactor(deltaTimeInSeconds);
       const isRightButtonPressed = inputManager.isMouseButtonPressed(1);
+      const mobileJoystickState =
+        this._editorCamera.editor.getMobile3DCameraJoystickState();
+      const hasVirtualMoveInput =
+        Math.abs(mobileJoystickState.moveX) > 0.01 ||
+        Math.abs(mobileJoystickState.moveY) > 0.01;
+      const hasVirtualLookInput =
+        Math.abs(mobileJoystickState.lookX) > 0.01 ||
+        Math.abs(mobileJoystickState.lookY) > 0.01;
       const isFreelookActive =
-        isRightButtonPressed || renderer.isPointerLocked();
+        isRightButtonPressed ||
+        renderer.isPointerLocked() ||
+        hasVirtualMoveInput ||
+        hasVirtualLookInput;
       if (this._isEnabled) {
         this._sanitizeAngles();
         const { right, up, forward } = this.getCameraVectors();
@@ -8505,14 +8845,16 @@ namespace gdjs {
           this._editorCamera.onHasCameraChanged();
         };
         const xDelta = sanitizeCameraInputDelta(
-          renderer.isPointerLocked()
+          (renderer.isPointerLocked()
             ? inputManager.getMouseMovementX()
-            : inputManager.getCursorX() - this._lastCursorX
+            : inputManager.getCursorX() - this._lastCursorX) +
+            mobileJoystickState.lookX * 18
         );
         const yDelta = sanitizeCameraInputDelta(
-          renderer.isPointerLocked()
+          (renderer.isPointerLocked()
             ? inputManager.getMouseMovementY()
-            : inputManager.getCursorY() - this._lastCursorY
+            : inputManager.getCursorY() - this._lastCursorY) -
+            mobileJoystickState.lookY * 18
         );
         this._smoothedRotationInputX = smoothToward(
           this._smoothedRotationInputX,
@@ -8646,6 +8988,10 @@ namespace gdjs {
           if (inputManager.isKeyPressed(E_KEY)) {
             movementIntent.addScaledVector(absoluteVerticalMovementVector, 1);
           }
+          if (hasVirtualMoveInput) {
+            movementIntent.addScaledVector(right, mobileJoystickState.moveX);
+            movementIntent.addScaledVector(forward, mobileJoystickState.moveY);
+          }
         }
 
         if (movementIntent.lengthSq() > 0) {
@@ -8699,7 +9045,9 @@ namespace gdjs {
 
         // Right click: rotate the camera.
         const canRotateFromMouseDrag =
-          renderer.isPointerLocked() || this._wasMouseRightButtonPressed;
+          renderer.isPointerLocked() ||
+          this._wasMouseRightButtonPressed ||
+          hasVirtualLookInput;
         if (
           isFreelookActive &&
           // The camera should not move the 1st frame when not pointer locked.

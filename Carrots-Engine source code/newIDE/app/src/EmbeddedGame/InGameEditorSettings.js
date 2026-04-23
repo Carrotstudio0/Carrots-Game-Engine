@@ -10,6 +10,7 @@ export type InGameEditorSettings = {
     toolbarSeparatorColor: string,
     textColorPrimary: string,
   },
+  mobile3DJoystickEnabled?: boolean,
 };
 
 /**
@@ -34,6 +35,7 @@ export const useInGameEditorSettings = (): InGameEditorSettings => {
         toolbarSeparatorColor,
         textColorPrimary,
       },
+      mobile3DJoystickEnabled: true,
     }),
     [
       iconButtonSelectedBackgroundColor,
