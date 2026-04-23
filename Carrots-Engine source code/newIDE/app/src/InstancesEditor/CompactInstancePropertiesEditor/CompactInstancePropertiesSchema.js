@@ -47,8 +47,20 @@ import {
   applyParentTransformFromLocal,
   getInstanceWorldScaleX,
   getInstanceWorldScaleY,
+  setLocalX,
+  setLocalY,
+  setLocalZ,
+  setLocalAngle,
+  setLocalRotationX,
+  setLocalRotationY,
+  setLocalScaleX,
+  setLocalScaleY,
+  setParentPersistentUuid,
+  setInheritRotation,
+  setInheritScale,
   collectDescendants,
   getParentInstanceFromIndex,
+  getParentPersistentUuid,
   getKeepWorldOnReparent,
   setKeepWorldOnReparent,
 } from '../ParentingHelpers';
@@ -613,15 +625,16 @@ const getParentField = ({
     return choices;
   },
   getValue: (instance: gdInitialInstance) =>
-    instance.getParentPersistentUuid() || '',
+    getParentPersistentUuid(instance) || '',
   setValue: (instance: gdInitialInstance, newValue: string) => {
     const parentPersistentUuid = newValue || '';
-    if (instance.getParentPersistentUuid() === parentPersistentUuid) return;
+    if ((getParentPersistentUuid(instance) || '') === parentPersistentUuid)
+      return;
 
     const keepWorld = getKeepWorldOnReparent();
 
     if (!initialInstancesContainer) {
-      instance.setParentPersistentUuid(parentPersistentUuid);
+      setParentPersistentUuid(instance, parentPersistentUuid);
       if (keepWorld) {
         setLocalToWorld(instance);
       } else {
@@ -669,17 +682,17 @@ const getParentField = ({
             instancesIndex.instancesByPersistentUuid
           );
           if (parentWorldScaleX !== 0)
-            instance.setLocalScaleX(worldScaleX / parentWorldScaleX);
-          else instance.setLocalScaleX(worldScaleX);
+            setLocalScaleX(instance, worldScaleX / parentWorldScaleX);
+          else setLocalScaleX(instance, worldScaleX);
           if (parentWorldScaleY !== 0)
-            instance.setLocalScaleY(worldScaleY / parentWorldScaleY);
-          else instance.setLocalScaleY(worldScaleY);
+            setLocalScaleY(instance, worldScaleY / parentWorldScaleY);
+          else setLocalScaleY(instance, worldScaleY);
         } else {
-          instance.setLocalScaleX(worldScaleX);
-          instance.setLocalScaleY(worldScaleY);
+          setLocalScaleX(instance, worldScaleX);
+          setLocalScaleY(instance, worldScaleY);
         }
       }
-      instance.setParentPersistentUuid(parentPersistentUuid);
+      setParentPersistentUuid(instance, parentPersistentUuid);
       if (!keepWorld) {
         applyParentTransformFromLocal(
           instance,
@@ -691,7 +704,7 @@ const getParentField = ({
       if (keepWorld) {
         setLocalToWorld(instance, worldScaleX, worldScaleY);
       }
-      instance.setParentPersistentUuid(parentPersistentUuid);
+      setParentPersistentUuid(instance, parentPersistentUuid);
       if (!keepWorld) {
         applyLocalToWorld(instance);
       }
@@ -793,9 +806,9 @@ const getHierarchyActionButtons = ({
           initialInstancesContainer,
           onInstancesModified,
           action: (instancesIndex, parentInstance) => {
-            instance.setLocalX(0);
-            instance.setLocalY(0);
-            instance.setLocalZ(0);
+            setLocalX(instance, 0);
+            setLocalY(instance, 0);
+            setLocalZ(instance, 0);
             applyParentTransformFromLocal(
               instance,
               parentInstance,
@@ -837,16 +850,19 @@ const getHierarchyActionButtons = ({
                   instance.inheritScale()
                 : true;
 
-            instance.setLocalX(0);
-            instance.setLocalY(0);
-            instance.setLocalZ(0);
-            instance.setLocalAngle(
+            setLocalX(instance, 0);
+            setLocalY(instance, 0);
+            setLocalZ(instance, 0);
+            setLocalAngle(
+              instance,
               inheritRotation ? 0 : parentInstance.getAngle()
             );
-            instance.setLocalRotationX(
+            setLocalRotationX(
+              instance,
               inheritRotation ? 0 : parentInstance.getRotationX()
             );
-            instance.setLocalRotationY(
+            setLocalRotationY(
+              instance,
               inheritRotation ? 0 : parentInstance.getRotationY()
             );
 
@@ -858,16 +874,8 @@ const getHierarchyActionButtons = ({
               parentInstance,
               instancesIndex.instancesByPersistentUuid
             );
-            // $FlowFixMe[prop-missing]
-            if (typeof instance.setLocalScaleX === 'function') {
-              // $FlowFixMe[prop-missing]
-              instance.setLocalScaleX(inheritScale ? 1 : parentWorldScaleX);
-            }
-            // $FlowFixMe[prop-missing]
-            if (typeof instance.setLocalScaleY === 'function') {
-              // $FlowFixMe[prop-missing]
-              instance.setLocalScaleY(inheritScale ? 1 : parentWorldScaleY);
-            }
+            setLocalScaleX(instance, inheritScale ? 1 : parentWorldScaleX);
+            setLocalScaleY(instance, inheritScale ? 1 : parentWorldScaleY);
 
             applyParentTransformFromLocal(
               instance,
@@ -898,11 +906,7 @@ const getInheritRotationField = ({
         instance.inheritRotation()
       : true,
   setValue: (instance: gdInitialInstance, newValue: boolean) => {
-    // $FlowFixMe[prop-missing]
-    if (typeof instance.setInheritRotation === 'function') {
-      // $FlowFixMe[prop-missing]
-      instance.setInheritRotation(newValue);
-    }
+    setInheritRotation(instance, newValue);
     updateLocalAndChildren(instance, initialInstancesContainer);
   },
 });
@@ -924,11 +928,7 @@ const getInheritScaleField = ({
         instance.inheritScale()
       : true,
   setValue: (instance: gdInitialInstance, newValue: boolean) => {
-    // $FlowFixMe[prop-missing]
-    if (typeof instance.setInheritScale === 'function') {
-      // $FlowFixMe[prop-missing]
-      instance.setInheritScale(newValue);
-    }
+    setInheritScale(instance, newValue);
     updateLocalAndChildren(instance, initialInstancesContainer);
   },
 });

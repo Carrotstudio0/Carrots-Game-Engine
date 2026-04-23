@@ -115,6 +115,17 @@ import {
   collectDescendants,
   syncLocalFromWorld,
   applyParentTransformToDescendants,
+  setParentPersistentUuid,
+  setInheritRotation,
+  setInheritScale,
+  setLocalX,
+  setLocalY,
+  setLocalZ,
+  setLocalAngle,
+  setLocalRotationX,
+  setLocalRotationY,
+  setLocalScaleX,
+  setLocalScaleY,
 } from '../InstancesEditor/ParentingHelpers';
 
 const gd: libGDevelop = global.gd;
@@ -257,12 +268,14 @@ const styles = {
   },
   cinematicTimelineOverlay: {
     position: 'absolute',
-    left: 10,
     right: 10,
     bottom: 10,
-    height: '40%',
-    minHeight: 300,
-    maxHeight: 520,
+    width: '48%',
+    minWidth: 240,
+    maxWidth: 430,
+    height: '26%',
+    minHeight: 150,
+    maxHeight: 230,
     zIndex: 14,
     pointerEvents: 'none',
   },
@@ -695,33 +708,33 @@ export default class SceneEditor extends React.Component<Props, State> {
       instance.setDefaultHeight(defaultHeight || 0);
       instance.setDefaultDepth(defaultDepth || 0);
       if (parentPersistentUuid !== undefined) {
-        instance.setParentPersistentUuid(parentPersistentUuid || '');
-        instance.setInheritRotation(inheritRotation !== false);
-        instance.setInheritScale(inheritScale !== false);
+        setParentPersistentUuid(instance, parentPersistentUuid || '');
+        setInheritRotation(instance, inheritRotation !== false);
+        setInheritScale(instance, inheritScale !== false);
       }
       if (localX !== undefined) {
-        instance.setLocalX(localX);
+        setLocalX(instance, localX);
       }
       if (localY !== undefined) {
-        instance.setLocalY(localY);
+        setLocalY(instance, localY);
       }
       if (localZ !== undefined) {
-        instance.setLocalZ(localZ);
+        setLocalZ(instance, localZ);
       }
       if (localAngle !== undefined) {
-        instance.setLocalAngle(localAngle);
+        setLocalAngle(instance, localAngle);
       }
       if (localRotationX !== undefined) {
-        instance.setLocalRotationX(localRotationX);
+        setLocalRotationX(instance, localRotationX);
       }
       if (localRotationY !== undefined) {
-        instance.setLocalRotationY(localRotationY);
+        setLocalRotationY(instance, localRotationY);
       }
       if (localScaleX !== undefined) {
-        instance.setLocalScaleX(localScaleX);
+        setLocalScaleX(instance, localScaleX);
       }
       if (localScaleY !== undefined) {
-        instance.setLocalScaleY(localScaleY);
+        setLocalScaleY(instance, localScaleY);
       }
 
       modifiedInstances.push(instance);
