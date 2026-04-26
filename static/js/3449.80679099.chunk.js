@@ -1,0 +1,2 @@
+!function(){"use strict";var e={};e.d=function(r,t){for(var n in t)e.o(t,n)&&!e.o(r,n)&&Object.defineProperty(r,n,{enumerable:!0,get:t[n]})},e.o=function(e,r){return Object.prototype.hasOwnProperty.call(e,r)},e.p="/Carrots-Game-Engine/"}();
+//# sourceMappingURL=3449.80679099.chunk.js.map
