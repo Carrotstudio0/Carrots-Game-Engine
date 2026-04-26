@@ -12,9 +12,10 @@ export const RENDER_OCCLUSION_CULLING_PROPERTY_NAME =
 const sanitizeRenderOcclusionCullingMode = (
   value: string
 ): RenderOcclusionCullingMode => {
+  if (value === 'conservative') return 'conservative';
   if (value === 'aggressive') return 'aggressive';
   if (value === 'disabled') return 'disabled';
-  return 'disabled';
+  return 'conservative';
 };
 
 export const getProjectRenderOcclusionCullingMode = (
@@ -29,7 +30,7 @@ export const getProjectRenderOcclusionCullingMode = (
       );
     return sanitizeRenderOcclusionCullingMode(value);
   } catch (error) {
-    return 'disabled';
+    return 'conservative';
   }
 };
 
