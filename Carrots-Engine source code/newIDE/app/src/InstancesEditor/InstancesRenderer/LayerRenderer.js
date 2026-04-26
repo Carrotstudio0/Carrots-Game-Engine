@@ -109,6 +109,7 @@ export default class LayerRenderer {
   _hasLoggedWebGlInteropDisableWarning: boolean = false;
   _textureInteropFailureCount: number = 0;
   _allowThreePlaneTextureInterop: boolean = true;
+  _isPixiObjectsZOrderDirty: boolean = true;
 
   constructor({
     project,
@@ -199,10 +200,12 @@ export default class LayerRenderer {
       // $FlowFixMe[value-as-type]
       const pixiObject: PIXI.DisplayObject | null = renderedInstance.getPixiObject();
       if (pixiObject) {
-        if (renderedInstance.isRenderedIn3D()) {
-          pixiObject.zOrder = instance.getZ() + renderedInstance.getDepth();
-        } else {
-          pixiObject.zOrder = instance.getZOrder();
+        const nextZOrder = renderedInstance.isRenderedIn3D()
+          ? instance.getZ() + renderedInstance.getDepth()
+          : instance.getZOrder();
+        if (pixiObject.zOrder !== nextZOrder) {
+          pixiObject.zOrder = nextZOrder;
+          this._isPixiObjectsZOrderDirty = true;
         }
       }
 
@@ -247,7 +250,11 @@ export default class LayerRenderer {
               threeObject.userData || {});
             userData.__gdInitialInstance = instance;
           }
-          if (this._threeGroup && threeObject) {
+          if (
+            this._threeGroup &&
+            threeObject &&
+            threeObject.parent !== this._threeGroup
+          ) {
             this._threeGroup.add(threeObject);
           }
         }
@@ -557,6 +564,7 @@ export default class LayerRenderer {
       const shouldUse3DRaycastPicking =
         this._showObjectInstancesIn3D &&
         renderedInstance instanceof Rendered3DInstance;
+      this._isPixiObjectsZOrderDirty = true;
       if (shouldUse3DRaycastPicking) {
         renderedInstance._pixiObject.eventMode = 'none';
       } else {
@@ -1025,11 +1033,13 @@ export default class LayerRenderer {
   }
 
   _updatePixiObjectsZOrder() {
+    if (!this._isPixiObjectsZOrderDirty) return;
     this.pixiContainer.children.sort((a, b) => {
-      a.zOrder = a.zOrder || 0;
-      b.zOrder = b.zOrder || 0;
-      return a.zOrder - b.zOrder;
+      const aZOrder = a.zOrder || 0;
+      const bZOrder = b.zOrder || 0;
+      return aZOrder - bZOrder;
     });
+    this._isPixiObjectsZOrderDirty = false;
   }
 
   _updateVisibility() {
@@ -1058,6 +1068,7 @@ export default class LayerRenderer {
               renderedInstance
             );
           delete this.renderedInstances[i];
+          this._isPixiObjectsZOrderDirty = true;
         }
       }
     }
@@ -1080,6 +1091,7 @@ export default class LayerRenderer {
               renderedInstance
             );
           delete this.renderedInstances[i];
+          this._isPixiObjectsZOrderDirty = true;
         } else renderedInstance.wasUsed = false;
       }
     }

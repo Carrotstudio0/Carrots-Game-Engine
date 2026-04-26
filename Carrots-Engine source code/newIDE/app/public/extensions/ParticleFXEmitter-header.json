@@ -1,0 +1,354 @@
+{
+  "tier": "reviewed",
+  "authorIds": [
+    "QjE1CI3drHNR9Wklz2gTC5WbEgh1"
+  ],
+  "extensionNamespace": "",
+  "fullName": "ParticleFX Emitter",
+  "name": "ParticleFXEmitter",
+  "version": "0.2.2",
+  "url": "https://resources.gdevelop-app.com/extensions/ParticleFXEmitter.json",
+  "headerUrl": "https://resources.gdevelop-app.com/extensions/ParticleFXEmitter-header.json",
+  "tags": "particle,effect,VFX,2D,3D,animation,emitter,keyframe,shape painter,three.js",
+  "category": "Visual effect",
+  "previewIconUrl": "https://asset-resources.gdevelop.io/public-resources/Icons/9c69d4168405963dc55e19f27d4f3a20973c30e3b9d6ee68e702272bdec762b9_shape-plus.svg",
+  "gdevelopVersion": "",
+  "shortDescription": "Advanced 2D & 3D particle system with keyframe animations, supporting Shape Painter and 3D scenes.",
+  "eventsBasedBehaviorsCount": 0,
+  "eventsFunctionsCount": 0,
+  "helpPath": "",
+  "eventsBasedBehaviors": [],
+  "eventsFunctions": [],
+  "eventsBasedObjects": [
+    {
+      "description": "Display particles with Particles FX Editor.",
+      "fullName": "Particle FX Emitter 3D",
+      "name": "ParticleFXEmitter3D",
+      "defaultName": "ParticleFXEmitter3D",
+      "eventsFunctions": [
+        {
+          "name": "doStepPostEvents",
+          "fullName": "",
+          "description": "",
+          "functionType": "Action"
+        },
+        {
+          "name": "onDestroy",
+          "fullName": "",
+          "description": "",
+          "functionType": "Action"
+        },
+        {
+          "name": "LayerName",
+          "fullName": "Layer name",
+          "description": "the layer name of the object. Layer name for 3D rendering (empty = default layer)",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetLayerName",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "ShouldAutodestruct",
+          "fullName": "Delete when emission ends",
+          "description": "Check if delete when emission ends. This is destroyed when the particle flow ends ",
+          "functionType": "Condition"
+        },
+        {
+          "name": "SetShouldAutodestruct",
+          "fullName": "Delete when emission ends",
+          "description": "Change if delete when emission ends. This is destroyed when the particle flow ends ",
+          "functionType": "Action"
+        },
+        {
+          "name": "Flow",
+          "fullName": "Flow",
+          "description": "the flow of the object. Emission flow in particles/sec (-1 = use JSON)",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetFlow",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "EmissionMode",
+          "fullName": "EmissionMode",
+          "description": "the emissionMode of the object. Override: json, infinite, burst, finite",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetEmissionMode",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "ResetEffect",
+          "fullName": "Reset effect",
+          "description": "Check if reset effect. Clears all particles and restarts",
+          "functionType": "Condition"
+        },
+        {
+          "name": "SetResetEffect",
+          "fullName": "Reset effect",
+          "description": "Change if reset effect. Clears all particles and restarts",
+          "functionType": "Action"
+        },
+        {
+          "name": "Spread",
+          "fullName": "Cone diffision",
+          "description": "the cone diffision of the object. Cone spread override (-1 = use JSON)",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetSpread",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "DirectionZ",
+          "fullName": "Z direction emission",
+          "description": "the z direction emission of the object. Cone directionZ override (-1 = use JSON)",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetDirectionZ",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "DirectionY",
+          "fullName": "Y direction emission",
+          "description": "the y direction emission of the object. Cone directionY override (-1 = use JSON)",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetDirectionY",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "ShowCone",
+          "fullName": "ShowCone",
+          "description": "Check if showCone. Show cone of diffusion wireframe guide (editor + runtime)",
+          "functionType": "Condition"
+        },
+        {
+          "name": "SetShowCone",
+          "fullName": "ShowCone",
+          "description": "Change if showCone. Show cone of diffusion wireframe guide (editor + runtime)",
+          "functionType": "Action"
+        },
+        {
+          "name": "ShowZone",
+          "fullName": "ShowZone",
+          "description": "Check if showZone. Show spawn zone wireframe guide (editor + runtime)",
+          "functionType": "Condition"
+        },
+        {
+          "name": "SetShowZone",
+          "fullName": "ShowZone",
+          "description": "Change if showZone. Show spawn zone wireframe guide (editor + runtime)",
+          "functionType": "Action"
+        },
+        {
+          "name": "SpeedMultiplier",
+          "fullName": "Speed",
+          "description": "the speed of the object. Global speed multiplier",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetSpeedMultiplier",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "SizeMultiplier",
+          "fullName": "Size",
+          "description": "the size of the object. Global size multiplier",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetSizeMultiplier",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "OpacityMultiplier",
+          "fullName": "Opacity",
+          "description": "the opacity of the object. Global opacity multiplier",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetOpacityMultiplier",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        }
+      ]
+    },
+    {
+      "description": "Display particles with Particles FX Editor.",
+      "fullName": "Particle FX Emitter 2D",
+      "name": "ParticleFXEmitter2D",
+      "defaultName": "ParticleFXEmitter2D",
+      "eventsFunctions": [
+        {
+          "name": "doStepPostEvents",
+          "fullName": "",
+          "description": "",
+          "functionType": "Action"
+        },
+        {
+          "name": "onDestroy",
+          "fullName": "",
+          "description": "",
+          "functionType": "Action"
+        },
+        {
+          "name": "ShowZone",
+          "fullName": "ShowZone",
+          "description": "Check if showZone. Show spawn zone wireframe guide (editor + runtime)",
+          "functionType": "Condition"
+        },
+        {
+          "name": "SetShowZone",
+          "fullName": "ShowZone",
+          "description": "Change if showZone. Show spawn zone wireframe guide (editor + runtime)",
+          "functionType": "Action"
+        },
+        {
+          "name": "ShowCone",
+          "fullName": "ShowCone",
+          "description": "Check if showCone. Show cone of diffusion wireframe guide (editor + runtime)",
+          "functionType": "Condition"
+        },
+        {
+          "name": "SetShowCone",
+          "fullName": "ShowCone",
+          "description": "Change if showCone. Show cone of diffusion wireframe guide (editor + runtime)",
+          "functionType": "Action"
+        },
+        {
+          "name": "Flow",
+          "fullName": "Emission flow",
+          "description": "the emission flow of the object. Emission flow in particles/sec (-1 = use JSON)",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetFlow",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "ShouldAutodestruct",
+          "fullName": "Delete when emission ends",
+          "description": "Check if delete when emission ends. This is destroyed when the particle flow ends ",
+          "functionType": "Condition"
+        },
+        {
+          "name": "SetShouldAutodestruct",
+          "fullName": "Delete when emission ends",
+          "description": "Change if delete when emission ends. This is destroyed when the particle flow ends ",
+          "functionType": "Action"
+        },
+        {
+          "name": "EmissionMode",
+          "fullName": "EmissionMode",
+          "description": "the emissionMode of the object. Override: json, infinite, burst, finite",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetEmissionMode",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "ResetEffect",
+          "fullName": "Restart Emission",
+          "description": "Check if restart Emission. Clears all particles and restarts",
+          "functionType": "Condition"
+        },
+        {
+          "name": "SetResetEffect",
+          "fullName": "Restart Emission",
+          "description": "Change if restart Emission. Clears all particles and restarts",
+          "functionType": "Action"
+        },
+        {
+          "name": "Direction",
+          "fullName": "Z direction emission",
+          "description": "the z direction emission of the object. Cone directionZ override (-1 = use JSON)",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetDirection",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "Spread",
+          "fullName": "Cone diffision",
+          "description": "the cone diffision of the object. Cone spread override (-1 = use JSON)",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetSpread",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "SpeedMultiplier",
+          "fullName": "Speed",
+          "description": "the speed of the object. Global speed multiplier",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetSpeedMultiplier",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "SizeMultiplier",
+          "fullName": "Size",
+          "description": "the size of the object. Global size multiplier",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetSizeMultiplier",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        },
+        {
+          "name": "OpacityMultiplier",
+          "fullName": "Opacity",
+          "description": "the opacity of the object. Global opacity multiplier",
+          "functionType": "ExpressionAndCondition"
+        },
+        {
+          "name": "SetOpacityMultiplier",
+          "fullName": "",
+          "description": "",
+          "functionType": "ActionWithOperator"
+        }
+      ]
+    }
+  ],
+  "description": "## Overview\nComplete particle system for GDevelop with **2D** (custom 2D object) and **3D** (custom 3D object) support. Design effects in the GDParticleFX Editor and import them via JSON.\n\n## Features\n- **Multiple emission modes**: infinite, burst, finite (reservoir)\n- **Spawn zones**: point, circle, rectangle, line (2D) — sphere, box, line (3D)\n- **Directional cone** with spread, rotation, and elevation (3D)\n- **Per-keyframe easing**: linear, easeIn, easeOut, easeInOut\n- **Particle shapes**: circle, square, triangle, star, diamond, line, custom SVG\n- **3D shapes**: sphere, cube, diamond, billboard, custom GLB models, textured images\n- **Runtime overrides**: flow, direction, spread, speed/size/opacity multipliers\n- **Gravity** and **align to velocity** support\n- **Visual debug guides** for cone and spawn zone\n- **Reverse mode**: particles converge toward the emitter\n\n## 2D — Custom Object\nWorks on any 2D layer. Supports Simple SVG, PixiJS Sprite rendered with PixiJS.\n\n## 3D — Custom Object\nWorks on any 3D layer. Supports GLB models, textured billboards, and 3D primitives rendered with Three.js.\n\n## Use Cases\n- Explosions, fire, smoke, sparks, magic effects\n- Rain, snow, confetti, bubbles, ambient particles\n- Trail effects, UI highlights, celebrations\n- 3D volumetric effects and model-based particles\n\n## How to Use\n1. Export your effect as JSON from GDParticleFX Editor\n2. **2D**: Add the 2D emitter object to a D layer\n3. **3D**: Add the 3D emitter object to a 3D layer\n4. Set the ParticleJSON property — effect plays automatically!",
+  "iconUrl": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48IURPQ1RZUEUgc3ZnIFBVQkxJQyAiLS8vVzNDLy9EVEQgU1ZHIDEuMS8vRU4iICJodHRwOi8vd3d3LnczLm9yZy9HcmFwaGljcy9TVkcvMS4xL0RURC9zdmcxMS5kdGQiPjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgdmVyc2lvbj0iMS4xIiBpZD0ibWRpLXNoYXBlLXBsdXMiIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMiwySDExVjExSDJWMk0xNy41LDJDMjAsMiAyMiw0IDIyLDYuNUMyMiw5IDIwLDExIDE3LjUsMTFDMTUsMTEgMTMsOSAxMyw2LjVDMTMsNCAxNSwyIDE3LjUsMk02LjUsMTRMMTEsMjJIMkw2LjUsMTRNMTksMTdIMjJWMTlIMTlWMjJIMTdWMTlIMTRWMTdIMTdWMTRIMTlWMTdaIiAvPjwvc3ZnPg=="
+}

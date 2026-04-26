@@ -127,7 +127,13 @@ void EventsFunctionsExtension::UnserializeFrom(
   // so that objects can be then unserialized in proper order (they can depend
   // on each others)
   UnserializeExtensionDeclarationFrom(project, element);
+
+  const auto savedSkipInstructionCompatibilityUpdates =
+      project.ShouldSkipInstructionCompatibilityUpdates();
+  project.SetSkipInstructionCompatibilityUpdates(true);
   UnserializeExtensionImplementationFrom(project, element);
+  project.SetSkipInstructionCompatibilityUpdates(
+      savedSkipInstructionCompatibilityUpdates);
 }
 
 void EventsFunctionsExtension::UnserializeExtensionDeclarationFrom(

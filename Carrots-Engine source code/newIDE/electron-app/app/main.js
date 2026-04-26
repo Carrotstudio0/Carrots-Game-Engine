@@ -95,6 +95,131 @@ const isBenignRendererConsoleMessage = message => {
   );
 };
 
+const PARTICLE_FX_EXECUTABLE_NAMES = [
+  'particle-fx.exe',
+  'particlefx.exe',
+  'particle.exe',
+  'ParticleFX.exe',
+];
+const PARTICLE_FX_INSTALLER_NAMES = [
+  'particle-fx_0.2.0_x64-setup.exe',
+  'particle-fx-setup.exe',
+];
+
+const dedupeExistingPaths = candidatePaths => {
+  const seenPaths = new Set();
+  const existingPaths = [];
+
+  for (const candidatePath of candidatePaths) {
+    if (!candidatePath || typeof candidatePath !== 'string') continue;
+
+    const normalizedPath = path.normalize(candidatePath);
+    if (seenPaths.has(normalizedPath)) continue;
+    seenPaths.add(normalizedPath);
+
+    if (fs.existsSync(normalizedPath)) {
+      existingPaths.push(normalizedPath);
+    }
+  }
+
+  return existingPaths;
+};
+
+const getParticleFxSearchDirectories = () => {
+  const appPath = app.getAppPath();
+  const resourcesPath = process.resourcesPath || path.join(appPath, '..');
+
+  return [
+    process.env.CARROTS_PARTICLE_FX_DIR,
+    process.env.CARROTS_PARTICLE_FX_PATH
+      ? path.dirname(process.env.CARROTS_PARTICLE_FX_PATH)
+      : null,
+    path.join(appPath, 'external', 'particlefx'),
+    path.join(appPath, 'external', 'particle-fx'),
+    path.join(__dirname, 'external', 'particlefx'),
+    path.join(__dirname, 'external', 'particle-fx'),
+    path.join(resourcesPath, 'external', 'particlefx'),
+    path.join(resourcesPath, 'external', 'particle-fx'),
+    process.env.LOCALAPPDATA
+      ? path.join(process.env.LOCALAPPDATA, 'Programs', 'particle-fx')
+      : null,
+    process.env.ProgramFiles
+      ? path.join(process.env.ProgramFiles, 'particle-fx')
+      : null,
+    process.env['ProgramFiles(x86)']
+      ? path.join(process.env['ProgramFiles(x86)'], 'particle-fx')
+      : null,
+    app.getPath('downloads'),
+  ];
+};
+
+const getParticleFxExecutableCandidates = () => {
+  const explicitPath = process.env.CARROTS_PARTICLE_FX_PATH;
+  const directories = getParticleFxSearchDirectories();
+  const directoryCandidates = directories.flatMap(directory =>
+    PARTICLE_FX_EXECUTABLE_NAMES.map(executableName =>
+      directory ? path.join(directory, executableName) : null
+    )
+  );
+
+  return dedupeExistingPaths([explicitPath, ...directoryCandidates]);
+};
+
+const getParticleFxInstallerCandidates = () => {
+  const explicitInstallerPath = process.env.CARROTS_PARTICLE_FX_INSTALLER_PATH;
+  const directories = getParticleFxSearchDirectories();
+  const directoryCandidates = directories.flatMap(directory =>
+    PARTICLE_FX_INSTALLER_NAMES.map(installerName =>
+      directory ? path.join(directory, installerName) : null
+    )
+  );
+
+  return dedupeExistingPaths([explicitInstallerPath, ...directoryCandidates]);
+};
+
+const launchDetachedExecutable = (executablePath, args = []) => {
+  const childProcess = child_process.spawn(executablePath, args, {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: false,
+  });
+  childProcess.unref();
+};
+
+const openParticleFxEditor = () => {
+  if (process.platform !== 'win32') {
+    throw new Error(
+      'ParticleFX editor integration is currently available on Windows only.'
+    );
+  }
+
+  const executableCandidates = getParticleFxExecutableCandidates();
+  if (executableCandidates.length > 0) {
+    const executablePath = executableCandidates[0];
+    log.info('Launching ParticleFX editor:', executablePath);
+    launchDetachedExecutable(executablePath);
+    return {
+      status: 'editor-launched',
+      path: executablePath,
+    };
+  }
+
+  const installerCandidates = getParticleFxInstallerCandidates();
+  if (installerCandidates.length > 0) {
+    const installerPath = installerCandidates[0];
+    log.info('Launching ParticleFX installer:', installerPath);
+    launchDetachedExecutable(installerPath, ['/SP-']);
+    return {
+      status: 'installer-launched',
+      path: installerPath,
+    };
+  }
+
+  throw new Error(
+    'ParticleFX was not found. Install particle-fx or set CARROTS_PARTICLE_FX_PATH.'
+  );
+};
+
 // Keep a global reference of the window objects, if you don't, the windows will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindows = new Set();
@@ -507,6 +632,11 @@ app.on('ready', function() {
       indexSubPath: 'yarn/yarn-electron-index.html',
       externalEditorInput,
     });
+  });
+
+  // ParticleFX native editor
+  ipcMain.handle('particlefx-load', async () => {
+    return openParticleFxEditor();
   });
 
   // LocalFileUploader events:

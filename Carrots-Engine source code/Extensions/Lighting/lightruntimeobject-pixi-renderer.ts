@@ -12,11 +12,23 @@ namespace gdjs {
     _radius: number;
     _color: [number, number, number];
     _texture: PIXI.Texture | null = null;
+    _normalMapTexture: PIXI.Texture | null = null;
+    _lightType: gdjs.LightType;
+    _intensity: number;
+    _directionAngle: number;
+    _specularStrength: number;
+    _specularShininess: number;
+    _shadowSoftness: number;
+    _falloffModel: gdjs.LightFalloffModel;
+    _antialiasing: gdjs.LightAntialiasing;
+    _edgeSmoothing: number;
     _center: Float32Array;
     _defaultVertexBuffer: Float32Array;
     _vertexBuffer: Float32Array;
     _indexBuffer: Uint16Array;
     _light: PIXI.Mesh<PIXI.Shader> | null = null;
+    _softShadowFilter: PIXI.Filter | null = null;
+    _antialiasingFilter: PIXI.Filter | null = null;
     _isPreview: boolean;
     _debugMode: boolean = false;
     _debugLight: PIXI.Container | null = null;
@@ -43,6 +55,15 @@ namespace gdjs {
         objectColor[1] / 255,
         objectColor[2] / 255,
       ];
+      this._lightType = runtimeObject.getLightType();
+      this._intensity = runtimeObject.getIntensity();
+      this._directionAngle = runtimeObject.getDirectionAngle();
+      this._specularStrength = runtimeObject.getSpecularStrength();
+      this._specularShininess = runtimeObject.getSpecularShininess();
+      this._shadowSoftness = runtimeObject.getShadowSoftness();
+      this._falloffModel = runtimeObject.getFalloffModel();
+      this._antialiasing = runtimeObject.getAntialiasing();
+      this._edgeSmoothing = runtimeObject.getEdgeSmoothing();
       this.updateTexture();
       this._center = new Float32Array([runtimeObject.x, runtimeObject.y]);
       this._defaultVertexBuffer = new Float32Array(8);
@@ -107,6 +128,14 @@ namespace gdjs {
         this._light.destroy();
         this._light = null;
       }
+      if (this._softShadowFilter) {
+        this._softShadowFilter.destroy();
+        this._softShadowFilter = null;
+      }
+      if (this._antialiasingFilter) {
+        this._antialiasingFilter.destroy();
+        this._antialiasingFilter = null;
+      }
       // We dot not destroy the texture, as it is managed by the PixiImageManager.
     }
 
@@ -146,7 +175,7 @@ namespace gdjs {
           closestPoint[1] = raycastResult.closeY;
         }
       }
-      if (closestPoint[0] && closestPoint[1]) {
+      if (closestPoint[0] !== null && closestPoint[1] !== null) {
         return closestPoint;
       }
       return null;
@@ -166,24 +195,30 @@ namespace gdjs {
         }
         this._debugLight.x = this._object.getX();
         this._debugLight.y = this._object.getY();
+        const objectColor = this._object._color;
+        const normalizedObjectColor: [number, number, number] = [
+          objectColor[0] / 255,
+          objectColor[1] / 255,
+          objectColor[2] / 255,
+        ];
         if (
           this._radius === this._object.getRadius() &&
-          this._color[0] === this._object._color[0] &&
-          this._color[1] === this._object._color[1] &&
-          this._color[2] === this._object._color[2]
+          this._color[0] === normalizedObjectColor[0] &&
+          this._color[1] === normalizedObjectColor[1] &&
+          this._color[2] === normalizedObjectColor[2]
         ) {
           return;
         }
         if (this._debugGraphics) {
           this._radius = this._object.getRadius();
-          this._color[0] = this._object._color[0];
-          this._color[1] = this._object._color[1];
-          this._color[2] = this._object._color[2];
+          this._color[0] = normalizedObjectColor[0];
+          this._color[1] = normalizedObjectColor[1];
+          this._color[2] = normalizedObjectColor[2];
           const radiusBorderWidth = 2;
           this._debugGraphics.clear();
           this._debugGraphics.lineStyle(
             radiusBorderWidth,
-            gdjs.rgbToHexNumber(this._color[0], this._color[1], this._color[2]),
+            gdjs.rgbToHexNumber(objectColor[0], objectColor[1], objectColor[2]),
             0.8
           );
           this._debugGraphics.drawCircle(
@@ -200,6 +235,7 @@ namespace gdjs {
       if (this._debugGraphics) {
         this._updateDebugGraphics();
       }
+      this.updateLightParameters();
       this._updateBuffers();
     }
 
@@ -214,22 +250,26 @@ namespace gdjs {
         return;
       }
       this.updateTexture();
-      const fragmentShader =
-        this._texture === null
-          ? LightRuntimeObjectPixiRenderer.defaultFragmentShader
-          : LightRuntimeObjectPixiRenderer.texturedFragmentShader;
+      this._syncRuntimeLightProperties();
       const shaderUniforms = {
         center: this._center,
         radius: this._radius,
         color: this._color,
+        intensity: this._intensity,
+        lightType: this._lightType === 'directional' ? 1 : 0,
+        directionAngle: this._directionAngle,
+        specularStrength: this._specularStrength,
+        specularShininess: this._specularShininess,
+        falloffModel: this._falloffModel === 'sdf' ? 1 : 0,
+        edgeSmoothing: this._edgeSmoothing,
+        useTexture: this._texture ? 1 : 0,
+        useNormalMap: this._normalMapTexture ? 1 : 0,
+        uSampler: this._texture || PIXI.Texture.WHITE,
+        uNormalSampler: this._normalMapTexture || PIXI.Texture.WHITE,
       };
-      if (this._texture) {
-        // @ts-ignore
-        shaderUniforms.uSampler = this._texture;
-      }
       const shader = PIXI.Shader.from(
         LightRuntimeObjectPixiRenderer.defaultVertexShader,
-        fragmentShader,
+        LightRuntimeObjectPixiRenderer.enhancedFragmentShader,
         shaderUniforms
       );
       const geometry = new PIXI.Geometry();
@@ -244,6 +284,7 @@ namespace gdjs {
         // @ts-ignore - replacing the read-only geometry
         this._light.geometry = geometry;
       }
+      this._updateFilters();
     }
 
     updateRadius(): void {
@@ -268,15 +309,100 @@ namespace gdjs {
     }
 
     updateTexture(): void {
+      const imageManager = this._instanceContainer
+        .getGame()
+        .getImageManager() as gdjs.PixiImageManager;
+
       const texture = this._object.getTexture();
-      this._texture =
-        texture !== ''
-          ? (
-              this._instanceContainer
-                .getGame()
-                .getImageManager() as gdjs.PixiImageManager
-            ).getPIXITexture(texture)
-          : null;
+      this._texture = texture !== '' ? imageManager.getPIXITexture(texture) : null;
+
+      const normalMap = this._object.getNormalMap();
+      this._normalMapTexture =
+        normalMap !== '' ? imageManager.getPIXITexture(normalMap) : null;
+    }
+
+    updateLightParameters(): void {
+      this._syncRuntimeLightProperties();
+      if (!this._light) {
+        return;
+      }
+      this._light.shader.uniforms.intensity = this._intensity;
+      this._light.shader.uniforms.lightType =
+        this._lightType === 'directional' ? 1 : 0;
+      this._light.shader.uniforms.directionAngle = this._directionAngle;
+      this._light.shader.uniforms.specularStrength = this._specularStrength;
+      this._light.shader.uniforms.specularShininess = this._specularShininess;
+      this._light.shader.uniforms.falloffModel =
+        this._falloffModel === 'sdf' ? 1 : 0;
+      this._light.shader.uniforms.edgeSmoothing = this._edgeSmoothing;
+      this._light.shader.uniforms.useTexture = this._texture ? 1 : 0;
+      this._light.shader.uniforms.useNormalMap = this._normalMapTexture ? 1 : 0;
+      this._light.shader.uniforms.uSampler = this._texture || PIXI.Texture.WHITE;
+      this._light.shader.uniforms.uNormalSampler =
+        this._normalMapTexture || PIXI.Texture.WHITE;
+      this._updateFilters();
+    }
+
+    private _syncRuntimeLightProperties(): void {
+      this._lightType = this._object.getLightType();
+      this._intensity = this._object.getIntensity();
+      this._directionAngle = this._object.getDirectionAngle();
+      this._specularStrength = this._object.getSpecularStrength();
+      this._specularShininess = this._object.getSpecularShininess();
+      this._shadowSoftness = this._object.getShadowSoftness();
+      this._falloffModel = this._object.getFalloffModel();
+      this._antialiasing = this._object.getAntialiasing();
+      this._edgeSmoothing = this._object.getEdgeSmoothing();
+    }
+
+    private _updateFilters(): void {
+      if (!this._light) {
+        return;
+      }
+
+      const activeFilters: PIXI.Filter[] = [];
+
+      if (this._antialiasing !== 'none') {
+        if (!this._antialiasingFilter) {
+          this._antialiasingFilter = new PIXI.FXAAFilter();
+        }
+
+        const antialiasingFilter = this._antialiasingFilter as any;
+        antialiasingFilter.enabled = true;
+        antialiasingFilter.multisample =
+          PIXI.MSAA_QUALITY[this._antialiasing.toUpperCase()] ||
+          PIXI.MSAA_QUALITY.LOW;
+
+        activeFilters.push(this._antialiasingFilter as PIXI.Filter);
+      } else if (this._antialiasingFilter) {
+        this._antialiasingFilter.destroy();
+        this._antialiasingFilter = null;
+      }
+
+      const BlurFilterClass =
+        (PIXI as any).BlurFilter ||
+        ((PIXI as any).filters && (PIXI as any).filters.BlurFilter);
+      if (this._shadowSoftness <= 0 || !BlurFilterClass) {
+        if (this._softShadowFilter) {
+          this._softShadowFilter.destroy();
+          this._softShadowFilter = null;
+        }
+      } else {
+        if (!this._softShadowFilter) {
+          this._softShadowFilter = new BlurFilterClass();
+        }
+        const blurFilter = this._softShadowFilter as any;
+        blurFilter.blur = Math.min(64, this._shadowSoftness);
+        blurFilter.quality = 1;
+        blurFilter.multisample =
+          this._antialiasing !== 'none'
+            ? PIXI.MSAA_QUALITY[this._antialiasing.toUpperCase()] ||
+              PIXI.MSAA_QUALITY.LOW
+            : PIXI.MSAA_QUALITY.NONE;
+        activeFilters.push(this._softShadowFilter as PIXI.Filter);
+      }
+
+      this._light.filters = activeFilters.length ? activeFilters : null;
     }
 
     updateDebugMode(): void {
@@ -606,34 +732,99 @@ namespace gdjs {
       vPos = aVertexPosition;
       gl_Position = vec4((projectionMatrix * translationMatrix * vec3(aVertexPosition, 1.0)).xy, 0.0, 1.0);
   }`;
-    static defaultFragmentShader = `
+    static enhancedFragmentShader = `
   precision highp float;
   uniform vec2 center;
   uniform float radius;
   uniform vec3 color;
+  uniform float intensity;
+  uniform float lightType;
+  uniform float directionAngle;
+  uniform float specularStrength;
+  uniform float specularShininess;
+  uniform float falloffModel;
+  uniform float edgeSmoothing;
+  uniform float useTexture;
+  uniform float useNormalMap;
+  uniform sampler2D uSampler;
+  uniform sampler2D uNormalSampler;
   varying vec2 vPos;
 
-  void main() {
-      float l = length(vPos - center);
-      float intensity = 0.0;
-      if(l < radius)
-        intensity = clamp((radius - l)*(radius - l)/(radius*radius), 0.0, 1.0);
-      gl_FragColor = vec4(color*intensity, 1.0);
-  }`;
-    static texturedFragmentShader = `
-  precision highp float;
-  uniform vec2 center;
-  uniform float radius;
-  uniform vec3 color;
-  uniform sampler2D uSampler;
-  varying vec2 vPos;
+  float computeFalloff(float distanceToCenter) {
+    float safeRadius = max(radius, 0.0001);
+    float normalizedDistance = clamp(distanceToCenter / safeRadius, 0.0, 1.0);
+    float smoothing = max(0.0, edgeSmoothing);
+    float edgeWidth = max(smoothing, 0.0001);
+    float radiusMask =
+      smoothing > 0.0
+        ? 1.0 - smoothstep(safeRadius - edgeWidth, safeRadius + edgeWidth, distanceToCenter)
+        : (distanceToCenter <= safeRadius ? 1.0 : 0.0);
+    if (falloffModel > 0.5) {
+      float sdf = distanceToCenter - safeRadius;
+      float sdfWidth = max(edgeWidth, safeRadius * 0.02);
+      float sdfFade = 1.0 - smoothstep(0.0, sdfWidth, sdf);
+      return sdfFade * radiusMask;
+    }
+    float fade = max(1.0 - normalizedDistance, 0.0);
+    return fade * fade * radiusMask;
+  }
 
   void main() {
     vec2 topleft = vec2(center.x - radius, center.y - radius);
-    vec2 texCoord = (vPos - topleft)/(2.0 * radius);
-    gl_FragColor = (texCoord.x > 0.0 && texCoord.x < 1.0 && texCoord.y > 0.0 && texCoord.y < 1.0)
-      ? vec4(color, 1.0) * texture2D(uSampler, texCoord)
-      : vec4(0.0, 0.0, 0.0, 0.0);
+    vec2 texCoord = (vPos - topleft) / (2.0 * max(radius, 0.0001));
+    vec2 safeTexCoord = clamp(texCoord, 0.0, 1.0);
+    float uvEdgeDistance = min(
+      min(texCoord.x, 1.0 - texCoord.x),
+      min(texCoord.y, 1.0 - texCoord.y)
+    );
+    float uvSmoothing = edgeSmoothing / max(radius * 2.0, 1.0);
+    float uvMask = edgeSmoothing > 0.0
+      ? smoothstep(-uvSmoothing, uvSmoothing, uvEdgeDistance)
+      : (uvEdgeDistance > 0.0 ? 1.0 : 0.0);
+    if (uvMask <= 0.0) {
+      gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+      return;
+    }
+
+    float distanceToCenter = length(vPos - center);
+    float attenuation = computeFalloff(distanceToCenter) * uvMask;
+    if (lightType > 0.5) {
+      float angleRad = radians(directionAngle);
+      vec2 direction = normalize(vec2(cos(angleRad), sin(angleRad)));
+      vec2 fromCenter = vPos - center;
+      float fromCenterLength = length(fromCenter);
+      vec2 fromCenterDirection =
+        fromCenterLength > 0.0001 ? fromCenter / fromCenterLength : vec2(0.0, -1.0);
+      float projection = dot(fromCenterDirection, -direction);
+      float directionalMask = clamp(0.5 + 0.5 * projection, 0.0, 1.0);
+      attenuation *= directionalMask;
+    }
+
+    float diffuse = 1.0;
+    float specular = 0.0;
+    if (useNormalMap > 0.5) {
+      vec3 normalSample = texture2D(uNormalSampler, safeTexCoord).xyz * 2.0 - 1.0;
+      vec3 normal = normalize(vec3(normalSample.xy, max(normalSample.z, 0.001)));
+      vec3 lightDir;
+      if (lightType > 0.5) {
+        float angleRad = radians(directionAngle);
+        lightDir = normalize(vec3(cos(angleRad), sin(angleRad), 0.35));
+      } else {
+        vec2 toLight = center - vPos;
+        lightDir = normalize(vec3(toLight, max(radius, 1.0) * 0.35));
+      }
+      diffuse = max(dot(normal, lightDir), 0.0);
+      vec3 viewDir = vec3(0.0, 0.0, 1.0);
+      vec3 halfDir = normalize(lightDir + viewDir);
+      specular =
+        pow(max(dot(normal, halfDir), 0.0), max(1.0, specularShininess)) *
+        specularStrength;
+    }
+
+    vec4 baseTextureColor =
+      useTexture > 0.5 ? texture2D(uSampler, safeTexCoord) : vec4(1.0);
+    vec3 litColor = color * max(0.0, intensity) * attenuation * (diffuse + specular);
+    gl_FragColor = vec4(litColor, 1.0) * baseTextureColor;
   }`;
   }
 

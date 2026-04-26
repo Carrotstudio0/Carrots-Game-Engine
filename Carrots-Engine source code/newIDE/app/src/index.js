@@ -16,6 +16,7 @@ import { showErrorBox } from './UI/Messages/MessageBox';
 import VersionMetadata from './Version/VersionMetadata';
 import { loadPreferencesFromLocalStorage } from './MainFrame/Preferences/PreferencesProvider';
 import { getFullTheme } from './UI/Theme';
+import applyLibGDCompatibilityPatches from './Utils/ApplyLibGDCompatibilityPatches';
 
 const GD_STARTUP_TIMES = global.GD_STARTUP_TIMES || [];
 // $FlowFixMe[cannot-resolve-name]
@@ -126,17 +127,20 @@ class Bootstrapper extends Component<{}, State> {
           return;
         }
 
-        initializeGDevelopJs({
-          // Override the resolved URL for the .wasm file,
-          // to ensure a new version is fetched when the version changes.
-          locateFile: (path: string) => {
-            // This function is called by Emscripten to locate the .wasm file only.
-            // Using the public root avoids resolving from nested/chunk paths.
-            return getVersionedPublicAssetPath(path);
-          },
-        })
+        Promise.resolve(
+          initializeGDevelopJs({
+            // Override the resolved URL for the .wasm file,
+            // to ensure a new version is fetched when the version changes.
+            locateFile: (path: string) => {
+              // This function is called by Emscripten to locate the .wasm file only.
+              // Using the public root avoids resolving from nested/chunk paths.
+              return getVersionedPublicAssetPath(path);
+            },
+          })
+        )
           .then(gd => {
             global.gd = gd;
+            applyLibGDCompatibilityPatches(gd);
             GD_STARTUP_TIMES.push([
               'libGD.js initialization done',
               performance.now(),

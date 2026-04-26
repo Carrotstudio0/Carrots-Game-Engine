@@ -22,6 +22,7 @@ import CloseConfirmDialog from '../UI/CloseConfirmDialog';
 import ProfileDialog from '../Profile/ProfileDialog';
 import PurchaseClaimDialog from '../Profile/PurchaseClaimDialog';
 import Window from '../Utils/Window';
+import optionalRequire from '../Utils/OptionalRequire';
 import { showErrorBox } from '../UI/Messages/MessageBox';
 import EditorTabsPane, {
   type EditorTabsPaneCommonProps,
@@ -253,6 +254,8 @@ import MobileLandscapeOnlyGuard from './MobileLandscapeOnlyGuard';
 const GD_STARTUP_TIMES = global.GD_STARTUP_TIMES || [];
 
 const gd: libGDevelop = global.gd;
+const electron = optionalRequire('electron');
+const ipcRenderer = electron ? electron.ipcRenderer : null;
 
 const editorKindToRenderer: {
   [key: EditorKind]: (props: RenderEditorContainerPropsWithRef) => React.Node,
@@ -2990,6 +2993,28 @@ const MainFrame = (props: Props): React.MixedElement => {
     [openDebugger, launchNewPreview]
   );
 
+  const openParticleFxEditor = React.useCallback(async () => {
+    if (!ipcRenderer) {
+      showErrorBox({
+        message:
+          'ParticleFX editor can only be opened from the desktop version of Carrots Engine.',
+        errorId: 'particlefx-desktop-only',
+      });
+      return;
+    }
+
+    try {
+      await ipcRenderer.invoke('particlefx-load');
+    } catch (error) {
+      showErrorBox({
+        message:
+          'Could not open ParticleFX editor. Install particle-fx or set CARROTS_PARTICLE_FX_PATH.',
+        rawError: error,
+        errorId: 'particlefx-editor-open-error',
+      });
+    }
+  }, []);
+
   const openInstructionOrExpression = (
     extension: gdPlatformExtension,
     type: string
@@ -5151,6 +5176,7 @@ const MainFrame = (props: Props): React.MixedElement => {
     onOpenHomePage: openHomePage,
     onOpenCinematicTimeline3D: openCinematicTimeline3D,
     onOpenDebugger: openDebugger,
+    onOpenParticleFxEditor: openParticleFxEditor,
     onOpenAbout: () => openAboutDialog(true),
     onOpenPreferences: () => openPreferencesDialog(true),
     onOpenLanguage: () => openLanguageDialog(true),

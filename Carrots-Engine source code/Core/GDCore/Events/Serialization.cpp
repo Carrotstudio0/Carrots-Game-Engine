@@ -324,28 +324,30 @@ void gd::EventsListSerialization::UnserializeInstructionsFrom(
     instructions.Insert(instruction);
   }
 
-  // Compatibility with GD <= 3.1
-  if (project.GetLastSaveGDMajorVersion() < 3 ||
-      (project.GetLastSaveGDMajorVersion() == 3 &&
-       project.GetLastSaveGDMinorVersion() <= 1))
-    UpdateInstructionsFromGD31x(project, instructions);
+  if (!project.ShouldSkipInstructionCompatibilityUpdates()) {
+    // Compatibility with GD <= 3.1
+    if (project.GetLastSaveGDMajorVersion() < 3 ||
+        (project.GetLastSaveGDMajorVersion() == 3 &&
+         project.GetLastSaveGDMinorVersion() <= 1))
+      UpdateInstructionsFromGD31x(project, instructions);
 
-  if (project.GetLastSaveGDMajorVersion() < 3)
-    UpdateInstructionsFromGD2x(
-        project, instructions, elem.HasChild("action", "Action"));
+    if (project.GetLastSaveGDMajorVersion() < 3)
+      UpdateInstructionsFromGD2x(
+          project, instructions, elem.HasChild("action", "Action"));
 
-  // Compatibility with GD <= 4.0.97
-  if (VersionWrapper::IsOlderOrEqual(project.GetLastSaveGDMajorVersion(),
-                                     project.GetLastSaveGDMinorVersion(),
-                                     project.GetLastSaveGDBuildVersion(),
-                                     0,
-                                     4,
-                                     0,
-                                     97,
-                                     0)) {
-    UpdateInstructionsFromGD4097(project, instructions);
+    // Compatibility with GD <= 4.0.97
+    if (VersionWrapper::IsOlderOrEqual(project.GetLastSaveGDMajorVersion(),
+                                       project.GetLastSaveGDMinorVersion(),
+                                       project.GetLastSaveGDBuildVersion(),
+                                       0,
+                                       4,
+                                       0,
+                                       97,
+                                       0)) {
+      UpdateInstructionsFromGD4097(project, instructions);
+    }
+    // end of compatibility code
   }
-  // end of compatibility code
 }
 
 void gd::EventsListSerialization::SerializeInstructionsTo(

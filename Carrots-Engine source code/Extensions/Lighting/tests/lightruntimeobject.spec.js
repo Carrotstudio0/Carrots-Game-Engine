@@ -19,6 +19,16 @@ const addLightObject = (runtimeScene, radius) => {
       radius: radius,
       color: '#b4b4b4',
       texture: '',
+      normalMap: '',
+      lightType: 'point',
+      intensity: 1,
+      directionAngle: 0,
+      specularStrength: 0,
+      specularShininess: 32,
+      shadowSoftness: 0,
+      falloffModel: 'quadratic',
+      antialiasing: 'high',
+      edgeSmoothing: 1,
       debugMode: false,
     },
   });
@@ -77,6 +87,46 @@ describe('gdjs.LightRuntimeObject', function () {
     expect(lightObj.getDebugMode()).to.be(false);
     expect(lightObj.getDrawableX()).to.be(100);
     expect(lightObj.getDrawableY()).to.be(100);
+  });
+
+  it('supports advanced lighting properties', function () {
+    lightObj.setLightType('directional');
+    expect(lightObj.getLightType()).to.be('directional');
+    lightObj.setLightType('invalid-value');
+    expect(lightObj.getLightType()).to.be('point');
+
+    lightObj.setIntensity(2.5);
+    expect(lightObj.getIntensity()).to.be(2.5);
+
+    lightObj.setDirectionAngle(35);
+    expect(lightObj.getDirectionAngle()).to.be(35);
+
+    lightObj.setSpecularStrength(0.6);
+    expect(lightObj.getSpecularStrength()).to.be(0.6);
+
+    lightObj.setSpecularShininess(64);
+    expect(lightObj.getSpecularShininess()).to.be(64);
+
+    lightObj.setShadowSoftness(8);
+    expect(lightObj.getShadowSoftness()).to.be(8);
+
+    lightObj.setFalloffModel('sdf');
+    expect(lightObj.getFalloffModel()).to.be('sdf');
+    lightObj.setFalloffModel('invalid-value');
+    expect(lightObj.getFalloffModel()).to.be('quadratic');
+
+    lightObj.setAntialiasing('medium');
+    expect(lightObj.getAntialiasing()).to.be('medium');
+    lightObj.setAntialiasing('invalid-value');
+    expect(lightObj.getAntialiasing()).to.be('none');
+
+    lightObj.setEdgeSmoothing(3);
+    expect(lightObj.getEdgeSmoothing()).to.be(3);
+    lightObj.setEdgeSmoothing(-1);
+    expect(lightObj.getEdgeSmoothing()).to.be(0);
+
+    lightObj.setNormalMap('normal-map.png');
+    expect(lightObj.getNormalMap()).to.be('normal-map.png');
   });
 
   it('bail out early while raycasting when there is no light obstacle', function () {

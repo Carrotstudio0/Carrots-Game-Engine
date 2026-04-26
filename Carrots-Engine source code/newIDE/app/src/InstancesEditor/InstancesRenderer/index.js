@@ -69,6 +69,7 @@ export default class InstancesRenderer {
 
   // $FlowFixMe[missing-local-annot]
   _basicProfilingCounters = (makeBasicProfilingCounters(): BasicProfilingCounters);
+  _isLayersPixiZOrderDirty: boolean = true;
 
   constructor({
     project,
@@ -284,6 +285,7 @@ export default class InstancesRenderer {
           showObjectInstancesIn3D: this._showObjectInstancesIn3D,
         });
         this.pixiContainer.addChild(layerRenderer.getPixiContainer());
+        this._isLayersPixiZOrderDirty = true;
       }
 
       // /!\ Objects representing layers can be deleted at any moment and replaced
@@ -292,7 +294,11 @@ export default class InstancesRenderer {
       // a valid layer object that can be used.
       layerRenderer.layer = layer;
       layerRenderer.wasUsed = true;
-      layerRenderer.getPixiContainer().zOrder = i;
+      const layerPixiContainer = layerRenderer.getPixiContainer();
+      if (layerPixiContainer.zOrder !== i) {
+        layerPixiContainer.zOrder = i;
+        this._isLayersPixiZOrderDirty = true;
+      }
       layerRenderer.render();
       mergeBasicProfilingCounters(
         this._basicProfilingCounters,
@@ -411,11 +417,13 @@ export default class InstancesRenderer {
   }
 
   _updatePixiObjectsZOrder() {
+    if (!this._isLayersPixiZOrderDirty) return;
     this.pixiContainer.children.sort((a, b) => {
-      a.zOrder = a.zOrder || 0;
-      b.zOrder = b.zOrder || 0;
-      return a.zOrder - b.zOrder;
+      const aZOrder = a.zOrder || 0;
+      const bZOrder = b.zOrder || 0;
+      return aZOrder - bZOrder;
     });
+    this._isLayersPixiZOrderDirty = false;
   }
 
   /**
@@ -483,6 +491,7 @@ export default class InstancesRenderer {
         if (!layerRenderer.wasUsed) {
           layerRenderer.delete();
           delete this.layersRenderers[i];
+          this._isLayersPixiZOrderDirty = true;
         } else layerRenderer.wasUsed = false;
       }
     }

@@ -43,6 +43,26 @@ void AddEventsBasedExtension(gd::Project &project) {
       .SetType("Number");
 };
 
+void AddEventsFunctionWithVariableCondition(gd::Project &project) {
+  auto &eventsExtension =
+      project.GetEventsFunctionsExtension("MyEventsExtension");
+  auto &eventsFunction =
+      eventsExtension.GetEventsFunctions().InsertNewEventsFunction(
+          "MyFunction", 0);
+  eventsFunction.SetFunctionType(gd::EventsFunction::Condition);
+
+  auto &event = dynamic_cast<gd::StandardEvent &>(
+      eventsFunction.GetEvents().InsertNewEvent(
+          project, "BuiltinCommonInstructions::Standard"));
+  gd::Instruction condition;
+  condition.SetType("NumberVariable");
+  condition.SetParametersCount(3);
+  condition.SetParameter(0, "MyVariable");
+  condition.SetParameter(1, "=");
+  condition.SetParameter(2, "42");
+  event.GetConditions().Insert(condition);
+}
+
 void AddAnotherEventsBasedExtensionWithDependency(gd::Project &project) {
   auto &eventsExtension =
       project.InsertNewEventsFunctionsExtension("MyOtherEventsExtension", 0);
@@ -219,5 +239,39 @@ TEST_CASE("BehaviorSerialization", "[common]") {
         readProject
             .GetEventsBasedObject("MyOtherEventsExtension::MyEventsBasedObject")
             .GetObjects());
+  }
+
+  SECTION("Loading old project versions does not reorder extension event condition parameters") {
+    gd::Platform platform;
+    gd::Project writtenProject;
+    SetupProject(writtenProject, platform);
+    AddEventsFunctionWithVariableCondition(writtenProject);
+
+    SerializerElement projectElement;
+    writtenProject.SerializeTo(projectElement);
+
+    // Simulate loading a very old project to trigger legacy compatibility code.
+    auto &versionElement = projectElement.GetChild("gdVersion");
+    versionElement.SetAttribute("major", 2);
+    versionElement.SetAttribute("minor", 0);
+    versionElement.SetAttribute("build", 0);
+
+    gd::Project readProject;
+    readProject.AddPlatform(platform);
+    readProject.UnserializeFrom(projectElement);
+
+    const auto &eventsExtension =
+        readProject.GetEventsFunctionsExtension("MyEventsExtension");
+    const auto &eventsFunction =
+        eventsExtension.GetEventsFunctions().GetEventsFunction("MyFunction");
+    REQUIRE(eventsFunction.GetEvents().GetEventsCount() == 1);
+    const auto &standardEvent = dynamic_cast<const gd::StandardEvent &>(
+        eventsFunction.GetEvents().GetEvent(0));
+    REQUIRE(standardEvent.GetConditions().size() == 1);
+    const auto &condition = standardEvent.GetConditions()[0];
+    REQUIRE(condition.GetType() == "NumberVariable");
+    REQUIRE(condition.GetParameter(0).GetPlainString() == "MyVariable");
+    REQUIRE(condition.GetParameter(1).GetPlainString() == "=");
+    REQUIRE(condition.GetParameter(2).GetPlainString() == "42");
   }
 }

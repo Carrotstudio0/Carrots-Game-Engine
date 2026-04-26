@@ -136,6 +136,9 @@ const useCreateProject = ({
     // Default project branding is fully customizable and disabled by default.
     project.getLoadingScreen().showGDevelopLogoDuringLoadingScreen(false);
     project.getWatermark().showGDevelopWatermark(false);
+    // Enforce high-quality 2D rendering defaults for all new projects.
+    project.setScaleMode('linear');
+    project.setAntialiasingMode('MSAA');
     if (newProjectSetup.width && newProjectSetup.height) {
       project.setGameResolutionSize(
         newProjectSetup.width,
