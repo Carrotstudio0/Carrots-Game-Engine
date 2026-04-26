@@ -23,10 +23,35 @@ const GD_STARTUP_TIMES = global.GD_STARTUP_TIMES || [];
 const PUBLIC_URL: string = process.env.PUBLIC_URL || '';
 // $FlowFixMe[cannot-resolve-name]
 const isDev = process.env.NODE_ENV !== 'production';
-const publicAssetPrefix =
-  PUBLIC_URL && PUBLIC_URL !== '.'
-    ? PUBLIC_URL.replace(/\/$/, '')
-    : '';
+const getPublicAssetPrefix = (): string => {
+  if (!PUBLIC_URL || PUBLIC_URL === '.') return '';
+
+  const normalizedPublicUrl = PUBLIC_URL.trim();
+  const isAbsoluteUrl = /^https?:\/\//i.test(normalizedPublicUrl);
+  if (!isAbsoluteUrl) {
+    return normalizedPublicUrl.replace(/\/$/, '');
+  }
+
+  if (typeof window === 'undefined' || !window.location) return '';
+
+  try {
+    const configuredUrl = new URL(normalizedPublicUrl, window.location.href);
+    const hasOnlyRootPath =
+      configuredUrl.pathname === '/' || configuredUrl.pathname === '';
+    const normalizedPath = configuredUrl.pathname.replace(/\/$/, '');
+
+    // If PUBLIC_URL points to a domain root but the app is served from a subfolder
+    // (like GitHub Pages project sites), prefer relative URLs to keep assets scoped.
+    if (hasOnlyRootPath && window.location.pathname !== '/') return '';
+
+    return hasOnlyRootPath
+      ? configuredUrl.origin
+      : `${configuredUrl.origin}${normalizedPath}`;
+  } catch {
+    return '';
+  }
+};
+const publicAssetPrefix = getPublicAssetPrefix();
 const libGdCacheBuster = isDev
   ? `${VersionMetadata.versionWithHash}-${Date.now()}`
   : VersionMetadata.versionWithHash;

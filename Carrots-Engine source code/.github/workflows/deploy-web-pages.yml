@@ -37,6 +37,8 @@ jobs:
 
       - name: Build web editor
         working-directory: newIDE/app
+        env:
+          PUBLIC_URL: /Carrots-Game-Engine
         run: npm run build
 
       - name: Prepare Pages artifact
