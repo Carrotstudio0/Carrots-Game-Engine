@@ -70,14 +70,14 @@ const getBranchFromGitRef = gitRef => {
 
 const MIN_LIBGD_JS_SIZE_BYTES = 1024 * 1024;
 const MIN_LIBGD_WASM_SIZE_BYTES = 1024 * 1024;
+const REQUIRED_LIBGD_SYMBOLS = ['ProjectScopedContainers'];
+const libGdJsPath = path.join(__dirname, '..', 'public', 'libGD.js');
+const libGdWasmPath = path.join(__dirname, '..', 'public', 'libGD.wasm');
 
-const validateDownloadedLibGdJs = baseUrl => {
-  const libGdJsPath = path.join(__dirname, '..', 'public', 'libGD.js');
-  const libGdWasmPath = path.join(__dirname, '..', 'public', 'libGD.wasm');
-
+const validateLibGdJs = sourceLabel => {
   if (!fileExists(libGdJsPath) || !fileExists(libGdWasmPath)) {
     console.warn(
-      `Warning: Downloaded libGD.js is incomplete (baseUrl=${baseUrl}), trying another source.`
+      `Warning: libGD.js files are incomplete (${sourceLabel}), trying another source.`
     );
     throw new Error('Incomplete libGD.js download');
   }
@@ -89,7 +89,7 @@ const validateDownloadedLibGdJs = baseUrl => {
     libGdWasmSize < MIN_LIBGD_WASM_SIZE_BYTES
   ) {
     console.warn(
-      `Warning: Downloaded libGD.js assets are unexpectedly small (baseUrl=${baseUrl}), trying another source.`
+      `Warning: libGD.js assets are unexpectedly small (${sourceLabel}), trying another source.`
     );
     throw new Error('Incomplete libGD.js download (unexpected file size)');
   }
@@ -99,9 +99,23 @@ const validateDownloadedLibGdJs = baseUrl => {
   });
   if (syntaxCheckResult.status !== 0) {
     console.warn(
-      `Warning: Downloaded libGD.js is not valid JavaScript (baseUrl=${baseUrl}), trying another source.`
+      `Warning: libGD.js is not valid JavaScript (${sourceLabel}), trying another source.`
     );
     throw new Error('Invalid libGD.js JavaScript syntax');
+  }
+
+  const libGdJsContent = fs.readFileSync(libGdJsPath, 'utf8');
+  const missingSymbols = REQUIRED_LIBGD_SYMBOLS.filter(
+    symbol => !libGdJsContent.includes(symbol)
+  );
+
+  if (missingSymbols.length > 0) {
+    console.warn(
+      `Warning: Downloaded libGD.js failed compatibility checks (${sourceLabel}). Missing symbols: ${missingSymbols.join(
+        ', '
+      )}`
+    );
+    throw new Error('Incompatible libGD.js runtime API');
   }
 };
 
@@ -111,7 +125,7 @@ const downloadLibGdJs = baseUrl =>
     downloadLocalFile(baseUrl + '/libGD.wasm', '../public/libGD.wasm'),
   ]).then(
     responses => {
-      validateDownloadedLibGdJs(baseUrl);
+      validateLibGdJs(baseUrl);
       return responses;
     },
     error => {
@@ -235,14 +249,23 @@ if (fileExists(path.join(sourceDirectory, 'libGD.js'))) {
     downloadCommitLibGdJs('HEAD~1').then(onLibGdJsDownloaded, () =>
       downloadCommitLibGdJs('HEAD~2').then(onLibGdJsDownloaded, () =>
         downloadCommitLibGdJs('HEAD~3').then(onLibGdJsDownloaded, () =>
-          downloadBranchLatestLibGdJs(branch).then(onLibGdJsDownloaded, () =>
+            downloadBranchLatestLibGdJs(branch).then(onLibGdJsDownloaded, () =>
             downloadBranchLatestLibGdJs('master').then(onLibGdJsDownloaded, () => {
               if (alreadyHasLibGdJs) {
-                console.info(
-                  "Can't download any version of libGD.js, assuming you can go ahead with the existing one."
-                );
-                process.exit(0);
-                return;
+                try {
+                  validateLibGdJs('existing local files');
+                  console.info(
+                    "Can't download any version of libGD.js, using existing local compatible files."
+                  );
+                  process.exit(0);
+                  return;
+                } catch (error) {
+                  console.error(
+                    "Can't download any compatible version of libGD.js, and existing local files are incompatible."
+                  );
+                  process.exit(1);
+                  return;
+                }
               } else {
                 console.error(
                   "Can't download any version of libGD.js, please check your internet connection."

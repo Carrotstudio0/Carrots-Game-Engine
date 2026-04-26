@@ -63,16 +63,18 @@ const getLibGDevelop = (versionWithHash /*: string */) => {
 
       /* eslint-disable no-undef */
       // $FlowFixMe[cannot-resolve-name]
-      initializeGDevelopJs({
-        /* eslint-enable no-undef */
-        // Override the resolved URL for the .wasm file,
-        // to ensure a new version is fetched when the version changes.
-        locateFile: (path /*: string */, prefix /*: string */) => {
-          // This function is called by Emscripten to locate the .wasm file only.
-          // Resolve to absolute public URL to avoid nested/chunk path resolution.
-          return buildVersionedAssetUrl(path, versionWithHash);
-        },
-      })
+      Promise.resolve(
+        initializeGDevelopJs({
+          /* eslint-enable no-undef */
+          // Override the resolved URL for the .wasm file,
+          // to ensure a new version is fetched when the version changes.
+          locateFile: (path /*: string */, prefix /*: string */) => {
+            // This function is called by Emscripten to locate the .wasm file only.
+            // Resolve to absolute public URL to avoid nested/chunk path resolution.
+            return buildVersionedAssetUrl(path, versionWithHash);
+          },
+        })
+      )
         .then(module => {
           resolve(module);
         })

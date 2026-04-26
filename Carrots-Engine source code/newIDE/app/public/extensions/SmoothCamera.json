@@ -71,8 +71,7 @@
                   "parameters": [
                     "Object",
                     "Behavior",
-                    "LeftwardSpeed",
-                    "log(1 - )"
+                    "LeftwardSpeed"
                   ]
                 },
                 {
@@ -82,8 +81,7 @@
                   "parameters": [
                     "Object",
                     "Behavior",
-                    "RightwardSpeed",
-                    "log(1 - )"
+                    "RightwardSpeed"
                   ]
                 },
                 {
@@ -93,8 +91,7 @@
                   "parameters": [
                     "Object",
                     "Behavior",
-                    "UpwardSpeed",
-                    "log(1 - )"
+                    "UpwardSpeed"
                   ]
                 },
                 {
@@ -104,8 +101,7 @@
                   "parameters": [
                     "Object",
                     "Behavior",
-                    "DownwardSpeed",
-                    "log(1 - )"
+                    "DownwardSpeed"
                   ]
                 },
                 {
@@ -115,8 +111,7 @@
                   "parameters": [
                     "Object",
                     "Behavior",
-                    "LeftwardSpeedMax",
-                    "log(1 - )"
+                    "LeftwardSpeedMax"
                   ]
                 },
                 {
@@ -126,8 +121,7 @@
                   "parameters": [
                     "Object",
                     "Behavior",
-                    "RightwardSpeedMax",
-                    "log(1 - )"
+                    "RightwardSpeedMax"
                   ]
                 },
                 {
@@ -137,8 +131,7 @@
                   "parameters": [
                     "Object",
                     "Behavior",
-                    "UpwardSpeedMax",
-                    "log(1 - )"
+                    "UpwardSpeedMax"
                   ]
                 },
                 {
@@ -148,8 +141,7 @@
                   "parameters": [
                     "Object",
                     "Behavior",
-                    "DownwardSpeedMax",
-                    "log(1 - )"
+                    "DownwardSpeedMax"
                   ]
                 },
                 {
@@ -159,8 +151,7 @@
                   "parameters": [
                     "Object",
                     "Behavior",
-                    "FollowFreeAreaLeft",
-                    "log(1 - )"
+                    "FollowFreeAreaLeft"
                   ]
                 },
                 {
@@ -170,8 +161,7 @@
                   "parameters": [
                     "Object",
                     "Behavior",
-                    "FollowFreeAreaRight",
-                    "log(1 - )"
+                    "FollowFreeAreaRight"
                   ]
                 },
                 {
@@ -181,8 +171,7 @@
                   "parameters": [
                     "Object",
                     "Behavior",
-                    "FollowFreeAreaTop",
-                    "log(1 - )"
+                    "FollowFreeAreaTop"
                   ]
                 },
                 {
@@ -192,8 +181,7 @@
                   "parameters": [
                     "Object",
                     "Behavior",
-                    "FollowFreeAreaBottom",
-                    "log(1 - )"
+                    "FollowFreeAreaBottom"
                   ]
                 },
                 {
