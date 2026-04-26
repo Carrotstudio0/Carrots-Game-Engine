@@ -1,0 +1,214 @@
+
+> gdevelop-ide@0.1.0 start
+> npm run import-resources && concurrently "npm run start:editor" "node scripts/watch-serve-GDJS-runtime.js" -n "editor,game engine" --kill-others
+
+
+> gdevelop-ide@0.1.0 import-resources
+> npm run make-version-metadata && npm run import-zipped-external-editors && npm run build-theme-resources && npm run make-service-worker && cd scripts && node import-libGD.js && node import-GDJS-Runtime.js && node import-monaco-editor.js && node import-zipped-external-libs.js
+
+
+> gdevelop-ide@0.1.0 make-version-metadata
+> cd scripts && node make-version-metadata.js
+
+src/Version/VersionMetadata.js properly generated.
+
+> gdevelop-ide@0.1.0 import-zipped-external-editors
+> cd scripts && node import-zipped-editor.js piskel 5.5.228 b161dc74582e428a6d210cd1b74f052ca4aab301d0d522e0be87bdb4962d0fb7 && node import-zipped-editor.js jfxr 5.0.0-beta55 8ac12b557c2ddba958c6f0d3e0c5df8cf3369a65262dcb90cf5c8a7a7d20bdf6 && node import-zipped-editor.js yarn 5.0.134 ba8558cad00ec9b18cf3c6fd8647f8c1478ca67c894bca94a152a3740af209cc
+
+✅ piskel-editor already existing in public/external/piskel folder and up-to-date - skipping download
+✅ jfxr-editor already existing in public/external/jfxr folder and up-to-date - skipping download
+✅ yarn-editor already existing in public/external/yarn folder and up-to-date - skipping download
+
+> gdevelop-ide@0.1.0 build-theme-resources
+> node scripts/build-theme-resources.js
+
+
+css
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/DefaultDarkTheme/DefaultDarkThemeVariables.css
+
+js
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/DefaultDarkTheme/DefaultDarkThemeVariables.json
+
+css
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/DefaultLightTheme/DefaultLightThemeVariables.css
+
+js
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/DefaultLightTheme/DefaultLightThemeVariables.json
+
+css
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/BlueDarkTheme/BlueDarkThemeVariables.css
+
+js
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/BlueDarkTheme/BlueDarkThemeVariables.json
+
+css
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/NordTheme/NordThemeVariables.css
+
+js
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/NordTheme/NordThemeVariables.json
+
+css
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/SolarizedDarkTheme/SolarizedDarkThemeVariables.css
+
+js
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/SolarizedDarkTheme/SolarizedDarkThemeVariables.json
+
+css
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/OneDarkTheme/OneDarkThemeVariables.css
+
+js
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/OneDarkTheme/OneDarkThemeVariables.json
+
+css
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/RosePineTheme/RosePineThemeVariables.css
+
+js
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/RosePineTheme/RosePineThemeVariables.json
+
+css
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/DeepBlueTheme/DeepBlueThemeVariables.css
+
+js
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/DeepBlueTheme/DeepBlueThemeVariables.json
+
+css
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/CarrotsDarkTheme/CarrotsDarkThemeVariables.css
+
+js
+✔︎  C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\scripts/../src/UI/Theme/CarrotsDarkTheme/CarrotsDarkThemeVariables.json
+
+> gdevelop-ide@0.1.0 make-service-worker
+> cd scripts && node make-service-worker.js
+
+⚠️ workbox warning: One of the glob patterns doesn't match any files. Please remove or fix the following: {
+  "globDirectory": "../public",
+  "globPattern": "static/css/*.css",
+  "globIgnores": [
+    "**/node_modules/**/*",
+    "**/service-worker.js"
+  ]
+}
+ℹ️ 0 files will be precached, totaling 0 MB.
+Downloading pre-built libGD.js from https://s3.amazonaws.com/gdevelop-gdevelop.js (be patient)...
+Trying to download libGD.js for HEAD.
+Trying to download libGD.js for HEAD~1.
+Trying to download libGD.js for HEAD~2.
+Trying to download libGD.js for HEAD~3.
+Trying to download libGD.js from codex/mobile-version, latest build.
+Trying to download libGD.js from master, latest build.
+libGD.js downloaded and stored in public/libGD.js
+Copied libGD.js to node_modules folder
+Cleaning destination first...
+Cleaning destination first...
+✅ GDJS built in 3416ms
+✅ GDJS built in 3478ms
+Copying GDJS and extensions runtime sources to C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\resources\GDJS, C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\node_modules\GDJS-for-web-app-only...
+Runtime source files copy done (518 file(s) copied in 4236ms).
+Runtime source files copy done (518 file(s) copied in 4354ms).
+✅ Sources of Monaco Editor properly copied in public folder
+✅ Extracted zip.js.zip to public/external/ folder
+✅ Extracted zlib-asm.zip to public/external/ folder
+[game engine] ℹ️ GDJS Runtime served for the web-app at http://localhost:5002.
+[editor] 
+[editor] > gdevelop-ide@0.1.0 start:editor
+[editor] > react-app-rewired --max-old-space-size=8192 start
+[editor] 
+[game engine] ✅ GDJS watcher ready in 1136.51ms.
+[game engine] ℹ️ Watching GDJS engine files for changes in:
+[game engine] - C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\GDJS\Runtime
+[game engine] - C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\Extensions.
+[editor] Attempting to bind to HOST environment variable: 192.168.1.6
+[editor] If this was unintentional, check that you haven't mistakenly set it in your shell.
+[editor] Learn more here: https://cra.link/advanced-config
+[editor] 
+[editor] (node:19692) [DEP0176] DeprecationWarning: fs.F_OK is deprecated, use fs.constants.F_OK instead
+[editor] (Use `node --trace-deprecation ...` to show where the warning was created)
+[editor] Browserslist: caniuse-lite is outdated. Please run:
+[editor]   npx update-browserslist-db@latest
+[editor]   Why you should do it regularly: https://github.com/browserslist/update-db#readme
+[editor] (node:19692) [DEP_WEBPACK_DEV_SERVER_ON_AFTER_SETUP_MIDDLEWARE] DeprecationWarning: 'onAfterSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
+[editor] (node:19692) [DEP_WEBPACK_DEV_SERVER_ON_BEFORE_SETUP_MIDDLEWARE] DeprecationWarning: 'onBeforeSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
+[editor] Starting the development server...
+[editor] 
+[editor] Compiled with warnings.
+[editor] 
+[editor] [eslint] 
+[editor] src\InstancesEditor\CompactInstancePropertiesEditor\index.js
+[editor]   Line 298:5:  React Hook React.useMemo has a missing dependency: 'onInstancesModified'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+[editor] 
+[editor] src\MainFrame\Preferences\PreferencesContext.js
+[editor]   Line 18:7:  'electron' is assigned a value but never used  no-unused-vars
+[editor] 
+[editor] src\SceneEditor\BuildPanel.js
+[editor]   Line 3:17:  't' is defined but never used  no-unused-vars
+[editor] 
+[editor] src\SceneEditor\EditorConsolePanel.js
+[editor]   Line 4:24:   'Spacer' is defined but never used                                                                                       no-unused-vars
+[editor]   Line 158:5:  React Hook React.useMemo has an unnecessary dependency: 'logRevision'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+[editor] 
+[editor] Search for the keywords to learn more about each warning.
+[editor] To ignore, add // eslint-disable-next-line to the line before.
+[editor] 
+[editor] [1mLOG from webpack.FileSystemInfo[39m[22m
+[editor] <w> [1m[33mManaged item C:\Users\Tech Shop\Desktop\carrots Game engine files\Carrots-Game-Engine\Carrots-Engine source code\newIDE\app\node_modules\GDJS-for-web-app-only isn't a directory or doesn't contain a package.json (see snapshot.managedPaths option)[39m[22m
+[editor] + 14 hidden lines
+[editor] 
+[editor] [1m[33mWARNING[39m[22m in [1m[eslint] 
+[editor] src\InstancesEditor\CompactInstancePropertiesEditor\index.js
+[editor]   Line 298:5:  React Hook React.useMemo has a missing dependency: 'onInstancesModified'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+[editor] 
+[editor] src\MainFrame\Preferences\PreferencesContext.js
+[editor]   Line 18:7:  'electron' is assigned a value but never used  no-unused-vars
+[editor] 
+[editor] src\SceneEditor\BuildPanel.js
+[editor]   Line 3:17:  't' is defined but never used  no-unused-vars
+[editor] 
+[editor] src\SceneEditor\EditorConsolePanel.js
+[editor]   Line 4:24:   'Spacer' is defined but never used                                                                                       no-unused-vars
+[editor]   Line 158:5:  React Hook React.useMemo has an unnecessary dependency: 'logRevision'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+[editor] 
+[editor] [39m[22m
+[editor] 
+[editor] webpack compiled with [1m[33m1 warning[39m[22m
+[editor] No issues found.
+[editor] Compiling...
+[editor] Compiled with warnings.
+[editor] 
+[editor] [eslint] 
+[editor] src\InstancesEditor\CompactInstancePropertiesEditor\index.js
+[editor]   Line 298:5:  React Hook React.useMemo has a missing dependency: 'onInstancesModified'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+[editor] 
+[editor] src\MainFrame\Preferences\PreferencesContext.js
+[editor]   Line 18:7:  'electron' is assigned a value but never used  no-unused-vars
+[editor] 
+[editor] src\SceneEditor\BuildPanel.js
+[editor]   Line 3:17:  't' is defined but never used  no-unused-vars
+[editor] 
+[editor] src\SceneEditor\EditorConsolePanel.js
+[editor]   Line 4:24:   'Spacer' is defined but never used                                                                                       no-unused-vars
+[editor]   Line 158:5:  React Hook React.useMemo has an unnecessary dependency: 'logRevision'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+[editor] 
+[editor] Search for the keywords to learn more about each warning.
+[editor] To ignore, add // eslint-disable-next-line to the line before.
+[editor] 
+[editor] [1m[33mWARNING[39m[22m in [1m[eslint] 
+[editor] src\InstancesEditor\CompactInstancePropertiesEditor\index.js
+[editor]   Line 298:5:  React Hook React.useMemo has a missing dependency: 'onInstancesModified'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+[editor] 
+[editor] src\MainFrame\Preferences\PreferencesContext.js
+[editor]   Line 18:7:  'electron' is assigned a value but never used  no-unused-vars
+[editor] 
+[editor] src\SceneEditor\BuildPanel.js
+[editor]   Line 3:17:  't' is defined but never used  no-unused-vars
+[editor] 
+[editor] src\SceneEditor\EditorConsolePanel.js
+[editor]   Line 4:24:   'Spacer' is defined but never used                                                                                       no-unused-vars
+[editor]   Line 158:5:  React Hook React.useMemo has an unnecessary dependency: 'logRevision'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+[editor] 
+[editor] [39m[22m
+[editor] 
+[editor] webpack compiled with [1m[33m1 warning[39m[22m
+[editor] No issues found.
+[game engine] node scripts/watch-serve-GDJS-runtime.js exited with code 4294967295
+--> Sending SIGTERM to other processes..
+[editor] npm run start:editor exited with code 1

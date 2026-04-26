@@ -1,0 +1,151 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Mobile Runtime Smoke Test</title>
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #050505;
+        overscroll-behavior: none;
+      }
+      body {
+        position: fixed;
+        inset: 0;
+      }
+      #status {
+        position: fixed;
+        z-index: 10000;
+        left: 8px;
+        top: 8px;
+        max-width: calc(100vw - 16px);
+        color: #fff;
+        font: 12px/1.4 monospace;
+        background: rgba(0, 0, 0, 0.55);
+        padding: 8px;
+        border-radius: 6px;
+        pointer-events: none;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="status">Loading runtime…</div>
+    <script>
+      const statusElement = document.getElementById('status');
+      const setStatus = (text) => {
+        statusElement.textContent = text;
+      };
+
+      const loadScript = (src) =>
+        new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.async = false;
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error('Failed to load script: ' + src));
+          document.head.appendChild(script);
+        });
+
+      const collectRuntimeState = () => {
+        const runtimeGame = window.__runtimeGame;
+        const renderer = runtimeGame ? runtimeGame.getRenderer() : null;
+        const canvas = renderer ? renderer.getCanvas() : null;
+        const canvasRect = canvas ? canvas.getBoundingClientRect() : null;
+        return {
+          ok: !!renderer && !!canvas,
+          hasThreeRenderer: !!(renderer && renderer.getThreeRenderer()),
+          hasPixiRenderer: !!(renderer && renderer.getPIXIRenderer()),
+          pixelRatio: renderer ? renderer.getPixelRatio() : null,
+          viewport: {
+            innerWidth: window.innerWidth,
+            innerHeight: window.innerHeight,
+            visualViewportWidth: window.visualViewport
+              ? window.visualViewport.width
+              : null,
+            visualViewportHeight: window.visualViewport
+              ? window.visualViewport.height
+              : null,
+          },
+          canvas: canvasRect
+            ? {
+                width: canvasRect.width,
+                height: canvasRect.height,
+                top: canvasRect.top,
+                left: canvasRect.left,
+              }
+            : null,
+        };
+      };
+
+      const updateStatusFromState = () => {
+        const state = collectRuntimeState();
+        window.__smokeResults = state;
+        setStatus(
+          [
+            state.ok ? 'Smoke test passed' : 'Smoke test pending',
+            'Three renderer: ' + state.hasThreeRenderer,
+            'Pixi renderer: ' + state.hasPixiRenderer,
+            'Pixel ratio: ' + state.pixelRatio,
+            'Viewport: ' + state.viewport.innerWidth + 'x' + state.viewport.innerHeight,
+            'Visual viewport: ' + state.viewport.visualViewportWidth + 'x' + state.viewport.visualViewportHeight,
+            'Canvas: ' + (state.canvas ? state.canvas.width + 'x' + state.canvas.height : 'n/a'),
+          ].join('\n')
+        );
+      };
+
+      const runSmokeTest = async () => {
+        try {
+          const scriptListResponse = await fetch('./runtime-smoke-scripts.json');
+          const scriptList = await scriptListResponse.json();
+
+          for (const scriptPath of scriptList) {
+            const normalizedPath = scriptPath.replace(/^\.\//, '../../');
+            await loadScript(normalizedPath);
+          }
+
+          const runtimeGame = gdjs.getPixiRuntimeGame({
+            propertiesOverrides: {
+              adaptGameResolutionAtRuntime: true,
+              sizeOnStartupMode: 'adaptWidth',
+              orientation: 'landscape',
+              antialiasingMode: 'MSAA',
+              antialisingEnabledOnMobile: true,
+              windowWidth: 1280,
+              windowHeight: 720,
+            },
+          });
+
+          const renderer = runtimeGame.getRenderer();
+          renderer.createStandardCanvas(document.body);
+          renderer.bindStandardEvents(runtimeGame.getInputManager(), window, document);
+          runtimeGame.onWindowInnerSizeChanged();
+
+          window.__runtimeGame = runtimeGame;
+          window.__collectSmokeState = collectRuntimeState;
+          updateStatusFromState();
+          window.addEventListener('resize', updateStatusFromState);
+          if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', updateStatusFromState);
+            window.visualViewport.addEventListener('scroll', updateStatusFromState);
+          }
+        } catch (error) {
+          window.__smokeResults = {
+            ok: false,
+            error: error && error.message ? error.message : String(error),
+          };
+          setStatus('Smoke test failed\n' + window.__smokeResults.error);
+          console.error(error);
+        }
+      };
+
+      runSmokeTest();
+    </script>
+  </body>
+</html>

@@ -280,15 +280,84 @@ export default class InstancesEditor extends Component<Props, State> {
     }
   }
 
-  _getDevicePixelRatio(): number {
+  _getDevicePixelRatio({
+    for3DRenderer = false,
+  }: {| for3DRenderer?: boolean |} = {}): number {
     if (typeof window === 'undefined' || !window.devicePixelRatio) {
       return 1;
     }
-    const pixelRatio = window.devicePixelRatio;
+    const pixelRatio = Number(window.devicePixelRatio);
     if (!Number.isFinite(pixelRatio) || pixelRatio <= 0) {
       return 1;
     }
+
+    if (for3DRenderer) {
+      // Keep the 3D editor GPU budget low on phones to avoid WebGL context loss
+      // and black frames.
+      return Math.min(
+        pixelRatio,
+        this.props.screenType === 'touch' ? 1.25 : 2
+      );
+    }
+
     return pixelRatio;
+  }
+
+  _getSafeThreeRendererPixelRatio(
+    requestedPixelRatio: number,
+    width: number,
+    height: number,
+    threeRenderer: ?THREE.WebGLRenderer
+  ): number {
+    let safePixelRatio = requestedPixelRatio;
+    const safeWidth = Math.max(1, width);
+    const safeHeight = Math.max(1, height);
+
+    if (threeRenderer) {
+      try {
+        const gl = threeRenderer.getContext();
+        const maxTextureSize = Number(gl.getParameter(gl.MAX_TEXTURE_SIZE));
+        const maxRenderbufferSize = Number(
+          gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)
+        );
+        const maxViewportDims = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
+        const maxViewportWidth =
+          maxViewportDims && maxViewportDims.length >= 2
+            ? Number(maxViewportDims[0])
+            : Number.POSITIVE_INFINITY;
+        const maxViewportHeight =
+          maxViewportDims && maxViewportDims.length >= 2
+            ? Number(maxViewportDims[1])
+            : Number.POSITIVE_INFINITY;
+
+        const limits = [
+          maxTextureSize / safeWidth,
+          maxTextureSize / safeHeight,
+          maxRenderbufferSize / safeWidth,
+          maxRenderbufferSize / safeHeight,
+          maxViewportWidth / safeWidth,
+          maxViewportHeight / safeHeight,
+        ].filter(limit => Number.isFinite(limit) && limit > 0);
+
+        if (limits.length > 0) {
+          safePixelRatio = Math.min(
+            safePixelRatio,
+            ...limits,
+            this.props.screenType === 'touch' ? 1.25 : 2
+          );
+        }
+      } catch (error) {
+        console.warn(
+          'Unable to read WebGL limits for 3D editor pixel ratio clamping.',
+          error
+        );
+      }
+    }
+
+    if (!Number.isFinite(safePixelRatio) || safePixelRatio <= 0) {
+      return 1;
+    }
+    return Math.max(1, safePixelRatio);
   }
 
   _initializeCanvasAndRenderer() {
@@ -314,13 +383,22 @@ export default class InstancesEditor extends Component<Props, State> {
     if (this._showObjectInstancesIn3D) {
       gameCanvas = document.createElement('canvas');
       try {
-        const pixelRatio = this._getDevicePixelRatio();
+        const requestedPixelRatio = this._getDevicePixelRatio({
+          for3DRenderer: true,
+        });
+        const isTouchScreen = this.props.screenType === 'touch';
         const threeRenderer = new THREE.WebGLRenderer({
           canvas: gameCanvas,
-          antialias: true,
-          preserveDrawingBuffer: true,
-          powerPreference: 'high-performance',
+          antialias: !isTouchScreen,
+          preserveDrawingBuffer: !isTouchScreen,
+          powerPreference: isTouchScreen ? 'default' : 'high-performance',
         });
+        const pixelRatio = this._getSafeThreeRendererPixelRatio(
+          requestedPixelRatio,
+          this.props.width,
+          this.props.height,
+          threeRenderer
+        );
         const threeRendererAny: any = threeRenderer;
         if (typeof threeRendererAny.useLegacyLights === 'boolean')
           threeRendererAny.useLegacyLights = false;
@@ -792,7 +870,14 @@ export default class InstancesEditor extends Component<Props, State> {
       nextProps.width !== this.props.width ||
       nextProps.height !== this.props.height
     ) {
-      const pixelRatio = this._getDevicePixelRatio();
+      const pixelRatio = this.threeRenderer
+        ? this._getSafeThreeRendererPixelRatio(
+            this._getDevicePixelRatio({ for3DRenderer: true }),
+            nextProps.width,
+            nextProps.height,
+            this.threeRenderer
+          )
+        : this._getDevicePixelRatio();
       if (this.pixiRenderer.resolution !== pixelRatio) {
         this.pixiRenderer.resolution = pixelRatio;
       }

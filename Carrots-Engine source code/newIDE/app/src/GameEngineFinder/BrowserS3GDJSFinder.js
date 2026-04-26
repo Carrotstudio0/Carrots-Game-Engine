@@ -94,6 +94,24 @@ const tryFindGDJS = (
     });
 };
 
+const isLikelyLocalHost = (hostname: string): boolean => {
+  if (!hostname) return false;
+
+  const normalizedHostname = hostname.toLowerCase();
+  if (normalizedHostname === 'localhost') return true;
+  if (normalizedHostname === '127.0.0.1') return true;
+  if (normalizedHostname === '::1') return true;
+
+  // RFC1918 private networks and link-local addresses.
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(normalizedHostname)) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(normalizedHostname)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(normalizedHostname))
+    return true;
+  if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(normalizedHostname)) return true;
+
+  return false;
+};
+
 export const findGDJS = (
   fileSet: FileSet
 ): Promise<{|
@@ -103,9 +121,26 @@ export const findGDJS = (
   // Get GDJS for this version. If you updated the version,
   // run `newIDE/web-app/scripts/deploy-GDJS-Runtime` script.
   const remoteGdjsRoot = `https://resources.gdevelop-app.com/GDJS-${getIDEVersionWithHash()}`;
-  const candidateRoots = Window.isDev()
-    ? ['http://localhost:5002', remoteGdjsRoot]
-    : [remoteGdjsRoot];
+  const candidateRoots = (() => {
+    const roots = [];
+    const currentHostname =
+      typeof window !== 'undefined' &&
+      window.location &&
+      window.location.hostname
+        ? window.location.hostname
+        : 'localhost';
+    const currentHostRoot = `http://${currentHostname}:5002`;
+
+    if (Window.isDev() || isLikelyLocalHost(currentHostname)) {
+      roots.push(currentHostRoot);
+      if (currentHostRoot !== 'http://localhost:5002') {
+        roots.push('http://localhost:5002');
+      }
+    }
+
+    roots.push(remoteGdjsRoot);
+    return roots;
+  })();
 
   return tryFindGDJS(candidateRoots, fileSet);
 };

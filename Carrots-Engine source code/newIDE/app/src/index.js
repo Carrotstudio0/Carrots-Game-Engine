@@ -47,7 +47,9 @@ const getVersionedPublicAssetPath = (fileName: string): string => {
     return `${publicAssetPrefix}/${normalizedFileName}?${query}`;
   }
 
-  return `/${normalizedFileName}?${query}`;
+  // Use a relative path by default on the web so deployments in subfolders
+  // (like GitHub Pages project sites) can resolve runtime assets correctly.
+  return `./${normalizedFileName}?${query}`;
 };
 
 // No i18n in this file

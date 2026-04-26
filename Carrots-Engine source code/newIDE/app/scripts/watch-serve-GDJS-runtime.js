@@ -232,8 +232,8 @@ server.on('error', error => {
   }
   process.exit(1);
 });
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(
-    `ℹ️ GDJS Runtime served for the web-app at http://localhost:${PORT}.`
+    `ℹ️ GDJS Runtime served for the web-app at http://localhost:${PORT} (and LAN IPs on port ${PORT}).`
   );
 });
