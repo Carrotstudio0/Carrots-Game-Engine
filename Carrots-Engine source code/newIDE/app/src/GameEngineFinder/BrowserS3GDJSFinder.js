@@ -1,5 +1,6 @@
 // @flow
 import Window from '../Utils/Window';
+import { getLocalResourceUrl } from '../Utils/GDevelopServices/LocalResourceUrl';
 import { getIDEVersionWithHash } from '../Version';
 
 type FileSet =
@@ -38,6 +39,11 @@ const filesToDownload: { [FileSet]: Array<string> } = {
 };
 
 export type TextFileDescriptor = {| text: string, filePath: string |};
+
+const normalizeRoot = (root: string): string => {
+  if (!root) return root;
+  return root.endsWith('/') ? root.slice(0, -1) : root;
+};
 
 const fetchFilesFromRoot = (
   gdjsRoot: string,
@@ -120,7 +126,10 @@ export const findGDJS = (
 |}> => {
   // Get GDJS for this version. If you updated the version,
   // run `newIDE/web-app/scripts/deploy-GDJS-Runtime` script.
-  const remoteGdjsRoot = `https://resources.gdevelop-app.com/GDJS-${getIDEVersionWithHash()}`;
+  const remoteGdjsRoot = normalizeRoot(
+    `https://resources.gdevelop-app.com/GDJS-${getIDEVersionWithHash()}`
+  );
+  const bundledGdjsRoot = normalizeRoot(getLocalResourceUrl('/GDJS'));
   const candidateRoots = (() => {
     const roots = [];
     const currentHostname =
@@ -138,6 +147,9 @@ export const findGDJS = (
       }
     }
 
+    // Prefer the runtime bundled with the current editor deployment (same origin).
+    // This avoids third-party CDN failures or forbidden responses on some hosts.
+    roots.push(bundledGdjsRoot);
     roots.push(remoteGdjsRoot);
     return roots;
   })();

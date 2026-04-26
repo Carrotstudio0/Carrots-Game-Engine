@@ -330,8 +330,15 @@ if (workbox) {
   /* injection point for manifest files.  */
   workbox.precaching.precacheAndRoute([]);
 
+  // Use the service-worker scope to support sub-path deployments
+  // (for example: /Carrots-Game-Engine/) and avoid navigation 404s on reload.
+  const navigationFallbackPath = new URL(
+    'index.html',
+    self.registration.scope
+  ).pathname;
+
   /* custom cache rules*/
-  workbox.routing.registerNavigationRoute('/index.html', {
+  workbox.routing.registerNavigationRoute(navigationFallbackPath, {
     blacklist: [/^\/_/, /\/[^\/]+\.[^\/]+$/, /^\/browser_sw_preview\//],
   });
 

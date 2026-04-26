@@ -381,6 +381,24 @@ export const client: Axios = axios.create({
 // $FlowFixMe[cannot-resolve-name]
 export const cdnClient: Axios = axios.create();
 
+const getPublicAssetsDatabaseBaseUrl = (
+  environment: Environment
+): string => GDevelopAssetCdn.baseUrl[environment];
+
+const getPublicAssetsDatabaseUrls = (environment: Environment) => {
+  const baseUrl = getPublicAssetsDatabaseBaseUrl(environment);
+  return {
+    assetShortHeadersUrl: `${baseUrl}/assetShortHeaders.json`,
+    assetFiltersUrl: `${baseUrl}/assetFilters.json`,
+    assetPacksUrl: `${baseUrl}/assetPacks.json`,
+    resourcesUrl: `${baseUrl}/resources.json`,
+    resourcesV2Url: `${baseUrl}/resources-v2.json`,
+    resourceFiltersUrl: `${baseUrl}/resourceFilters.json`,
+    authorsUrl: `${baseUrl}/authors.json`,
+    licensesUrl: `${baseUrl}/licenses.json`,
+  };
+};
+
 export const isAssetPackAudioOnly = (assetPack: PrivateAssetPack): boolean => {
   const contentKeys = Object.keys(assetPack.content);
   return contentKeys.length === 1 && contentKeys[0] === 'audio';
@@ -394,6 +412,35 @@ export const listAllPublicAssets = async ({
 }: {|
   environment: Environment,
 |}): Promise<AllPublicAssets> => {
+  const {
+    assetShortHeadersUrl,
+    assetFiltersUrl,
+    assetPacksUrl,
+  } = getPublicAssetsDatabaseUrls(environment);
+
+  try {
+    const [publicAssetShortHeaders, publicFilters, publicAssetPacks] = await Promise.all([
+      cdnClient.get(assetShortHeadersUrl).then(response => response.data),
+      cdnClient.get(assetFiltersUrl).then(response => response.data),
+      cdnClient.get(assetPacksUrl).then(response => response.data),
+    ]);
+
+    if (!publicAssetPacks || !publicAssetPacks.starterPacks) {
+      throw new Error('Unexpected response from the public asset packs endpoint.');
+    }
+
+    return {
+      publicAssetShortHeaders,
+      publicFilters,
+      publicAssetPacks,
+    };
+  } catch (cdnError) {
+    console.warn(
+      'Unable to load public assets database from CDN, trying asset API fallback:',
+      cdnError
+    );
+  }
+
   const response = await client.get(`/asset`, {
     params: {
       environment,
@@ -401,14 +448,14 @@ export const listAllPublicAssets = async ({
   });
 
   const {
-    assetShortHeadersUrl,
-    filtersUrl,
-    assetPacksUrl,
+    assetShortHeadersUrl: apiAssetShortHeadersUrl,
+    filtersUrl: apiFiltersUrl,
+    assetPacksUrl: apiAssetPacksUrl,
     assetCdn,
   } = response.data;
 
   // Overwrite the CDN from where public assets are served.
-  if (assetCdn.baseUrl) {
+  if (assetCdn && assetCdn.baseUrl) {
     GDevelopAssetCdn.baseUrl['live'] =
       assetCdn.baseUrl['live'] || GDevelopAssetCdn.baseUrl['live'];
     GDevelopAssetCdn.baseUrl['staging'] =
@@ -416,32 +463,17 @@ export const listAllPublicAssets = async ({
   }
 
   const responsesData = await Promise.all([
-    cdnClient
-      .get(assetShortHeadersUrl)
-      .then(response => response.data)
-      .catch(e => e),
-    cdnClient
-      .get(filtersUrl)
-      .then(response => response.data)
-      .catch(e => e),
-    cdnClient
-      .get(assetPacksUrl)
-      .then(response => response.data)
-      .catch(e => e),
+    cdnClient.get(apiAssetShortHeadersUrl).then(response => response.data),
+    cdnClient.get(apiFiltersUrl).then(response => response.data),
+    cdnClient.get(apiAssetPacksUrl).then(response => response.data),
   ]);
-
-  if (responsesData.some(data => !data || data instanceof Error)) {
-    throw new Error('Unexpected response from the assets endpoints.');
-  }
 
   const publicAssetShortHeaders = responsesData[0];
   const publicFilters = responsesData[1];
   const publicAssetPacks = responsesData[2];
 
-  if (!publicAssetPacks.starterPacks) {
-    throw new Error(
-      'Unexpected response from the public asset packs endpoint.'
-    );
+  if (!publicAssetPacks || !publicAssetPacks.starterPacks) {
+    throw new Error('Unexpected response from the public asset packs endpoint.');
   }
 
   return {
@@ -510,18 +542,48 @@ export const listAllResources = async ({
 }: {|
   environment: Environment,
 |}): Promise<AllResources> => {
+  const {
+    resourcesUrl,
+    resourcesV2Url,
+    resourceFiltersUrl,
+  } = getPublicAssetsDatabaseUrls(environment);
+
+  try {
+    const [resources, resourcesV2, filters] = await Promise.all([
+      cdnClient.get(resourcesUrl).then(response => response.data),
+      cdnClient.get(resourcesV2Url).then(response => response.data),
+      cdnClient.get(resourceFiltersUrl).then(response => response.data),
+    ]);
+
+    if (!resources || !resourcesV2 || !filters) {
+      throw new Error('Unexpected response from the resources endpoints.');
+    }
+
+    return {
+      resources,
+      resourcesV2,
+      filters,
+    };
+  } catch (cdnError) {
+    console.warn(
+      'Unable to load resources from CDN, trying asset API fallback:',
+      cdnError
+    );
+  }
+
   const response = await client.get(`/resource`, {
     params: {
       environment,
     },
   });
-  const { resourcesUrl, resourcesV2Url, filtersUrl } = response.data;
-  if (!resourcesUrl || !filtersUrl) {
+  const { resourcesUrl: apiResourcesUrl, resourcesV2Url: apiResourcesV2Url, filtersUrl } =
+    response.data;
+  if (!apiResourcesUrl || !apiResourcesV2Url || !filtersUrl) {
     throw new Error('Unexpected response from the resource endpoint.');
   }
   const responses = await Promise.all([
-    client.get(resourcesUrl).then(response => response.data),
-    client.get(resourcesV2Url).then(response => response.data),
+    client.get(apiResourcesUrl).then(response => response.data),
+    client.get(apiResourcesV2Url).then(response => response.data),
     client.get(filtersUrl).then(response => response.data),
   ]);
   const [resources, resourcesV2, filters] = responses;
@@ -540,23 +602,34 @@ export const listAllAuthors = ({
 }: {|
   environment: Environment,
 |}): Promise<Array<Author>> => {
-  return client
-    .get(`/author`, {
-      params: {
-        environment,
-      },
-    })
-    .then(response => response.data)
-    .then(({ authorsUrl }) => {
-      if (!authorsUrl)
-        throw new Error('Unexpected response from author endpoint.');
-      return client.get(authorsUrl);
-    })
+  const { authorsUrl } = getPublicAssetsDatabaseUrls(environment);
+  return cdnClient
+    .get(authorsUrl)
     .then(response =>
       ensureIsArray({
         data: response.data,
-        endpointName: '/author of Asset API',
+        endpointName: '/assets-database/authors.json',
       })
+    )
+    .catch(() =>
+      client
+        .get(`/author`, {
+          params: {
+            environment,
+          },
+        })
+        .then(response => response.data)
+        .then(({ authorsUrl }) => {
+          if (!authorsUrl)
+            throw new Error('Unexpected response from author endpoint.');
+          return client.get(authorsUrl);
+        })
+        .then(response =>
+          ensureIsArray({
+            data: response.data,
+            endpointName: '/author of Asset API',
+          })
+        )
     );
 };
 
@@ -565,23 +638,34 @@ export const listAllLicenses = ({
 }: {|
   environment: Environment,
 |}): Promise<Array<License>> => {
-  return client
-    .get(`/license`, {
-      params: {
-        environment,
-      },
-    })
-    .then(response => response.data)
-    .then(({ licensesUrl }) => {
-      if (!licensesUrl)
-        throw new Error('Unexpected response from license endpoint.');
-      return client.get(licensesUrl);
-    })
+  const { licensesUrl } = getPublicAssetsDatabaseUrls(environment);
+  return cdnClient
+    .get(licensesUrl)
     .then(response =>
       ensureIsArray({
         data: response.data,
-        endpointName: '/license of Asset API',
+        endpointName: '/assets-database/licenses.json',
       })
+    )
+    .catch(() =>
+      client
+        .get(`/license`, {
+          params: {
+            environment,
+          },
+        })
+        .then(response => response.data)
+        .then(({ licensesUrl }) => {
+          if (!licensesUrl)
+            throw new Error('Unexpected response from license endpoint.');
+          return client.get(licensesUrl);
+        })
+        .then(response =>
+          ensureIsArray({
+            data: response.data,
+            endpointName: '/license of Asset API',
+          })
+        )
     );
 };
 

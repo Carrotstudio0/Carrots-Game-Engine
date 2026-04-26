@@ -40,6 +40,11 @@ export type AllExamples = {|
 
 const USE_LOCAL_EXAMPLES = true;
 const LOCAL_EXAMPLES_DATABASE_URL = getLocalResourceUrl('/examples/examples.json');
+const REMOTE_EXAMPLES_SHORT_HEADERS_URL =
+  'https://resources.gdevelop-app.com/examples-database/examples-database-v2.json';
+const REMOTE_EXAMPLES_FILTERS_URL =
+  'https://resources.gdevelop-app.com/examples-database/filters.json';
+const REMOTE_EXAMPLES_BASE_URL = 'https://resources.gdevelop-app.com/examples';
 
 let cachedLocalExamplesDatabase: ?{
   exampleShortHeaders: Array<ExampleShortHeader>,
@@ -89,39 +94,110 @@ const loadLocalExamplesDatabase = async () => {
   return cachedLocalExamplesDatabase;
 };
 
+const buildDefaultFilters = (): Filters => ({
+  allTags: [],
+  defaultTags: [],
+  tagsTree: [],
+});
+
+const computeAllTagsFromExamples = (
+  exampleShortHeaders: Array<ExampleShortHeader>
+): Array<string> => {
+  const tags = new Set();
+  exampleShortHeaders.forEach(exampleShortHeader => {
+    if (!Array.isArray(exampleShortHeader.tags)) return;
+    exampleShortHeader.tags.forEach(tag => tags.add(tag));
+  });
+  return Array.from(tags);
+};
+
+const sanitizeFilters = (
+  filters: ?Filters,
+  exampleShortHeaders: Array<ExampleShortHeader>
+): Filters => {
+  const rawAllTags =
+    filters && Array.isArray(filters.allTags) ? filters.allTags : [];
+  const rawDefaultTags =
+    filters && Array.isArray(filters.defaultTags) ? filters.defaultTags : [];
+  const tagsTree = filters && Array.isArray(filters.tagsTree) ? filters.tagsTree : [];
+
+  const allTags = rawAllTags.length
+    ? rawAllTags
+    : rawDefaultTags.length
+    ? rawDefaultTags
+    : computeAllTagsFromExamples(exampleShortHeaders);
+
+  return {
+    allTags,
+    defaultTags: rawDefaultTags.length ? rawDefaultTags : allTags,
+    tagsTree,
+  };
+};
+
+const getRemoteExampleProjectFileUrl = (slug: string): string => {
+  const encodedSlug = encodeURIComponent(slug);
+  return `${REMOTE_EXAMPLES_BASE_URL}/${encodedSlug}/${encodedSlug}.json`;
+};
+
+const getAuthorsUsernames = (
+  exampleShortHeader: ExampleShortHeader
+): Array<string> => {
+  if (!Array.isArray(exampleShortHeader.authors)) return [];
+
+  return exampleShortHeader.authors
+    .map(author => (author && author.username ? author.username : ''))
+    .filter(Boolean);
+};
+
 export const listAllExamples = async (): Promise<AllExamples> => {
   let exampleShortHeaders = [];
-  let filters = {
-    allTags: [],
-    defaultTags: [],
-    tagsTree: [],
-  };
+  let filters = buildDefaultFilters();
 
   try {
-    // $FlowFixMe[underconstrained-implicit-instantiation]
-    const response = await axios.get(`${GDevelopAssetApi.baseUrl}/example`, {
-      params: {
-        // Could be changed according to the editor environment, but keep
-        // reading from the "live" data for now.
-        environment: 'live',
-      },
-    });
-    const { exampleShortHeadersUrl, filtersUrl } = response.data;
-
     [exampleShortHeaders, filters] = await Promise.all([
       retryIfFailed(
         { times: 2 },
         // $FlowFixMe[underconstrained-implicit-instantiation]
-        async () => (await axios.get(exampleShortHeadersUrl)).data
+        async () => (await axios.get(REMOTE_EXAMPLES_SHORT_HEADERS_URL)).data
       ),
       // $FlowFixMe[underconstrained-implicit-instantiation]
-      retryIfFailed({ times: 2 }, async () => (await axios.get(filtersUrl)).data),
+      retryIfFailed(
+        { times: 2 },
+        async () => (await axios.get(REMOTE_EXAMPLES_FILTERS_URL)).data
+      ),
     ]);
   } catch (error) {
-    console.warn(
-      'Unable to load remote examples database, trying local bundled examples only:',
-      error
-    );
+    console.warn('Unable to load examples from public CDN, trying API fallback:', error);
+
+    try {
+      // $FlowFixMe[underconstrained-implicit-instantiation]
+      const response = await axios.get(`${GDevelopAssetApi.baseUrl}/example`, {
+        params: {
+          // Could be changed according to the editor environment, but keep
+          // reading from the "live" data for now.
+          environment: 'live',
+        },
+      });
+      const { exampleShortHeadersUrl, filtersUrl } = response.data;
+
+      [exampleShortHeaders, filters] = await Promise.all([
+        retryIfFailed(
+          { times: 2 },
+          // $FlowFixMe[underconstrained-implicit-instantiation]
+          async () => (await axios.get(exampleShortHeadersUrl)).data
+        ),
+        // $FlowFixMe[underconstrained-implicit-instantiation]
+        retryIfFailed(
+          { times: 2 },
+          async () => (await axios.get(filtersUrl)).data
+        ),
+      ]);
+    } catch (apiError) {
+      console.warn(
+        'Unable to load remote examples database, trying local bundled examples only:',
+        apiError
+      );
+    }
   }
 
   let mergedExampleShortHeaders = exampleShortHeaders;
@@ -157,7 +233,12 @@ export const listAllExamples = async (): Promise<AllExamples> => {
 
         mergedFilters = {
           allTags: mergedTags,
-          defaultTags: mergedTags,
+          defaultTags:
+            (filters && filters.defaultTags && filters.defaultTags.length
+              ? filters.defaultTags
+              : localFilters && localFilters.defaultTags
+              ? localFilters.defaultTags
+              : mergedTags),
           tagsTree:
             (filters && filters.tagsTree) ||
             (localFilters && localFilters.tagsTree) ||
@@ -175,7 +256,7 @@ export const listAllExamples = async (): Promise<AllExamples> => {
 
   const allExamples: AllExamples = {
     exampleShortHeaders: mergedExampleShortHeaders,
-    filters: mergedFilters,
+    filters: sanitizeFilters(mergedFilters, mergedExampleShortHeaders),
   };
 
   return allExamples;
@@ -195,6 +276,14 @@ export const getExample = async (
     } catch (error) {
       console.warn('Unable to load local example data:', error);
     }
+  }
+
+  if (exampleShortHeader.slug) {
+    return {
+      ...exampleShortHeader,
+      projectFileUrl: getRemoteExampleProjectFileUrl(exampleShortHeader.slug),
+      authors: getAuthorsUsernames(exampleShortHeader),
+    };
   }
 
   // $FlowFixMe[underconstrained-implicit-instantiation]
