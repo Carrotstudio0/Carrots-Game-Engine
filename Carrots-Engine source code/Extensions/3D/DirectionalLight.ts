@@ -1707,11 +1707,13 @@ namespace gdjs {
 
           private _getPreferredShadowMapType(
             threeRenderer: THREE.WebGLRenderer
-          ): number {
+          ): THREE.ShadowMapType {
             const shouldUseVsm =
               this._pipelineShadowQualityScale >= 1 &&
               this._supportsVsmShadowMap(threeRenderer);
-            return shouldUseVsm ? THREE.VSMShadowMap : THREE.PCFSoftShadowMap;
+            return shouldUseVsm
+              ? (THREE.VSMShadowMap as THREE.ShadowMapType)
+              : (THREE.PCFSoftShadowMap as THREE.ShadowMapType);
           }
 
           private _isUsingVsmShadowMap(target: gdjs.EffectsTarget): boolean {

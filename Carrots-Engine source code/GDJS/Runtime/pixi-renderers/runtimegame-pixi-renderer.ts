@@ -105,16 +105,17 @@ namespace gdjs {
       this._throwIfDisposed();
 
       const pixelRatio = this._getDevicePixelRatio();
+      const useHardwareAntialiasing =
+        this._game.getAntialiasingMode() !== 'none' ||
+        this._game.isInGameEdition();
+      const antialiasEnabled =
+        useHardwareAntialiasing &&
+        (this._game.isAntialisingEnabledOnMobile() ||
+          !gdjs.evtTools.common.isMobile());
       if (typeof THREE !== 'undefined') {
-        const useHardwareAntialiasing =
-          this._game.getAntialiasingMode() !== 'none' ||
-          this._game.isInGameEdition();
         this._threeRenderer = new THREE.WebGLRenderer({
           canvas: gameCanvas,
-          antialias:
-            useHardwareAntialiasing &&
-            (this._game.isAntialisingEnabledOnMobile() ||
-              !gdjs.evtTools.common.isMobile()),
+          antialias: antialiasEnabled,
           preserveDrawingBuffer: true, // Keep to true to allow screenshots.
           powerPreference: 'high-performance',
         });
@@ -148,7 +149,7 @@ namespace gdjs {
           context: this._threeRenderer.getContext(),
           clearBeforeRender: false,
           preserveDrawingBuffer: true, // Keep to true to allow screenshots.
-          antialias: false,
+          antialias: antialiasEnabled,
           backgroundAlpha: 0,
           resolution: pixelRatio,
         });
@@ -161,7 +162,7 @@ namespace gdjs {
           height: this._game.getGameResolutionHeight(),
           view: gameCanvas,
           preserveDrawingBuffer: true,
-          antialias: false,
+          antialias: antialiasEnabled,
           resolution: pixelRatio,
         }) as PIXI.Renderer;
       }

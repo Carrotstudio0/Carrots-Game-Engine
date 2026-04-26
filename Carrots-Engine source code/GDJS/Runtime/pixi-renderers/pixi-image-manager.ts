@@ -19,9 +19,9 @@ namespace gdjs {
   ) => {
     if (!texture) return;
 
-    if (!resourceData.smoothed) {
-      texture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
-    }
+    texture.baseTexture.scaleMode = resourceData.smoothed
+      ? PIXI.SCALE_MODES.LINEAR
+      : PIXI.SCALE_MODES.NEAREST;
   };
 
   const applyThreeTextureSettings = (
