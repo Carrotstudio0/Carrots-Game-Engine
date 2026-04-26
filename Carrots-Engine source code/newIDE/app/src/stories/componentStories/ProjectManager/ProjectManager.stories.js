@@ -35,6 +35,7 @@ const mainMenuCallbacks = {
   onOpenProjectManager: () => action('onOpenProjectManager'),
   onOpenHomePage: () => action('onOpenHomePage'),
   onOpenDebugger: () => action('onOpenDebugger'),
+  onOpenParticleFxEditor: () => action('onOpenParticleFxEditor'),
   onOpenAbout: () => action('onOpenAbout'),
   onOpenPreferences: () => action('onOpenPreferences'),
   onOpenLanguage: () => action('onOpenLanguage'),

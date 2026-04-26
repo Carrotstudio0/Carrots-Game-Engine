@@ -43,6 +43,14 @@ const openAndWaitForExternalEditorWindow = async (
   return externalEditorOutput;
 };
 
+const openStandaloneExternalEditorWindow = async (
+  editorName: 'particlefx'
+): Promise<void> => {
+  if (!ipcRenderer) throw new Error('Not supported.');
+
+  await ipcRenderer.invoke(`${editorName}-load`);
+};
+
 /**
  * Download (or read locally) resources and prepare them to be edited
  * by an external editor.
@@ -308,6 +316,17 @@ const editors: Array<ResourceExternalEditor> = [
         metadataKey: 'yarn',
         resourceKind: 'json',
       });
+    },
+  },
+  {
+    name: 'particlefx-app',
+    createDisplayName: t`Open ParticleFX Editor`,
+    editDisplayName: t`Edit with ParticleFX`,
+    kind: 'json',
+    edit: async () => {
+      sendExternalEditorOpened('particlefx');
+      await openStandaloneExternalEditorWindow('particlefx');
+      return null;
     },
   },
 ];

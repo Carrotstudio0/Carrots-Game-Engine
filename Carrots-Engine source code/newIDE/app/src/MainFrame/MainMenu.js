@@ -47,6 +47,7 @@ export type MainMenuCallbacks = {|
   onOpenHomePage: () => void,
   onOpenCinematicTimeline3D?: () => void,
   onOpenDebugger: () => void,
+  onOpenParticleFxEditor: () => void,
   onOpenAbout: (open?: boolean) => void,
   onOpenPreferences: (open?: boolean) => void,
   onOpenLanguage: (open?: boolean) => void,
@@ -75,6 +76,7 @@ export type MainMenuEvent =
   | 'main-menu-open-home-page'
   | 'main-menu-open-cinematic-timeline-3d'
   | 'main-menu-open-debugger'
+  | 'main-menu-open-particlefx-editor'
   | 'main-menu-open-about'
   | 'main-menu-open-preferences'
   | 'main-menu-open-language'
@@ -102,6 +104,7 @@ const getMainMenuEventCallback = (
     'main-menu-open-cinematic-timeline-3d':
       callbacks.onOpenCinematicTimeline3D,
     'main-menu-open-debugger': callbacks.onOpenDebugger,
+    'main-menu-open-particlefx-editor': callbacks.onOpenParticleFxEditor,
     'main-menu-open-about': callbacks.onOpenAbout,
     'main-menu-open-preferences': callbacks.onOpenPreferences,
     'main-menu-open-language': callbacks.onOpenLanguage,
@@ -249,6 +252,10 @@ export const buildMainMenuDeclarativeTemplate = ({
         label: i18n._(t`Open Debugger`),
         onClickSendEvent: 'main-menu-open-debugger',
         enabled: !!project,
+      },
+      {
+        label: i18n._(t`Open ParticleFX Editor`),
+        onClickSendEvent: 'main-menu-open-particlefx-editor',
       },
       // Some Electron specific menu items, not shown in the web-app.
       ...(!!electron

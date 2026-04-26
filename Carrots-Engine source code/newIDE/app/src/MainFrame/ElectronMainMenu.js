@@ -205,6 +205,11 @@ const ElectronMainMenu = ({
     shouldApply: isFocusedOnMainWindow,
   });
   useIPCEventListener({
+    ipcEvent: 'main-menu-open-particlefx-editor',
+    callback: callbacks.onOpenParticleFxEditor,
+    shouldApply: isFocusedOnMainWindow,
+  });
+  useIPCEventListener({
     ipcEvent: 'main-menu-open-about',
     callback: callbacks.onOpenAbout,
     shouldApply: isFocusedOnMainWindow,

@@ -432,7 +432,7 @@
                       "parameters": [
                         "",
                         "=",
-                        "Object.Behavior::FreeAreaRight()\n+ (CameraX(Object.Layer(), 0) - Object.Behavior::FreeAreaRight())\n* exp(TimeDelta() * LogLeftwardSpeed)",
+                        "Object.Behavior::FreeAreaRight()\n+ (CameraX(Object.Layer(), 0) - Object.Behavior::FreeAreaRight())\n* exp(TimeDelta() * LogLeftwardSpeed\n* (1 + min(2,\nabs(CameraX(Object.Layer(), 0) - Object.Behavior::FreeAreaRight()) / max(1,\nObject.Behavior::FollowFreeAreaLeft() + Object.Behavior::FollowFreeAreaRight() + 32))))",
                         "Object.Layer()",
                         "0"
                       ]
@@ -496,7 +496,7 @@
                       "parameters": [
                         "",
                         "=",
-                        "Object.Behavior::FreeAreaLeft()\n+ (CameraX(Object.Layer(), 0) - Object.Behavior::FreeAreaLeft())\n* exp(TimeDelta() * LogRightwardSpeed)",
+                        "Object.Behavior::FreeAreaLeft()\n+ (CameraX(Object.Layer(), 0) - Object.Behavior::FreeAreaLeft())\n* exp(TimeDelta() * LogRightwardSpeed\n* (1 + min(2,\nabs(CameraX(Object.Layer(), 0) - Object.Behavior::FreeAreaLeft()) / max(1,\nObject.Behavior::FollowFreeAreaLeft() + Object.Behavior::FollowFreeAreaRight() + 32))))",
                         "Object.Layer()",
                         "0"
                       ]
@@ -589,7 +589,7 @@
                       "parameters": [
                         "",
                         "=",
-                        "Object.Behavior::FreeAreaBottom()\n+ (CameraY(Object.Layer(), 0) - Object.Behavior::FreeAreaBottom())\n* exp(TimeDelta() * LogUpwardSpeed)",
+                        "Object.Behavior::FreeAreaBottom()\n+ (CameraY(Object.Layer(), 0) - Object.Behavior::FreeAreaBottom())\n* exp(TimeDelta() * LogUpwardSpeed\n* (1 + min(2,\nabs(CameraY(Object.Layer(), 0) - Object.Behavior::FreeAreaBottom()) / max(1,\nObject.Behavior::FollowFreeAreaTop() + Object.Behavior::FollowFreeAreaBottom() + 32))))",
                         "Object.Layer()",
                         "0"
                       ]
@@ -653,7 +653,7 @@
                       "parameters": [
                         "",
                         "=",
-                        "Object.Behavior::FreeAreaTop()\n+ (CameraY(Object.Layer(), 0) - Object.Behavior::FreeAreaTop())\n* exp(TimeDelta() * LogDownwardSpeed)",
+                        "Object.Behavior::FreeAreaTop()\n+ (CameraY(Object.Layer(), 0) - Object.Behavior::FreeAreaTop())\n* exp(TimeDelta() * LogDownwardSpeed\n* (1 + min(2,\nabs(CameraY(Object.Layer(), 0) - Object.Behavior::FreeAreaTop()) / max(1,\nObject.Behavior::FollowFreeAreaTop() + Object.Behavior::FollowFreeAreaBottom() + 32))))",
                         "Object.Layer()",
                         "0"
                       ]
@@ -1691,7 +1691,7 @@
                   "parameters": [
                     "LogLeftwardSpeed",
                     "=",
-                    "log(1 - Value)"
+                    "log(max(0.0001, 1 - clamp(0, 1, Value)))"
                   ]
                 }
               ]
@@ -1746,7 +1746,7 @@
                   "parameters": [
                     "LogRightwardSpeed",
                     "=",
-                    "log(1 - Value)"
+                    "log(max(0.0001, 1 - clamp(0, 1, Value)))"
                   ]
                 }
               ]
@@ -1801,7 +1801,7 @@
                   "parameters": [
                     "LogDownwardSpeed",
                     "=",
-                    "log(1 - Value)"
+                    "log(max(0.0001, 1 - clamp(0, 1, Value)))"
                   ]
                 }
               ]
@@ -1856,7 +1856,7 @@
                   "parameters": [
                     "LogUpwardSpeed",
                     "=",
-                    "log(1 - Value)"
+                    "log(max(0.0001, 1 - clamp(0, 1, Value)))"
                   ]
                 }
               ]
@@ -4480,7 +4480,7 @@
           "name": "FollowOnY"
         },
         {
-          "value": "0",
+          "value": "48",
           "type": "Number",
           "unit": "Pixel",
           "label": "Follow free area left border",
@@ -4491,7 +4491,7 @@
           "name": "FollowFreeAreaLeft"
         },
         {
-          "value": "0",
+          "value": "48",
           "type": "Number",
           "unit": "Pixel",
           "label": "Follow free area right border",
@@ -4502,7 +4502,7 @@
           "name": "FollowFreeAreaRight"
         },
         {
-          "value": "0",
+          "value": "32",
           "type": "Number",
           "unit": "Pixel",
           "label": "Follow free area top border",
@@ -4513,7 +4513,7 @@
           "name": "FollowFreeAreaTop"
         },
         {
-          "value": "0",
+          "value": "32",
           "type": "Number",
           "unit": "Pixel",
           "label": "Follow free area bottom border",
@@ -4839,7 +4839,7 @@
           "name": "CameraDelayCatchUpDuration"
         },
         {
-          "value": "9000",
+          "value": "12000",
           "type": "Number",
           "unit": "PixelSpeed",
           "label": "Leftward maximum speed",
@@ -4850,7 +4850,7 @@
           "name": "LeftwardSpeedMax"
         },
         {
-          "value": "9000",
+          "value": "12000",
           "type": "Number",
           "unit": "PixelSpeed",
           "label": "Rightward maximum speed",
@@ -4861,7 +4861,7 @@
           "name": "RightwardSpeedMax"
         },
         {
-          "value": "9000",
+          "value": "12000",
           "type": "Number",
           "unit": "PixelSpeed",
           "label": "Upward maximum speed",
@@ -4872,7 +4872,7 @@
           "name": "UpwardSpeedMax"
         },
         {
-          "value": "9000",
+          "value": "12000",
           "type": "Number",
           "unit": "PixelSpeed",
           "label": "Downward maximum speed",
