@@ -968,15 +968,11 @@ void Project::UnserializeAndInsertExtensionsFrom(
   }
 
   // Event-based extensions are serialized independently from the project file.
-  // Reusing the project's saved version here can wrongly trigger legacy
-  // project migrations on modern extension events (for example, GD2.x operator
-  // parameter swaps on variable conditions).
-  const auto savedGdMajorVersion = gdMajorVersion;
-  const auto savedGdMinorVersion = gdMinorVersion;
-  const auto savedGdBuildVersion = gdBuildVersion;
-  gdMajorVersion = gd::VersionWrapper::Major();
-  gdMinorVersion = gd::VersionWrapper::Minor();
-  gdBuildVersion = gd::VersionWrapper::Build();
+  // Legacy instruction compatibility updates should not be applied while their
+  // events are unserialized, otherwise values can be shifted.
+  const auto savedSkipInstructionCompatibilityUpdates =
+      skipInstructionCompatibilityUpdates;
+  skipInstructionCompatibilityUpdates = true;
 
   // Then unserialize functions, behaviors and objects content.
   for (gd::String &extensionName :
@@ -1013,9 +1009,8 @@ void Project::UnserializeAndInsertExtensionsFrom(
     }
   }
 
-  gdMajorVersion = savedGdMajorVersion;
-  gdMinorVersion = savedGdMinorVersion;
-  gdBuildVersion = savedGdBuildVersion;
+  skipInstructionCompatibilityUpdates =
+      savedSkipInstructionCompatibilityUpdates;
 }
 
 std::vector<gd::String> Project::GetUnserializingOrderExtensionNames(
@@ -1338,6 +1333,7 @@ void Project::Init(const gd::Project& game) {
   gdMajorVersion = game.gdMajorVersion;
   gdMinorVersion = game.gdMinorVersion;
   gdBuildVersion = game.gdBuildVersion;
+  skipInstructionCompatibilityUpdates = game.skipInstructionCompatibilityUpdates;
 
   currentPlatform = game.currentPlatform;
   platforms = game.platforms;

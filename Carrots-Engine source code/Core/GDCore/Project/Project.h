@@ -697,6 +697,26 @@ class GD_CORE_API Project {
    */
   unsigned int GetLastSaveGDBuildVersion() { return gdBuildVersion; };
 
+  /**
+   * Enable or disable legacy instruction compatibility updates while
+   * unserializing events.
+   *
+   * This is used when loading events functions extensions, which are serialized
+   * independently from the project file and should not be transformed using the
+   * project's saved version.
+   */
+  void SetSkipInstructionCompatibilityUpdates(bool skip) {
+    skipInstructionCompatibilityUpdates = skip;
+  }
+
+  /**
+   * Return true if legacy instruction compatibility updates are disabled while
+   * unserializing events.
+   */
+  bool ShouldSkipInstructionCompatibilityUpdates() const {
+    return skipInstructionCompatibilityUpdates;
+  }
+
   /** \name External events management
    * Members functions related to external events management.
    */
@@ -1218,6 +1238,7 @@ class GD_CORE_API Project {
   mutable unsigned int gdBuildVersion =
       0;  ///< The GD build version used the last
           ///< time the project was saved.
+  bool skipInstructionCompatibilityUpdates = false;
   bool areEffectsHiddenInEditor =
       false; ///< When false effects are not shown and a default light is used
              ///< for 3D layers.
