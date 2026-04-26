@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../../../../../Extensions/NavMeshBehavior/NavMeshTools.ts"],
+  "sourcesContent": ["namespace gdjs {\r\n  /**\r\n   * Shared helpers for NavMeshBehavior runtime files.\r\n   * Keep this file included so the extension mirrors the PathfindingBehavior layout.\r\n   */\r\n  export const navMeshTools = {\r\n    clamp(value: number, min: number, max: number): number {\r\n      return Math.max(min, Math.min(max, value));\r\n    },\r\n    toBoolean(value: unknown, defaultValue: boolean): boolean {\r\n      if (typeof value === 'boolean') return value;\r\n      if (typeof value === 'number') return value !== 0;\r\n      if (typeof value === 'string') {\r\n        if (value === '1' || value.toLowerCase() === 'true') return true;\r\n        if (value === '0' || value.toLowerCase() === 'false') return false;\r\n      }\r\n      return defaultValue;\r\n    },\r\n  };\r\n}\r\n"],
+  "mappings": "AAAA,GAAU,MAAV,UAAU,EAAV,CAKS,AAAM,eAAe,CAC1B,MAAM,EAAe,EAAa,EAAqB,CACrD,MAAO,MAAK,IAAI,EAAK,KAAK,IAAI,EAAK,KAErC,UAAU,EAAgB,EAAgC,CACxD,GAAI,MAAO,IAAU,UAAW,MAAO,GACvC,GAAI,MAAO,IAAU,SAAU,MAAO,KAAU,EAChD,GAAI,MAAO,IAAU,SAAU,CAC7B,GAAI,IAAU,KAAO,EAAM,gBAAkB,OAAQ,MAAO,GAC5D,GAAI,IAAU,KAAO,EAAM,gBAAkB,QAAS,MAAO,GAE/D,MAAO,OAhBH",
+  "names": []
+}

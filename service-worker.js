@@ -307,7 +307,7 @@ if (workbox) {
   console.log('[ServiceWorker] Workbox loaded successfully');
 
   // Will be replaced by make-service-worker.js to include the proper version.
-  const VersionMetadata = {"version":"1.0.0","gitHash":"f9a840d2bb6ade7abbcde54d823d0348c4b37de3","versionWithHash":"1.0.0-f9a840d2bb6ade7abbcde54d823d0348c4b37de3"};
+  const VersionMetadata = {"version":"1.0.0","gitHash":"274609a7fb7536c4fc350b97ce7ed4997f658dc4","versionWithHash":"1.0.0-274609a7fb7536c4fc350b97ce7ed4997f658dc4"};
 
   // Contrary to other static assets (JS, CSS, HTML), libGD.js/wasm are not
   // versioned in their filenames. Instead, we version using a query string
@@ -330,8 +330,15 @@ if (workbox) {
   /* injection point for manifest files.  */
   workbox.precaching.precacheAndRoute([]);
 
+  // Use the service-worker scope to support sub-path deployments
+  // (for example: /Carrots-Game-Engine/) and avoid navigation 404s on reload.
+  const navigationFallbackPath = new URL(
+    'index.html',
+    self.registration.scope
+  ).pathname;
+
   /* custom cache rules*/
-  workbox.routing.registerNavigationRoute('/index.html', {
+  workbox.routing.registerNavigationRoute(navigationFallbackPath, {
     blacklist: [/^\/_/, /\/[^\/]+\.[^\/]+$/, /^\/browser_sw_preview\//],
   });
 
