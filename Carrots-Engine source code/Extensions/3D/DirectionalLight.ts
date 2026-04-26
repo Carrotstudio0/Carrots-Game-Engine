@@ -87,7 +87,7 @@ namespace gdjs {
     if (!state.realtimeShadowsOnly) {
       return true;
     }
-    return realtimeMultiplier > 0.02;
+    return realtimeMultiplier > 0.0001;
   };
 
   const csmCascadeCount = 3;
@@ -122,7 +122,7 @@ namespace gdjs {
           private _maxShadowDistance: float = 2000;
           private _cascadeSplitLambda: float = 0.78;
           private _shadowFollowLead: float = 0.45;
-          private _shadowFollowCamera: boolean = false;
+          private _shadowFollowCamera: boolean = true;
           private _shadowAutoTuningEnabled: boolean = true;
           private _attachedObjectName: string = '';
           private _attachedOffsetX: float = 0;
@@ -275,7 +275,7 @@ namespace gdjs {
                 : !!effectData.booleanParameters.shadowStabilization;
             this._shadowFollowCamera =
               effectData.booleanParameters.shadowFollowCamera === undefined
-                ? false
+                ? true
                 : !!effectData.booleanParameters.shadowFollowCamera;
             this._shadowAutoTuningEnabled =
               effectData.booleanParameters.shadowAutoTuning === undefined
@@ -770,9 +770,12 @@ namespace gdjs {
               cameraNear + 1,
               layer.getCamera3DFarPlaneDistance()
             );
+            const requestedMaxShadowDistance = this._shadowFollowCamera
+              ? Math.max(this._maxShadowDistance, cameraFar)
+              : this._maxShadowDistance;
             const safeMaxShadowDistance = Math.max(
               cameraNear + 1,
-              Math.min(this._maxShadowDistance, cameraFar)
+              Math.min(requestedMaxShadowDistance, cameraFar)
             );
             let previousSplit = cameraNear;
             for (
@@ -1302,7 +1305,10 @@ namespace gdjs {
             light.target.position.set(targetX, targetY, targetZ);
           }
 
-          private _applyCascadeShadowTuning(cascadeIndex: integer): void {
+          private _applyCascadeShadowTuning(
+            cascadeIndex: integer,
+            useVsmShadowFiltering: boolean
+          ): void {
             const light = this._lights[cascadeIndex];
             const cascadeMapSize = this._cascadeMapSizes[cascadeIndex];
             const cascadeFrustumSize = this._cascadeFrustumSizes[cascadeIndex];
@@ -1344,13 +1350,26 @@ namespace gdjs {
               depthRatio * 0.65 +
               (qualityScale < 1 ? (1 - qualityScale) * 0.4 : 0);
             light.shadow.radius = baseRadius * radiusMultiplier;
+            this._setCascadeShadowBlurSamples(
+              light,
+              cascadeIndex,
+              useVsmShadowFiltering
+            );
           }
 
-          private _applyManualShadowTuning(cascadeIndex: integer): void {
+          private _applyManualShadowTuning(
+            cascadeIndex: integer,
+            useVsmShadowFiltering: boolean
+          ): void {
             const light = this._lights[cascadeIndex];
             light.shadow.bias = -Math.max(0, this._minimumShadowBias);
             light.shadow.normalBias = Math.max(0, this._shadowNormalBias);
             light.shadow.radius = Math.max(0, this._shadowRadius);
+            this._setCascadeShadowBlurSamples(
+              light,
+              cascadeIndex,
+              useVsmShadowFiltering
+            );
           }
 
           private _computeLightDirection(
@@ -1581,6 +1600,22 @@ namespace gdjs {
               this._staticAnchorX = cameraX;
               this._staticAnchorY = cameraY;
               this._staticAnchorZ = cameraZ;
+            } else {
+              const deltaX = cameraX - this._staticAnchorX;
+              const deltaY = cameraY - this._staticAnchorY;
+              const deltaZ = cameraZ - this._staticAnchorZ;
+              const recenterThreshold = Math.max(
+                160,
+                this._maxShadowDistance * 0.45
+              );
+              if (
+                deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ >
+                recenterThreshold * recenterThreshold
+              ) {
+                this._staticAnchorX = cameraX;
+                this._staticAnchorY = cameraY;
+                this._staticAnchorZ = cameraZ;
+              }
             }
             return [
               this._staticAnchorX,
@@ -1589,16 +1624,109 @@ namespace gdjs {
             ];
           }
 
-          private _ensureSoftShadowRenderer(target: gdjs.EffectsTarget): void {
-            const runtimeScene = target.getRuntimeScene();
-            if (!runtimeScene || !runtimeScene.getGame) {
+          private _setCascadeShadowBlurSamples(
+            light: THREE.DirectionalLight,
+            cascadeIndex: integer,
+            useVsmShadowFiltering: boolean
+          ): void {
+            const shadowWithBlurSamples = light.shadow as THREE.LightShadow & {
+              blurSamples?: number;
+            };
+            if (!useVsmShadowFiltering) {
+              if (shadowWithBlurSamples.blurSamples !== undefined) {
+                shadowWithBlurSamples.blurSamples = 8;
+              }
               return;
+            }
+            const qualityScale = Math.max(
+              0.35,
+              Math.min(2, this._pipelineShadowQualityScale)
+            );
+            const baseSamples =
+              cascadeIndex === 0 ? 14 : cascadeIndex === 1 ? 10 : 7;
+            const scaledSamples =
+              baseSamples * (qualityScale >= 1 ? 1 + (qualityScale - 1) * 0.6 : 1);
+            shadowWithBlurSamples.blurSamples = Math.round(
+              gdjs.evtTools.common.clamp(6, 24, scaledSamples)
+            );
+          }
+
+          private _getThreeRenderer(
+            target: gdjs.EffectsTarget
+          ): THREE.WebGLRenderer | null {
+            const runtimeScene = target.getRuntimeScene
+              ? target.getRuntimeScene()
+              : null;
+            if (!runtimeScene || !runtimeScene.getGame) {
+              return null;
             }
             const gameRenderer = runtimeScene.getGame().getRenderer();
             if (!gameRenderer || !(gameRenderer as any).getThreeRenderer) {
-              return;
+              return null;
             }
-            const threeRenderer = (gameRenderer as any).getThreeRenderer();
+            return (gameRenderer as any).getThreeRenderer() || null;
+          }
+
+          private _supportsVsmShadowMap(
+            threeRenderer: THREE.WebGLRenderer
+          ): boolean {
+            if (typeof THREE.VSMShadowMap !== 'number') {
+              return false;
+            }
+            const rendererCapabilities = threeRenderer.capabilities as
+              | { isWebGL2?: boolean }
+              | undefined;
+            const rendererWithExtensions = threeRenderer as THREE.WebGLRenderer & {
+              extensions?: {
+                has?: (extensionName: string) => boolean;
+              };
+            };
+            const extensionHelper = rendererWithExtensions.extensions;
+            if (!extensionHelper || typeof extensionHelper.has !== 'function') {
+              return false;
+            }
+            const hasRequiredFloatColorBuffer =
+              extensionHelper.has('EXT_color_buffer_float') ||
+              extensionHelper.has('EXT_color_buffer_half_float');
+            if (
+              rendererCapabilities &&
+              rendererCapabilities.isWebGL2 &&
+              !hasRequiredFloatColorBuffer
+            ) {
+              return false;
+            }
+            if (rendererCapabilities && rendererCapabilities.isWebGL2) {
+              return true;
+            }
+            return (
+              hasRequiredFloatColorBuffer &&
+              extensionHelper.has('OES_texture_float') &&
+              extensionHelper.has('OES_texture_float_linear')
+            );
+          }
+
+          private _getPreferredShadowMapType(
+            threeRenderer: THREE.WebGLRenderer
+          ): number {
+            const shouldUseVsm =
+              this._pipelineShadowQualityScale >= 1 &&
+              this._supportsVsmShadowMap(threeRenderer);
+            return shouldUseVsm ? THREE.VSMShadowMap : THREE.PCFSoftShadowMap;
+          }
+
+          private _isUsingVsmShadowMap(target: gdjs.EffectsTarget): boolean {
+            if (typeof THREE.VSMShadowMap !== 'number') {
+              return false;
+            }
+            const threeRenderer = this._getThreeRenderer(target);
+            if (!threeRenderer || !threeRenderer.shadowMap) {
+              return false;
+            }
+            return threeRenderer.shadowMap.type === THREE.VSMShadowMap;
+          }
+
+          private _ensureSoftShadowRenderer(target: gdjs.EffectsTarget): void {
+            const threeRenderer = this._getThreeRenderer(target);
             if (!threeRenderer || !threeRenderer.shadowMap) {
               return;
             }
@@ -1621,9 +1749,15 @@ namespace gdjs {
 
             threeRenderer.shadowMap.enabled = true;
             threeRenderer.shadowMap.autoUpdate = true;
-            const preferredShadowType = THREE.PCFSoftShadowMap;
+            const preferredShadowType =
+              this._getPreferredShadowMapType(threeRenderer);
             if (threeRenderer.shadowMap.type !== preferredShadowType) {
               threeRenderer.shadowMap.type = preferredShadowType;
+              threeRenderer.shadowMap.needsUpdate = true;
+              this._shadowMapDirty = true;
+              for (const light of this._lights) {
+                light.shadow.needsUpdate = true;
+              }
             }
           }
 
@@ -1814,6 +1948,7 @@ namespace gdjs {
             this._ensureSoftShadowRenderer(target);
             this._updateShadowCamera(layer);
             this._updateShadowMapSize();
+            const useVsmShadowFiltering = this._isUsingVsmShadowMap(target);
             const lightSpaceBasis = this._computeLightSpaceBasis(
               attachedObjectForDirection
             );
@@ -1849,9 +1984,15 @@ namespace gdjs {
                 this._pipelineAllowsRealtimeShadows
               ) {
                 if (this._shadowAutoTuningEnabled) {
-                  this._applyCascadeShadowTuning(cascadeIndex);
+                  this._applyCascadeShadowTuning(
+                    cascadeIndex,
+                    useVsmShadowFiltering
+                  );
                 } else {
-                  this._applyManualShadowTuning(cascadeIndex);
+                  this._applyManualShadowTuning(
+                    cascadeIndex,
+                    useVsmShadowFiltering
+                  );
                 }
               }
 
@@ -2082,7 +2223,7 @@ namespace gdjs {
               0,
               Math.min(2, syncData.sfl ?? 0.45)
             );
-            this._shadowFollowCamera = syncData.sfc ?? false;
+            this._shadowFollowCamera = syncData.sfc ?? true;
             this._shadowAutoTuningEnabled = syncData.sat ?? true;
             this._attachedObjectName = syncData.ao || '';
             this._attachedOffsetX = syncData.ox ?? 0;

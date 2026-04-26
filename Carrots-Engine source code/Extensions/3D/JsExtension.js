@@ -7340,11 +7340,11 @@ module.exports = {
         .setAdvanced(true);
       properties
         .getOrCreate('shadowFollowCamera')
-        .setValue('false')
+        .setValue('true')
         .setLabel(_('Shadows follow camera'))
         .setDescription(
           _(
-            'If disabled, directional shadow cascades stay fixed in world space (no shadow movement with the player).'
+            'Recommended to keep enabled for continuous sunlight shadows. If disabled, directional shadow cascades stay fixed in world space and only recenter when the camera moves far away.'
           )
         )
         .setType('boolean')
