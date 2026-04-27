@@ -1,0 +1,2 @@
+var gdjs;(function(p){let m;(function(t){let r;(function(f){let s;(function(d){d.call=(g,x,i,e)=>firebase.functions().httpsCallable(g)(x).then(n=>{i&&i.fromJSObject(n.data),typeof e!="undefined"&&e.setString("ok")}).catch(n=>{typeof e!="undefined"&&e.setString(n.message)})})(s=f.functions||(f.functions={}))})(r=t.firebaseTools||(t.firebaseTools={}))})(m=p.evtTools||(p.evtTools={}))})(gdjs||(gdjs={}));
+//# sourceMappingURL=D_functionstools.js.map

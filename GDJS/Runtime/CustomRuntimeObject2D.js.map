@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../../../GDJS/Runtime/CustomRuntimeObject2D.ts"],
+  "sourcesContent": ["namespace gdjs {\r\n  /**\r\n   * Base class for 2D custom objects.\r\n   * @category Objects > Custom Object\r\n   */\r\n  export class CustomRuntimeObject2D extends gdjs.CustomRuntimeObject {\r\n    constructor(\r\n      parent: gdjs.RuntimeInstanceContainer,\r\n      objectData: ObjectData & CustomObjectConfiguration,\r\n      instanceData?: InstanceData\r\n    ) {\r\n      super(parent, objectData, instanceData);\r\n    }\r\n\r\n    protected override _createRender(): gdjs.CustomRuntimeObject2DRenderer {\r\n      const parent = this._runtimeScene;\r\n      return new gdjs.CustomRuntimeObject2DRenderer(\r\n        this,\r\n        this._instanceContainer,\r\n        parent\r\n      );\r\n    }\r\n\r\n    protected override _reinitializeRenderer(): void {\r\n      this.getRenderer().reinitialize(this, this.getParent());\r\n    }\r\n\r\n    override getRenderer(): gdjs.CustomRuntimeObject2DRenderer {\r\n      return super.getRenderer() as gdjs.CustomRuntimeObject2DRenderer;\r\n    }\r\n\r\n    override getRendererObject() {\r\n      return this.getRenderer().getRendererObject();\r\n    }\r\n  }\r\n}\r\n"],
+  "mappings": "AAAA,GAAU,MAAV,UAAU,EAAV,CAKS,eAAoC,GAAK,mBAAoB,CAClE,YACE,EACA,EACA,EACA,CACA,MAAM,EAAQ,EAAY,GAGT,eAAoD,CACrE,KAAM,GAAS,KAAK,cACpB,MAAO,IAAI,GAAK,8BACd,KACA,KAAK,mBACL,GAIe,uBAA8B,CAC/C,KAAK,cAAc,aAAa,KAAM,KAAK,aAGpC,aAAkD,CACzD,MAAO,OAAM,cAGN,mBAAoB,CAC3B,MAAO,MAAK,cAAc,qBA3BvB,EAAM,0BALL",
+  "names": []
+}

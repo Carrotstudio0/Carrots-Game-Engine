@@ -1,0 +1,2 @@
+var gdjs;(function(t){class r extends t.RuntimeBehavior{constructor(e,i,n){super(e,i,n);this.object=n}usesLifecycleFunction(){return!1}applyBehaviorOverriding(e){return!0}onDeActivate(){}onDestroy(){}doStepPreEvents(e){}doStepPostEvents(e){}getText(){return this.object.getText()}setText(e){this.object.setText(e)}}t.TextContainerBehavior=r,t.registerBehavior("TextContainerCapability::TextContainerBehavior",t.TextContainerBehavior)})(gdjs||(gdjs={}));
+//# sourceMappingURL=TextContainerBehavior.js.map

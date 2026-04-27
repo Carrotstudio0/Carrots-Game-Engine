@@ -1,0 +1,81 @@
+# This file contains functions that are used to build
+# the CMakeLists.txt for an extension:
+# Most of the time, an extension CMakeLists.txt should
+# consist in a few lines containing calls to these functions.
+
+macro(gd_add_extension_includes)
+	include_directories(${GDCORE_include_dir})
+endmacro()
+
+# Add common defines for a target that will be a GD extension
+function(gd_add_extension_definitions target_name)
+
+	# Define used in GD to check the build type
+	if("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
+		add_definitions(-DDEBUG)
+	else()
+		add_definitions(-DRELEASE)
+	endif()
+
+	set(${target_name}_extra_definitions "${${target_name}_extra_definitions} GD_IDE_ONLY=1;" PARENT_SCOPE)
+
+	# Define used in GD to identify the environment
+	if(EMSCRIPTEN)
+		add_definitions(-DEMSCRIPTEN)
+	elseif(WIN32)
+		add_definitions(-DWINDOWS)
+	elseif(APPLE)
+		add_definitions(-DMACOS)
+	else()
+		add_definitions(-DLINUX)
+	endif()
+
+	if(WIN32) # Windows specific defines
+		add_definitions("-DGD_API=__declspec(dllimport)")
+		add_definitions("-DGD_CORE_API=__declspec(dllimport)")
+		add_definitions("-DGD_EXTENSION_API=__declspec(dllexport)")
+		add_definitions(-D__GNUWIN32__)
+	else()
+		add_definitions(-DGD_API=)
+		add_definitions(-DGD_CORE_API=)
+		add_definitions(-DGD_EXTENSION_API=)
+	endif()
+endfunction()
+
+# Add a GD extension target, that will produce the final library file.
+function(gd_add_extension_target target_name source_files)
+	if(target_name STREQUAL "")
+		message(ERROR "You called gd_add_extension_target without specifying a target name")
+	endif()
+
+	set(platform_directory ${ARGV2})
+	if(NOT platform_directory)
+		set(platform_directory "CppPlatform")
+	endif()
+
+	if(EMSCRIPTEN)
+		# Emscripten treats all libraries as static libraries
+		add_library(${target_name} STATIC ${source_files})
+	else()
+		add_library(${target_name} SHARED ${source_files})
+	endif()
+	set_target_properties(${target_name} PROPERTIES PREFIX "")
+	set_target_properties(${target_name} PROPERTIES COMPILE_DEFINITIONS "${${target_name}_extra_definitions}")
+	set_target_properties(${target_name} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${GD_base_dir}/Binaries/Output/${CMAKE_BUILD_TYPE}_${CMAKE_SYSTEM_NAME}/${platform_directory}/Extensions")
+	set_target_properties(${target_name} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${GD_base_dir}/Binaries/Output/${CMAKE_BUILD_TYPE}_${CMAKE_SYSTEM_NAME}/${platform_directory}/Extensions")
+	set_target_properties(${target_name} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${GD_base_dir}/Binaries/Output/${CMAKE_BUILD_TYPE}_${CMAKE_SYSTEM_NAME}/${platform_directory}/Extensions")
+	if(WIN32) # GD extensions have special suffix in their filenames.
+		set_target_properties(${target_name} PROPERTIES SUFFIX ".xgdwe")
+	elseif(EMSCRIPTEN)
+		set_target_properties(${target_name} PROPERTIES SUFFIX ".bc")
+	else()
+		set_target_properties(${target_name} PROPERTIES SUFFIX ".xgde")
+	endif()
+endfunction()
+
+# Link default libraries with a target that is a GD extension
+function(gd_extension_link_libraries target_name)
+	if(NOT EMSCRIPTEN)
+		target_link_libraries(${target_name} GDCore)
+	endif()
+endfunction()

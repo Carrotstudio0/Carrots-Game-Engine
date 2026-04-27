@@ -1,0 +1,363 @@
+{
+  "tier": "reviewed",
+  "authorIds": [
+    "Zu55H5hcb9YmZTltIVOTAFDJQyB2"
+  ],
+  "extensionNamespace": "",
+  "fullName": "Advanced 3D Features",
+  "name": "A3F",
+  "version": "1.4.1",
+  "url": "https://resources.gdevelop-app.com/extensions/A3F.json",
+  "headerUrl": "https://resources.gdevelop-app.com/extensions/A3F-header.json",
+  "tags": "3d,movement,rotate,material,light,shadow,camera,opacity,distance,bone,morph,sound,audio",
+  "category": "General",
+  "previewIconUrl": "https://asset-resources.gdevelop.io/public-resources/Icons/Line Hero Pack/Master/SVG/Graphic Design/f4c71080f9213188ee5556b1acb45ad46fe6e5225947301c363105b080fca008_Graphic Design_3d_cube_isometric.svg",
+  "gdevelopVersion": "",
+  "shortDescription": "This extension adds features to the built-in 3D.",
+  "eventsBasedBehaviorsCount": 3,
+  "eventsFunctionsCount": 43,
+  "helpPath": "https://pandako.itch.io/a3f",
+  "eventsBasedBehaviors": [
+    {
+      "description": "Use this when you want to set the initial properties of a 3D object.",
+      "fullName": "Advanced 3D Initial Properties",
+      "name": "A3I",
+      "objectType": "",
+      "eventsFunctions": [
+        {
+          "name": "onCreated",
+          "fullName": "",
+          "description": "",
+          "functionType": "Action"
+        }
+      ]
+    },
+    {
+      "description": "⚠️ 3D Lights are highly loaded.",
+      "fullName": "Advanced 3D Light",
+      "name": "A3L",
+      "objectType": "",
+      "eventsFunctions": [
+        {
+          "name": "onCreated",
+          "fullName": "",
+          "description": "",
+          "functionType": "Action"
+        },
+        {
+          "name": "onDestroy",
+          "fullName": "",
+          "description": "",
+          "functionType": "Action"
+        },
+        {
+          "name": "ChangeColor",
+          "fullName": "💡Change Light Color",
+          "description": "Gradually changes the color of the 3D Light.",
+          "functionType": "Action"
+        },
+        {
+          "name": "ChangeIntensity",
+          "fullName": "💡Change Light Intensity",
+          "description": "Gradually changes the intensity of the 3D Light.",
+          "functionType": "Action"
+        }
+      ]
+    },
+    {
+      "description": "Use this when you want to play sound from a 3D object.",
+      "fullName": "Advanced 3D Sound",
+      "name": "A3S",
+      "objectType": "",
+      "eventsFunctions": [
+        {
+          "name": "onCreated",
+          "fullName": "",
+          "description": "",
+          "functionType": "Action"
+        },
+        {
+          "name": "onDestroy",
+          "fullName": "",
+          "description": "",
+          "functionType": "Action"
+        },
+        {
+          "name": "Play",
+          "fullName": "🔊Play sound",
+          "description": "Play sound from object center point.",
+          "functionType": "Action"
+        },
+        {
+          "name": "StopAll",
+          "fullName": "🔊Stop all sounds of object",
+          "description": "Stop all sounds emitted by this object.",
+          "functionType": "Action"
+        }
+      ]
+    }
+  ],
+  "eventsFunctions": [
+    {
+      "name": "onFirstSceneLoaded",
+      "fullName": "",
+      "description": "",
+      "functionType": "Action"
+    },
+    {
+      "name": "onSceneLoaded",
+      "fullName": "",
+      "description": "",
+      "functionType": "Action"
+    },
+    {
+      "name": "onSceneUnloading",
+      "fullName": "",
+      "description": "",
+      "functionType": "Action"
+    },
+    {
+      "name": "Initialize",
+      "fullName": "Initialize",
+      "description": "",
+      "functionType": "Action"
+    },
+    {
+      "name": "LocalTranslateCameraDistance",
+      "fullName": "↔️Local translate camera by distance",
+      "description": "Translates the camera along its local axis.",
+      "functionType": "Action"
+    },
+    {
+      "name": "LocalTranslateCameraSpeed",
+      "fullName": "↔️Local translate camera by speed",
+      "description": "Translates the camera along its local axis.",
+      "functionType": "Action"
+    },
+    {
+      "name": "LocalRotateCameraAngle",
+      "fullName": "🔄️Local rotate camera by angle",
+      "description": "Rotates the camera along its local axis.",
+      "functionType": "Action"
+    },
+    {
+      "name": "LocalRotateCameraSpeed",
+      "fullName": "🔄️Local rotate camera by speed",
+      "description": "Rotates the camera along its local axis.",
+      "functionType": "Action"
+    },
+    {
+      "name": "LerpCamera",
+      "fullName": "🔜Linearly interpolate camera",
+      "description": "Moves and/or rotates a 3D camera closer to another object’s position and rotation using linear and spherical linear interpolation.\nUse the \"factor\" parameter to specify how much the camera should move and/or rotate (0 = no change, 0.5 = halfway, 1 = exact match).",
+      "functionType": "Action"
+    },
+    {
+      "name": "OverlapObjects",
+      "fullName": "📚Overlap objects V1 (Deprecated)",
+      "description": "⚠️ Deprecated.\nOverlay the object on the 3D object.\n⚠️ For objects to overlap correctly, they must be on a different layer than the 3D object.",
+      "functionType": "Action"
+    },
+    {
+      "name": "OverlapObjectsV2",
+      "fullName": "📚Overlap objects",
+      "description": "Overlay the object on the 3D object.\n⚠️ For objects to overlap correctly, they must be on a different layer than the 3D object. In the layer properties, the 'Default camera behavior' under 'Camera positioning' must be set to 'Keep top-left corner fixed'.",
+      "functionType": "Action"
+    },
+    {
+      "name": "LocalTranslateDistance",
+      "fullName": "↔️Local translate by distance",
+      "description": "Translates the 3D object along its local axis.",
+      "functionType": "Action"
+    },
+    {
+      "name": "LocalTranslateSpeed",
+      "fullName": "↔️Local translate by speed",
+      "description": "Translates the 3D object along its local axis.",
+      "functionType": "Action"
+    },
+    {
+      "name": "LocalRotateAngle",
+      "fullName": "🔄️Local rotate by angle",
+      "description": "Rotates the 3D object along its local axis.",
+      "functionType": "Action"
+    },
+    {
+      "name": "LocalRotateSpeed",
+      "fullName": "🔄️Local rotate by speed",
+      "description": "Rotates the 3D object along its local axis.",
+      "functionType": "Action"
+    },
+    {
+      "name": "LerpObject",
+      "fullName": "🔜Linearly interpolate 3D object",
+      "description": "Moves and/or rotates a 3D object closer to another object’s position and rotation using linear and spherical linear interpolation.\nUse the \"factor\" parameter to specify how much the object should move and/or rotate (0 = no change, 0.5 = halfway, 1 = exact match).",
+      "functionType": "Action"
+    },
+    {
+      "name": "LookAtPosition",
+      "fullName": "👀Look at position",
+      "description": "Rotates the 3D object so that its local +X direction points toward a specified 3D position.",
+      "functionType": "Action"
+    },
+    {
+      "name": "LookAtObject",
+      "fullName": "👀Look at 3D object",
+      "description": "Rotates the 3D object so that its local +X direction points toward the target 3D object.",
+      "functionType": "Action"
+    },
+    {
+      "name": "AddAxesHelper",
+      "fullName": "🛟Add axes helper",
+      "description": "The axis helper is added to the 3D object.\nNote that it is added to the center point, not the origin point.",
+      "functionType": "Action"
+    },
+    {
+      "name": "ChangeBlendMode",
+      "fullName": "🧱Change blend mode V1 (Deprecated)",
+      "description": "⚠️ Deprecated.\nChange the blend mode of the 3D objects and all their children.\nThis affects all 3d objects that use the same material.",
+      "functionType": "Action"
+    },
+    {
+      "name": "ChangeBlendModeV2",
+      "fullName": "🧱Change blend mode",
+      "description": "Change the blend mode of the 3D objects and all their children.\nThis affects all 3d objects that use the same material.",
+      "functionType": "Action"
+    },
+    {
+      "name": "Opacity",
+      "fullName": "🥛Opacity",
+      "description": "Returns the opacity of the 3D object, or the first opacity found among its children.",
+      "functionType": "Expression"
+    },
+    {
+      "name": "CheckOpacity",
+      "fullName": "🥛Check opacity",
+      "description": "Check the opacity of the 3D object, or the first opacity found among its children.\nThis condition can be used for non-3D objects as well, but in those cases the opacity is always compared as 255.",
+      "functionType": "Condition"
+    },
+    {
+      "name": "ChangeOpacity",
+      "fullName": "🥛Change opacity V1 (Deprecated)",
+      "description": "⚠️ Deprecated.\nChange the opacity of the 3D objects and all their children.\nThis affects all 3D objects that use the same material.",
+      "functionType": "Action"
+    },
+    {
+      "name": "ChangeOpacityV2",
+      "fullName": "🥛Change opacity",
+      "description": "Change the opacity of the 3D objects and all their children.",
+      "functionType": "Action"
+    },
+    {
+      "name": "ChangeShadow",
+      "fullName": "👤Change 3D shadow",
+      "description": "Change the shadow settings of 3D objects.\nIf both \"Cast Shadow\" and \"Receive Shadow\" are enabled, striped patterns are likely to occur in the shadow.",
+      "functionType": "Action"
+    },
+    {
+      "name": "CheckDistance",
+      "fullName": "↔️Check the distance between two objects in 3D V1 (Deprecated)",
+      "description": "⚠️ Deprecated.\nChecks the distance between two objects (origin points) in 3D.",
+      "functionType": "Condition"
+    },
+    {
+      "name": "DistanceObjects",
+      "fullName": "↔️Distance between objects in 3D V1 (Deprecated)",
+      "description": "⚠️ Deprecated.\nReturns the distance between objects in 3D. (Distance between origin points)\nThis expression always returns 0 when a 2D object is selected.",
+      "functionType": "Expression"
+    },
+    {
+      "name": "OutputHierarchy",
+      "fullName": "🛟Output children hierarchy",
+      "description": "Outputs the hierarchy of the 3D object's children to the console.\nIt is recommended to check in the developer tools console, where line breaks and indentation are displayed, rather than in GDevelop's debugger console.\nUse the following shortcut in the preview window to open the Developer Tools and select the Console tab:\nCtrl + Shift + I (Cmd + Option + I).",
+      "functionType": "Action"
+    },
+    {
+      "name": "LerpTowardChild",
+      "fullName": "🔜Linearly interpolate toward child of 3D object (Experimental)",
+      "description": "Linearly interpolates 3D objects toward a child of another 3D object.\nThe names of the children must be checked in advance using the \"🛟Output children hierarchy\" action or a 3D modeling tool.",
+      "functionType": "Action"
+    },
+    {
+      "name": "ChildRotateAngle",
+      "fullName": "🔄️Rotate child by angle",
+      "description": "Rotate a child of the 3D objects along its local axes.\nThe names of the children must be checked in advance using the \"🛟Output children hierarchy\" action or a 3D modeling tool.\nThis can also be used to rotate bones.\nNote that if a child is affected by a playing animation, it will override this change. In that case, please pause the animation.",
+      "functionType": "Action"
+    },
+    {
+      "name": "ChildRotateSpeed",
+      "fullName": "🔄️Rotate child by speed",
+      "description": "Rotate a child of the 3D objects along its local axes.\nThe names of the children must be checked in advance using the \"🛟Output children hierarchy\" action or a 3D modeling tool.\nThis can also be used to rotate bones.\nNote that if a child is affected by a playing animation, it will override this change. In that case, please pause the animation.",
+      "functionType": "Action"
+    },
+    {
+      "name": "ChangeChildAngle",
+      "fullName": "🔄️Change child angle",
+      "description": "Changes the angle of the 3D object's child along the child’s local axes.\nThe names of the children must be checked in advance using the \"🛟Output children hierarchy\" action or a 3D modeling tool.\nThis can also be used to rotate bones.\nNote that if a child is affected by a playing animation, it will override this change. In that case, please pause the animation.",
+      "functionType": "Action"
+    },
+    {
+      "name": "OutputMorphTarget",
+      "fullName": "🛟Output morph target names",
+      "description": "Outputs the morph target names of the 3D object to the console.\nIt is recommended to check in the developer tools console, where line breaks and indentation are displayed, rather than in GDevelop's debugger console.\nUse the following shortcut in the preview window to open the Developer Tools and select the Console tab:\nCtrl + Shift + I (Cmd + Option + I).",
+      "functionType": "Action"
+    },
+    {
+      "name": "ChangeMorphTarget",
+      "fullName": "😀Change morph target value",
+      "description": "Change morph target values of 3D objects.\nThe names of the morph target must be checked in advance using the \"🛟Output morph target names\" action or a 3D modeling tool.\nNote that if a morph target is affected by a playing animation, it will override this change. In that case, please pause the animation.",
+      "functionType": "Action"
+    },
+    {
+      "name": "ResetMorphTargets",
+      "fullName": "😀Reset morph targets",
+      "description": "Sets all morph target values of the 3D object to 0.\nNote that if a morph target is affected by a playing animation, it will override this change. In that case, please pause the animation.",
+      "functionType": "Action"
+    },
+    {
+      "name": "NormalizedDirection",
+      "fullName": "↗️Store normalized direction in variable",
+      "description": "Stores the normalized direction vector of the 3D object in a variable.\nThe variable will be a structure variable with child variables x, y, and z.\nNote that the variable will only store the value of the first referenced 3D object.",
+      "functionType": "Action"
+    },
+    {
+      "name": "SetListenerForCamera",
+      "fullName": "👂️Set listener for camera",
+      "description": "Set a listener on the 3D camera.\nOnly one listener can exist in the scene at any time.\nEach time the scene starts, the listener is automatically set on the base layer’s camera.",
+      "functionType": "Action"
+    },
+    {
+      "name": "SetListenerForObject",
+      "fullName": "👂️Set listener for object",
+      "description": "Set a listener at the center point of the first 3D object found.\nThis listener assumes that forward is X+, up is Z+, and right is Y+.\nTherefore, if the object on which the listener is set is unrotated, it must have X+ as forward, Z+ as up, and Y+ as right; otherwise, the sound will not be heard from the correct direction.\nOnly one listener can exist in the scene at any time.\nEach time the scene starts, the listener is automatically set on the base layer’s camera.",
+      "functionType": "Action"
+    },
+    {
+      "name": "AngleToObjects",
+      "fullName": "↗️Angle to 3D objects",
+      "description": "Return the unsigned angle (in degrees, range 0 to 180) between the object's local X-axis and the direction to the target in 3D space.\nThis expression always returns 0 when a 2D object is selected.",
+      "functionType": "Expression"
+    },
+    {
+      "name": "DistanceObjectsV2",
+      "fullName": "↔️Distance between objects in 3D",
+      "description": "Returns the distance between objects in 3D.\nThis expression always returns 0 when a 2D object is selected.",
+      "functionType": "Expression"
+    },
+    {
+      "name": "CheckAngleToObjects",
+      "fullName": "↗️Check angle to 3D objects",
+      "description": "Checks the unsigned angle (in degrees, range 0 to 180) between the object's local X-axis and the direction to the target in 3D space.",
+      "functionType": "Condition"
+    },
+    {
+      "name": "CheckDistanceV2",
+      "fullName": "↔️Check distance between two objects in 3D",
+      "description": "Checks the distance between two objects in 3D.",
+      "functionType": "Condition"
+    }
+  ],
+  "eventsBasedObjects": [],
+  "description": "3D features added by this extension:  \n- Lighting\n- Light color and intensity control\n- Shadows\n- 3D sound\n- Local translation and rotation\n- Blend modes\n- Opacity\n- Overlay objects\n- Linear interpolation\n- Look At\n- Distance between 3D objects\n- Angle between 3D objects\n- Bone control\n- Morph target control\n- Access child objects of 3D objects\n- Normalized direction\n- Axes helper\n- Light helper\n- Shadow range helper\n- Hierarchy output",
+  "iconUrl": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAyMy4wLjMsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiA2LjAwIEJ1aWxkIDApICAtLT4NCjxzdmcgdmVyc2lvbj0iMS4xIiBpZD0iSWNvbnMiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4Ig0KCSB2aWV3Qm94PSIwIDAgMzIgMzIiIHN0eWxlPSJlbmFibGUtYmFja2dyb3VuZDpuZXcgMCAwIDMyIDMyOyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+DQo8c3R5bGUgdHlwZT0idGV4dC9jc3MiPg0KCS5zdDB7ZmlsbDpub25lO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1saW5lam9pbjpyb3VuZDtzdHJva2UtbWl0ZXJsaW1pdDoxMDt9DQoJLnN0MXtmaWxsOm5vbmU7c3Ryb2tlOiMwMDAwMDA7c3Ryb2tlLXdpZHRoOjI7c3Ryb2tlLWxpbmVjYXA6cm91bmQ7c3Ryb2tlLWxpbmVqb2luOnJvdW5kO30NCgkuc3Qye2ZpbGw6bm9uZTtzdHJva2U6IzAwMDAwMDtzdHJva2Utd2lkdGg6MjtzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbGluZWpvaW46cm91bmQ7c3Ryb2tlLWRhc2hhcnJheTo2LDY7fQ0KCS5zdDN7ZmlsbDpub25lO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1saW5lam9pbjpyb3VuZDtzdHJva2UtZGFzaGFycmF5OjQsNDt9DQoJLnN0NHtmaWxsOm5vbmU7c3Ryb2tlOiMwMDAwMDA7c3Ryb2tlLXdpZHRoOjI7c3Ryb2tlLWxpbmVjYXA6cm91bmQ7fQ0KCS5zdDV7ZmlsbDpub25lO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1kYXNoYXJyYXk6My4xMDgxLDMuMTA4MTt9DQoJDQoJCS5zdDZ7ZmlsbDpub25lO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1saW5lam9pbjpyb3VuZDtzdHJva2UtbWl0ZXJsaW1pdDoxMDtzdHJva2UtZGFzaGFycmF5OjQsMzt9DQo8L3N0eWxlPg0KPHBvbHlnb24gY2xhc3M9InN0MCIgcG9pbnRzPSI0LDkuNyA0LDIzLjIgMTYsMzAgMjgsMjMuMiAyOCw5LjcgMTYsMyAiLz4NCjxwb2x5bGluZSBjbGFzcz0ic3QwIiBwb2ludHM9IjQsMTAuMiAxNiwxNyAyOCwxMC4yICIvPg0KPGxpbmUgY2xhc3M9InN0MCIgeDE9IjE2IiB5MT0iMzAiIHgyPSIxNiIgeTI9IjE3Ii8+DQo8L3N2Zz4NCg=="
+}

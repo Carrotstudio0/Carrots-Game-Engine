@@ -1,0 +1,594 @@
+{
+  "author": "",
+  "category": "",
+  "dimension": "3D",
+  "extensionNamespace": "",
+  "fullName": "3D path tracer",
+  "gdevelopVersion": "",
+  "helpPath": "",
+  "iconUrl": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAyMy4wLjMsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiA2LjAwIEJ1aWxkIDApICAtLT4NCjxzdmcgdmVyc2lvbj0iMS4xIiBpZD0iSWNvbnMiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4Ig0KCSB2aWV3Qm94PSIwIDAgMzIgMzIiIHN0eWxlPSJlbmFibGUtYmFja2dyb3VuZDpuZXcgMCAwIDMyIDMyOyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+DQo8c3R5bGUgdHlwZT0idGV4dC9jc3MiPg0KCS5zdDB7ZmlsbDpub25lO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1saW5lam9pbjpyb3VuZDtzdHJva2UtbWl0ZXJsaW1pdDoxMDt9DQoJLnN0MXtmaWxsOm5vbmU7c3Ryb2tlOiMwMDAwMDA7c3Ryb2tlLXdpZHRoOjI7c3Ryb2tlLWxpbmVjYXA6cm91bmQ7c3Ryb2tlLWxpbmVqb2luOnJvdW5kO30NCgkuc3Qye2ZpbGw6bm9uZTtzdHJva2U6IzAwMDAwMDtzdHJva2Utd2lkdGg6MjtzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbGluZWpvaW46cm91bmQ7c3Ryb2tlLWRhc2hhcnJheTo2LDY7fQ0KCS5zdDN7ZmlsbDpub25lO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1saW5lam9pbjpyb3VuZDtzdHJva2UtZGFzaGFycmF5OjQsNDt9DQoJLnN0NHtmaWxsOm5vbmU7c3Ryb2tlOiMwMDAwMDA7c3Ryb2tlLXdpZHRoOjI7c3Ryb2tlLWxpbmVjYXA6cm91bmQ7fQ0KCS5zdDV7ZmlsbDpub25lO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1kYXNoYXJyYXk6My4xMDgxLDMuMTA4MTt9DQoJDQoJCS5zdDZ7ZmlsbDpub25lO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1saW5lam9pbjpyb3VuZDtzdHJva2UtbWl0ZXJsaW1pdDoxMDtzdHJva2UtZGFzaGFycmF5OjQsMzt9DQo8L3N0eWxlPg0KPHJlY3QgeD0iMyIgeT0iMjUiIGNsYXNzPSJzdDAiIHdpZHRoPSI0IiBoZWlnaHQ9IjQiLz4NCjxyZWN0IHg9IjI1IiB5PSIzIiBjbGFzcz0ic3QwIiB3aWR0aD0iNCIgaGVpZ2h0PSI0Ii8+DQo8cGF0aCBjbGFzcz0ic3QwIiBkPSJNMjUsNUwyNSw1QzE0LDUsNSwxNCw1LDI1djAiLz4NCjwvc3ZnPg0K",
+  "name": "PathTracer3D",
+  "previewIconUrl": "https://asset-resources.gdevelop.io/public-resources/Icons/Line Hero Pack/Master/SVG/Graphic Design/413f6c5ff356780893ee1abeeb8c05d71a4bcbfc21ac0d1f325de45f9253a809_Graphic Design_bezier_curve.svg",
+  "shortDescription": "This extension moves 3D objects along a 3D path.",
+  "version": "0.0.1",
+  "description": [
+    "This extension provides a behavior that allows 3D objects to move smoothly along a generated path.",
+    "This is ideal for moving characters or cameras along a path.",
+    "",
+    "[Experimental] Paths can be visualized in the 3D real-time editor."
+  ],
+  "tags": [
+    "3d",
+    "path",
+    "movement"
+  ],
+  "authorIds": [
+    "Zu55H5hcb9YmZTltIVOTAFDJQyB2"
+  ],
+  "dependencies": [],
+  "globalVariables": [],
+  "sceneVariables": [],
+  "eventsFunctions": [],
+  "eventsFunctionsFolderStructure": {
+    "folderName": "__ROOT"
+  },
+  "eventsBasedBehaviors": [
+    {
+      "description": "Moves objects along a specified loop path.",
+      "fullName": "3D path tracer",
+      "helpPath": "",
+      "iconUrl": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAyMy4wLjMsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiA2LjAwIEJ1aWxkIDApICAtLT4NCjxzdmcgdmVyc2lvbj0iMS4xIiBpZD0iSWNvbnMiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4Ig0KCSB2aWV3Qm94PSIwIDAgMzIgMzIiIHN0eWxlPSJlbmFibGUtYmFja2dyb3VuZDpuZXcgMCAwIDMyIDMyOyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+DQo8c3R5bGUgdHlwZT0idGV4dC9jc3MiPg0KCS5zdDB7ZmlsbDpub25lO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1saW5lam9pbjpyb3VuZDtzdHJva2UtbWl0ZXJsaW1pdDoxMDt9DQoJLnN0MXtmaWxsOm5vbmU7c3Ryb2tlOiMwMDAwMDA7c3Ryb2tlLXdpZHRoOjI7c3Ryb2tlLWxpbmVjYXA6cm91bmQ7c3Ryb2tlLWxpbmVqb2luOnJvdW5kO30NCgkuc3Qye2ZpbGw6bm9uZTtzdHJva2U6IzAwMDAwMDtzdHJva2Utd2lkdGg6MjtzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbGluZWpvaW46cm91bmQ7c3Ryb2tlLWRhc2hhcnJheTo2LDY7fQ0KCS5zdDN7ZmlsbDpub25lO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1saW5lam9pbjpyb3VuZDtzdHJva2UtZGFzaGFycmF5OjQsNDt9DQoJLnN0NHtmaWxsOm5vbmU7c3Ryb2tlOiMwMDAwMDA7c3Ryb2tlLXdpZHRoOjI7c3Ryb2tlLWxpbmVjYXA6cm91bmQ7fQ0KCS5zdDV7ZmlsbDpub25lO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1kYXNoYXJyYXk6My4xMDgxLDMuMTA4MTt9DQoJDQoJCS5zdDZ7ZmlsbDpub25lO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1saW5lam9pbjpyb3VuZDtzdHJva2UtbWl0ZXJsaW1pdDoxMDtzdHJva2UtZGFzaGFycmF5OjQsMzt9DQo8L3N0eWxlPg0KPHJlY3QgeD0iMyIgeT0iMjUiIGNsYXNzPSJzdDAiIHdpZHRoPSI0IiBoZWlnaHQ9IjQiLz4NCjxyZWN0IHg9IjI1IiB5PSIzIiBjbGFzcz0ic3QwIiB3aWR0aD0iNCIgaGVpZ2h0PSI0Ii8+DQo8cGF0aCBjbGFzcz0ic3QwIiBkPSJNMjUsNUwyNSw1QzE0LDUsNSwxNCw1LDI1djAiLz4NCjwvc3ZnPg0K",
+      "name": "PathTracer3D",
+      "objectType": "",
+      "previewIconUrl": "https://asset-resources.gdevelop.io/public-resources/Icons/Line Hero Pack/Master/SVG/Graphic Design/413f6c5ff356780893ee1abeeb8c05d71a4bcbfc21ac0d1f325de45f9253a809_Graphic Design_bezier_curve.svg",
+      "eventsFunctions": [
+        {
+          "fullName": "",
+          "functionType": "Action",
+          "name": "onCreated",
+          "sentence": "",
+          "events": [
+            {
+              "type": "BuiltinCommonInstructions::JsCode",
+              "inlineCode": [
+                "const Object2D = objects[0];\r",
+                "const Object3D = Object2D.get3DRendererObject();\r",
+                "const Behavior = Object2D.getBehavior(\"PathTracer3D\");\r",
+                "const Scene = runtimeScene.getLayer(Object2D.getLayer()).getRenderer().getThreeScene();\r",
+                "const Path = Behavior._getPath();\r",
+                "// const Tension = Behavior._getTension();// centripetalを使用するので無効\r",
+                "const Debug = Behavior._getDebug();\r",
+                "const Points = [];\r",
+                "\r",
+                "Path.trim().split('\\n').forEach((L, i) => {\r",
+                "  const Nums = L\r",
+                "    .split(',')\r",
+                "    .map(s => s.trim())\r",
+                "    .filter(s => s !== '')\r",
+                "    .map(Number);\r",
+                "  // 空行、数値以外は無視\r",
+                "  if (Nums.length === 0 || Nums.some(isNaN)) {\r",
+                "    return;\r",
+                "  }\r",
+                "  // 要素数が足りない場合は 0 で補完\r",
+                "  const [X = 0, Y = 0, Z = 0] = Nums;\r",
+                "  Points.push(new THREE.Vector3(X, Y, Z));\r",
+                "});\r",
+                "\r",
+                "const Curve = new THREE.CatmullRomCurve3(Points, true, \"centripetal\");\r",
+                "Object3D.userData._Path3D = {Curve, Progress:0};\r",
+                "\r",
+                "// Debug\r",
+                "if (Debug) {\r",
+                "  const CurvePoints = Curve.getPoints(Points.length * 10);\r",
+                "  const LineGeometry = new THREE.BufferGeometry().setFromPoints(CurvePoints);\r",
+                "  const LineBasicMaterial = new THREE.LineBasicMaterial({color: 0xff0000});\r",
+                "  Scene.add(new THREE.Line(LineGeometry, LineBasicMaterial));\r",
+                "  // \r",
+                "  const PointsMaterial = new THREE.PointsMaterial({color: 0x00ff00, size: 8});\r",
+                "  const PointGeometry = new THREE.BufferGeometry().setFromPoints(Points);\r",
+                "  Scene.add(new THREE.Points(PointGeometry, PointsMaterial));\r",
+                "}\r",
+                "\r",
+                ""
+              ],
+              "parameterObjects": "Object",
+              "useStrict": true,
+              "eventsSheetExpanded": true
+            }
+          ],
+          "parameters": [
+            {
+              "description": "Object",
+              "name": "Object",
+              "type": "object"
+            },
+            {
+              "description": "Behavior",
+              "name": "Behavior",
+              "supplementaryInformation": "PathTracer3D::PathTracer3D",
+              "type": "behavior"
+            }
+          ],
+          "objectGroups": []
+        },
+        {
+          "fullName": "",
+          "functionType": "Action",
+          "name": "doStepPreEvents",
+          "sentence": "",
+          "events": [
+            {
+              "type": "BuiltinCommonInstructions::JsCode",
+              "inlineCode": [
+                "const Object2D = objects[0];\r",
+                "const Object3D = Object2D.get3DRendererObject();\r",
+                "const Behavior = Object2D.getBehavior(\"PathTracer3D\");\r",
+                "const Speed = Behavior._getSpeed();\r",
+                "const Turn = Behavior._getTurn();\r",
+                "const Path3D = Object3D.userData._Path3D;\r",
+                "\r",
+                "// 進行度を更新（0〜1でループ）\r",
+                "const Rate = (Speed * (Object2D.getElapsedTime() / 1000)) / Path3D.Curve.getLength();\r",
+                "Path3D.Progress = ((Path3D.Progress + Rate) % 1 + 1) % 1;// 逆方向対応\r",
+                "// 位置を設定\r",
+                "const Position = Path3D.Curve.getPointAt(Path3D.Progress);\r",
+                "Object3D.position.set(Position.x, Position.y, Position.z);\r",
+                "//\r",
+                "Object2D.setCenterXInScene(Position.x);\r",
+                "Object2D.setCenterYInScene(Position.y);\r",
+                "Object2D.setCenterZInScene(Position.z);\r",
+                "\r",
+                "// 進行方向を向かせたい場合（非ワールド座標）\r",
+                "if (Turn) {\r",
+                "  Position.add(Path3D.Curve.getTangentAt(Path3D.Progress));\r",
+                "  const dx = Position.x - Object3D.position.x;\r",
+                "  const dy = Position.y - Object3D.position.y;\r",
+                "  const dz = Position.z - Object3D.position.z;\r",
+                "  const dxy = Math.sqrt(dx * dx + dy * dy);\r",
+                "  // ZYX euler: z = 方位角, y = -仰角, x = 0\r",
+                "  const rz = Math.atan2(dy, dx);\r",
+                "  const ry = -Math.atan2(dz, dxy);\r",
+                "  // const rx = 0;\r",
+                "  Object3D.rotation.set(0, ry, rz);\r",
+                "  // Object2D への反映\r",
+                "  Object2D._rotationX = gdjs.toDegrees(0);\r",
+                "  Object2D._rotationY = gdjs.toDegrees(ry);\r",
+                "  Object2D.setAngle(gdjs.toDegrees(rz));\r",
+                "}\r",
+                "\r",
+                ""
+              ],
+              "parameterObjects": "Object",
+              "useStrict": true,
+              "eventsSheetExpanded": true
+            }
+          ],
+          "parameters": [
+            {
+              "description": "Object",
+              "name": "Object",
+              "type": "object"
+            },
+            {
+              "description": "Behavior",
+              "name": "Behavior",
+              "supplementaryInformation": "PathTracer3D::PathTracer3D",
+              "type": "behavior"
+            }
+          ],
+          "objectGroups": []
+        },
+        {
+          "fullName": "",
+          "functionType": "Action",
+          "name": "onDestroy",
+          "sentence": "",
+          "events": [
+            {
+              "type": "BuiltinCommonInstructions::JsCode",
+              "inlineCode": [
+                "const Object2D = objects[0];\r",
+                "const Object3D = Object2D.get3DRendererObject();\r",
+                "Object3D.userData._Path3D = null;\r",
+                "\r",
+                ""
+              ],
+              "parameterObjects": "Object",
+              "useStrict": true,
+              "eventsSheetExpanded": false
+            }
+          ],
+          "parameters": [
+            {
+              "description": "Object",
+              "name": "Object",
+              "type": "object"
+            },
+            {
+              "description": "Behavior",
+              "name": "Behavior",
+              "supplementaryInformation": "PathTracer3D::PathTracer3D",
+              "type": "behavior"
+            }
+          ],
+          "objectGroups": []
+        },
+        {
+          "description": "the distance traveled.",
+          "fullName": "Distance traveled",
+          "functionType": "ExpressionAndCondition",
+          "name": "Distance",
+          "sentence": "distance traveled",
+          "events": [
+            {
+              "type": "BuiltinCommonInstructions::JsCode",
+              "inlineCode": [
+                "const Object2D = objects[0];",
+                "const Object3D = Object2D.get3DRendererObject();",
+                "const Path3D = Object3D.userData._Path3D;",
+                "const Length = Path3D.Curve.getLength();",
+                "eventsFunctionContext.returnValue = Path3D.Progress * Length;",
+                "",
+                ""
+              ],
+              "parameterObjects": "Object",
+              "useStrict": true,
+              "eventsSheetExpanded": false
+            }
+          ],
+          "expressionType": {
+            "type": "expression"
+          },
+          "parameters": [
+            {
+              "description": "Object",
+              "name": "Object",
+              "type": "object"
+            },
+            {
+              "description": "Behavior",
+              "name": "Behavior",
+              "supplementaryInformation": "PathTracer3D::PathTracer3D",
+              "type": "behavior"
+            }
+          ],
+          "objectGroups": []
+        },
+        {
+          "description": "total length.",
+          "fullName": "Total length",
+          "functionType": "ExpressionAndCondition",
+          "name": "Length",
+          "sentence": "Total length",
+          "events": [
+            {
+              "type": "BuiltinCommonInstructions::JsCode",
+              "inlineCode": [
+                "const Object2D = objects[0];",
+                "const Object3D = Object2D.get3DRendererObject();",
+                "const Path3D = Object3D.userData._Path3D;",
+                "const Length = Path3D.Curve.getLength();",
+                "eventsFunctionContext.returnValue = Length;",
+                "",
+                ""
+              ],
+              "parameterObjects": "Object",
+              "useStrict": true,
+              "eventsSheetExpanded": false
+            }
+          ],
+          "expressionType": {
+            "type": "expression"
+          },
+          "parameters": [
+            {
+              "description": "Object",
+              "name": "Object",
+              "type": "object"
+            },
+            {
+              "description": "Behavior",
+              "name": "Behavior",
+              "supplementaryInformation": "PathTracer3D::PathTracer3D",
+              "type": "behavior"
+            }
+          ],
+          "objectGroups": []
+        },
+        {
+          "description": "distance traveled.",
+          "fullName": "Distance traveled",
+          "functionType": "ActionWithOperator",
+          "getterName": "Distance",
+          "name": "SetDistance",
+          "sentence": "Distance traveled",
+          "events": [
+            {
+              "type": "BuiltinCommonInstructions::JsCode",
+              "inlineCode": [
+                "const Object2D = objects[0];",
+                "const Object3D = Object2D.get3DRendererObject();",
+                "const Path3D = Object3D.userData._Path3D;",
+                "const Length = Path3D.Curve.getLength();",
+                "const Value = eventsFunctionContext.getArgument(\"Value\");",
+                "Path3D.Progress = ((Value / Length) % 1 + 1) % 1;// 逆方向対応",
+                "",
+                ""
+              ],
+              "parameterObjects": "Object",
+              "useStrict": true,
+              "eventsSheetExpanded": true
+            }
+          ],
+          "parameters": [
+            {
+              "description": "Object",
+              "name": "Object",
+              "type": "object"
+            },
+            {
+              "description": "Behavior",
+              "name": "Behavior",
+              "supplementaryInformation": "PathTracer3D::PathTracer3D",
+              "type": "behavior"
+            }
+          ],
+          "objectGroups": []
+        },
+        {
+          "description": "the speed of the object.",
+          "fullName": "Speed",
+          "functionType": "ExpressionAndCondition",
+          "name": "Speed",
+          "sentence": "speed",
+          "events": [
+            {
+              "type": "BuiltinCommonInstructions::Standard",
+              "conditions": [],
+              "actions": [
+                {
+                  "type": {
+                    "value": "SetReturnNumber"
+                  },
+                  "parameters": [
+                    "Speed"
+                  ]
+                }
+              ]
+            }
+          ],
+          "expressionType": {
+            "type": "expression"
+          },
+          "parameters": [
+            {
+              "description": "Object",
+              "name": "Object",
+              "type": "object"
+            },
+            {
+              "description": "Behavior",
+              "name": "Behavior",
+              "supplementaryInformation": "PathTracer3D::PathTracer3D",
+              "type": "behavior"
+            }
+          ],
+          "objectGroups": []
+        },
+        {
+          "fullName": "",
+          "functionType": "ActionWithOperator",
+          "getterName": "Speed",
+          "name": "SetSpeed",
+          "sentence": "",
+          "events": [
+            {
+              "type": "BuiltinCommonInstructions::Standard",
+              "conditions": [],
+              "actions": [
+                {
+                  "type": {
+                    "value": "SetNumberVariable"
+                  },
+                  "parameters": [
+                    "Speed",
+                    "=",
+                    "Value"
+                  ]
+                }
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "description": "Object",
+              "name": "Object",
+              "type": "object"
+            },
+            {
+              "description": "Behavior",
+              "name": "Behavior",
+              "supplementaryInformation": "PathTracer3D::PathTracer3D",
+              "type": "behavior"
+            }
+          ],
+          "objectGroups": []
+        },
+        {
+          "description": "the progress. (0 to 1)",
+          "fullName": "Progress",
+          "functionType": "ExpressionAndCondition",
+          "name": "Progress",
+          "sentence": "progress",
+          "events": [
+            {
+              "type": "BuiltinCommonInstructions::JsCode",
+              "inlineCode": [
+                "const Object2D = objects[0];",
+                "const Object3D = Object2D.get3DRendererObject();",
+                "const Path3D = Object3D.userData._Path3D;",
+                "eventsFunctionContext.returnValue = Path3D.Progress;",
+                "",
+                ""
+              ],
+              "parameterObjects": "Object",
+              "useStrict": true,
+              "eventsSheetExpanded": false
+            }
+          ],
+          "expressionType": {
+            "type": "expression"
+          },
+          "parameters": [
+            {
+              "description": "Object",
+              "name": "Object",
+              "type": "object"
+            },
+            {
+              "description": "Behavior",
+              "name": "Behavior",
+              "supplementaryInformation": "PathTracer3D::PathTracer3D",
+              "type": "behavior"
+            }
+          ],
+          "objectGroups": []
+        },
+        {
+          "description": "distance traveled.",
+          "fullName": "Distance traveled",
+          "functionType": "ActionWithOperator",
+          "getterName": "Progress",
+          "name": "SetProgress",
+          "sentence": "Distance traveled",
+          "events": [
+            {
+              "type": "BuiltinCommonInstructions::JsCode",
+              "inlineCode": [
+                "const Object2D = objects[0];",
+                "const Object3D = Object2D.get3DRendererObject();",
+                "const Path3D = Object3D.userData._Path3D;",
+                "const Value = eventsFunctionContext.getArgument(\"Value\");",
+                "Path3D.Progress = (Value % 1 + 1) % 1;// 逆方向対応;",
+                "",
+                ""
+              ],
+              "parameterObjects": "Object",
+              "useStrict": true,
+              "eventsSheetExpanded": true
+            }
+          ],
+          "parameters": [
+            {
+              "description": "Object",
+              "name": "Object",
+              "type": "object"
+            },
+            {
+              "description": "Behavior",
+              "name": "Behavior",
+              "supplementaryInformation": "PathTracer3D::PathTracer3D",
+              "type": "behavior"
+            }
+          ],
+          "objectGroups": []
+        }
+      ],
+      "eventsFunctionsFolderStructure": {
+        "folderName": "__ROOT",
+        "children": [
+          {
+            "functionName": "onCreated"
+          },
+          {
+            "functionName": "doStepPreEvents"
+          },
+          {
+            "functionName": "onDestroy"
+          },
+          {
+            "functionName": "Length"
+          },
+          {
+            "functionName": "Distance"
+          },
+          {
+            "functionName": "SetDistance"
+          },
+          {
+            "functionName": "Progress"
+          },
+          {
+            "functionName": "SetProgress"
+          },
+          {
+            "functionName": "Speed"
+          },
+          {
+            "functionName": "SetSpeed"
+          }
+        ]
+      },
+      "propertyDescriptors": [
+        {
+          "value": "100, 100, 0\n200, 100, 100\n200, 200, 100\n100, 200, 0",
+          "type": "MultilineString",
+          "label": "Path",
+          "description": "Enter one point per line as X, Y, Z coordinates separated by commas.",
+          "name": "Path"
+        },
+        {
+          "value": "true",
+          "type": "Boolean",
+          "label": "Debug",
+          "name": "Debug"
+        },
+        {
+          "value": "",
+          "type": "Behavior",
+          "label": "3D capability",
+          "extraInformation": [
+            "Scene3D::Base3DBehavior"
+          ],
+          "choices": [],
+          "name": "Capability3D"
+        },
+        {
+          "value": "true",
+          "type": "Boolean",
+          "label": "Turn to face the direction of movement",
+          "name": "Turn"
+        },
+        {
+          "value": "32",
+          "type": "Number",
+          "unit": "PixelSpeed",
+          "label": "Speed",
+          "name": "Speed"
+        }
+      ],
+      "propertiesFolderStructure": {
+        "folderName": "__ROOT",
+        "children": [
+          {
+            "propertyName": "Capability3D"
+          },
+          {
+            "propertyName": "Path"
+          },
+          {
+            "propertyName": "Speed"
+          },
+          {
+            "propertyName": "Turn"
+          },
+          {
+            "propertyName": "Debug"
+          }
+        ]
+      }
+    }
+  ],
+  "eventsBasedObjects": []
+}
