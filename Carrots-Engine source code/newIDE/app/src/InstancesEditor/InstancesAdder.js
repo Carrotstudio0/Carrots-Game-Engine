@@ -4,10 +4,8 @@ import { unserializeFromJSObject } from '../Utils/Serializer';
 import { type InstancesEditorSettings } from './InstancesEditorSettings';
 import {
   buildInstancesIndex,
-  getParentPersistentUuid,
   syncLocalFromWorld,
   setLocalToWorld,
-  setParentPersistentUuid,
 } from './ParentingHelpers';
 
 const gd: libGDevelop = global.gd;
@@ -73,7 +71,7 @@ export const addSerializedInstances = ({
 
   if (newInstances.length > 0) {
     newInstances.forEach(instance => {
-      const parentPersistentUuid = getParentPersistentUuid(instance);
+      const parentPersistentUuid = instance.getParentPersistentUuid();
       if (
         parentPersistentUuid &&
         oldToNewPersistentUuid.has(parentPersistentUuid)
@@ -82,7 +80,7 @@ export const addSerializedInstances = ({
           parentPersistentUuid
         );
         if (newParentPersistentUuid) {
-          setParentPersistentUuid(instance, newParentPersistentUuid);
+          instance.setParentPersistentUuid(newParentPersistentUuid);
         }
       }
     });
