@@ -22,7 +22,28 @@ const SERVICE_WORKER_SCOPE_PATH = (() => {
 })();
 const BROWSER_SW_PREVIEW_PATH_PREFIX = `${SERVICE_WORKER_SCOPE_PATH}/browser_sw_preview`;
 const BROWSER_SW_PREVIEW_PATH_PREFIX_WITH_SLASH = `${BROWSER_SW_PREVIEW_PATH_PREFIX}/`;
+const LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX = '/browser_sw_preview';
+const LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX_WITH_SLASH = '/browser_sw_preview/';
 const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const getPreviewPathPrefixForRequest = pathname => {
+  if (
+    pathname === BROWSER_SW_PREVIEW_PATH_PREFIX ||
+    pathname.startsWith(BROWSER_SW_PREVIEW_PATH_PREFIX_WITH_SLASH)
+  ) {
+    return BROWSER_SW_PREVIEW_PATH_PREFIX;
+  }
+
+  // Keep compatibility with old URLs that were generated at origin root.
+  if (
+    pathname === LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX ||
+    pathname.startsWith(LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX_WITH_SLASH)
+  ) {
+    return LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX;
+  }
+
+  return null;
+};
 
 // If updated, also update the BrowserSWIndexedDB module.
 const DB_NAME = 'gdevelop-browser-sw-preview';
@@ -220,16 +241,14 @@ const tryGetManifestFallbackResponse = async relativePath => {
  */
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
-  const isBrowserSWPreviewRequest =
-    url.pathname === BROWSER_SW_PREVIEW_PATH_PREFIX ||
-    url.pathname.startsWith(BROWSER_SW_PREVIEW_PATH_PREFIX_WITH_SLASH);
+  const previewPathPrefix = getPreviewPathPrefixForRequest(url.pathname);
 
   // Check if this is a request for a browser SW preview file
-  if (isBrowserSWPreviewRequest) {
+  if (previewPathPrefix) {
     const relativePath =
-      url.pathname === BROWSER_SW_PREVIEW_PATH_PREFIX
+      url.pathname === previewPathPrefix
         ? '/'
-        : url.pathname.slice(BROWSER_SW_PREVIEW_PATH_PREFIX.length);
+        : url.pathname.slice(previewPathPrefix.length);
 
     event.respondWith(
       (async () => {
@@ -360,6 +379,7 @@ if (workbox) {
   const browserSWPreviewPathBlacklist = new RegExp(
     `^${escapeRegExp(BROWSER_SW_PREVIEW_PATH_PREFIX)}(?:/|$)`
   );
+  const legacyBrowserSWPreviewPathBlacklist = /^\/browser_sw_preview(?:\/|$)/;
 
   /* custom cache rules*/
   workbox.routing.registerNavigationRoute(navigationFallbackPath, {
@@ -367,6 +387,7 @@ if (workbox) {
       /^\/_/,
       /\/[^\/]+\.[^\/]+$/,
       browserSWPreviewPathBlacklist,
+      legacyBrowserSWPreviewPathBlacklist,
     ],
   });
 

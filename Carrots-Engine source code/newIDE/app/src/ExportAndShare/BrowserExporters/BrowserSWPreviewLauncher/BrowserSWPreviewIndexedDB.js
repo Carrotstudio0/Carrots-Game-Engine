@@ -44,11 +44,28 @@ const transactionToPromise = (transaction: IDBTransaction): Promise<void> => {
   });
 };
 
+const getUrlResolutionBase = (): string => {
+  const { origin, pathname, href } = window.location;
+  const normalizedPathname = pathname || '/';
+  const hasFileExtension = /\/[^/]+\.[^/]+$/.test(normalizedPathname);
+  const shouldTreatPathAsDirectory =
+    normalizedPathname.endsWith('/') || !hasFileExtension;
+
+  if (!shouldTreatPathAsDirectory) {
+    return href;
+  }
+
+  const directoryPath = normalizedPathname.endsWith('/')
+    ? normalizedPathname
+    : `${normalizedPathname}/`;
+  return `${origin}${directoryPath}`;
+};
+
 export const getBrowserSWPreviewRootUrl = (): string => {
   const browserSWPreviewPath = getLocalResourceUrl('/browser_sw_preview');
   const browserSWPreviewUrl = new URL(
     browserSWPreviewPath,
-    window.location.href
+    getUrlResolutionBase()
   ).toString();
 
   return browserSWPreviewUrl.replace(/\/$/, '');
