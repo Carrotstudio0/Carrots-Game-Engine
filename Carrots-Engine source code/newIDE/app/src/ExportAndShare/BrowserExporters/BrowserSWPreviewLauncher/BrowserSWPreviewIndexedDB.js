@@ -1,4 +1,5 @@
 // @flow
+import { getLocalResourceUrl } from '../../../Utils/GDevelopServices/LocalResourceUrl';
 
 // If updated, also update the service worker template.
 const DB_NAME = 'gdevelop-browser-sw-preview';
@@ -44,8 +45,13 @@ const transactionToPromise = (transaction: IDBTransaction): Promise<void> => {
 };
 
 export const getBrowserSWPreviewRootUrl = (): string => {
-  const origin = window.location.origin;
-  return `${origin}/browser_sw_preview`;
+  const browserSWPreviewPath = getLocalResourceUrl('/browser_sw_preview');
+  const browserSWPreviewUrl = new URL(
+    browserSWPreviewPath,
+    window.location.href
+  ).toString();
+
+  return browserSWPreviewUrl.replace(/\/$/, '');
 };
 
 /**

@@ -8,6 +8,21 @@ console.log('[ServiceWorker] Service worker file executed');
 
 const swURL = new URL(self.location.href);
 const isDev = swURL.searchParams.has('dev');
+const SERVICE_WORKER_SCOPE_PATH = (() => {
+  try {
+    const scopePathname = new URL(self.registration.scope).pathname || '/';
+    if (scopePathname === '/') return '';
+
+    return scopePathname.endsWith('/')
+      ? scopePathname.slice(0, -1)
+      : scopePathname;
+  } catch {
+    return '';
+  }
+})();
+const BROWSER_SW_PREVIEW_PATH_PREFIX = `${SERVICE_WORKER_SCOPE_PATH}/browser_sw_preview`;
+const BROWSER_SW_PREVIEW_PATH_PREFIX_WITH_SLASH = `${BROWSER_SW_PREVIEW_PATH_PREFIX}/`;
+const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // If updated, also update the BrowserSWIndexedDB module.
 const DB_NAME = 'gdevelop-browser-sw-preview';
@@ -205,10 +220,16 @@ const tryGetManifestFallbackResponse = async relativePath => {
  */
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
+  const isBrowserSWPreviewRequest =
+    url.pathname === BROWSER_SW_PREVIEW_PATH_PREFIX ||
+    url.pathname.startsWith(BROWSER_SW_PREVIEW_PATH_PREFIX_WITH_SLASH);
 
   // Check if this is a request for a browser SW preview file
-  if (url.pathname.startsWith('/browser_sw_preview/')) {
-    const relativePath = url.pathname.replace('/browser_sw_preview', '');
+  if (isBrowserSWPreviewRequest) {
+    const relativePath =
+      url.pathname === BROWSER_SW_PREVIEW_PATH_PREFIX
+        ? '/'
+        : url.pathname.slice(BROWSER_SW_PREVIEW_PATH_PREFIX.length);
 
     event.respondWith(
       (async () => {
@@ -336,10 +357,17 @@ if (workbox) {
     'index.html',
     self.registration.scope
   ).pathname;
+  const browserSWPreviewPathBlacklist = new RegExp(
+    `^${escapeRegExp(BROWSER_SW_PREVIEW_PATH_PREFIX)}(?:/|$)`
+  );
 
   /* custom cache rules*/
   workbox.routing.registerNavigationRoute(navigationFallbackPath, {
-    blacklist: [/^\/_/, /\/[^\/]+\.[^\/]+$/, /^\/browser_sw_preview\//],
+    blacklist: [
+      /^\/_/,
+      /\/[^\/]+\.[^\/]+$/,
+      browserSWPreviewPathBlacklist,
+    ],
   });
 
   // Cache resources from GDevelop cloudfront server (CORS enabled).
