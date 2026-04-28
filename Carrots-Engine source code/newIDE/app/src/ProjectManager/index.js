@@ -2182,7 +2182,7 @@ const ProjectManager = React.forwardRef<Props, ProjectManagerInterface>(
                         gameTypeScriptScriptsItemId,
                         i18n._(t`Script`),
                         onOpenTypeScriptScripts,
-                        'res/icons_default/events24_black.svg'
+                        'res/icons_default/events24.png'
                       )
                     ),
                     new LeafTreeViewItem(

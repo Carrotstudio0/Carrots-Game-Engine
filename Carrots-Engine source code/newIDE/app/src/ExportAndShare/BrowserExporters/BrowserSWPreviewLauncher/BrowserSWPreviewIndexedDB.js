@@ -29,6 +29,27 @@ const requestToPromise = (request: IDBRequest): Promise<any> => {
   });
 };
 
+const getServiceWorkerScopePathPrefix = (): string => {
+  const pathname = window.location.pathname || '/';
+  const normalizedPathname = pathname.replace(/\/{2,}/g, '/');
+  if (normalizedPathname === '/') return '';
+
+  const trimmedPathname = normalizedPathname.endsWith('/')
+    ? normalizedPathname.slice(0, -1)
+    : normalizedPathname;
+  if (!trimmedPathname) return '';
+
+  const lastSlashIndex = trimmedPathname.lastIndexOf('/');
+  if (lastSlashIndex <= 0) {
+    return /\.[^/]+$/.test(trimmedPathname) ? '' : trimmedPathname;
+  }
+
+  const lastSegment = trimmedPathname.slice(lastSlashIndex + 1);
+  return lastSegment.includes('.')
+    ? trimmedPathname.slice(0, lastSlashIndex)
+    : trimmedPathname;
+};
+
 const transactionToPromise = (transaction: IDBTransaction): Promise<void> => {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
@@ -45,7 +66,8 @@ const transactionToPromise = (transaction: IDBTransaction): Promise<void> => {
 
 export const getBrowserSWPreviewRootUrl = (): string => {
   const origin = window.location.origin;
-  return `${origin}/browser_sw_preview`;
+  const scopePathPrefix = getServiceWorkerScopePathPrefix();
+  return `${origin}${scopePathPrefix}/browser_sw_preview`;
 };
 
 /**

@@ -16,6 +16,18 @@ type ConstructorArgs = {|
   rootUrl: string,
 |};
 
+type PendingFileDescriptor =
+  | {|
+      path: string,
+      content: string,
+      contentType: string,
+    |}
+  | {|
+      path: string,
+      bytes: ArrayBuffer,
+      contentType: string,
+    |};
+
 const isURL = (filename: string) => {
   return (
     filename.startsWith('http://') ||
@@ -60,6 +72,26 @@ const stripSearchAndHash = (value: string): string => {
 
 const normalizeSlashes = (value: string): string =>
   value.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+
+const normalizePathForLookup = (pathOrUrl: string): string => {
+  const normalizedValue = normalizeSlashes(stripSearchAndHash(pathOrUrl));
+  return normalizeSlashes(getPathnameFromUrl(normalizedValue));
+};
+
+const textFileExtensions = new Set([
+  '.html',
+  '.js',
+  '.mjs',
+  '.css',
+  '.json',
+  '.txt',
+]);
+
+const isTextFilePath = (filePath: string): boolean => {
+  const pathWithoutSearchAndHash = stripSearchAndHash(filePath);
+  const ext = path.extname(pathWithoutSearchAndHash).toLowerCase();
+  return textFileExtensions.has(ext);
+};
 
 const getPathnameFromUrl = (value: string): string => {
   try {
@@ -195,13 +227,10 @@ export default class BrowserSWFileSystem {
   _indexedFilesContent: { [string]: TextFileDescriptor };
 
   // Store all the files that should be written to IndexedDB.
-  _pendingFiles: Array<{|
-    path: string,
-    content: string,
-    contentType: string,
-  |}> = [];
+  _pendingFiles: Array<PendingFileDescriptor> = [];
 
   _pendingDeleteOperations: Array<Promise<any>> = [];
+  _pendingCopyOperations: Array<Promise<any>> = [];
 
   // Store a set of all external URLs copied so that we can simulate
   // readDir result.
@@ -216,6 +245,9 @@ export default class BrowserSWFileSystem {
     filesContent.forEach(textFileDescriptor => {
       this._indexedFilesContent[
         textFileDescriptor.filePath
+      ] = textFileDescriptor;
+      this._indexedFilesContent[
+        normalizePathForLookup(textFileDescriptor.filePath)
       ] = textFileDescriptor;
     });
   }
@@ -235,6 +267,16 @@ export default class BrowserSWFileSystem {
     }
 
     try {
+      await Promise.all(this._pendingCopyOperations);
+    } catch (error) {
+      console.error(
+        '[BrowserSWFileSystem] Error while copying files for Browser SW preview.',
+        error
+      );
+      throw error;
+    }
+
+    try {
       console.log(
         `[BrowserSWFileSystem] Storing ${
           this._pendingFiles.length
@@ -246,8 +288,10 @@ export default class BrowserSWFileSystem {
         const fullPath = normalizeSlashes(
           file.path.startsWith('/') ? file.path : `/${file.path}`
         );
-        const encoder = new TextEncoder();
-        const bytes = encoder.encode(file.content).buffer;
+        const bytes =
+          'bytes' in file
+            ? file.bytes
+            : new TextEncoder().encode(file.content).buffer;
 
         totalBytes += bytes.byteLength;
 
@@ -339,12 +383,49 @@ export default class BrowserSWFileSystem {
       return true;
     }
 
-    console.warn(
-      '[BrowserSWFileSystem] Copy not done from',
-      source,
-      'to',
-      dest
-    );
+    const sourceDescriptor =
+      this._indexedFilesContent[source] ||
+      this._indexedFilesContent[normalizePathForLookup(source)] ||
+      null;
+    if (sourceDescriptor) {
+      this.writeToFile(dest, sourceDescriptor.text);
+      return true;
+    }
+
+    const pendingCopyOperation = (async () => {
+      const response = await fetch(source);
+      if (!response.ok) {
+        throw new Error(
+          `Unable to copy "${source}" (status: ${response.status})`
+        );
+      }
+
+      const relativePath = toBrowserSWRelativePath(dest, this.rootUrl);
+      const contentType = getContentType(relativePath || dest);
+
+      if (isTextFilePath(source) || isTextFilePath(dest)) {
+        const textContent = await response.text();
+        this.writeToFile(dest, textContent);
+        return;
+      }
+
+      const bytes = await response.arrayBuffer();
+      this._pendingFiles.push({
+        path: relativePath,
+        bytes,
+        contentType,
+      });
+    })().catch(error => {
+      console.error(
+        '[BrowserSWFileSystem] Unable to copy local file for preview:',
+        source,
+        'to',
+        dest,
+        error
+      );
+      throw error;
+    });
+    this._pendingCopyOperations.push(pendingCopyOperation);
     return true;
   };
 

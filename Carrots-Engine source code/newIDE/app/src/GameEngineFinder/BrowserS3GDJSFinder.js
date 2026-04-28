@@ -39,6 +39,46 @@ const filesToDownload: { [FileSet]: Array<string> } = {
 
 export type TextFileDescriptor = {| text: string, filePath: string |};
 
+const normalizePathPrefix = (pathPrefix: string): string => {
+  if (!pathPrefix || pathPrefix === '/') return '';
+  const normalized = pathPrefix.replace(/\/{2,}/g, '/');
+  return normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
+};
+
+const getLikelyAppBasePath = (): string => {
+  const pathname = window.location.pathname || '/';
+  const normalizedPathname = pathname.replace(/\/{2,}/g, '/');
+  if (normalizedPathname === '/') return '';
+
+  const trimmedPathname = normalizedPathname.endsWith('/')
+    ? normalizedPathname.slice(0, -1)
+    : normalizedPathname;
+  if (!trimmedPathname) return '';
+
+  const lastSlashIndex = trimmedPathname.lastIndexOf('/');
+  if (lastSlashIndex <= 0) {
+    return /\.[^/]+$/.test(trimmedPathname) ? '' : trimmedPathname;
+  }
+
+  const lastSegment = trimmedPathname.slice(lastSlashIndex + 1);
+  return lastSegment.includes('.')
+    ? trimmedPathname.slice(0, lastSlashIndex)
+    : trimmedPathname;
+};
+
+const getSelfHostedGdjsRoots = (): Array<string> => {
+  const origin = window.location.origin;
+  const appBasePath = normalizePathPrefix(getLikelyAppBasePath());
+  const roots = [
+    `${origin}${appBasePath}/GDJS`,
+    `${origin}/GDJS`,
+  ];
+  const normalizeRoot = (root: string): string =>
+    root.endsWith('/') ? root.slice(0, -1) : root;
+
+  return Array.from(new Set(roots.map(root => normalizeRoot(root))));
+};
+
 const fetchFilesFromRoot = (
   gdjsRoot: string,
   fileSet: FileSet
@@ -103,9 +143,16 @@ export const findGDJS = (
   // Get GDJS for this version. If you updated the version,
   // run `newIDE/web-app/scripts/deploy-GDJS-Runtime` script.
   const remoteGdjsRoot = `https://resources.gdevelop-app.com/GDJS-${getIDEVersionWithHash()}`;
+  const selfHostedGdjsRoots = getSelfHostedGdjsRoots();
+  const shouldAllowRemoteFallback =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('force-remote-gdjs');
   const candidateRoots = Window.isDev()
-    ? ['http://localhost:5002', remoteGdjsRoot]
-    : [remoteGdjsRoot];
+    ? ['http://localhost:5002', ...selfHostedGdjsRoots]
+    : [...selfHostedGdjsRoots];
+  if (shouldAllowRemoteFallback) {
+    candidateRoots.push(remoteGdjsRoot);
+  }
 
   return tryFindGDJS(candidateRoots, fileSet);
 };
