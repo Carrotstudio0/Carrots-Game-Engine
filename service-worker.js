@@ -8,83 +8,6 @@ console.log('[ServiceWorker] Service worker file executed');
 
 const swURL = new URL(self.location.href);
 const isDev = swURL.searchParams.has('dev');
-const SERVICE_WORKER_SCOPE_PATH = (() => {
-  try {
-    const scopePathname = new URL(self.registration.scope).pathname || '/';
-    if (scopePathname === '/') return '';
-
-    return scopePathname.endsWith('/')
-      ? scopePathname.slice(0, -1)
-      : scopePathname;
-  } catch {
-    return '';
-  }
-})();
-const BROWSER_SW_PREVIEW_PATH_PREFIX = `${SERVICE_WORKER_SCOPE_PATH}/browser_sw_preview`;
-const BROWSER_SW_PREVIEW_PATH_PREFIX_WITH_SLASH = `${BROWSER_SW_PREVIEW_PATH_PREFIX}/`;
-const LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX = '/browser_sw_preview';
-const LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX_WITH_SLASH = '/browser_sw_preview/';
-const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const getPreviewPathPrefixForRequest = pathname => {
-  if (
-    pathname === BROWSER_SW_PREVIEW_PATH_PREFIX ||
-    pathname.startsWith(BROWSER_SW_PREVIEW_PATH_PREFIX_WITH_SLASH)
-  ) {
-    return BROWSER_SW_PREVIEW_PATH_PREFIX;
-  }
-
-  // Keep compatibility with old URLs that were generated at origin root.
-  if (
-    pathname === LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX ||
-    pathname.startsWith(LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX_WITH_SLASH)
-  ) {
-    return LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX;
-  }
-
-  return null;
-};
-
-const normalizePreviewStoragePath = path => {
-  if (!path) return '/';
-  const withLeadingSlash = path.startsWith('/') ? path : `/${path}`;
-  return withLeadingSlash.replace(/\/{2,}/g, '/');
-};
-
-const getPreviewStoragePathCandidates = relativePath => {
-  const normalizedPath = normalizePreviewStoragePath(relativePath);
-  const scopedPreviewPrefix = SERVICE_WORKER_SCOPE_PATH
-    ? `${SERVICE_WORKER_SCOPE_PATH}/browser_sw_preview`
-    : null;
-  const candidates = [normalizedPath];
-
-  if (!normalizedPath.startsWith(`${LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX}/`)) {
-    candidates.push(`${LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX}${normalizedPath}`);
-  }
-
-  if (
-    scopedPreviewPrefix &&
-    !normalizedPath.startsWith(`${scopedPreviewPrefix}/`)
-  ) {
-    candidates.push(`${scopedPreviewPrefix}${normalizedPath}`);
-  }
-
-  if (normalizedPath.startsWith(`${LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX}/`)) {
-    const strippedLegacyPrefixPath =
-      normalizedPath.slice(LEGACY_BROWSER_SW_PREVIEW_PATH_PREFIX.length) || '/';
-    candidates.push(strippedLegacyPrefixPath);
-  }
-
-  if (scopedPreviewPrefix && normalizedPath.startsWith(`${scopedPreviewPrefix}/`)) {
-    const strippedScopedPrefixPath =
-      normalizedPath.slice(scopedPreviewPrefix.length) || '/';
-    candidates.push(strippedScopedPrefixPath);
-  }
-
-  return Array.from(
-    new Set(candidates.map(candidatePath => normalizePreviewStoragePath(candidatePath)))
-  );
-};
 
 // If updated, also update the BrowserSWIndexedDB module.
 const DB_NAME = 'gdevelop-browser-sw-preview';
@@ -230,27 +153,6 @@ async function getBrowserSWPreviewFile(path) {
   }
 }
 
-const getBrowserSWPreviewFileWithFallbacks = async relativePath => {
-  const candidatePaths = getPreviewStoragePathCandidates(relativePath);
-
-  for (const candidatePath of candidatePaths) {
-    const fileRecord = await getBrowserSWPreviewFile(candidatePath);
-    if (fileRecord) {
-      return {
-        fileRecord,
-        resolvedPath: candidatePath,
-        attemptedPaths: candidatePaths,
-      };
-    }
-  }
-
-  return {
-    fileRecord: null,
-    resolvedPath: null,
-    attemptedPaths: candidatePaths,
-  };
-};
-
 const createNoStoreHeaders = contentType => ({
   'Content-Type': contentType,
   // Prevent caching to ensure latest version is always served
@@ -286,22 +188,13 @@ const tryGetManifestFallbackResponse = async relativePath => {
     /manifest\.webmanifest$/i,
     'manifest.json'
   );
+  const manifestJsonRecord = await getBrowserSWPreviewFile(manifestJsonPath);
 
-  for (const manifestJsonCandidatePath of getPreviewStoragePathCandidates(
-    manifestJsonPath
-  )) {
-    const manifestJsonRecord = await getBrowserSWPreviewFile(
-      manifestJsonCandidatePath
-    );
-
-    if (manifestJsonRecord) {
-      return new Response(manifestJsonRecord.bytes, {
-        status: 200,
-        headers: createNoStoreHeaders(
-          'application/manifest+json; charset=utf-8'
-        ),
-      });
-    }
+  if (manifestJsonRecord) {
+    return new Response(manifestJsonRecord.bytes, {
+      status: 200,
+      headers: createNoStoreHeaders('application/manifest+json; charset=utf-8'),
+    });
   }
 
   return createFallbackManifestResponse();
@@ -312,24 +205,16 @@ const tryGetManifestFallbackResponse = async relativePath => {
  */
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
-  const previewPathPrefix = getPreviewPathPrefixForRequest(url.pathname);
 
   // Check if this is a request for a browser SW preview file
-  if (previewPathPrefix) {
-    const relativePath =
-      url.pathname === previewPathPrefix
-        ? '/'
-        : url.pathname.slice(previewPathPrefix.length);
+  if (url.pathname.startsWith('/browser_sw_preview/')) {
+    const relativePath = url.pathname.replace('/browser_sw_preview', '');
 
     event.respondWith(
       (async () => {
         try {
           // Try to get the file from IndexedDB
-          const {
-            fileRecord,
-            resolvedPath,
-            attemptedPaths,
-          } = await getBrowserSWPreviewFileWithFallbacks(relativePath);
+          const fileRecord = await getBrowserSWPreviewFile(relativePath);
 
           if (!fileRecord) {
             if (isWebManifestPath(relativePath)) {
@@ -342,9 +227,7 @@ self.addEventListener('fetch', event => {
 
             console.warn(
               '[ServiceWorker] File not found in IndexedDB:',
-              relativePath,
-              'Attempted keys:',
-              attemptedPaths
+              relativePath
             );
             return new Response(
               'File not found in browser SW preview storage',
@@ -354,15 +237,6 @@ self.addEventListener('fetch', event => {
                   'Content-Type': 'text/plain',
                 },
               }
-            );
-          }
-
-          if (resolvedPath && resolvedPath !== relativePath) {
-            console.info(
-              '[ServiceWorker] Served browser preview file using fallback key:',
-              relativePath,
-              '->',
-              resolvedPath
             );
           }
 
@@ -433,7 +307,7 @@ if (workbox) {
   console.log('[ServiceWorker] Workbox loaded successfully');
 
   // Will be replaced by make-service-worker.js to include the proper version.
-  const VersionMetadata = {"version":"1.0.0","gitHash":"5c08b13b0f8ca6140a2e30905854efc99a38cd1d","versionWithHash":"1.0.0-5c08b13b0f8ca6140a2e30905854efc99a38cd1d"};
+  const VersionMetadata = {"version":"1.0.0","gitHash":"a96014dbc5c8065858b91ed5cd17b1bca63b61ae","versionWithHash":"1.0.0-a96014dbc5c8065858b91ed5cd17b1bca63b61ae"};
 
   // Contrary to other static assets (JS, CSS, HTML), libGD.js/wasm are not
   // versioned in their filenames. Instead, we version using a query string
@@ -456,25 +330,9 @@ if (workbox) {
   /* injection point for manifest files.  */
   workbox.precaching.precacheAndRoute([]);
 
-  // Use the service-worker scope to support sub-path deployments
-  // (for example: /Carrots-Game-Engine/) and avoid navigation 404s on reload.
-  const navigationFallbackPath = new URL(
-    'index.html',
-    self.registration.scope
-  ).pathname;
-  const browserSWPreviewPathBlacklist = new RegExp(
-    `^${escapeRegExp(BROWSER_SW_PREVIEW_PATH_PREFIX)}(?:/|$)`
-  );
-  const legacyBrowserSWPreviewPathBlacklist = /^\/browser_sw_preview(?:\/|$)/;
-
   /* custom cache rules*/
-  workbox.routing.registerNavigationRoute(navigationFallbackPath, {
-    blacklist: [
-      /^\/_/,
-      /\/[^\/]+\.[^\/]+$/,
-      browserSWPreviewPathBlacklist,
-      legacyBrowserSWPreviewPathBlacklist,
-    ],
+  workbox.routing.registerNavigationRoute('/index.html', {
+    blacklist: [/^\/_/, /\/[^\/]+\.[^\/]+$/, /^\/browser_sw_preview\//],
   });
 
   // Cache resources from GDevelop cloudfront server (CORS enabled).
