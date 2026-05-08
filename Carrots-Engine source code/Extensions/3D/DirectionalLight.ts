@@ -194,12 +194,10 @@ namespace gdjs {
               effectData.doubleParameters.rotation !== undefined
                 ? effectData.doubleParameters.rotation
                 : this._rotation;
-            this._intensity = Math.max(
-              0,
+            this._intensity =
               effectData.doubleParameters.intensity !== undefined
                 ? effectData.doubleParameters.intensity
-                : this._intensity
-            );
+                : this._intensity;
             this._distanceFromCamera = Math.max(
               10,
               effectData.doubleParameters.distanceFromCamera !== undefined
@@ -618,7 +616,8 @@ namespace gdjs {
           }
 
           private _setAllLightsIntensity(intensity: float): void {
-            this._intensity = Math.max(0, intensity);
+            const safeIntensity = Number.isFinite(intensity) ? intensity : 0;
+            this._intensity = safeIntensity;
             const weights = this._getCascadeIntensityWeights(
               this._activeCascadeCount
             );
@@ -629,7 +628,7 @@ namespace gdjs {
                   ? weights[i]
                   : 0;
               this._lights[i].intensity =
-                this._intensity * this._pipelineRealtimeMultiplier * weight;
+                safeIntensity * this._pipelineRealtimeMultiplier * weight;
               this._lights[i].visible = isCascadeActive;
               this._lights[i].target.visible = isCascadeActive;
             }

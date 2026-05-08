@@ -22,6 +22,12 @@ export const setKeepWorldOnReparent = (value: boolean) => {
 export const getParentPersistentUuid = (
   instance: gdInitialInstance
 ): string | null => {
+  // Defensive check for projects/instances loaded from versions that don't expose
+  // parenting API on all instance objects.
+  // $FlowFixMe[prop-missing]
+  if (!instance || typeof instance.getParentPersistentUuid !== 'function') {
+    return null;
+  }
   const parentPersistentUuid = instance.getParentPersistentUuid();
   return parentPersistentUuid ? parentPersistentUuid : null;
 };

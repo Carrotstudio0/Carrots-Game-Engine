@@ -49,6 +49,7 @@ import {
   getInstanceWorldScaleY,
   collectDescendants,
   getParentInstanceFromIndex,
+  getParentPersistentUuid,
   getKeepWorldOnReparent,
   setKeepWorldOnReparent,
 } from '../ParentingHelpers';
@@ -613,10 +614,11 @@ const getParentField = ({
     return choices;
   },
   getValue: (instance: gdInitialInstance) =>
-    instance.getParentPersistentUuid() || '',
+    getParentPersistentUuid(instance) || '',
   setValue: (instance: gdInitialInstance, newValue: string) => {
     const parentPersistentUuid = newValue || '';
-    if (instance.getParentPersistentUuid() === parentPersistentUuid) return;
+    if ((getParentPersistentUuid(instance) || '') === parentPersistentUuid)
+      return;
 
     const keepWorld = getKeepWorldOnReparent();
 

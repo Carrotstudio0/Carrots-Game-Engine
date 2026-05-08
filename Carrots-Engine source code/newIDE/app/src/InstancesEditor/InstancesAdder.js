@@ -4,6 +4,7 @@ import { unserializeFromJSObject } from '../Utils/Serializer';
 import { type InstancesEditorSettings } from './InstancesEditorSettings';
 import {
   buildInstancesIndex,
+  getParentPersistentUuid,
   syncLocalFromWorld,
   setLocalToWorld,
 } from './ParentingHelpers';
@@ -71,7 +72,7 @@ export const addSerializedInstances = ({
 
   if (newInstances.length > 0) {
     newInstances.forEach(instance => {
-      const parentPersistentUuid = instance.getParentPersistentUuid();
+      const parentPersistentUuid = getParentPersistentUuid(instance);
       if (
         parentPersistentUuid &&
         oldToNewPersistentUuid.has(parentPersistentUuid)

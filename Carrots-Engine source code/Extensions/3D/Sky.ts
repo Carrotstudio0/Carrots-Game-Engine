@@ -20,6 +20,7 @@ namespace gdjs {
 
   const clamp = (value: number, min: number, max: number): number =>
     Math.min(max, Math.max(min, value));
+  const clampSunIntensity = (value: number): number => clamp(value, -1, 8);
 
   gdjs.PixiFiltersTools.registerFilterCreator(
     'Scene3D::Sky',
@@ -85,8 +86,7 @@ namespace gdjs {
               0,
               0.999
             );
-            this._sunIntensity = Math.max(
-              0,
+            this._sunIntensity = clampSunIntensity(
               effectData.doubleParameters.sunIntensity !== undefined
                 ? effectData.doubleParameters.sunIntensity
                 : this._sunIntensity
@@ -373,10 +373,15 @@ namespace gdjs {
                     clamp(pow(1.0 - dot(up, vSunDirection), 5.0), 0.0, 1.0)
                   );
 
+                  float nightBoost = clamp(-sunIntensity, 0.0, 1.0);
+                  float dayFactor = clamp(1.0 + sunIntensity, 0.0, 1.0);
+
                   vec3 skyBase = Lin * 0.04 + vec3(0.00002, 0.00028, 0.00055);
                   skyBase *= skyTintColor;
+                  skyBase *= dayFactor;
 
                   vec3 nightBase = vec3(0.1) * Fex;
+                  nightBase *= (1.0 + 1.6 * nightBoost);
                   float sundisk = smoothstep(
                     sunAngularDiameterCos,
                     sunAngularDiameterCos + 0.00002,
@@ -417,7 +422,7 @@ namespace gdjs {
                     (0.78 + 0.22 * clamp(direction.z * 0.8 + 0.2, 0.0, 1.0));
                   vec3 cloudLitColor =
                     cloudBaseColor +
-                    sunColor * (0.18 * sunScatter * (0.4 + sunIntensity));
+                    sunColor * (0.18 * sunScatter * max(0.0, 0.4 + sunIntensity));
 
                   texColor = mix(texColor, cloudLitColor, cloudBlend);
 
@@ -568,7 +573,7 @@ namespace gdjs {
             } else if (parameterName === 'mieDirectionalG') {
               this._mieDirectionalG = clamp(value, 0, 0.999);
             } else if (parameterName === 'sunIntensity') {
-              this._sunIntensity = Math.max(0, value);
+              this._sunIntensity = clampSunIntensity(value);
             } else if (parameterName === 'sunElevation') {
               this._sunElevation = clamp(value, -10, 90);
             } else if (parameterName === 'sunAzimuth') {
@@ -684,7 +689,7 @@ namespace gdjs {
             this._rayleigh = clamp(syncData.ry, 0, 6);
             this._mieCoefficient = clamp(syncData.mc, 0, 0.1);
             this._mieDirectionalG = clamp(syncData.mg, 0, 0.999);
-            this._sunIntensity = Math.max(0, syncData.si);
+            this._sunIntensity = clampSunIntensity(syncData.si);
             this._sunElevation = clamp(syncData.se, -10, 90);
             this._sunAzimuth = syncData.sa;
             this._exposure = clamp(syncData.ex, 0, 2);
