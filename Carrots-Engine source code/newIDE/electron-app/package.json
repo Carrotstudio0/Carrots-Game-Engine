@@ -2,7 +2,7 @@
   "name": "carrots-engine",
   "productName": "Carrots Engine",
   "description": "Carrots Engine IDE running on the Electron runtime",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "author": "islam ibrahim",
   "license": "MIT",
   "homepage": "https://carrots.odoo.com/",

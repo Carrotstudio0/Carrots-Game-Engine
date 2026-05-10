@@ -2,7 +2,7 @@
   "name": "carrots-engine",
   "productName": "Carrots Engine",
   "description": "Carrots Engine IDE - the open-source, cross-platform game engine designed for everyone",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "author": "Carrots Engine Team <hello@carrots.odoo.com>",
   "license": "MIT",
   "homepage": "https://carrots.odoo.com/",

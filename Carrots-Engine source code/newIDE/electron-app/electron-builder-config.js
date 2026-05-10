@@ -52,6 +52,7 @@ const config = {
   },
   win: {
     executableName: 'CarrotsEngine',
+    icon: path.join(__dirname, 'build/icon.ico'),
   },
   nsis: {
     oneClick: false,
