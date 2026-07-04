@@ -1,0 +1,31 @@
+{
+	"InstallScripts" : 
+	[
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/ExtLibs/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Core/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/GDJS/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/3D/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/AnchorBehavior/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/DestroyOutsideBehavior/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/DraggableBehavior/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/Inventory/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/LinkedObjects/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/NavMeshBehavior/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/PanelSpriteObject/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/ParticleSystem/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/PathfindingBehavior/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/PhysicsBehavior/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/PlatformBehavior/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/PrimitiveDrawing/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/Shopify/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/SystemInfo/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/TextEntryObject/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/TextObject/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/TiledSpriteObject/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/Spine/cmake_install.cmake",
+		"E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/TopDownMovementBehavior/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

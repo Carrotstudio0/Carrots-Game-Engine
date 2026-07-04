@@ -1,0 +1,70 @@
+# Install script for directory: E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/Extensions
+
+# Set the install prefix
+if(NOT DEFINED CMAKE_INSTALL_PREFIX)
+  set(CMAKE_INSTALL_PREFIX "C:/Program Files (x86)/GDevelop")
+endif()
+string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
+
+# Set the install configuration name.
+if(NOT DEFINED CMAKE_INSTALL_CONFIG_NAME)
+  if(BUILD_TYPE)
+    string(REGEX REPLACE "^[^A-Za-z0-9_]+" ""
+           CMAKE_INSTALL_CONFIG_NAME "${BUILD_TYPE}")
+  else()
+    set(CMAKE_INSTALL_CONFIG_NAME "Debug")
+  endif()
+  message(STATUS "Install configuration: \"${CMAKE_INSTALL_CONFIG_NAME}\"")
+endif()
+
+# Set the component getting installed.
+if(NOT CMAKE_INSTALL_COMPONENT)
+  if(COMPONENT)
+    message(STATUS "Install component: \"${COMPONENT}\"")
+    set(CMAKE_INSTALL_COMPONENT "${COMPONENT}")
+  else()
+    set(CMAKE_INSTALL_COMPONENT)
+  endif()
+endif()
+
+# Is this installation the result of a crosscompile?
+if(NOT DEFINED CMAKE_CROSSCOMPILING)
+  set(CMAKE_CROSSCOMPILING "FALSE")
+endif()
+
+# Set path to fallback-tool for dependency-resolution.
+if(NOT DEFINED CMAKE_OBJDUMP)
+  set(CMAKE_OBJDUMP "C:/msys64/ucrt64/bin/objdump.exe")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for each subdirectory.
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/3D/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/AnchorBehavior/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/DestroyOutsideBehavior/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/DraggableBehavior/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/Inventory/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/LinkedObjects/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/NavMeshBehavior/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/PanelSpriteObject/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/ParticleSystem/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/PathfindingBehavior/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/PhysicsBehavior/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/PlatformBehavior/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/PrimitiveDrawing/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/Shopify/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/SystemInfo/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/TextEntryObject/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/TextObject/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/TiledSpriteObject/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/Spine/cmake_install.cmake")
+  include("E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/TopDownMovementBehavior/cmake_install.cmake")
+
+endif()
+
+string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
+       "${CMAKE_INSTALL_MANIFEST_FILES}")
+if(CMAKE_INSTALL_LOCAL_ONLY)
+  file(WRITE "E:/OneDrive - Ersm Studio/SmallTeam/Projects/GithubProjects/Carrots-Game-Engine/Carrots-Engine source code/build/Extensions/install_local_manifest.txt"
+     "${CMAKE_INSTALL_MANIFEST_CONTENT}")
+endif()
