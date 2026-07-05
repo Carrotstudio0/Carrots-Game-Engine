@@ -3,8 +3,6 @@ name: Build Windows EXE
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -14,54 +12,57 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        submodules: recursive
     
-    - name: Setup Node.js
+    - name: Setup Node.js 18
       uses: actions/setup-node@v4
       with:
         node-version: '18'
     
-    - name: Install Grunt CLI globally
-      run: npm install -g grunt-cli
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
     
-    - name: Install GDevelop.js dependencies
-      working-directory: './Carrots-Engine source code/GDevelop.js'
-      run: npm install --legacy-peer-deps
+    - name: Install Emscripten
+      run: |
+        git clone https://github.com/emscripten-core/emsdk.git
+        cd emsdk
+        ./emsdk install latest
+        ./emsdk activate latest
     
-    - name: Build GDevelop.js (libGD.js)
-      working-directory: './Carrots-Engine source code/GDevelop.js'
-      run: npm run build
+    - name: Setup build tools
+      run: |
+        choco install cmake ninja -y
     
     - name: Install GDJS dependencies
       working-directory: './Carrots-Engine source code/GDJS'
       run: npm install --legacy-peer-deps
     
-    - name: Build GDJS
-      working-directory: './Carrots-Engine source code/GDJS'
-      run: npm run build
-    
-    - name: Install app dependencies
-      working-directory: './Carrots-Engine source code/newIDE/app'
+    - name: Install GDevelop.js dependencies
+      working-directory: './Carrots-Engine source code/GDevelop.js'
       run: npm install --legacy-peer-deps
     
     - name: Install electron-app dependencies
       working-directory: './Carrots-Engine source code/newIDE/electron-app'
       run: npm install --legacy-peer-deps
     
-    - name: Build application
+    - name: Build GDevelop.js
+      working-directory: './Carrots-Engine source code/GDevelop.js'
+      run: npm run build
+    
+    - name: Build GDJS
+      working-directory: './Carrots-Engine source code/GDJS'
+      run: npm run build
+    
+    - name: Build electron app
       working-directory: './Carrots-Engine source code/newIDE/electron-app'
       run: npm run build
     
-    - name: Upload EXE artifact
+    - name: Upload EXE
       uses: actions/upload-artifact@v4
       with:
         name: carrots-engine-exe
         path: './Carrots-Engine source code/newIDE/electron-app/dist/**/*.exe'
         retention-days: 30
-    
-    - name: Create Release (على Tags)
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
-      with:
-        files: './Carrots-Engine source code/newIDE/electron-app/dist/**/*.exe'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
