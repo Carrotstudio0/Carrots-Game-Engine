@@ -90,8 +90,18 @@ function patchGlueCppFile(cb) {
         //std::string in GDevelop and need to call c_str.
         if (insideReturnStringFunction) {
           //[Const, Value] DOMString
-          if (line.indexOf('static char*') !== -1) {
-            line = line.replace('static char*', 'static gd::String');
+          if (
+  line.indexOf('static char*') !== -1 ||
+  line.indexOf('static thread_local char*') !== -1
+) {
+  line = line.replace(
+    'static thread_local char*',
+    'static thread_local gd::String'
+  );
+  line = line.replace(
+    'static char*',
+    'static thread_local gd::String'
+  );
           } else if (line.indexOf(', &temp);') !== -1) {
             line = line.replace(', &temp);', ', temp.c_str());');
             //[Const, Ref] DOMString
