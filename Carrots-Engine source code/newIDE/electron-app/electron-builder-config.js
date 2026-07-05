@@ -82,12 +82,8 @@ const config = {
     ],
   },
   afterSign: 'scripts/electron-builder-after-sign.js',
-  publish: [
-    {
-      provider: 'github',
-    },
-  ],
-};
+  publish: null,
+  };
 
 const hasWindowsCodeSigningConfig =
   (process.env.GD_SIGNTOOL_SUBJECT_NAME &&

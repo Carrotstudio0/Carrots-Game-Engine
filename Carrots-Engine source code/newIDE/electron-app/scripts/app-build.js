@@ -22,7 +22,9 @@ const checkLibGDjsSize = () => {
       }
 
       const sizeInMiB = stats.size / 1024 / 1024;
-      if (sizeInMiB > 2) {
+const maxSizeInMiB = parseFloat(process.env.LIBGD_MAX_SIZE_MIB || "2");
+
+if (sizeInMiB > maxSizeInMiB) {
         shell.echo(
           `❌ libGD.js size is too big (${sizeInMiB.toFixed(
             2

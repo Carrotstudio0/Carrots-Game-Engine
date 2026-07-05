@@ -2,14 +2,15 @@ name: Build Windows EXE
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '18'
-  PYTHON_VERSION: '3.11'
+  NODE_VERSION: "18"
+  PYTHON_VERSION: "3.11"
+  LIBGD_MAX_SIZE_MIB: "8"
 
 jobs:
   build-windows:
@@ -18,72 +19,75 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      # ========== CHECKOUT & SETUP ==========
+      # ========= CHECKOUT =========
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
+      # ========= SETUP =========
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup Python ${{ env.PYTHON_VERSION }}
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install system dependencies (Chocolatey)
+      - name: Install system dependencies
         shell: pwsh
         run: |
           choco install cmake ninja git -y --no-progress
           Write-Host "✓ CMake, Ninja, and Git installed successfully" -ForegroundColor Green
 
-      # ========== DIAGNOSTICS & EXPORT NINJA ==========
-      - name: "Diagnostic: verify tools"
+      # ========= DIAGNOSTICS =========
+      - name: Verify installed tools
         shell: pwsh
         run: |
           Write-Host "ninja location:" (Get-Command ninja -ErrorAction SilentlyContinue).Path
           ninja --version
           cmake --version
+
           try {
             emcc --version
           } catch {
             Write-Host "emcc not found yet" -ForegroundColor Yellow
           }
 
-      - name: Export CMAKE_MAKE_PROGRAM (point to installed ninja)
+      - name: Export CMAKE_MAKE_PROGRAM
         shell: pwsh
         run: |
           $ninja = (Get-Command ninja -ErrorAction SilentlyContinue).Path
+
           if (-not $ninja) {
-            Write-Host "❌ ninja was not found on PATH" -ForegroundColor Red
+            Write-Host "❌ Ninja not found" -ForegroundColor Red
             exit 1
           }
+
           Add-Content -Path $env:GITHUB_ENV -Value "CMAKE_MAKE_PROGRAM=$ninja"
           Write-Host "✓ Exported CMAKE_MAKE_PROGRAM=$ninja" -ForegroundColor Green
 
-      # ========== NOTE: EMSCRIPTEN REMOVED ==========
-      # Emscripten setup is not needed for building the Windows Electron EXE
-      # and can cause long installs or platform-specific failures on windows-latest.
-
-      # ========== INSTALL DEPENDENCIES ==========
+      # ========= INSTALL DEPENDENCIES =========
       - name: Install GDJS dependencies
         working-directory: "Carrots-Engine source code/GDJS"
         shell: pwsh
         run: |
           Write-Host "Installing GDJS dependencies..." -ForegroundColor Cyan
+
           if (Test-Path package-lock.json) {
             npm ci --legacy-peer-deps
           } else {
             npm install --legacy-peer-deps
           }
+
           if ($LASTEXITCODE -ne 0) {
             Write-Host "❌ GDJS dependencies installation failed" -ForegroundColor Red
             exit 1
           }
+
           Write-Host "✓ GDJS dependencies installed" -ForegroundColor Green
 
       - name: Install GDevelop.js dependencies
@@ -91,47 +95,75 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "Installing GDevelop.js dependencies..." -ForegroundColor Cyan
+
           if (Test-Path package-lock.json) {
             npm ci --legacy-peer-deps
           } else {
             npm install --legacy-peer-deps
           }
+
           if ($LASTEXITCODE -ne 0) {
             Write-Host "❌ GDevelop.js dependencies installation failed" -ForegroundColor Red
             exit 1
           }
+
           Write-Host "✓ GDevelop.js dependencies installed" -ForegroundColor Green
+
+      - name: Install newIDE app dependencies
+        working-directory: "Carrots-Engine source code/newIDE/app"
+        shell: pwsh
+        run: |
+          Write-Host "Installing newIDE app dependencies..." -ForegroundColor Cyan
+
+          if (Test-Path package-lock.json) {
+            npm ci --legacy-peer-deps
+          } else {
+            npm install --legacy-peer-deps
+          }
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ newIDE app dependencies installation failed" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "✓ newIDE app dependencies installed" -ForegroundColor Green
 
       - name: Install Electron app dependencies
         working-directory: "Carrots-Engine source code/newIDE/electron-app"
         shell: pwsh
         run: |
           Write-Host "Installing Electron app dependencies..." -ForegroundColor Cyan
+
           if (Test-Path package-lock.json) {
             npm ci --legacy-peer-deps
           } else {
             npm install --legacy-peer-deps
           }
+
           if ($LASTEXITCODE -ne 0) {
             Write-Host "❌ Electron app dependencies installation failed" -ForegroundColor Red
             exit 1
           }
+
           Write-Host "✓ Electron app dependencies installed" -ForegroundColor Green
 
-      # ========== BUILD PHASE ==========
+      # ========= BUILD =========
       - name: Build GDJS
         working-directory: "Carrots-Engine source code/GDJS"
         shell: pwsh
         run: |
           Write-Host "=== Starting GDJS Build ===" -ForegroundColor Yellow
+
           npm run build
+
           if ($LASTEXITCODE -ne 0) {
             Write-Host "❌ GDJS build failed" -ForegroundColor Red
             exit 1
           }
+
           Write-Host "✓ GDJS built successfully" -ForegroundColor Green
 
-      # ========== EMSCRIPTEN: setup & verify ==========
+      # ========= EMSCRIPTEN =========
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
@@ -154,11 +186,14 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "=== Starting GDevelop.js Build ===" -ForegroundColor Yellow
+
           npm run build
+
           if ($LASTEXITCODE -ne 0) {
             Write-Host "❌ GDevelop.js build failed" -ForegroundColor Red
             exit 1
           }
+
           Write-Host "✓ GDevelop.js built successfully" -ForegroundColor Green
 
       - name: Build Electron App
@@ -166,76 +201,59 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "=== Starting Electron App Build ===" -ForegroundColor Yellow
+
+          $env:NODE_ENV = "production"
+
           npm run build
+
           if ($LASTEXITCODE -ne 0) {
             Write-Host "❌ Electron app build failed" -ForegroundColor Red
             exit 1
           }
+
           Write-Host "✓ Electron app built successfully" -ForegroundColor Green
 
-      # ========== VERIFICATION ==========
+      # ========= PACKAGE EXE =========
+      - name: Build Windows EXE
+        working-directory: "Carrots-Engine source code/newIDE/electron-app"
+        shell: pwsh
+        run: |
+          Write-Host "=== Creating Windows Executable ===" -ForegroundColor Yellow
+
+          $env:NODE_ENV = "production"
+
+          npm run make
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ EXE creation failed" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "✓ EXE created successfully" -ForegroundColor Green
+
+      # ========= VERIFY =========
       - name: Verify build artifacts
         shell: pwsh
         run: |
-          $distPath = 'Carrots-Engine source code/newIDE/electron-app/dist'
-          Write-Host "Checking for EXE files in: $distPath" -ForegroundColor Cyan
+          $makePath = "Carrots-Engine source code/newIDE/electron-app/out/make"
 
-          $exeFiles = Get-ChildItem -Path $distPath -Filter '*.exe' -Recurse -ErrorAction SilentlyContinue
+          Write-Host "Checking for EXE files in: $makePath" -ForegroundColor Cyan
 
-          if ($null -eq $exeFiles -or $exeFiles.Count -eq 0) {
-            Write-Host "❌ No EXE files found!" -ForegroundColor Red
-            Write-Host "Available files:" -ForegroundColor Yellow
-            Get-ChildItem -Path $distPath -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  - $_" }
+          $exeFiles = Get-ChildItem -Path $makePath -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue
+
+          if (-not $exeFiles -or $exeFiles.Count -eq 0) {
+            Write-Host "❌ No EXE files found in $makePath" -ForegroundColor Red
             exit 1
           }
 
           Write-Host "✓ Found $($exeFiles.Count) EXE file(s):" -ForegroundColor Green
-          $exeFiles | ForEach-Object {
-            $sizeMB = [Math]::Round($_.Length/1MB, 2)
-            Write-Host "  ✓ $($_.Name) ($sizeMB MB)" -ForegroundColor Green
-          }
+          $exeFiles | ForEach-Object { Write-Host "  - $($_.FullName)" -ForegroundColor Green }
 
-      # ========== UPLOAD ARTIFACTS ==========
+      # ========= UPLOAD =========
       - name: Upload EXE artifacts
-        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: carrots-engine-exe
-          path: "Carrots-Engine source code/newIDE/electron-app/dist/**/*.exe"
-          retention-days: 30
-          compression-level: 9
-
-      - name: Upload build logs (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs-debug
+          name: Carrots-Engine-Windows-EXE
           path: |
-            Carrots-Engine source code/*/npm-debug.log
-            Carrots-Engine source code/*/*.log
-            Carrots-Engine source code/*/*/npm-debug.log
-          retention-days: 7
-
-      # ========== FINAL SUMMARY ==========
-      - name: Build Success Summary
-        if: success()
-        shell: pwsh
-        run: |
-          Write-Host ""
-          Write-Host "╔════════════════════════════════════════════════╗" -ForegroundColor Green
-          Write-Host "║    ✓ BUILD COMPLETED SUCCESSFULLY!             ║" -ForegroundColor Green
-          Write-Host "║    Carrots Engine Windows EXE Ready            ║" -ForegroundColor Green
-          Write-Host "╚════════════════════════════════════════════════╝" -ForegroundColor Green
-          Write-Host ""
-
-      - name: Build Failure Summary
-        if: failure()
-        shell: pwsh
-        run: |
-          Write-Host ""
-          Write-Host "╔════════════════════════════════════════════════╗" -ForegroundColor Red
-          Write-Host "║    ❌ BUILD FAILED                              ║" -ForegroundColor Red
-          Write-Host "║    Check logs above for details                ║" -ForegroundColor Red
-          Write-Host "║    Build logs uploaded as artifacts            ║" -ForegroundColor Red
-          Write-Host "╚════════════════════════════════════════════════╝" -ForegroundColor Red
-          Write-Host ""
+            Carrots-Engine source code/newIDE/electron-app/out/make/**/*.exe
+          retention-days: 30
