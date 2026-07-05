@@ -131,7 +131,7 @@ jobs:
           }
           Write-Host "✓ GDJS built successfully" -ForegroundColor Green
 
-      # ========== EMSCRIPTEN: setup & verify (ADDED) ==========
+      # ========== EMSCRIPTEN: setup & verify ==========
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
 
@@ -139,7 +139,7 @@ jobs:
         shell: pwsh
         run: |
           emcc --version
-          emcmake --version
+          emcmake cmake --version
 
       - name: Build GDevelop.js
         working-directory: "Carrots-Engine source code/GDevelop.js"
