@@ -70,7 +70,9 @@ else()
 	add_library(GDJS SHARED ${source_files})
 endif()
 if(EMSCRIPTEN)
-	set_target_properties(GDJS PROPERTIES SUFFIX ".bc")
+	# Use standard static library suffix (.a) for Emscripten
+	# The bytecode (.bc) generation happens during the final linking stage
+	set_target_properties(GDJS PROPERTIES SUFFIX ".a")
 elseif(WIN32)
 	set_target_properties(GDJS PROPERTIES PREFIX "")
 else()
