@@ -1,131 +1,261 @@
-const path = require('path');
+name: Build Windows EXE
 
-/**
- * @type {import('electron-builder').Configuration}
- * @see https://www.electron.build/configuration/configuration
- */
-const config = {
-  appId: 'com.carrots-engine.ide',
-  directories: {
-    app: 'app',
-    buildResources: 'build',
-    output: 'dist',
-  },
-  extraResources: [
-    {
-      from: '../app/resources/GDJS',
-      to: 'GDJS',
-    },
-    {
-      from: '../app/resources/preview_node_modules',
-      to: 'preview_node_modules',
-    },
-    {
-      from: '../app/resources/particle-fx',
-      to: 'particle-fx',
-    },
-  ],
-  linux: {
-    icon: path.join(__dirname, '../app/build/android-chrome-512x512.png'),
-    target: [
-      {
-        target: 'AppImage',
-        arch: ['x64', 'arm64'],
-      },
-      {
-        target: 'zip',
-        arch: ['x64', 'arm64'],
-      },
-      {
-        target: 'deb',
-        arch: ['x64', 'arm64'],
-      },
-    ],
-  },
-  mac: {
-    category: 'public.app-category.developer-tools',
-    hardenedRuntime: true,
-    entitlements: './build/entitlements.mac.inherit.plist',
-    target: {
-      target: 'default',
-      arch: ['universal'],
-    },
-    mergeASARs: false,
-    x64ArchFiles:
-      'Contents/Resources/app.asar.unpacked/node_modules/steamworks.js/dist/osx/steamworksjs.darwin-*.node',
-  },
-  win: {
-    executableName: 'CarrotsEngine',
-    icon: path.join(__dirname, 'build/icon.ico'),
-  },
-  nsis: {
-    oneClick: false,
-    allowToChangeInstallationDirectory: true,
-  },
-  appx: {
-    publisherDisplayName: 'Carrots Engine',
-    displayName: 'Carrots Engine',
-    publisher: 'CN=B13CB8D3-97AA-422C-A394-0EE51B9ACAD3',
-    identityName: 'CarrotsEngine.CarrotsEngine',
-    backgroundColor: '#F28C28',
-    languages: [
-      'EN-US',
-      'ZH-HANS',
-      'DE',
-      'IT',
-      'JA',
-      'PT-BR',
-      'RU',
-      'ES',
-      'FR',
-      'SL',
-    ],
-  },
-  afterSign: 'scripts/electron-builder-after-sign.js',
-  publish: null,
-  };
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
-const hasWindowsCodeSigningConfig =
-  (process.env.GD_SIGNTOOL_SUBJECT_NAME &&
-    process.env.GD_SIGNTOOL_THUMBPRINT) ||
-  process.env.WIN_CSC_LINK ||
-  process.env.CSC_LINK;
+env:
+  NODE_VERSION: "18"
+  PYTHON_VERSION: "3.11"
+  LIBGD_MAX_SIZE_MIB: "8"
 
-if (
-  process.env.GD_SIGNTOOL_SUBJECT_NAME &&
-  process.env.GD_SIGNTOOL_THUMBPRINT
-) {
-  config.win.signtoolOptions = {};
-  config.win.signtoolOptions.certificateSubjectName =
-    process.env.GD_SIGNTOOL_SUBJECT_NAME;
-  config.win.signtoolOptions.certificateSha1 =
-    process.env.GD_SIGNTOOL_THUMBPRINT;
+jobs:
+  build-windows:
+    name: Build Carrots Engine for Windows
+    runs-on: windows-latest
+    timeout-minutes: 120
 
-  // electron-builder default signtool.exe is not sufficient for some reason.
-  if (!process.env.SIGNTOOL_PATH) {
-    console.error(
-      "❌ SIGNTOOL_PATH is not specified - signing won't work with the builtin signtool provided by electron-builder."
-    );
-  } else {
-    console.log(
-      'ℹ️ SIGNTOOL_PATH is specified and set to:',
-      process.env.SIGNTOOL_PATH
-    );
-  }
+    steps:
+      # ========= CHECKOUT =========
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
 
-  // Seems required, see https://github.com/electron-userland/electron-builder/issues/6158#issuecomment-1587045539.
-  config.win.signtoolOptions.signingHashAlgorithms = ['sha256'];
-  console.log(
-    'ℹ️ Set Windows build signing options:',
-    config.win.signtoolOptions
-  );
-} else if (!hasWindowsCodeSigningConfig) {
-  console.log('ℹ️ No Windows build signing options set.');
-  config.win.signtoolOptions = {
-    sign: path.join(__dirname, 'scripts/electron-builder-skip-windows-sign.js'),
-  };
-} else {
-  console.log('ℹ️ Using Windows signing options from electron-builder env.');
-}
+      # ========= SETUP =========
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
-module.exports = config;
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install system dependencies
+        shell: pwsh
+        run: |
+          choco install cmake ninja git -y --no-progress
+          Write-Host "✓ CMake, Ninja, and Git installed successfully" -ForegroundColor Green
+
+      # ========= DIAGNOSTICS =========
+      - name: Verify installed tools
+        shell: pwsh
+        run: |
+          Write-Host "ninja location:" (Get-Command ninja -ErrorAction SilentlyContinue).Path
+          ninja --version
+          cmake --version
+
+          try {
+            emcc --version
+          } catch {
+            Write-Host "emcc not found yet" -ForegroundColor Yellow
+          }
+
+      - name: Export CMAKE_MAKE_PROGRAM
+        shell: pwsh
+        run: |
+          $ninja = (Get-Command ninja -ErrorAction SilentlyContinue).Path
+
+          if (-not $ninja) {
+            Write-Host "❌ Ninja not found" -ForegroundColor Red
+            exit 1
+          }
+
+          Add-Content -Path $env:GITHUB_ENV -Value "CMAKE_MAKE_PROGRAM=$ninja"
+          Write-Host "✓ Exported CMAKE_MAKE_PROGRAM=$ninja" -ForegroundColor Green
+
+      # ========= INSTALL DEPENDENCIES =========
+      - name: Install GDJS dependencies
+        working-directory: "Carrots-Engine source code/GDJS"
+        shell: pwsh
+        run: |
+          Write-Host "Installing GDJS dependencies..." -ForegroundColor Cyan
+
+          if (Test-Path package-lock.json) {
+            npm ci --legacy-peer-deps
+          } else {
+            npm install --legacy-peer-deps
+          }
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ GDJS dependencies installation failed" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "✓ GDJS dependencies installed" -ForegroundColor Green
+
+      - name: Install GDevelop.js dependencies
+        working-directory: "Carrots-Engine source code/GDevelop.js"
+        shell: pwsh
+        run: |
+          Write-Host "Installing GDevelop.js dependencies..." -ForegroundColor Cyan
+
+          if (Test-Path package-lock.json) {
+            npm ci --legacy-peer-deps
+          } else {
+            npm install --legacy-peer-deps
+          }
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ GDevelop.js dependencies installation failed" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "✓ GDevelop.js dependencies installed" -ForegroundColor Green
+
+      - name: Install newIDE app dependencies
+        working-directory: "Carrots-Engine source code/newIDE/app"
+        shell: pwsh
+        run: |
+          Write-Host "Installing newIDE app dependencies..." -ForegroundColor Cyan
+
+          if (Test-Path package-lock.json) {
+            npm ci --legacy-peer-deps
+          } else {
+            npm install --legacy-peer-deps
+          }
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ newIDE app dependencies installation failed" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "✓ newIDE app dependencies installed" -ForegroundColor Green
+
+      - name: Install Electron app dependencies
+        working-directory: "Carrots-Engine source code/newIDE/electron-app"
+        shell: pwsh
+        run: |
+          Write-Host "Installing Electron app dependencies..." -ForegroundColor Cyan
+
+          if (Test-Path package-lock.json) {
+            npm ci --legacy-peer-deps
+          } else {
+            npm install --legacy-peer-deps
+          }
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ Electron app dependencies installation failed" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "✓ Electron app dependencies installed" -ForegroundColor Green
+
+      # ========= BUILD =========
+      - name: Build GDJS
+        working-directory: "Carrots-Engine source code/GDJS"
+        shell: pwsh
+        run: |
+          Write-Host "=== Starting GDJS Build ===" -ForegroundColor Yellow
+
+          npm run build
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ GDJS build failed" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "✓ GDJS built successfully" -ForegroundColor Green
+
+      # ========= EMSCRIPTEN =========
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.45
+
+      - name: Verify Emscripten
+        shell: pwsh
+        run: |
+          emcc --version
+          emcmake cmake --version
+
+      - name: Clean previous build
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force "Carrots-Engine source code/Binaries/embuild" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "Carrots-Engine source code/Binaries/Output/Release_Emscripten" -ErrorAction SilentlyContinue
+
+      - name: Build GDevelop.js
+        working-directory: "Carrots-Engine source code/GDevelop.js"
+        shell: pwsh
+        run: |
+          Write-Host "=== Starting GDevelop.js Build ===" -ForegroundColor Yellow
+
+          npm run build
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ GDevelop.js build failed" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "✓ GDevelop.js built successfully" -ForegroundColor Green
+
+      - name: Build Electron App
+        working-directory: "Carrots-Engine source code/newIDE/electron-app"
+        shell: pwsh
+        run: |
+          Write-Host "=== Starting Electron App Build ===" -ForegroundColor Yellow
+
+          $env:NODE_ENV = "production"
+
+          npm run build
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ Electron app build failed" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "✓ Electron app built successfully" -ForegroundColor Green
+
+      # ========= PACKAGE EXE =========
+      - name: Build Windows EXE
+        working-directory: "Carrots-Engine source code/newIDE/electron-app"
+        shell: pwsh
+        run: |
+          Write-Host "=== Creating Windows Executable ===" -ForegroundColor Yellow
+
+          $env:NODE_ENV = "production"
+
+          npm run make
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ EXE creation failed" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "✓ EXE created successfully" -ForegroundColor Green
+
+      # ========= VERIFY =========
+      - name: Verify build artifacts
+        shell: pwsh
+        run: |
+          $distPath = "Carrots-Engine source code/newIDE/electron-app/dist"
+
+          Write-Host "Checking for EXE files in: $distPath" -ForegroundColor Cyan
+
+          $exeFiles = Get-ChildItem -Path $distPath -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue
+
+          if (-not $exeFiles -or $exeFiles.Count -eq 0) {
+            Write-Host "❌ No EXE files found in $distPath" -ForegroundColor Red
+            Write-Host "--- Full dist folder content (for debugging) ---" -ForegroundColor Yellow
+            Get-ChildItem -Path $distPath -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_.FullName }
+            exit 1
+          }
+
+          Write-Host "✓ Found $($exeFiles.Count) EXE file(s):" -ForegroundColor Green
+          $exeFiles | ForEach-Object { Write-Host "  - $($_.FullName)" -ForegroundColor Green }
+
+      # ========= UPLOAD =========
+      - name: Upload EXE artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Carrots-Engine-Windows-EXE
+          path: |
+            Carrots-Engine source code/newIDE/electron-app/dist/*.exe
+          retention-days: 30
