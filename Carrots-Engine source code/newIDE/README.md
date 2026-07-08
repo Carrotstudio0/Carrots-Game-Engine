@@ -1,103 +1,180 @@
-# GDevelop IDE
+# Carrots Engine Editor
 
-This is the Carrots engine editor . It is based on [React](https://facebook.github.io/react/), [Material-UI](http://www.material-ui.com), [Pixi.js](https://github.com/pixijs/pixi.js), [Three.js](https://github.com/mrdoob/three.js) and [Electron](https://electron.atom.io/) for the desktop app.
-It uses carrots Engine [core C++ classes compiled to Javascript](https://github.com/4ian/GDevelop.js) to work with GDevelop games.
+This is the **Carrots Engine Editor**, the official editor of Carrots Engine, an Arabic game engine developed by the Carrots Team.
 
+The editor is built using modern web technologies including:
 
-## 1) Installation 💻
+- React
+- Material UI
+- Pixi.js
+- Three.js
+- Electron
 
-Make sure to have [Git](https://git-scm.com/) and [Node.js](https://nodejs.org) installed. [Yarn](https://yarnpkg.com) is optional.
+Carrots Engine uses its own runtime and editor systems to create both 2D and 3D games while providing a modern visual workflow focused on productivity and ease of use.
+
+---
+
+# 1) Installation 💻
+
+Make sure you have the following installed:
+
+- Git
+- Node.js
+- Yarn (optional)
 
 ```bash
-git clone https://github.com/4ian/GDevelop.git
-cd GDevelop/newIDE/app
-npm install # or yarn
+git clone https://github.com/CarrotStudio/Carrots-Engine.git
+cd Carrots-Engine/newIDE/app
+npm install
 ```
 
-## 2) Development 🤓
+---
+
+# 2) Development 🤓
 
 ```bash
-npm start # or yarn start
+npm start
 ```
 
-This will open the app in your web browser.
+The editor will automatically open in your browser.
 
-Images resources, GDJS Runtime, extensions will be copied in resources, and [libGD.js](https://github.com/4ian/GDevelop/tree/master/GDevelop.js) will be downloaded automatically. If you wish, you can
-[build libGD.js by yourself](https://github.com/4ian/GDevelop/tree/master/GDevelop.js) (useful if you modified GDevelop native code like extensions).
+During development, engine resources, editor assets, and runtime files will be generated automatically.
 
-> Note for Linux: If you get an error message that looks like this:
-> `Error: watch GD/newIDE/app/some/file ENOSPC` then follow the instructions [here](https://stackoverflow.com/questions/22475849/node-js-error-enospc) to fix.
+---
 
-### Development of the standalone app
+## Development of the Desktop Application
 
-You can run the standalone app with Electron. **Make sure that you've launched `npm start` (or `yarn start`) in the `app` folder before** (see above) and **keep it running** (in development, the app is served from a local server, even for the standalone app).
+Before launching Electron, make sure the web editor is already running.
 
 ```bash
-cd newIDE/app && npm start # Be sure to have this running in another terminal, before the rest!
+cd newIDE/app
+npm start
 
-# In a new terminal:
+# New terminal
+
 cd newIDE/electron-app
-npm install # or yarn
-npm run start # or yarn start
+npm install
+npm run start
 ```
 
-### Quick Install and Run
+---
 
-There is a script file that automates cloning this repository, building the IDE and running it:
+## UI Development
 
--   For Windows: You can download the batch script [here](https://raw.githubusercontent.com/4ian/GDevelop/master/scripts/gitCloneAndBuildGD.bat) and save it to where you want GDevelop to be cloned, then simply run it.
-
-### Development of UI components
-
-You can run a [Storybook](https://github.com/storybooks/storybook) that is used as a playground for rapid UI component development and testing:
+Carrots Engine includes Storybook for developing and testing UI components.
 
 ```bash
 cd newIDE/app
-npm run storybook # or yarn storybook
+
+npm run storybook
 ```
 
-> ℹ️ When creating a Pull Request/pushing a commit, a CI will build the Storybook for you and host it temporarily to allow to test components directly from your browser. Navigate to `http://gdevelop-storybook.s3-website-us-east-1.amazonaws.com/YOUR_BRANCH/latest/index.html` to see it.
+---
 
-Find [here the Storybook of the latest version on master](http://gdevelop-storybook.s3-website-us-east-1.amazonaws.com/master/latest/index.html).
-
-### Tests
-
-Unit tests, type checking and auto-formatting of the code can be launched with these commands:
+## Tests
 
 ```bash
-cd newIDE/app
-npm run test # or yarn test
-npm run flow # or yarn flow
-npm run format # or yarn format
+npm run test
+npm run format
 ```
 
-### Theming
+---
 
-It's pretty easy to create new themes. Check the [README about themes](./README-themes.md)
+## Themes
 
-### Development of the game engine or extensions
+Carrots Engine supports fully customizable editor themes.
 
-- If you want to create/modify _extensions_, check the [README about extensions](./README-extensions.md) for step-by-step explanations to get started in 5 minutes.
-- The _game engine core_ ([GDJS](https://github.com/4ian/GDevelop/tree/master/GDJS)) is in [GDJS/Runtime folder](https://github.com/4ian/GDevelop/tree/master/GDJS/Runtime).
+You can create your own theme or modify the default **Carrots Dark Theme** by editing the theme configuration.
 
-If you modify any file while the editor is running, a watcher will _automatically rebuild_ the engine (look at the console to be sure).
-You can then _launch a preview_ in GDevelop.
+---
 
-### Recommended tools for development
+## Runtime Development
 
-Any text editor is fine, but it's a good idea to have one with _Prettier_ (code formatting), _ESLint_ (code linting) and _Flow_ (type checking) integration. [Modern JavaScript is used for the editor](https://github.com/4ian/GDevelop/blob/master/newIDE/docs/Supported-JavaScript-features-and-coding-style.md).
+The runtime and engine modules are located inside the Runtime directory.
 
-👉 You can use [Visual Studio Code](https://code.visualstudio.com) with these extensions: [Prettier - Code formatter](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode), [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) and [Flow Language Support](https://github.com/flowtype/flow-for-vscode).
+Any changes made while the editor is running are rebuilt automatically.
 
-### Testing and developing with the cloud storage providers (Google Drive, Dropbox, OneDrive, etc...)
+Simply launch Preview to test your changes.
 
-Cloud storage providers are set up with development keys when you're running GDevelop in development mode. For these, to work, you must execute the web-app not from the traditional `http://localhost:3000` origin, but from `http://gdevelop-app-local.com:3000`:
+---
 
--   Set up a [redirection in your hosts file](https://www.howtogeek.com/howto/27350/beginner-geek-how-to-edit-your-hosts-file/), that should look like: `127.0.0.1 gdevelop-app-local.com`.
--   Launch the web app from `http://gdevelop-app-local.com:3000`.
+## Recommended Tools
 
-> This is only necessary if you want to have cloud storage providers working in development. If not done, GDevelop will simply display an error while trying to use them.
+We recommend using **Visual Studio Code** with:
 
+- Prettier
+- ESLint
+- Flow
+
+---
+
+# Building the Desktop Editor 📦
+
+```bash
+cd newIDE/electron-app
+
+npm run build
+```
+
+---
+
+# Localization
+
+To extract editor translations:
+
+```bash
+npm run extract-all-translations
+```
+
+After updating translations:
+
+```bash
+npm run compile-translations
+```
+
+---
+
+# Contributing
+
+Carrots Engine is a **closed-source commercial project** developed exclusively by the **Carrots Team**.
+
+External pull requests are not accepted.
+
+However, we always welcome:
+
+- Bug reports
+- Feature suggestions
+- UI ideas
+- Performance feedback
+- Community contributions
+
+You can contact us through our official Discord server.
+
+---
+
+# About Carrots Engine
+
+Carrots Engine is an Arabic game engine designed to simplify game development while providing powerful tools for both beginners and experienced developers.
+
+Current features include:
+
+- 2D & 3D Game Development
+- Visual Event System
+- Blueprint System
+- Modern Asset Browser
+- Material Editor
+- Particle System
+- CSG Tools
+- Room Generator
+- Built-in Physics
+- Animation Tools
+- Integrated Editor
+
+Our mission is to build a modern Arabic game engine that empowers creators and grows alongside its community.
+
+---
+
+**Code. Create. Carrot. 🥕**
 ## (Optional) Building and deploying the standalone app 📦
 
 > 🖐 This section is only for maintainers that want to deploy the "official app" on the GDevelop website. If you're working on contributions for GDevelop, you won't need it. You can download ["Nightly Builds" of GDevelop here too](./docs/Nightly-Builds-and-continuous-deployment.md).
