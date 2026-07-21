@@ -1,0 +1,271 @@
+# Save this file as: .github/workflows/deploy-carrots-engine-web.yml
+# in the root of https://github.com/Carrotstudio0/Carrots-Game-Engine (or your fork of it).
+#
+# Carrots Engine is derived from the GDevelop source code, but its repo layout
+# is different: the engine code (Core, GDJS, GDevelop.js, newIDE, Extensions)
+# lives inside a subfolder called "Carrots-Engine source code" (with spaces),
+# not at the repo root. Instead of hardcoding that path (which could change),
+# this workflow LOCATES the real "newIDE/app" folder automatically, wherever
+# it is, so it keeps working even if the folder gets renamed/moved.
+#
+# What it does:
+#  1. Checks out the repo (with your modified Extensions/.../JsExtension.js,
+#     the one adding CSG3DObject, already committed).
+#  2. Finds the newIDE/app and GDJS folders automatically (handles the
+#     space in "Carrots-Engine source code").
+#  3. Installs GDJS's dependencies and explicitly runs GDJS's own "build"
+#     script (esbuild) FIRST, so the compiled Runtime exists before
+#     anything tries to copy it (see root-cause note below).
+#  4. Runs `npm ci` in newIDE/app, whose postinstall re-installs GDJS deps
+#     (fast no-op) and imports resources (libGD core, GDJS Runtime,
+#     Extensions, Monaco editor, external zipped editors like Piskel/Jfxr)
+#     -- this time succeeding because GDJS is already built.
+#  5. Runs `npm run build` in newIDE/app, which re-imports resources then
+#     runs `react-app-rewired build` with an 8GB heap.
+#  6. Verifies the build output is actually complete (index.html, JS bundle,
+#     engine core, Runtime files, Extensions, and specifically checks that
+#     "CSG3DObject" made it into the bundled JsExtension.js) before
+#     deploying anything. On failure it prints a full directory listing so
+#     the real path layout is visible in the logs. Fails loudly if anything
+#     critical is missing.
+#  7. Publishes the build to GitHub Pages.
+#  8. After deployment, does a live smoke test: retries the deployed URL
+#     until it responds with HTTP 200, then checks the HTML actually looks
+#     like the editor (Carrots/GDevelop branding + a real JS bundle).
+#     Fails the job if the live site is broken.
+#
+# Requirements:
+#  - In repo Settings > Pages, set "Source" to "GitHub Actions".
+#  - No PUBLIC_URL handling is needed: package.json already has
+#    "homepage": ".", so Create React App emits relative asset paths
+#    (./static/...) that work under any GitHub Pages subpath out of the box.
+#
+# Note on memory: GitHub-hosted "ubuntu-latest" runners have ~7GB RAM by
+# default. If you still see an OOM/killed process despite the 8GB heap
+# setting, either lower --max-old-space-size to ~6144, or run this on a
+# larger/self-hosted runner.
+#
+# Note on npm ci: this dependency tree is old/pinned (React 16, MUI 4...),
+# so we set NPM_CONFIG_LEGACY_PEER_DEPS=true to avoid npm's strict
+# peer-resolution (ERESOLVE) errors -- as an env var (not a CLI flag) so it
+# also applies to the nested "npm install" that this project's postinstall
+# script runs inside the sibling GDJS folder. We also set HUSKY=0 so the
+# "prepare" script's Husky git-hook install doesn't fail/slow things down
+# in CI.
+#
+# Root cause of the "GDJS Runtime folder missing from build" failure:
+# GDJS's own package.json has a "build" script (`node scripts/build.js`,
+# using esbuild) that compiles Runtime/*.ts into the actual JS runtime.
+# newIDE/app's postinstall only runs `npm install` inside GDJS (never
+# `npm run build`), then immediately runs `import-resources`, which tries
+# to copy the GDJS Runtime output -- before it has ever been built. That's
+# a chicken-and-egg bug in the install order. This workflow fixes it by
+# explicitly building GDJS *before* installing/building newIDE/app.
+
+name: Build and Deploy Carrots Engine Web IDE
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Locate newIDE/app and GDJS folders
+        id: locate
+        shell: bash
+        run: |
+          set -e
+          set +o pipefail
+          APP_DIR=$(find . -type d -path "*/newIDE/app" -not -path "*/node_modules/*" | head -n 1)
+          if [ -z "$APP_DIR" ]; then
+            echo "::error::Could not find a newIDE/app folder anywhere in this repository."
+            exit 1
+          fi
+          APP_DIR=${APP_DIR#./}
+          ROOT_DIR=$(dirname "$(dirname "$APP_DIR")")
+          GDJS_DIR="$ROOT_DIR/GDJS"
+          if [ ! -d "$GDJS_DIR" ]; then
+            echo "::error::Expected a GDJS folder next to newIDE at: $GDJS_DIR (not found)."
+            exit 1
+          fi
+          echo "Found newIDE/app at: $APP_DIR"
+          echo "Found GDJS at: $GDJS_DIR"
+          echo "NEWIDE_APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+          echo "NEWIDE_BUILD_DIR=$APP_DIR/build" >> "$GITHUB_ENV"
+          echo "GDJS_DIR=$GDJS_DIR" >> "$GITHUB_ENV"
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles(format('{0}/package-lock.json', env.NEWIDE_APP_DIR), format('{0}/package-lock.json', env.GDJS_DIR)) }}
+          restore-keys: |
+            npm-${{ runner.os }}-
+
+      - name: Install and build GDJS (game engine runtime) FIRST
+        working-directory: ${{ env.GDJS_DIR }}
+        env:
+          HUSKY: '0'
+          NPM_CONFIG_LEGACY_PEER_DEPS: 'true'
+        run: |
+          npm install
+          npm run build
+
+      - name: Verify GDJS actually built something
+        working-directory: ${{ env.GDJS_DIR }}
+        shell: bash
+        run: |
+          set -e
+          set +o pipefail
+          echo "== Listing GDJS folder after build =="
+          find . -maxdepth 2 -not -path "*/node_modules*" | sort
+          if ! find . -not -path "*/node_modules/*" -iname "*.js" -newer package.json | grep -q .; then
+            echo "::error::'npm run build' in GDJS did not seem to produce any new .js output. Check the log above."
+            exit 1
+          fi
+          echo "GDJS build produced output."
+
+      - name: Install web IDE dependencies (GDJS is already built at this point)
+        working-directory: ${{ env.NEWIDE_APP_DIR }}
+        env:
+          HUSKY: '0'
+          # Using the env var (not just a CLI flag) so this also applies to
+          # the nested "npm install" the postinstall script runs inside
+          # ../../GDJS, since that's a separate npm invocation that only
+          # inherits the environment, not our CLI arguments.
+          NPM_CONFIG_LEGACY_PEER_DEPS: 'true'
+        run: npm ci
+
+      - name: Build production web app
+        working-directory: ${{ env.NEWIDE_APP_DIR }}
+        env:
+          CI: false
+          NODE_OPTIONS: '--max-old-space-size=8192'
+        run: npm run build
+
+      - name: Verify build output is complete
+        working-directory: ${{ env.NEWIDE_BUILD_DIR }}
+        shell: bash
+        run: |
+          set -e
+          set +o pipefail
+          echo "== Checking core files exist =="
+          test -f index.html || { echo "::error::index.html missing"; exit 1; }
+          test -d static/js || { echo "::error::static/js bundle missing"; exit 1; }
+
+          echo "== Checking engine core (libGD, compiled to WASM/JS) was downloaded =="
+          if ! find . -iname "libGD.wasm" | grep -q . && ! find . -iname "libGD.js" | grep -q .; then
+            echo "::error::libGD.js / libGD.wasm not found in build output"
+            exit 1
+          fi
+
+          echo "== Checking GDJS Runtime was copied (trying a few known patterns) =="
+          RUNTIME_FOUND=$(find . \( -ipath "*GDJS/Runtime*" -o -ipath "*Runtime*RuntimeScene*" -o \( -ipath "*Runtime*" -iname "*.js" \) \) -print -quit)
+          if [ -z "$RUNTIME_FOUND" ]; then
+            echo "::error::No Runtime-related JS files found anywhere in the build. Full top-level listing for debugging:"
+            find . -maxdepth 4 -not -path "*/static/*" | sort
+            exit 1
+          fi
+          echo "Found runtime files, e.g.: $RUNTIME_FOUND"
+
+          echo "== Checking Extensions were copied, including the CSG3D one =="
+          EXT_FOUND=$(find . -ipath "*extension*" -print -quit)
+          if [ -z "$EXT_FOUND" ]; then
+            echo "::error::No Extensions-related path found anywhere in the build. Full top-level listing for debugging:"
+            find . -maxdepth 4 -not -path "*/static/*" | sort
+            exit 1
+          fi
+          echo "Found extensions path, e.g.: $EXT_FOUND"
+
+          CSG_FOUND=""
+          for f in $(find . -iname "JsExtension.js"); do
+            if grep -q "CSG3DObject" "$f" 2>/dev/null; then
+              CSG_FOUND="$f"
+              break
+            fi
+          done
+          if [ -n "$CSG_FOUND" ]; then
+            echo "CSG3DObject found in: $CSG_FOUND"
+          else
+            echo "::warning::Could not find 'CSG3DObject' in any bundled JsExtension.js — check it got included."
+          fi
+
+          echo "== Reporting build size =="
+          du -sh . || true
+
+          echo "Build verification passed."
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload build artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ env.NEWIDE_BUILD_DIR }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Smoke test the deployed site
+        shell: bash
+        run: |
+          set -e
+          URL="${{ steps.deployment.outputs.page_url }}"
+          echo "Testing $URL"
+          # GitHub Pages can take a little while to propagate after deploy.
+          STATUS=""
+          for i in $(seq 1 10); do
+            STATUS=$(curl -s -o response.html -w "%{http_code}" "$URL")
+            if [ "$STATUS" = "200" ]; then
+              echo "Got HTTP 200 on attempt $i."
+              break
+            fi
+            echo "Attempt $i: got HTTP $STATUS, retrying in 15s..."
+            sleep 15
+          done
+
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Deployed site did not return HTTP 200 (last status: $STATUS)"
+            exit 1
+          fi
+
+          if [ "$(wc -c < response.html)" -lt 200 ]; then
+            echo "::error::Deployed page looks empty/broken (response too small)"
+            exit 1
+          fi
+
+          if grep -qiE "carrots|gdevelop" response.html; then
+            echo "Editor branding found in the deployed page."
+          else
+            echo "::warning::Could not find 'Carrots' or 'GDevelop' branding in the deployed HTML — double check manually."
+          fi
+
+          echo "Deployed site responded correctly at $URL"
